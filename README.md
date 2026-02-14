@@ -11,7 +11,7 @@ Replaces linear plan-then-execute with a cycle of Explore, Plan, Execute, Reflec
 
 ## Install
 
-**Option 1:** Download `iterative-planner-combined.md` from [Releases](https://github.com/your-user/iterative-planner/releases) and paste into Claude's Custom Instructions
+**Option 1:** Download `iterative-planner-combined.md` from [Releases](https://github.com/NikolasMarkou/iterative-planner/releases) and paste into Claude's Custom Instructions
 
 **Option 2:** Download zip and upload `SKILL.md` + `references/` folder to a Claude Project
 
@@ -58,7 +58,7 @@ All state lives in `.plan/` in the project root directory.
 | **PLAN** | Design approach based on what's known. | Write/update plan.md. NO code changes. |
 | **EXECUTE** | Implement the current plan step by step. | Edit files, run commands, write code. |
 | **REFLECT** | Observe results. Did it work? Why not? | Read outputs, run tests. Update decisions.md. |
-| **RE-PLAN** | Revise plan based on what was learned. | Update plan.md. Log pivot in decisions.md. |
+| **RE-PLAN** | Revise direction based on what was learned. | Log pivot in decisions.md. Propose new direction. Do NOT write plan.md — that happens in PLAN. |
 | **CLOSE** | Done. Write summary. Audit decision comments. | Write summary.md. Verify code comments. Clean up. |
 
 ---
@@ -86,7 +86,7 @@ Or when the user says things like "plan", "figure out", "help me think through",
 
 **Simplify, Don't Add.** The default response to failure is to simplify. Never add complexity to fix complexity.
 
-**Decision Anchoring.** When code implements a choice that survived failed alternatives, add a comment explaining why. The code outlives `.plan/`.
+**Decision Anchoring.** When code implements a choice that survived failed alternatives, anchor a `# DECISION D-NNN` comment at the point of impact — stating what NOT to do and why. The code outlives `.plan/`.
 
 ---
 
@@ -105,7 +105,7 @@ The #1 failure mode is adding complexity in response to failure.
 
 **Nuclear Option** — At iteration 5, if bloat > 2x scope: recommend full revert. `decisions.md` preserves all knowledge for the clean restart.
 
-See `references/complexity-control.md` for the full anti-complexity protocol.
+See `references/complexity-control.md` for the full anti-complexity protocol. See also `references/code-hygiene.md` and `references/decision-anchoring.md`.
 
 ---
 
@@ -114,7 +114,7 @@ See `references/complexity-control.md` for the full anti-complexity protocol.
 Initialize `.plan/` in a project root:
 
 ```bash
-bash <skill-path>/scripts/bootstrap.sh "goal description"
+node <skill-path>/scripts/bootstrap.mjs "goal description"
 ```
 
 This creates the full `.plan/` directory structure:
