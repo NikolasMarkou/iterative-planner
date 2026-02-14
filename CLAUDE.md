@@ -6,7 +6,7 @@ This file provides guidance for Claude (AI) when working with the Iterative Plan
 
 **Iterative Planner v1.0** is a Claude Code skill that implements a state-machine driven iterative planning and execution protocol for complex coding tasks. It replaces linear plan-then-execute with a cycle of Explore, Plan, Execute, Reflect, Re-plan.
 
-The skill uses the filesystem (`.plan/` directory) as persistent working memory to survive context rot, track decisions, and enable rollback.
+The skill uses the filesystem (`.claude/.plan_YYYY-MM-DD_XXXXXXXX/` directory) as persistent working memory to survive context rot, track decisions, and enable rollback.
 
 Use cases include:
 - Complex multi-file coding tasks
@@ -27,27 +27,27 @@ iterative-planner/
 ├── Makefile                          # Unix/Linux/macOS build script
 ├── build.ps1                         # Windows PowerShell build script
 ├── scripts/
-│   └── bootstrap.mjs                 # Initializes .plan/ directory in project root (Node.js 18+)
+│   └── bootstrap.mjs                 # Initializes .claude/.plan_YYYY-MM-DD_XXXXXXXX/ directory (Node.js 18+)
 └── references/                       # Knowledge base documents
     ├── complexity-control.md         # Anti-complexity protocol (revert-first, 3-strike, nuclear option)
     ├── code-hygiene.md               # Change manifest format, revert procedures, forbidden leftovers
     ├── decision-anchoring.md         # When/how to anchor decisions in code, format, audit rules
-    └── file-formats.md               # Templates and examples for all .plan/ files
+    └── file-formats.md               # Templates and examples for all plan directory files
 ```
 
 ## Key Commands
 
 ### Bootstrap
 
-Initialize `.plan/` in a project root:
+Initialize the plan directory in a project root:
 
 ```bash
 node <skill-path>/scripts/bootstrap.mjs "goal description"
 ```
 
-This creates the full `.plan/` directory structure with `state.md`, `plan.md`, `decisions.md`, `findings.md`, `progress.md`, `findings/`, and `checkpoints/`.
+This creates `.claude/.plan_YYYY-MM-DD_XXXXXXXX/` with `state.md`, `plan.md`, `decisions.md`, `findings.md`, `progress.md`, `findings/`, and `checkpoints/`. It also writes `.claude/.current_plan` with the plan directory name for discovery.
 
-The script is idempotent-safe: it refuses to run if `.plan/` already exists.
+The script is idempotent-safe: it refuses to run if `.claude/.current_plan` already points to an active plan.
 
 ### Activating the Protocol
 
@@ -59,7 +59,7 @@ Users activate the protocol by giving Claude a complex task, or saying things li
 
 | State | Purpose | Allowed Actions |
 |-------|---------|-----------------|
-| EXPLORE | Gather context. Read code, search, ask questions. | Read-only on project files. Write ONLY to `.plan/` files. |
+| EXPLORE | Gather context. Read code, search, ask questions. | Read-only on project files. Write ONLY to plan directory files. |
 | PLAN | Design approach based on what's known. | Write/update plan.md. NO code changes. |
 | EXECUTE | Implement the current plan step by step. | Edit files, run commands, write code. |
 | REFLECT | Observe results. Did it work? Why not? | Read outputs, run tests. Update decisions.md. |
@@ -139,7 +139,7 @@ See `references/code-hygiene.md` for manifest format, revert procedures, and for
 
 - **SKILL.md** is the core protocol. Changes here affect all planning behavior. It is the complete skill specification that Claude Code loads.
 - **references/** files provide supplementary knowledge. They are read on-demand by the skill, not loaded upfront. Add new reference files for expanded guidance.
-- **scripts/bootstrap.mjs** requires Node.js 18+ (guaranteed by Claude Code). It is idempotent-safe (refuses if `.plan/` exists).
+- **scripts/bootstrap.mjs** requires Node.js 18+ (guaranteed by Claude Code). It is idempotent-safe (refuses if `.claude/.current_plan` already points to an active plan).
 - When editing the protocol, keep the state machine diagram, transition rules table, file lifecycle matrix, and file format references in sync across SKILL.md and references/.
 
 ### Tech Stack
@@ -178,6 +178,6 @@ Reference files should follow this pattern:
 - [ ] SKILL.md has `name:` and `description:` in YAML frontmatter
 - [ ] All cross-references in SKILL.md point to existing files in `references/`
 - [ ] State machine diagram matches transition rules table
-- [ ] File Lifecycle Matrix matches state machine states and `.plan/` file list
+- [ ] File Lifecycle Matrix matches state machine states and plan directory file list
 - [ ] `scripts/bootstrap.mjs` creates all files referenced in `references/file-formats.md`
-- [ ] `.plan/` directory structure in SKILL.md matches bootstrap.mjs output
+- [ ] Plan directory structure in SKILL.md matches bootstrap.mjs output

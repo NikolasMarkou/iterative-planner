@@ -1,23 +1,42 @@
 #!/usr/bin/env node
-// Bootstrap the .plan/ directory in the current working directory (project root).
+// Bootstrap the plan directory under .claude/ in the current working directory (project root).
 // Usage: node bootstrap.mjs "Your goal description here"
 //
-// This script MUST be run from the project root. It creates .plan/ in cwd.
+// Creates .claude/.plan_YYYY-MM-DD_XXXXXXXX/ (date + 8-char hex seed) in cwd.
+// Writes .claude/.current_plan with the directory name for discovery.
 // Requires Node.js 18+ (guaranteed by Claude Code).
 
-import { mkdirSync, writeFileSync, existsSync } from "fs";
+import { mkdirSync, writeFileSync, readFileSync } from "fs";
 import { join } from "path";
+import { randomBytes } from "crypto";
 
 const goal = process.argv[2] || "No goal specified";
 const timestamp = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
-const planDir = join(process.cwd(), ".plan");
 
-if (existsSync(planDir)) {
-  console.error(`ERROR: ${planDir} already exists.`);
-  console.error("To resume an existing plan, read .plan/state.md");
-  console.error("To start fresh, delete .plan/ first.");
+const cwd = process.cwd();
+const claudeDir = join(cwd, ".claude");
+const pointerFile = join(claudeDir, ".current_plan");
+
+// Ensure .claude/ exists
+mkdirSync(claudeDir, { recursive: true });
+
+// Check for an active plan via pointer file
+let existingPlanDir = null;
+try {
+  existingPlanDir = readFileSync(pointerFile, "utf-8").trim();
+} catch { /* no pointer file — fine */ }
+
+if (existingPlanDir) {
+  console.error(`ERROR: Active plan directory already exists: .claude/${existingPlanDir}`);
+  console.error(`To resume, read .claude/${existingPlanDir}/state.md`);
+  console.error(`To start fresh, delete .claude/${existingPlanDir}/ and .claude/.current_plan first.`);
   process.exit(1);
 }
+
+const dateStr = new Date().toISOString().slice(0, 10);
+const hexStr = randomBytes(4).toString("hex");
+const planDirName = `.plan_${dateStr}_${hexStr}`;
+const planDir = join(claudeDir, planDirName);
 
 mkdirSync(join(planDir, "checkpoints"), { recursive: true });
 mkdirSync(join(planDir, "findings"), { recursive: true });
@@ -104,7 +123,11 @@ writeFileSync(
 `
 );
 
-console.log(`Initialized ${planDir}/`);
+// Write the pointer file so the protocol can discover this plan directory
+writeFileSync(pointerFile, planDirName);
+
+console.log(`Initialized .claude/${planDirName}/`);
+console.log(`  Pointer: .claude/.current_plan → ${planDirName}`);
 console.log(`  Goal: ${goal}`);
 console.log(`  State: EXPLORE (iteration 0)`);
 console.log(`  Next: Read code, ask questions, write findings.`);

@@ -4,6 +4,16 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.0] - 2026-02-14
+
+### Changed
+- Plan directory moved from `.plan/` in project root to `.claude/.plan_YYYY-MM-DD_XXXXXXXX/`
+  - Dynamic naming with date + 8-char hex seed (e.g. `.plan_2026-02-14_a3f1b2c9`)
+  - Only one plan directory allowed at a time
+  - Discovery via `.claude/.current_plan` pointer file (contains the plan directory name)
+  - Bootstrap writes pointer; protocol reads it to find the active plan
+  - `.gitignore` patterns: `.claude/.plan_*` and `.claude/.current_plan`
+
 ## [1.0.0] - 2026-02-14
 
 ### Added

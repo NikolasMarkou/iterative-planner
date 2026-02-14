@@ -1,6 +1,6 @@
 # File Formats Reference
 
-Detailed templates and examples for every file in the `.plan/` directory.
+Detailed templates and examples for every file in the plan directory (`{plan-dir}`).
 
 ---
 
@@ -173,12 +173,12 @@ individual files — one per topic or subagent research task.
 ### findings/ directory (detailed files)
 
 Each file is a self-contained research artifact. When using subagents, **instruct
-each subagent to write its output directly to a file in `.plan/findings/`**. Do not
+each subagent to write its output directly to a file in `{plan-dir}/findings/`**. Do not
 rely on subagent results living only in the context window — they will be lost to
 compaction.
 
 Example subagent prompt:
-> Explore the authentication system. Write your findings to `.plan/findings/auth-system.md`.
+> Explore the authentication system. Write your findings to `{plan-dir}/findings/auth-system.md`.
 > Include file paths with line numbers and code path traces showing execution flow.
 
 ```markdown

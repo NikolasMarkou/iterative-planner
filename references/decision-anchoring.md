@@ -26,7 +26,7 @@ a pointer to the full story.
 
 ```python
 # DECISION D-003: Using stateless tokens instead of dual-write.
-# Dual-write doubled Redis memory due to 30-day TTLs (see .plan/decisions.md D-002, D-003).
+# Dual-write doubled Redis memory due to 30-day TTLs (see decisions.md D-002, D-003).
 # Do NOT switch back to session-store-based approach without addressing memory growth.
 def create_token(user):
     ...
@@ -35,7 +35,7 @@ def create_token(user):
 ```ruby
 # DECISION D-005: Calling Redis directly, not through SessionStore.
 # SessionStore#find deserializes into cookie format, which breaks token flow.
-# Three attempts to adapt SessionStore failed (see .plan/decisions.md D-003..D-005).
+# Three attempts to adapt SessionStore failed (see decisions.md D-003..D-005).
 def authenticate!(request)
   token = Redis.current.get("token:#{extract_token(request)}")
   ...
@@ -63,7 +63,7 @@ end
 
 Before writing `summary.md`, scan `decisions.md` for entries with failed
 alternatives or 3-strike pivots. For each, verify the corresponding code has
-a decision anchor comment. `.plan/` is ephemeral — the code outlives it.
+a decision anchor comment. The plan directory is ephemeral — the code outlives it.
 
 In `summary.md`, list files that carry decision anchors and which decision IDs
 they reference (see the summary.md template in `references/file-formats.md`).

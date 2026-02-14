@@ -3,8 +3,9 @@ name: iterative-planner
 description: >
   State-machine driven iterative planning and execution protocol for complex coding tasks.
   Replaces linear plan-then-execute with a cycle of Explore → Plan → Execute → Reflect → Re-plan.
-  Uses the filesystem as persistent working memory in the project root (.plan/ directory) to survive
-  context rot, track decisions, and enable rollback. Use this skill whenever a task is complex,
+  Uses the filesystem as persistent working memory under .claude/ (dynamic .plan_YYYY-MM-DD_XXXXXXXX
+  directory) to survive context rot, track decisions, and enable rollback. Use this skill whenever a
+  task is complex,
   multi-file, involves migration or refactoring, has failed before, or when the user says things
   like "plan", "figure out", "help me think through", "I've been struggling with", or "debug this
   complex issue". Also use when a task touches 3+ files, spans 2+ systems, or has no obvious
@@ -18,7 +19,12 @@ A protocol for complex coding tasks where the first plan is never the final plan
 **Core Principle**: Context Window = RAM. Filesystem = Disk.
 Anything important gets written to disk immediately. The context window will rot. The files won't.
 
-All state lives in `.plan/` in the **project root directory** (never the user's home).
+All state lives in a **plan directory** under `.claude/` in the **project root** (never the user's home).
+
+Throughout this document, **`{plan-dir}`** refers to the active plan directory:
+`.claude/.plan_YYYY-MM-DD_XXXXXXXX/` (date + 8-char hex seed, e.g. `.claude/.plan_2026-02-14_a3f1b2c9/`).
+
+**Discovery**: Read `.claude/.current_plan` — it contains the plan directory name (e.g. `.plan_2026-02-14_a3f1b2c9`). Only one active plan directory at a time.
 
 ## State Machine
 
@@ -47,7 +53,7 @@ All state lives in `.plan/` in the **project root directory** (never the user's 
 
 | State   | Purpose | Allowed Actions |
 |---------|---------|-----------------|
-| EXPLORE | Gather context. Read code, search, ask questions. | Read-only on project files. Write ONLY to `.plan/` files. |
+| EXPLORE | Gather context. Read code, search, ask questions. | Read-only on project files. Write ONLY to `{plan-dir}` files. |
 | PLAN    | Design approach based on what's known. | Write/update plan.md. NO code changes. |
 | EXECUTE | Implement the current plan step by step. | Edit files, run commands, write code. |
 | REFLECT | Observe results. Did it work? Why not? | Read outputs, run tests. Update decisions.md. |
@@ -73,7 +79,7 @@ logged in `decisions.md` with: what failed, what was learned, why the new direct
 
 ### Mandatory Re-reads (CRITICAL)
 
-The `.plan/` files are not just for session recovery — they are your active working
+The `{plan-dir}` files are not just for session recovery — they are your active working
 memory. **Re-read them during the conversation, not just at the start.**
 
 | When | Read | Why |
@@ -91,14 +97,15 @@ not your memory of what they say.
 
 ## Bootstrapping
 
-On a complex task, run the bootstrap script to initialize `.plan/` in the project root:
+On a complex task, run the bootstrap script to initialize the plan directory:
 
 ```bash
 node <skill-path>/scripts/bootstrap.mjs "goal description"
 ```
 
-This creates the full `.plan/` directory structure. If `.plan/` already exists, it refuses
-(resume from existing state instead).
+This creates `.claude/.plan_YYYY-MM-DD_XXXXXXXX/` with all plan files, and writes
+`.claude/.current_plan` pointing to it. If `.current_plan` already points to an active
+plan directory, it refuses (resume from existing state instead).
 
 After bootstrap, begin EXPLORE immediately.
 
@@ -107,21 +114,23 @@ If the user provides context upfront (files, errors, constraints), write it into
 
 ## Filesystem Structure
 
-All files live in `.plan/` at the project root:
+All plan files live under `.claude/` at the project root:
 
 ```
-.plan/
-├── state.md           # Current state + transition log
-├── plan.md            # Living plan (rewritten each iteration)
-├── decisions.md       # Append-only log of decisions and pivots
-├── findings.md        # Summary + index of all findings
-├── findings/          # Individual finding files (from subagents and manual exploration)
-│   ├── auth-system.md
-│   └── test-coverage.md
-├── progress.md        # What's done vs remaining
-├── checkpoints/       # Snapshots before risky changes
-│   └── cp-001.md      # Description + rollback instructions
-└── summary.md         # Written at CLOSE
+.claude/
+├── .current_plan              # Pointer file: contains the active plan directory name
+└── .plan_2026-02-14_a3f1b2c9/ # {plan-dir} — dynamic name (date + hex seed)
+    ├── state.md               # Current state + transition log
+    ├── plan.md                # Living plan (rewritten each iteration)
+    ├── decisions.md           # Append-only log of decisions and pivots
+    ├── findings.md            # Summary + index of all findings
+    ├── findings/              # Individual finding files (from subagents and manual exploration)
+    │   ├── auth-system.md
+    │   └── test-coverage.md
+    ├── progress.md            # What's done vs remaining
+    ├── checkpoints/           # Snapshots before risky changes
+    │   └── cp-001.md          # Description + rollback instructions
+    └── summary.md             # Written at CLOSE
 ```
 
 Read `references/file-formats.md` for detailed templates and examples of each file.
@@ -163,7 +172,7 @@ EXPLORE → PLAN → [user approves] → EXECUTE → REFLECT
 - Include **file paths and code path traces** (e.g. "request enters at `app/middleware/auth.rb:authenticate!` → calls `SessionStore#find` → reads from Redis via `redis_store.rb:get`").
 - DO NOT skip EXPLORE even if you think you know the answer.
 - If available, use **Task subagents** to parallelize codebase research (e.g. one subagent explores the auth system while another maps the test coverage).
-- **All subagent findings MUST be written to `.plan/findings/`** as separate files (e.g. `.plan/findings/auth-system.md`, `.plan/findings/test-coverage.md`). Do not rely on subagent results living only in the context window. The main `findings.md` should reference and summarize these files.
+- **All subagent findings MUST be written to `{plan-dir}/findings/`** as separate files (e.g. `{plan-dir}/findings/auth-system.md`, `{plan-dir}/findings/test-coverage.md`). Do not rely on subagent results living only in the context window. The main `findings.md` should reference and summarize these files.
 - For complex problems, prompt with "think hard" or "ultrathink" to activate extended thinking during analysis.
 - **On REFLECT → EXPLORE loops**: append new findings to existing `findings.md` and `findings/` files. Do not overwrite — prior findings are still valid unless explicitly contradicted.
 
@@ -298,13 +307,14 @@ If iteration > 5, STOP and meta-reflect:
 
 If the conversation is compacted or a new session starts:
 
-1. Read `.plan/state.md` — where you are
-2. Read `.plan/plan.md` — current plan
-3. Read `.plan/decisions.md` — what was tried and why it failed
-4. Read `.plan/progress.md` — done vs remaining
-5. Read `.plan/findings.md` — index of what's been discovered
-6. Read relevant files in `.plan/findings/` — detailed exploration results
-7. Resume from current state. Never start over.
+1. Read `.claude/.current_plan` to find the active plan directory name
+2. Read `{plan-dir}/state.md` — where you are
+3. Read `{plan-dir}/plan.md` — current plan
+4. Read `{plan-dir}/decisions.md` — what was tried and why it failed
+5. Read `{plan-dir}/progress.md` — done vs remaining
+6. Read `{plan-dir}/findings.md` — index of what's been discovered
+7. Read relevant files in `{plan-dir}/findings/` — detailed exploration results
+8. Resume from current state. Never start over.
 
 ## Git Integration
 
@@ -313,7 +323,7 @@ If the conversation is compacted or a new session starts:
 - EXECUTE (failed step): revert all uncommitted changes. Codebase must match last commit.
 - RE-PLAN: decide to keep successful commits or revert to checkpoint. No partial state.
 - CLOSE: final commit with summary. Tag if appropriate.
-- Add `.plan/` to `.gitignore` (unless team wants decision logs for post-mortems).
+- Add `.claude/.plan_*` and `.claude/.current_plan` to `.gitignore` (unless team wants decision logs for post-mortems).
 - Track all file changes in the Change Manifest in `state.md` (see Code Hygiene).
 
 ## User Interaction
@@ -335,7 +345,7 @@ If the conversation is compacted or a new session starts:
 
 Read these as needed — they contain detailed templates, examples, and expanded rules:
 
-- `references/file-formats.md` — Templates for every `.plan/` file with examples
+- `references/file-formats.md` — Templates for every `{plan-dir}` file with examples
 - `references/complexity-control.md` — Full anti-complexity protocol, forbidden patterns, nuclear option
 - `references/code-hygiene.md` — Change manifest format, revert procedures, forbidden leftovers
 - `references/decision-anchoring.md` — When/how to anchor decisions in code, format, audit rules

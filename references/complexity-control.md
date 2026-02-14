@@ -68,7 +68,7 @@ in SKILL.md for the full rule and tracking format.
 
 ## Mandatory Simplification Checks
 
-During every REFLECT phase, first **re-read `.plan/decisions.md`** to check what
+During every REFLECT phase, first **re-read `{plan-dir}/decisions.md`** to check what
 has already been tried and failed. Then answer these explicitly in `decisions.md`:
 
 1. **Could I delete code instead?** The best fix is often removing the thing that

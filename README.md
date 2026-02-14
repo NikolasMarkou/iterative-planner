@@ -23,7 +23,7 @@ Then give Claude a complex task, or say: **"plan this"**
 
 Context Window = RAM. Filesystem = Disk. Anything important gets written to disk immediately.
 
-All state lives in `.plan/` in the project root directory.
+All state lives in a dynamic plan directory under `.claude/` in the project root (`.claude/.plan_YYYY-MM-DD_XXXXXXXX/`), discovered via the `.claude/.current_plan` pointer file.
 
 ### State Machine
 
@@ -54,7 +54,7 @@ All state lives in `.plan/` in the project root directory.
 
 | State | Purpose | Allowed Actions |
 |-------|---------|-----------------|
-| **EXPLORE** | Gather context. Read code, search, ask questions. | Read-only on project files. Write ONLY to `.plan/` files. |
+| **EXPLORE** | Gather context. Read code, search, ask questions. | Read-only on project files. Write ONLY to plan directory files. |
 | **PLAN** | Design approach based on what's known. | Write/update plan.md. NO code changes. |
 | **EXECUTE** | Implement the current plan step by step. | Edit files, run commands, write code. |
 | **REFLECT** | Observe results. Did it work? Why not? | Read outputs, run tests. Update decisions.md. |
@@ -78,7 +78,7 @@ Or when the user says things like "plan", "figure out", "help me think through",
 
 ## Core Principles
 
-**Context Window = RAM. Filesystem = Disk.** Write discoveries to `.plan/` immediately. The context window will rot. The files won't.
+**Context Window = RAM. Filesystem = Disk.** Write discoveries to the plan directory immediately. The context window will rot. The files won't.
 
 **Autonomy Leash.** After 2 failed fix attempts on a plan step, STOP completely. Present the situation to the user. Do not try a 3rd fix. Do not silently change approach.
 
@@ -86,7 +86,7 @@ Or when the user says things like "plan", "figure out", "help me think through",
 
 **Simplify, Don't Add.** The default response to failure is to simplify. Never add complexity to fix complexity.
 
-**Decision Anchoring.** When code implements a choice that survived failed alternatives, anchor a `# DECISION D-NNN` comment at the point of impact — stating what NOT to do and why. The code outlives `.plan/`.
+**Decision Anchoring.** When code implements a choice that survived failed alternatives, anchor a `# DECISION D-NNN` comment at the point of impact — stating what NOT to do and why. The code outlives the plan directory.
 
 ---
 
@@ -111,24 +111,26 @@ See `references/complexity-control.md` for the full anti-complexity protocol. Se
 
 ## Bootstrapping
 
-Initialize `.plan/` in a project root:
+Initialize the plan directory in a project root:
 
 ```bash
 node <skill-path>/scripts/bootstrap.mjs "goal description"
 ```
 
-This creates the full `.plan/` directory structure:
+This creates `.claude/.plan_YYYY-MM-DD_XXXXXXXX/` (date + 8-char hex seed) with all plan files, and writes `.claude/.current_plan` pointing to it:
 
 ```
-.plan/
-├── state.md           # Current state + transition log
-├── plan.md            # Living plan (rewritten each iteration)
-├── decisions.md       # Append-only log of decisions and pivots
-├── findings.md        # Summary + index of all findings
-├── findings/          # Individual finding files
-├── progress.md        # What's done vs remaining
-├── checkpoints/       # Snapshots before risky changes
-└── summary.md         # Written at CLOSE
+.claude/
+├── .current_plan              # Points to the active plan directory name
+└── .plan_2026-02-14_a3f1b2c9/ # Dynamic plan directory
+    ├── state.md               # Current state + transition log
+    ├── plan.md                # Living plan (rewritten each iteration)
+    ├── decisions.md           # Append-only log of decisions and pivots
+    ├── findings.md            # Summary + index of all findings
+    ├── findings/              # Individual finding files
+    ├── progress.md            # What's done vs remaining
+    ├── checkpoints/           # Snapshots before risky changes
+    └── summary.md             # Written at CLOSE
 ```
 
 See `references/file-formats.md` for detailed templates and examples.
