@@ -301,14 +301,11 @@ cookie fallback for legacy clients.
 - config/initializers/session.rb (modified)
 - test/integration/token_auth_test.rb (new)
 
-## Decision-Anchored Comments
-Files containing comments that explain non-obvious choices from failed iterations:
-- `app/middleware/auth.rb:23` — why token-based instead of cookie migration (D-003)
-- `lib/session/token_service.rb:15` — why stateless over dual-write (D-002, D-003)
-
 ## Decision Anchors in Code
+Files containing `# DECISION D-NNN` comments that explain non-obvious choices from failed iterations:
+- `app/middleware/auth.rb:23` — why token-based instead of cookie migration (D-003); direct Redis call, not SessionStore (D-005)
 - `lib/session/token_service.rb:1` — D-003: stateless tokens over dual-write
-- `app/middleware/auth.rb:23` — D-005: direct Redis call, not SessionStore
+- `lib/session/token_service.rb:15` — why stateless over dual-write (D-002, D-003)
 
 ## Lessons
 - Check format coupling before assuming storage changes are isolated

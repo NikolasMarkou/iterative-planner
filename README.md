@@ -2,6 +2,7 @@
 
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Protocol](https://img.shields.io/badge/Protocol-v1.0-green.svg)](CHANGELOG.md)
+[![Sponsored by Electi](https://img.shields.io/badge/Sponsored%20by-Electi-red.svg)](https://www.electiconsulting.com)
 
 **State-machine driven iterative planning and execution protocol for complex coding tasks.**
 
@@ -117,7 +118,7 @@ Initialize the plan directory in a project root:
 node <skill-path>/scripts/bootstrap.mjs "goal description"
 ```
 
-This creates `.claude/.plan_YYYY-MM-DD_XXXXXXXX/` (date + 8-char hex seed) with all plan files, and writes `.claude/.current_plan` pointing to it:
+This creates `.claude/.plan_YYYY-MM-DD_XXXXXXXX/` (date + 8-char hex seed) with initial plan files, and writes `.claude/.current_plan` pointing to it:
 
 ```
 .claude/
@@ -130,7 +131,7 @@ This creates `.claude/.plan_YYYY-MM-DD_XXXXXXXX/` (date + 8-char hex seed) with 
     ├── findings/              # Individual finding files
     ├── progress.md            # What's done vs remaining
     ├── checkpoints/           # Snapshots before risky changes
-    └── summary.md             # Written at CLOSE
+    └── summary.md             # Written at CLOSE (not created by bootstrap)
 ```
 
 See `references/file-formats.md` for detailed templates and examples.

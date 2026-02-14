@@ -129,7 +129,7 @@ All plan files live under `.claude/` at the project root:
     │   └── test-coverage.md
     ├── progress.md            # What's done vs remaining
     ├── checkpoints/           # Snapshots before risky changes
-    │   └── cp-001.md          # Description + rollback instructions
+    │   └── cp-000.md          # Description + rollback instructions
     └── summary.md             # Written at CLOSE
 ```
 
@@ -202,9 +202,11 @@ EXPLORE → PLAN → [user approves] → EXECUTE → REFLECT
 - Commit after each successful step: `[iter-N/step-M] description`.
 - **Decision Anchoring**: Add `# DECISION D-NNN` comments on code with significant
   decision history. Read `references/decision-anchoring.md` for when and how.
-- If something breaks: **STOP. Do not write new code.** Follow the Revert-First Policy
-  in `references/complexity-control.md`.
-- **Autonomy Leash**: See below.
+- If something breaks: **STOP. Do not write new code.** You get 2 autonomous fix
+  attempts (the Autonomy Leash), but each attempt MUST follow the Revert-First
+  Policy: revert → delete → one-liner → REFLECT. If both attempts fail, STOP
+  completely and present to user. See the Autonomy Leash section below for full
+  rules and `references/complexity-control.md` for the full Revert-First protocol.
 
 ### During REFLECT
 - **Read** `plan.md` (success criteria) and `progress.md` before evaluating.
@@ -214,6 +216,14 @@ EXPLORE → PLAN → [user approves] → EXECUTE → REFLECT
 - **Write** `decisions.md`: log what happened, what was learned, root cause analysis.
 - **Write** `progress.md`: update status of current step (completed/failed/blocked).
 - **Write** `state.md`: update transition log.
+
+#### REFLECT Branching Criteria
+
+| Condition | Transition |
+|-----------|------------|
+| All success criteria met AND tests pass | → CLOSE |
+| Failure understood, new approach clear | → RE-PLAN |
+| Failure involves unknowns needing investigation | → EXPLORE |
 
 ### During RE-PLAN
 - **Read** `decisions.md` and `findings.md` before formulating a new approach.

@@ -55,83 +55,19 @@ Users activate the protocol by giving Claude a complex task, or saying things li
 - "plan this", "figure out", "help me think through"
 - "I've been struggling with", "debug this complex issue"
 
-## The State Machine
+## Protocol Reference
 
-| State | Purpose | Allowed Actions |
-|-------|---------|-----------------|
-| EXPLORE | Gather context. Read code, search, ask questions. | Read-only on project files. Write ONLY to plan directory files. |
-| PLAN | Design approach based on what's known. | Write/update plan.md. NO code changes. |
-| EXECUTE | Implement the current plan step by step. | Edit files, run commands, write code. |
-| REFLECT | Observe results. Did it work? Why not? | Read outputs, run tests. Update decisions.md. |
-| RE-PLAN | Revise direction based on what was learned. | Log pivot in decisions.md. Propose new direction. Do NOT write plan.md — that happens in PLAN. |
-| CLOSE | Done. Write summary. Audit decision comments. | Write summary.md. Verify code comments. Clean up. |
+The complete protocol specification lives in **SKILL.md** — the file Claude Code loads as the skill. Key sections:
 
-### Transition Rules
+- **State Machine & Transitions**: SKILL.md "State Machine" and "Transition Rules" sections
+- **Mandatory Re-reads**: SKILL.md "Mandatory Re-reads" section
+- **Autonomy Leash**: SKILL.md "Autonomy Leash" section
+- **Complexity Control**: SKILL.md "Complexity Control" section + `references/complexity-control.md`
+- **Code Hygiene**: SKILL.md "Code Hygiene" section + `references/code-hygiene.md`
+- **Decision Anchoring**: SKILL.md "Decision Anchoring" section + `references/decision-anchoring.md`
+- **Git Integration**: SKILL.md "Git Integration" section
 
-| From | To | Trigger |
-|------|----|---------|
-| EXPLORE | PLAN | Sufficient context gathered. Findings written. |
-| PLAN | EXECUTE | User explicitly approves. |
-| EXECUTE | REFLECT | A step completes, fails, surprises, or autonomy leash is hit. |
-| REFLECT | CLOSE | All success criteria met. |
-| REFLECT | RE-PLAN | Something failed or better approach found. |
-| REFLECT | EXPLORE | Need more context before re-planning. |
-| RE-PLAN | PLAN | New approach formulated. Decision logged. |
-
-## Important Patterns
-
-### Autonomy Leash
-
-- 2 small autonomous fix attempts per plan step (revert, delete, or one-liner only)
-- After 2 failed attempts: STOP completely. Present situation to user.
-- Do NOT try a 3rd fix. Do NOT silently change approach.
-- Track fix attempts in `state.md`
-
-### Complexity Control
-
-- **Revert-First Policy**: STOP → Revert? → Delete? → One-liner? → REFLECT
-- **10-Line Rule**: If a fix needs >10 new lines, it's not a fix. Enter REFLECT.
-- **3-Strike Rule**: Same area breaks 3 times = wrong approach. Enter RE-PLAN.
-- **Complexity Budget**: Files added (0/3 max), new abstractions (0/2 max), lines (net-zero target)
-- **Nuclear Option**: At iteration 5 + bloat > 2x scope = recommend full revert
-
-See `references/complexity-control.md` for the full protocol.
-
-### Mandatory Re-reads
-
-| When | Read | Why |
-|------|------|-----|
-| Before starting any EXECUTE step | `state.md`, `plan.md` | Confirm current step, check change manifest |
-| Before writing a fix | `decisions.md` | Don't repeat a failed approach |
-| Before entering PLAN or RE-PLAN | `decisions.md`, `findings.md`, relevant `findings/*` | Ground plan in what's known |
-| Before any REFLECT | `plan.md`, `progress.md` | Compare against defined criteria |
-| Every 10 tool calls | `state.md` | Reorient against scope creep |
-
-### Decision Anchoring
-
-When code implements a choice that survived failed alternatives:
-- Add a `# DECISION D-NNN` comment at the point of impact
-- Reference the decision ID from `decisions.md`
-- State what NOT to do and why
-- Only anchor where the decision history is load-bearing
-
-See `references/decision-anchoring.md` for format, examples, and audit rules.
-
-### Git Integration
-
-- EXPLORE/PLAN/REFLECT/RE-PLAN: no commits
-- EXECUTE: commit after each successful step with `[iter-N/step-M] description`
-- Failed step: revert all uncommitted changes
-- Change manifest tracked in `state.md`
-
-### Code Hygiene
-
-- Track every change in the Change Manifest in `state.md`
-- On failed step: revert all uncommitted changes immediately
-- On RE-PLAN: decide explicitly to keep or revert committed work
-- Forbidden leftovers: TODOs, debug statements, commented-out code, dead imports
-
-See `references/code-hygiene.md` for manifest format, revert procedures, and forbidden leftovers checklist.
+Do not duplicate protocol content here. If you need to understand the protocol, read SKILL.md directly.
 
 ## Working with This Codebase
 

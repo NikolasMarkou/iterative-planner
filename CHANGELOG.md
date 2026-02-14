@@ -37,10 +37,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - Templates for state.md, plan.md, decisions.md, findings.md, progress.md
   - Checkpoint and summary file formats
   - Examples for each file type
-- **Bootstrap Script** (`scripts/bootstrap.sh`):
-  - Initializes `.plan/` directory structure in project root
+- **Bootstrap Script** (`scripts/bootstrap.mjs`):
+  - Initializes `.claude/.plan_YYYY-MM-DD_XXXXXXXX/` directory structure under `.claude/`
   - Creates state.md, plan.md, decisions.md, findings.md, progress.md
-  - Idempotent-safe (refuses if `.plan/` exists)
+  - Writes `.claude/.current_plan` pointer file for plan directory discovery
+  - Idempotent-safe (refuses if `.claude/.current_plan` already points to an active plan)
 - **Code Hygiene Protocol**:
   - Change manifest tracking in state.md
   - Revert-on-failure with forbidden leftover checks
@@ -50,7 +51,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - Rules for when to anchor and when not to
   - Format guidelines with decision IDs
 - **Git Integration**: Commit conventions (`[iter-N/step-M]`), checkpoint support
-- **Recovery Protocol**: Full session recovery from `.plan/` files
+- **Recovery Protocol**: Full session recovery from plan directory files
 - **Build Scripts**: Makefile (Unix/Linux/macOS) and build.ps1 (Windows)
 - **CLAUDE.md**: AI assistant guidance for working with the codebase
 - **README.md**: User documentation with install instructions and protocol overview
