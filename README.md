@@ -4,174 +4,220 @@
 [![Protocol](https://img.shields.io/badge/Protocol-v1.1-green.svg)](CHANGELOG.md)
 [![Sponsored by Electi](https://img.shields.io/badge/Sponsored%20by-Electi-red.svg)](https://www.electiconsulting.com)
 
-**State-machine driven iterative planning and execution protocol for complex coding tasks.**
+**Stop watching Claude go off the rails on complex tasks.**
 
-Replaces linear plan-then-execute with a cycle of Explore, Plan, Execute, Reflect, Re-plan. Uses the filesystem as persistent working memory to survive context rot, track decisions, and enable rollback.
+AI coding agents fail in predictable ways. They plan once, execute linearly, and when something breaks, they pile on fixes until the codebase is buried under wrappers, adapters, and "temporary" workarounds. By the time context rot kicks in, they've forgotten what they were even trying to do.
 
----
+Iterative Planner is a Claude Code skill that replaces this pattern with a disciplined cycle: **Explore, Plan, Execute, Reflect, Re-plan.** It uses the filesystem as persistent working memory -- so when the context window inevitably fills up, nothing is lost. Every decision, every failed approach, every discovery is written to disk and available for recovery.
 
-## Install
-
-**Option 1:** Download `iterative-planner-combined.md` from [Releases](https://github.com/NikolasMarkou/iterative-planner/releases) and paste into Claude's Custom Instructions
-
-**Option 2:** Download zip and upload `SKILL.md` + `references/` folder to a Claude Project
-
-Then give Claude a complex task, or say: **"plan this"**
+The result: Claude handles multi-file refactors, complex migrations, and gnarly debugging sessions the way a senior engineer would -- methodically, with full awareness of what has already been tried and why it failed.
 
 ---
 
-## The Protocol
+## Quick Start
 
-Context Window = RAM. Filesystem = Disk. Anything important gets written to disk immediately.
+**Option 1 -- Single file (fastest)**
+Download `iterative-planner-combined.md` from [Releases](https://github.com/NikolasMarkou/iterative-planner/releases) and paste it into Claude's Custom Instructions.
 
-All state lives in a dynamic plan directory under `.claude/` in the project root (`.claude/.plan_YYYY-MM-DD_XXXXXXXX/`), discovered via the `.claude/.current_plan` pointer file.
+**Option 2 -- Full package**
+Download the zip from Releases. Upload `SKILL.md` and the `references/` folder to a Claude Project.
 
-### State Machine
+Then give Claude a complex task, or just say: **"plan this"**
+
+---
+
+## The Problem This Solves
+
+Without structure, AI agents working on non-trivial tasks tend to:
+
+- **Lose context** mid-task and repeat work or contradict earlier decisions
+- **Compound failures** by adding complexity on top of broken code instead of reverting
+- **Go rogue** after a failure, silently switching approaches without telling you
+- **Leave debris** -- dead code, orphaned imports, debug statements -- from failed attempts scattered across the codebase
+- **Forget what was tried** and cycle through the same failed approaches
+
+Iterative Planner prevents all of this through a formal state machine, mandatory filesystem checkpoints, and strict rules about what the agent can and cannot do when things go wrong.
+
+---
+
+## How It Works
+
+The protocol is a six-state machine. Every transition is logged. Every decision is recorded. The filesystem is the source of truth -- not the context window.
 
 ```
-              ┌──────────┐
-              │  EXPLORE │──── enough context ────► ┌────────────┐
-              └──────────┘                          │    PLAN    │
-                    ▲                               └─────┬──────┘
-                    │                                     │
+              +----------+
+              |  EXPLORE  |---- enough context ---->+-----------+
+              +----------+                          |   PLAN    |
+                    ^                               +-----+-----+
+                    |                                     |
                  need more                             approved
-                  context                                 │
-                    │                                     ▼
-              ┌─────┴──────┐                        ┌──────────┐
-              │  REFLECT   │◄──── observe result ───│  EXECUTE │
-              └─────┬──────┘                        └──────────┘
-                    │
-              ┌─────┴──────────────────┐
-              │                        │
-           solved                  not solved
-              │                        │
-              ▼                        ▼
-        ┌──────────┐            ┌──────────┐
-        │  CLOSE   │            │ RE-PLAN  │───► back to PLAN
-        └──────────┘            └──────────┘
+                  context                                 |
+                    |                                     v
+              +-----+------+                        +----------+
+              |  REFLECT   |<---- observe result ---|  EXECUTE  |
+              +-----+------+                        +----------+
+                    |
+              +-----+-----------------+
+              |                       |
+           solved                 not solved
+              |                       |
+              v                       v
+        +----------+           +----------+
+        |  CLOSE   |           | RE-PLAN  |----> back to PLAN
+        +----------+           +----------+
 ```
 
-### Phase Overview
+| State | What happens | Boundaries |
+|-------|-------------|------------|
+| **EXPLORE** | Read code, search, ask questions, map the problem. | Read-only on project files. All notes go to the plan directory. |
+| **PLAN** | Design the approach. List every file to touch. Set success criteria. | No code changes. User must approve before execution begins. |
+| **EXECUTE** | Implement one step at a time. Commit after each success. | 2 fix attempts max per step. Revert-first on any failure. |
+| **REFLECT** | Compare results against written success criteria. | Evidence-based. No "it seems fine" -- check the criteria. |
+| **RE-PLAN** | Pivot based on what was learned. Log the decision. | Must explain what failed and why. User approves new direction. |
+| **CLOSE** | Write summary. Audit decision anchors in code. Clean up. | Verify no leftover debug code or orphaned imports. |
 
-| State | Purpose | Allowed Actions |
-|-------|---------|-----------------|
-| **EXPLORE** | Gather context. Read code, search, ask questions. | Read-only on project files. Write ONLY to plan directory files. |
-| **PLAN** | Design approach based on what's known. | Write/update plan.md. NO code changes. |
-| **EXECUTE** | Implement the current plan step by step. | Edit files, run commands, write code. |
-| **REFLECT** | Observe results. Did it work? Why not? | Read outputs, run tests. Update decisions.md. |
-| **RE-PLAN** | Revise direction based on what was learned. | Log pivot in decisions.md. Propose new direction. Do NOT write plan.md — that happens in PLAN. |
-| **CLOSE** | Done. Write summary. Audit decision comments. | Write summary.md. Verify code comments. Clean up. |
+---
+
+## What Makes This Different
+
+### Persistent Memory That Survives Context Rot
+
+Everything important is written to a plan directory on disk (`.claude/.plan_YYYY-MM-DD_XXXXXXXX/`). When the context window fills up and earlier messages are compressed or lost, the agent re-reads its own notes. State, decisions, findings, progress -- all on disk, all recoverable, even across sessions.
+
+```
+.claude/
++-- .current_plan
++-- .plan_2026-02-14_a3f1b2c9/
+    +-- state.md          # Where am I? What step? What iteration?
+    +-- plan.md           # The living plan (rewritten each iteration)
+    +-- decisions.md      # Append-only log of every decision and pivot
+    +-- findings.md       # Index of all discoveries
+    +-- findings/         # Detailed research files
+    +-- progress.md       # Done vs remaining
+    +-- checkpoints/      # Snapshots before risky changes
+    +-- summary.md        # Written at close
+```
+
+### The Autonomy Leash
+
+When a plan step fails, the agent gets exactly **2 small fix attempts** -- each constrained to reverting, deleting, or a one-line change. If neither works, it **stops completely** and presents the situation to you. No silent rewrites. No runaway fix chains. You stay in control of every pivot.
+
+### Revert-First Complexity Control
+
+The default response to failure is to simplify, never to add. When something breaks:
+
+1. Can I fix by **reverting**? Do that.
+2. Can I fix by **deleting**? Do that.
+3. **One-line** fix? Do that.
+4. None of the above? **Stop.** Enter REFLECT.
+
+Additional guardrails:
+- **10-Line Rule** -- if a "fix" needs more than 10 new lines, it is not a fix. It needs to go through PLAN.
+- **3-Strike Rule** -- same area breaks 3 times? The approach is wrong. Mandatory RE-PLAN with a fundamentally different strategy.
+- **Complexity Budget** -- every plan tracks files added (max 3), new abstractions (max 2), and net line count (target: net-zero or negative).
+- **Nuclear Option** -- at iteration 5, if scope has doubled, recommend full revert. The decision log preserves everything learned for a clean restart.
+
+### Decision Anchoring
+
+When code survives failed alternatives, the agent leaves a `# DECISION D-NNN` comment at the point of impact -- documenting what *not* to do and why. This prevents the next session (or the next developer) from blindly "fixing" a deliberate choice back into a known-broken state.
+
+```python
+# DECISION D-003: Using stateless tokens instead of dual-write.
+# Dual-write doubled Redis memory due to 30-day TTLs (see decisions.md D-002, D-003).
+# Do NOT switch back to session-store-based approach without addressing memory growth.
+def create_token(user):
+    ...
+```
+
+### Clean Code Hygiene
+
+Every file change is tracked in a change manifest. Failed steps are reverted immediately -- no half-applied changes, no commented-out experiments, no orphaned imports. The codebase is always in a known-good state before any new plan begins.
 
 ---
 
 ## When to Use This
 
-Use this skill whenever a task is:
-- Complex or multi-file
-- Involves migration or refactoring
-- Has failed before
-- Touches 3+ files or spans 2+ systems
-- Has no obvious single solution
+- Multi-file changes (3+ files)
+- Migrations and refactors
+- Tasks that have already failed once
+- Cross-system work (2+ systems)
+- Problems with no obvious single solution
+- Debugging sessions where the root cause is unclear
 
-Or when the user says things like "plan", "figure out", "help me think through", "I've been struggling with", or "debug this complex issue".
+Trigger phrases: *"plan this"*, *"figure out"*, *"help me think through"*, *"I've been struggling with"*, *"debug this complex issue"*
 
----
+## When NOT to Use This
 
-## Core Principles
-
-**Context Window = RAM. Filesystem = Disk.** Write discoveries to the plan directory immediately. The context window will rot. The files won't.
-
-**Autonomy Leash.** After 2 failed fix attempts on a plan step, STOP completely. Present the situation to the user. Do not try a 3rd fix. Do not silently change approach.
-
-**Revert-First.** When something breaks: Can I fix by reverting? By deleting? With a one-liner? If none apply, enter REFLECT.
-
-**Simplify, Don't Add.** The default response to failure is to simplify. Never add complexity to fix complexity.
-
-**Decision Anchoring.** When code implements a choice that survived failed alternatives, anchor a `# DECISION D-NNN` comment at the point of impact — stating what NOT to do and why. The code outlives the plan directory.
-
----
-
-## Complexity Control
-
-The #1 failure mode is adding complexity in response to failure.
-
-**10-Line Rule** — If a "fix" needs >10 new lines, it's not a fix. Enter REFLECT.
-
-**3-Strike Rule** — Same area breaks 3 times? The approach is wrong. Enter RE-PLAN with a fundamentally different approach.
-
-**Complexity Budget** — Tracked in plan.md:
-- Files added: 0/3 max
-- New abstractions: 0/2 max
-- Lines: target net-zero or net-negative
-
-**Nuclear Option** — At iteration 5, if bloat > 2x scope: recommend full revert. `decisions.md` preserves all knowledge for the clean restart.
-
-See `references/complexity-control.md` for the full anti-complexity protocol. See also `references/code-hygiene.md` and `references/decision-anchoring.md`.
+- Single-file, obvious fixes
+- Tasks with a well-known, straightforward solution
+- Quick bug fixes where you already know the root cause
+- When you just want to say "do it"
 
 ---
 
 ## Bootstrapping
 
-Initialize the plan directory in a project root:
+Initialize the plan directory from your project root:
 
 ```bash
 node <skill-path>/scripts/bootstrap.mjs "goal description"
 ```
 
-This creates `.claude/.plan_YYYY-MM-DD_XXXXXXXX/` (date + 8-char hex seed) with initial plan files, and writes `.claude/.current_plan` pointing to it:
+This creates the plan directory under `.claude/`, writes the pointer file (`.claude/.current_plan`), and drops the agent into the EXPLORE state. The script is idempotent-safe -- it refuses to run if an active plan already exists.
 
-```
-.claude/
-├── .current_plan              # Points to the active plan directory name
-└── .plan_2026-02-14_a3f1b2c9/ # Dynamic plan directory
-    ├── state.md               # Current state + transition log
-    ├── plan.md                # Living plan (rewritten each iteration)
-    ├── decisions.md           # Append-only log of decisions and pivots
-    ├── findings.md            # Summary + index of all findings
-    ├── findings/              # Individual finding files
-    ├── progress.md            # What's done vs remaining
-    ├── checkpoints/           # Snapshots before risky changes
-    └── summary.md             # Written at CLOSE (not created by bootstrap)
-```
+### Git Integration
 
-See `references/file-formats.md` for detailed templates and examples.
+The protocol integrates cleanly with git:
+
+| Phase | Git behavior |
+|-------|-------------|
+| EXPLORE, PLAN, REFLECT, RE-PLAN | No commits. |
+| EXECUTE (success) | Commit after each step: `[iter-N/step-M] description` |
+| EXECUTE (failure) | Revert all uncommitted changes to last clean commit. |
+| RE-PLAN | Decide: keep successful commits or revert to checkpoint. |
+| CLOSE | Final commit with summary. |
+
+Add `.claude/.plan_*` and `.claude/.current_plan` to `.gitignore` -- unless your team wants decision logs for post-mortems.
 
 ---
 
-## Git Integration
-
-- **EXPLORE/PLAN/REFLECT/RE-PLAN**: No commits.
-- **EXECUTE**: Commit after each successful step with `[iter-N/step-M] description`.
-- **EXECUTE (failed step)**: Revert all uncommitted changes. Codebase must match last commit.
-- **RE-PLAN**: Decide to keep successful commits or revert to checkpoint.
-- **CLOSE**: Final commit with summary.
-
----
-
-## Build & Package
+## Build and Package
 
 ```bash
 # Windows (PowerShell)
 .\build.ps1 package          # Create zip package
 .\build.ps1 package-combined # Create single-file skill
 .\build.ps1 validate         # Validate structure
-.\build.ps1 clean            # Clean artifacts
+.\build.ps1 clean            # Clean build artifacts
 
-# Unix/Linux/macOS
+# Unix / Linux / macOS
 make package                 # Create zip package
 make package-combined        # Create single-file skill
 make validate                # Validate structure
-make clean                   # Clean artifacts
+make clean                   # Clean build artifacts
 ```
 
 ---
 
-## When NOT to Use This
+## Project Structure
 
-- Simple single-file changes
-- Tasks with obvious, well-known solutions
-- Quick bug fixes with known root cause
-- When the user says "just do it"
+```
+iterative-planner/
++-- SKILL.md              # Core protocol -- the complete skill specification
++-- README.md              # This file
++-- CLAUDE.md              # AI assistant guidance for contributing
++-- CHANGELOG.md           # Version history
++-- LICENSE                # GNU GPLv3
++-- Makefile               # Unix/Linux/macOS build
++-- build.ps1              # Windows PowerShell build
++-- scripts/
+|   +-- bootstrap.mjs      # Plan directory initializer (Node.js 18+)
++-- references/
+    +-- complexity-control.md   # Anti-complexity protocol and forbidden patterns
+    +-- code-hygiene.md         # Change manifests, revert procedures, cleanup rules
+    +-- decision-anchoring.md   # When and how to anchor decisions in code
+    +-- file-formats.md         # Templates for every plan directory file
+```
 
 ---
 
