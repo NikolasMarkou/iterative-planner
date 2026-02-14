@@ -1,7 +1,7 @@
 # Iterative Planner
 
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Protocol](https://img.shields.io/badge/Protocol-v1.0-green.svg)](CHANGELOG.md)
+[![Protocol](https://img.shields.io/badge/Protocol-v1.1-green.svg)](CHANGELOG.md)
 [![Sponsored by Electi](https://img.shields.io/badge/Sponsored%20by-Electi-red.svg)](https://www.electiconsulting.com)
 
 **State-machine driven iterative planning and execution protocol for complex coding tasks.**

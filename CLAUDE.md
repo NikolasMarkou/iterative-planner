@@ -4,7 +4,7 @@ This file provides guidance for Claude (AI) when working with the Iterative Plan
 
 ## Project Purpose
 
-**Iterative Planner v1.0** is a Claude Code skill that implements a state-machine driven iterative planning and execution protocol for complex coding tasks. It replaces linear plan-then-execute with a cycle of Explore, Plan, Execute, Reflect, Re-plan.
+**Iterative Planner v1.1** is a Claude Code skill that implements a state-machine driven iterative planning and execution protocol for complex coding tasks. It replaces linear plan-then-execute with a cycle of Explore, Plan, Execute, Reflect, Re-plan.
 
 The skill uses the filesystem (`.claude/.plan_YYYY-MM-DD_XXXXXXXX/` directory) as persistent working memory to survive context rot, track decisions, and enable rollback.
 
