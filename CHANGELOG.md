@@ -4,6 +4,20 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.2.0] - 2026-02-17
+
+### Changed
+- **SKILL.md compressed**: 386 → 244 lines (−37%), 3,007 → 1,697 words (−44%)
+  - ASCII state diagram replaced with mermaid `stateDiagram-v2`
+  - Per-state prose sections replaced with terse bullet lists
+  - Post-Step Gate compressed to 3-line numbered checklist
+  - Bootstrapping prose eliminated (code comments suffice)
+  - Complexity Control and Autonomy Leash compressed to bold one-liner rules
+  - User Interaction section converted to table
+  - File Lifecycle Matrix simplified to R/W/— notation
+  - YAML frontmatter description shortened to 3 lines
+  - All protocol semantics preserved, zero functional changes
+
 ## [1.1.0] - 2026-02-14
 
 ### Changed

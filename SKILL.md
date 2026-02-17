@@ -1,386 +1,244 @@
 ---
 name: iterative-planner
 description: >
-  State-machine driven iterative planning and execution protocol for complex coding tasks.
-  Replaces linear plan-then-execute with a cycle of Explore → Plan → Execute → Reflect → Re-plan.
-  Uses the filesystem as persistent working memory under .claude/ (dynamic .plan_YYYY-MM-DD_XXXXXXXX
-  directory) to survive context rot, track decisions, and enable rollback. Use this skill whenever a
-  task is complex,
-  multi-file, involves migration or refactoring, has failed before, or when the user says things
-  like "plan", "figure out", "help me think through", "I've been struggling with", or "debug this
-  complex issue". Also use when a task touches 3+ files, spans 2+ systems, or has no obvious
-  single solution. Err on the side of using this skill for anything non-trivial.
+  State-machine driven iterative planning and execution for complex coding tasks.
+  Cycle: Explore → Plan → Execute → Reflect → Re-plan. Filesystem as persistent memory.
+  Use for multi-file tasks, migrations, refactoring, failed tasks, or anything non-trivial.
 ---
 
 # Iterative Planner
 
-A protocol for complex coding tasks where the first plan is never the final plan.
-
 **Core Principle**: Context Window = RAM. Filesystem = Disk.
-Anything important gets written to disk immediately. The context window will rot. The files won't.
+Write to disk immediately. The context window will rot. The files won't.
 
-All state lives in a **plan directory** under `.claude/` in the **project root** (never the user's home).
-
-Throughout this document, **`{plan-dir}`** refers to the active plan directory:
-`.claude/.plan_YYYY-MM-DD_XXXXXXXX/` (date + 8-char hex seed, e.g. `.claude/.plan_2026-02-14_a3f1b2c9/`).
-
-**Discovery**: Read `.claude/.current_plan` — it contains the plan directory name (e.g. `.plan_2026-02-14_a3f1b2c9`). Only one active plan directory at a time.
+**`{plan-dir}`** = `.claude/.plan_YYYY-MM-DD_XXXXXXXX/` (active plan directory under project root).
+**Discovery**: `.claude/.current_plan` contains the plan directory name. One active plan at a time.
 
 ## State Machine
 
-```
-              ┌──────────┐
-              │  EXPLORE  │──── enough context ────►┌────────────┐
-              └──────────┘                          │    PLAN     │
-                    ▲                               └─────┬──────┘
-                    │                                     │
-                 need more                             approved
-                  context                                 │
-                    │                                     ▼
-              ┌─────┴──────┐                        ┌──────────┐
-              │  REFLECT   │◄──── observe result ───│  EXECUTE  │
-              └─────┬──────┘                        └──────────┘
-                    │
-              ┌─────┴──────────────────┐
-              │                        │
-           solved                  not solved
-              │                        │
-              ▼                        ▼
-        ┌──────────┐            ┌──────────┐
-        │  CLOSE   │            │ RE-PLAN   │───► back to PLAN
-        └──────────┘            └──────────┘
+```mermaid
+stateDiagram-v2
+    EXPLORE --> PLAN : enough context
+    PLAN --> EXECUTE : user approves
+    EXECUTE --> REFLECT : step done/failed/surprise
+    REFLECT --> CLOSE : all criteria met
+    REFLECT --> RE_PLAN : failed / better approach
+    REFLECT --> EXPLORE : need more context
+    RE_PLAN --> PLAN : new approach ready
 ```
 
-| State   | Purpose | Allowed Actions |
-|---------|---------|-----------------|
-| EXPLORE | Gather context. Read code, search, ask questions. | Read-only on project files. Write ONLY to `{plan-dir}` files. |
-| PLAN    | Design approach based on what's known. | Write/update plan.md. NO code changes. |
-| EXECUTE | Implement the current plan step by step. | Edit files, run commands, write code. |
-| REFLECT | Observe results. Did it work? Why not? | Read outputs, run tests. Update decisions.md. |
-| RE-PLAN | Revise direction based on what was learned. | Log pivot in decisions.md. Propose new direction. Do NOT write plan.md — that happens in PLAN. |
-| CLOSE   | Done. Write summary. Audit decision comments. | Write summary.md. Verify code comments. Clean up. |
+| State | Purpose | Allowed Actions |
+|-------|---------|-----------------|
+| EXPLORE | Gather context | Read-only on project. Write only to `{plan-dir}`. |
+| PLAN | Design approach | Write plan.md. NO code changes. |
+| EXECUTE | Implement step-by-step | Edit files, run commands, write code. |
+| REFLECT | Evaluate results | Read outputs, run tests. Update decisions.md. |
+| RE-PLAN | Revise direction | Log pivot in decisions.md. Do NOT write plan.md yet. |
+| CLOSE | Finalize | Write summary.md. Audit decision anchors. |
 
-### Transition Rules
+### Transitions
 
-| From    | To      | Trigger |
-|---------|---------|---------|
-| EXPLORE | PLAN    | Sufficient context gathered. Findings written. |
-| PLAN    | EXECUTE | User explicitly approves. |
-| EXECUTE | REFLECT | A step completes, fails, surprises, or autonomy leash is hit. |
-| REFLECT | CLOSE   | All success criteria met. |
-| REFLECT | RE-PLAN | Something failed or better approach found. |
-| REFLECT | EXPLORE | Need more context before re-planning. |
-| RE-PLAN | PLAN    | New approach formulated. Decision logged. |
+| From → To | Trigger |
+|-----------|---------|
+| EXPLORE → PLAN | Sufficient context. Findings written. |
+| PLAN → EXECUTE | User explicitly approves. |
+| EXECUTE → REFLECT | Step completes, fails, surprises, or leash hit. |
+| REFLECT → CLOSE | All success criteria met. |
+| REFLECT → RE-PLAN | Failure or better approach found. |
+| REFLECT → EXPLORE | Need more context before re-planning. |
+| RE-PLAN → PLAN | New approach formulated. Decision logged. |
 
-**At CLOSE**, audit decision anchors in code (see `references/decision-anchoring.md`).
-
-Every transition gets logged in `state.md`. Direction changes (RE-PLAN) MUST be
-logged in `decisions.md` with: what failed, what was learned, why the new direction.
+Every transition → log in `state.md`. RE-PLAN transitions → also log in `decisions.md` (what failed, what learned, why new direction).
+At CLOSE → audit decision anchors (`references/decision-anchoring.md`).
 
 ### Mandatory Re-reads (CRITICAL)
 
-The `{plan-dir}` files are not just for session recovery — they are your active working
-memory. **Re-read them during the conversation, not just at the start.**
+These files are active working memory. Re-read during the conversation, not just at start.
 
 | When | Read | Why |
 |------|------|-----|
-| Before starting any EXECUTE step | `state.md`, `plan.md`, `progress.md` | Confirm what step you're on, check manifest, fix attempts, and verify progress is in sync |
-| Before writing a fix | `decisions.md` | Don't repeat a failed approach. Check if this area hit 3-strike. |
-| Before modifying code with `DECISION` comments | The referenced `decisions.md` entry | Understand why the code is this way before changing it |
-| Before entering PLAN or RE-PLAN | `decisions.md`, `findings.md`, relevant `findings/*` | Ground the new plan in what's actually known, not stale context |
-| Before any REFLECT | `plan.md` (success criteria), `progress.md` | Compare against defined criteria, not vibes |
-| Every 10 tool calls | `state.md` | Reorient. Am I still on the right step? Has scope crept? |
+| Before any EXECUTE step | `state.md`, `plan.md`, `progress.md` | Confirm step, manifest, fix attempts, progress sync |
+| Before writing a fix | `decisions.md` | Don't repeat failed approaches. Check 3-strike. |
+| Before modifying `DECISION`-commented code | Referenced `decisions.md` entry | Understand why before changing |
+| Before PLAN or RE-PLAN | `decisions.md`, `findings.md`, `findings/*` | Ground plan in known facts |
+| Before any REFLECT | `plan.md` (criteria), `progress.md` | Compare against written criteria, not vibes |
+| Every 10 tool calls | `state.md` | Reorient. Right step? Scope crept? |
 
-**If the conversation is long (>50 messages), re-read `state.md` and `plan.md`
-before every response.** Context rot is real. The files are the source of truth,
-not your memory of what they say.
+**>50 messages**: re-read `state.md` + `plan.md` before every response. Files are truth, not memory.
 
 ## Bootstrapping
-
-The bootstrap script manages plan directories. It supports subcommands:
 
 ```bash
 node <skill-path>/scripts/bootstrap.mjs "goal"              # Create new plan (backward-compatible)
 node <skill-path>/scripts/bootstrap.mjs new "goal"           # Create new plan
 node <skill-path>/scripts/bootstrap.mjs new --force "goal"   # Close active plan, create new one
-node <skill-path>/scripts/bootstrap.mjs resume               # Output current plan state for re-entry
+node <skill-path>/scripts/bootstrap.mjs resume               # Re-entry summary for new sessions
 node <skill-path>/scripts/bootstrap.mjs status               # One-line state summary
-node <skill-path>/scripts/bootstrap.mjs close                # Close active plan (preserves directory)
+node <skill-path>/scripts/bootstrap.mjs close                # Close plan (preserves directory)
 ```
 
-**`new`** creates `.claude/.plan_YYYY-MM-DD_XXXXXXXX/` with all plan files, and writes
-`.claude/.current_plan` pointing to it. If `.current_plan` already points to an active
-plan directory, it refuses — use `resume` to continue, `close` to end it, or `--force`
-to close and start fresh.
-
-**`resume`** reads the active plan's state, plan, progress, and decisions files and
-outputs a summary: current state, iteration, step, goal, progress counts, and file
-paths. Use this at the start of a new session to re-enter the protocol.
-
-**`status`** prints a single line: state, iteration, step, goal, and plan directory.
-
-**`close`** removes the `.current_plan` pointer. The plan directory is preserved —
-decision logs and findings remain available for reference.
-
-After bootstrap, begin EXPLORE immediately.
-
-If the user provides context upfront (files, errors, constraints), write it into
-`findings.md` before starting EXPLORE.
+`new` refuses if active plan exists — use `resume`, `close`, or `--force`.
+After bootstrap → begin EXPLORE. User-provided context → write to `findings.md` first.
 
 ## Filesystem Structure
 
-All plan files live under `.claude/` at the project root:
-
 ```
 .claude/
-├── .current_plan              # Pointer file: contains the active plan directory name
-└── .plan_2026-02-14_a3f1b2c9/ # {plan-dir} — dynamic name (date + hex seed)
+├── .current_plan              # → active plan directory name
+└── .plan_2026-02-14_a3f1b2c9/ # {plan-dir}
     ├── state.md               # Current state + transition log
     ├── plan.md                # Living plan (rewritten each iteration)
-    ├── decisions.md           # Append-only log of decisions and pivots
-    ├── findings.md            # Summary + index of all findings
-    ├── findings/              # Individual finding files (from subagents and manual exploration)
-    │   ├── auth-system.md
-    │   └── test-coverage.md
-    ├── progress.md            # What's done vs remaining
+    ├── decisions.md           # Append-only decision/pivot log
+    ├── findings.md            # Summary + index of findings
+    ├── findings/              # Detailed finding files (subagents write here)
+    ├── progress.md            # Done vs remaining
     ├── checkpoints/           # Snapshots before risky changes
-    │   └── cp-000.md          # Description + rollback instructions
     └── summary.md             # Written at CLOSE
 ```
 
-Read `references/file-formats.md` for detailed templates and examples of each file.
+Templates: `references/file-formats.md`
 
 ### File Lifecycle Matrix
 
-Quick reference: when each file is read (R) and written (W) in each state.
+R = read, W = write, — = do not touch (wrong state if you are).
 
 | File | EXPLORE | PLAN | EXECUTE | REFLECT | RE-PLAN | CLOSE |
 |------|---------|------|---------|---------|---------|-------|
-| state.md | W (transition) | W (transition, step=N/A) | R+W (step, manifest, fix attempts) | W (transition) | W (transition) | W (transition) |
-| plan.md | — | W (rewrite) | R+W (mark steps, update budget) | R (success criteria) | R (review) | R (audit anchors) |
-| decisions.md | — | R+W (read rejected approaches, log chosen) | R (before fixes) | R+W (log findings) | R+W (log pivot + complexity) | R (audit anchors) |
-| findings.md | W (flush every 2 reads) | R | — | — | R | — |
-| findings/* | W (subagents) | R | — | — | R | — |
-| progress.md | — | W (populate remaining) | R+W (Post-Step Gate — mandatory) | R+W (cross-validate, update status) | W (mark pivot) | — |
-| checkpoints/* | — | — | W (before risky steps) | — | R (revert targets) | — |
+| state.md | W | W | R+W | W | W | W |
+| plan.md | — | W | R+W | R | R | R |
+| decisions.md | — | R+W | R | R+W | R+W | R |
+| findings.md | W | R | — | — | R | — |
+| findings/* | W | R | — | — | R | — |
+| progress.md | — | W | R+W | R+W | W | — |
+| checkpoints/* | — | — | W | — | R | — |
 | summary.md | — | — | — | — | — | W |
 
-**"—" means the file should not be touched in that state.** If you find yourself
-reading or writing a file in a state marked "—", question whether you're in the
-right state.
+## Per-State Rules
 
-## The Cycle
-
-```
-EXPLORE → PLAN → [user approves] → EXECUTE → REFLECT
-                                                 │
-                                          ┌──────┴──────┐
-                                       solved?       not solved?
-                                          │              │
-                                        CLOSE        RE-PLAN → PLAN → ...
-```
-
-### During EXPLORE
-- Read code, grep, glob, search. Ask focused questions, one at a time.
-- **Write** to `findings.md` and `findings/` after every 2 read operations. Flush discoveries immediately.
-- **Write** to `state.md`: update transition log on entry.
-- Include **file paths and code path traces** (e.g. "request enters at `app/middleware/auth.rb:authenticate!` → calls `SessionStore#find` → reads from Redis via `redis_store.rb:get`").
+### EXPLORE
+- Read code, grep, glob, search. One focused question at a time.
+- Flush to `findings.md` + `findings/` after every 2 reads.
+- Include file paths + code path traces (e.g. `auth.rb:23` → `SessionStore#find` → `redis_store.rb:get`).
 - DO NOT skip EXPLORE even if you think you know the answer.
-- If available, use **Task subagents** to parallelize codebase research (e.g. one subagent explores the auth system while another maps the test coverage).
-- **All subagent findings MUST be written to `{plan-dir}/findings/`** as separate files (e.g. `{plan-dir}/findings/auth-system.md`, `{plan-dir}/findings/test-coverage.md`). Do not rely on subagent results living only in the context window. The main `findings.md` should reference and summarize these files.
-- For complex problems, prompt with "think hard" or "ultrathink" to activate extended thinking during analysis.
-- **On REFLECT → EXPLORE loops**: append new findings to existing `findings.md` and `findings/` files. Do not overwrite — prior findings are still valid unless explicitly contradicted.
+- Use **Task subagents** to parallelize research. All subagent output → `{plan-dir}/findings/` files. Never rely on context-only results.
+- Use "think hard" / "ultrathink" for complex analysis.
+- REFLECT → EXPLORE loops: append to existing findings, don't overwrite.
 
-### During PLAN
-- **Read** `findings.md` and relevant `findings/` files to ground the plan.
-- **Read** `decisions.md` to avoid repeating rejected approaches.
-- **Write** `plan.md`: steps, risks, success criteria, complexity budget.
-- **Write** `decisions.md`: log the chosen approach and why (e.g. "D-001 | EXPLORE → PLAN | Chose approach A because..."). This is mandatory even on the first plan — the initial decision matters.
-- **Write** `state.md`: update transition log, set "Current Plan Step: N/A" (not yet executing).
-- **Write** `progress.md`: populate "Remaining" section from plan steps.
-- Include a **Complexity Budget** (read `references/complexity-control.md`).
-- List **every file that will be modified or created** in the plan. If you can't list them, you haven't explored enough — go back to EXPLORE.
-- Include **only the recommended approach**. Alternatives and rejected approaches belong in `decisions.md`, not in the plan.
-- Wait for explicit user approval before EXECUTE.
+### PLAN
+- Read `findings.md`, `findings/*`, `decisions.md` first.
+- Write `plan.md`: steps, risks, success criteria, complexity budget.
+- Write `decisions.md`: log chosen approach + why (mandatory even for first plan).
+- Write `state.md` + `progress.md`.
+- List **every file** to modify/create. Can't list them → go back to EXPLORE.
+- Only recommended approach in plan. Alternatives → `decisions.md`.
+- Wait for explicit user approval.
 
-### During EXECUTE
-- **Before each step, re-read `state.md` and `plan.md`** to confirm the current step, change manifest, and fix attempt count.
-- **Before writing any fix, re-read `decisions.md`** to avoid repeating failed approaches.
-- **On first EXECUTE of iteration 1**: create an initial checkpoint in `checkpoints/cp-000.md` recording the clean starting state. This is the nuclear option fallback.
-- One plan step at a time. Reflect after each.
-- **After each step, complete ALL items in the Post-Step Gate before moving on.**
+### EXECUTE
+- Re-read `state.md` + `plan.md` before each step. Re-read `decisions.md` before any fix.
+- Iteration 1, first EXECUTE → create `checkpoints/cp-000.md` (nuclear fallback).
+- One step at a time. Post-Step Gate after each (see below).
 - Checkpoint before risky changes (3+ files, shared modules, destructive ops).
 - Commit after each successful step: `[iter-N/step-M] description`.
+- If something breaks → STOP. 2 fix attempts max (Autonomy Leash). Each must follow Revert-First.
+- Add `# DECISION D-NNN` comments where needed (`references/decision-anchoring.md`).
 
-#### Post-Step Gate (MANDATORY)
+#### Post-Step Gate (MANDATORY — all 3 before moving on)
+1. `plan.md` — mark step `[x]`, advance marker, update complexity budget
+2. `progress.md` — move item Remaining → Completed, set next In Progress
+3. `state.md` — update step number, append to change manifest
 
-**Do NOT proceed to the next step or transition to REFLECT until every box is checked.**
+### REFLECT
+- Read `plan.md` (criteria) + `progress.md` before evaluating.
+- Cross-validate: every `[x]` in plan.md must be "Completed" in progress.md. Fix drift first.
+- Read `decisions.md` — check 3-strike patterns.
+- Compare against **written criteria**, not memory. Run 5 Simplification Checks (`references/complexity-control.md`).
+- Write `decisions.md` (what happened, learned, root cause) + `progress.md` + `state.md`.
 
-After completing a plan step, update these three files as a single batch:
-
-1. **`plan.md`**: mark the completed step `[x]`, advance current step marker, update complexity budget counts.
-2. **`progress.md`**: move the completed item from "Remaining" → "Completed" (or "In Progress" → "Completed"). Update "In Progress" with the next step if continuing.
-3. **`state.md`**: update "Current Plan Step" number and append to the change manifest.
-
-If any of these three writes is skipped, the plan state becomes inconsistent — progress.md
-will drift from plan.md, and REFLECT will evaluate against stale data.
-- **Decision Anchoring**: Add `# DECISION D-NNN` comments on code with significant
-  decision history. Read `references/decision-anchoring.md` for when and how.
-- If something breaks: **STOP. Do not write new code.** You get 2 autonomous fix
-  attempts (the Autonomy Leash), but each attempt MUST follow the Revert-First
-  Policy: revert → delete → one-liner → REFLECT. If both attempts fail, STOP
-  completely and present to user. See the Autonomy Leash section below for full
-  rules and `references/complexity-control.md` for the full Revert-First protocol.
-
-### During REFLECT
-- **Read** `plan.md` (success criteria) and `progress.md` before evaluating.
-- **Cross-validate**: every step marked `[x]` in `plan.md` must appear under "Completed" in `progress.md`. If they are out of sync, update `progress.md` **before** evaluating results. This is a consistency gate — do not skip it.
-- **Read** `decisions.md` to check for 3-strike patterns in the area that failed.
-- Compare what happened vs what was expected against the **written criteria**, not memory.
-- Answer the 5 Simplification Checks (see `references/complexity-control.md`).
-- **Write** `decisions.md`: log what happened, what was learned, root cause analysis.
-- **Write** `progress.md`: update status of current step (completed/failed/blocked).
-- **Write** `state.md`: update transition log.
-
-#### REFLECT Branching Criteria
-
-| Condition | Transition |
-|-----------|------------|
-| All success criteria met AND tests pass | → CLOSE |
+| Condition | → Transition |
+|-----------|--------------|
+| All criteria met + tests pass | → CLOSE |
 | Failure understood, new approach clear | → RE-PLAN |
-| Failure involves unknowns needing investigation | → EXPLORE |
+| Unknowns need investigation | → EXPLORE |
 
-### During RE-PLAN
-- **Read** `decisions.md` and `findings.md` before formulating a new approach.
-- **Read** relevant `findings/` files if the failure relates to a specific area.
-- Reference the decision log. Explain what failed and why.
-- **Write** `decisions.md`: log the pivot with full Complexity Assessment (mandatory).
-- **Write** `state.md`: update transition log.
-- **Write** `progress.md`: mark failed items, note the pivot.
-- Present options to user. Get approval, then transition to PLAN to write the revised plan.
+### RE-PLAN
+- Read `decisions.md`, `findings.md`, relevant `findings/*`.
+- Write `decisions.md`: log pivot + mandatory Complexity Assessment.
+- Write `state.md` + `progress.md` (mark failed items, note pivot).
+- Present options to user → get approval → transition to PLAN.
 
 ## Complexity Control (CRITICAL)
 
-The #1 failure mode is adding complexity in response to failure. The default
-response to failure MUST be to simplify, not to add.
+Default response to failure = simplify, not add. See `references/complexity-control.md`.
 
-Read `references/complexity-control.md` for the full protocol. Key rules:
-
-**Revert-First Policy** — When something breaks:
-1. STOP. Do not write new code.
-2. Can I fix by REVERTING? → revert.
-3. Can I fix by DELETING? → delete.
-4. ONE-LINE fix? → do it.
-5. None of the above → STOP. Enter REFLECT.
-
-**10-Line Rule** — If a "fix" needs >10 new lines, it's not a fix. Enter REFLECT.
-
-**3-Strike Rule** — Same area breaks 3 times → approach is wrong.
-Do not attempt fix #4. Enter RE-PLAN with fundamentally different approach.
-
-**Complexity Budget** — Tracked in plan.md:
-- Files added: 0/3 max
-- New abstractions: 0/2 max
-- Lines: target net-zero or net-negative
-
-**Forbidden Fix Patterns**: wrapper cascades, config toggles, copy-paste duplication,
-exception swallowing, type escape hatches, adapter layers, "temporary" workarounds.
-
-**Nuclear Option** — At iteration 5, if bloat > 2x scope: recommend full revert.
-decisions.md preserves all knowledge for the clean restart.
+**Revert-First** — when something breaks: (1) STOP (2) revert? (3) delete? (4) one-liner? (5) none → REFLECT.
+**10-Line Rule** — fix needs >10 new lines → it's not a fix → REFLECT.
+**3-Strike Rule** — same area breaks 3× → RE-PLAN with fundamentally different approach.
+**Complexity Budget** — tracked in plan.md: files added 0/3, abstractions 0/2, lines net-zero target.
+**Forbidden**: wrapper cascades, config toggles, copy-paste, exception swallowing, type escapes, adapters, "temporary" workarounds.
+**Nuclear Option** — iteration 5 + bloat >2× scope → recommend full revert.
 
 ## Autonomy Leash (CRITICAL)
 
-You are NOT allowed to go off on your own when things break. The user steers.
+When a step fails during EXECUTE:
+1. **2 fix attempts max** — each must follow Revert-First + 10-Line Rule.
+2. Both fail → **STOP COMPLETELY.** No 3rd fix. No silent alternative. No skipping ahead.
+3. Present: what step should do, what happened, 2 attempts, root cause guess.
+4. Transition → REFLECT. Log leash hit in `state.md`. Wait for user.
 
-When a plan step **fails** during EXECUTE:
-
-1. You get **2 small autonomous fix attempts** (each must follow the Revert-First Policy
-   and the 10-Line Rule — revert, delete, or one-liner only).
-2. After those 2 attempts, if the step still fails: **STOP. COMPLETELY.**
-   Do NOT try a 3rd fix, silently try a different approach, rewrite surrounding code,
-   or skip to the next step.
-3. Present the user with: what the step should do, what happened, what the 2 attempts
-   were, and your best guess at root cause.
-4. **Transition to REFLECT.** Log the leash hit in `state.md`. Wait for user direction.
-
-Track fix attempts in `state.md` (see format in `references/file-formats.md`).
-Counter resets when: user gives direction, you move to a new step, or you enter RE-PLAN.
-
-**This rule has no exceptions.** Unguided fix chains are how projects go off the rails.
+Track attempts in `state.md`. Resets on: user direction, new step, or RE-PLAN.
+**No exceptions.** Unguided fix chains derail projects.
 
 ## Code Hygiene (CRITICAL)
 
-Failed code must not survive into the next iteration. Track every file change in
-a **change manifest** in `state.md`. On failed step: revert all uncommitted changes.
-On RE-PLAN: decide explicitly what to keep vs revert. Codebase must be known-good
-before any new PLAN begins.
-
-Read `references/code-hygiene.md` for manifest format, revert procedures, nuclear
-option steps, and forbidden leftovers checklist.
+Failed code must not survive. Track changes in **change manifest** in `state.md`.
+Failed step → revert all uncommitted. RE-PLAN → explicitly decide keep vs revert.
+Codebase must be known-good before any PLAN. See `references/code-hygiene.md`.
 
 ## Decision Anchoring (CRITICAL)
 
-Code that survived failed iterations carries invisible context. Anchor a `# DECISION D-NNN`
-comment at the point of impact — stating what NOT to do and why. Audit all anchors at CLOSE.
-
-Read `references/decision-anchoring.md` for format, examples, triggers, and rules.
+Code from failed iterations carries invisible context. Anchor `# DECISION D-NNN`
+at point of impact — state what NOT to do and why. Audit at CLOSE.
+See `references/decision-anchoring.md`.
 
 ## Iteration Limits
 
-Every PLAN → EXECUTE → REFLECT cycle increments the iteration counter.
-**Increment on the PLAN → EXECUTE transition** (when user approves the plan).
-The first real iteration is iteration 1. Iteration 0 is the EXPLORE-only phase
-before the first plan exists.
-
-If iteration > 5, STOP and meta-reflect:
-- Am I going in circles?
-- Is this harder than initially scoped?
-- Should this be broken into smaller independent tasks?
+Increment on PLAN → EXECUTE. Iteration 0 = EXPLORE-only (pre-plan). First real = iteration 1.
+If iteration > 5 → STOP: going in circles? harder than scoped? break into smaller tasks?
 
 ## Recovery from Context Loss
 
-If the conversation is compacted or a new session starts:
-
-1. Read `.claude/.current_plan` to find the active plan directory name
-2. Read `{plan-dir}/state.md` — where you are
-3. Read `{plan-dir}/plan.md` — current plan
-4. Read `{plan-dir}/decisions.md` — what was tried and why it failed
-5. Read `{plan-dir}/progress.md` — done vs remaining
-6. Read `{plan-dir}/findings.md` — index of what's been discovered
-7. Read relevant files in `{plan-dir}/findings/` — detailed exploration results
-8. Resume from current state. Never start over.
+1. `.claude/.current_plan` → plan dir name
+2. `state.md` → where you are
+3. `plan.md` → current plan
+4. `decisions.md` → what was tried / failed
+5. `progress.md` → done vs remaining
+6. `findings.md` + `findings/*` → discovered context
+7. Resume from current state. Never start over.
 
 ## Git Integration
 
 - EXPLORE/PLAN/REFLECT/RE-PLAN: no commits.
-- EXECUTE: commit after each successful step with `[iter-N/step-M] description`.
-- EXECUTE (failed step): revert all uncommitted changes. Codebase must match last commit.
-- RE-PLAN: decide to keep successful commits or revert to checkpoint. No partial state.
-- CLOSE: final commit with summary. Tag if appropriate.
-- Add `.claude/.plan_*` and `.claude/.current_plan` to `.gitignore` (unless team wants decision logs for post-mortems).
-- Track all file changes in the Change Manifest in `state.md` (see Code Hygiene).
+- EXECUTE: commit per successful step `[iter-N/step-M] desc`. Failed step → revert uncommitted.
+- RE-PLAN: keep successful commits or revert to checkpoint. No partial state.
+- CLOSE: final commit + tag. Add `.claude/.plan_*` and `.current_plan` to `.gitignore`.
 
 ## User Interaction
 
-- EXPLORE: Ask focused questions, one at a time. Present findings for validation.
-- PLAN: Present plan. Wait for explicit approval. If user modifies, update and re-present.
-- EXECUTE: Report per step. Surface unexpected results. Ask before deviating.
-- REFLECT: Show expected vs actual. Propose: continue, re-plan, or close.
-- RE-PLAN: Reference decision log. Explain the pivot. Get approval.
+| State | Behavior |
+|-------|----------|
+| EXPLORE | Ask focused questions, one at a time. Present findings. |
+| PLAN | Present plan. Wait for approval. Re-present if modified. |
+| EXECUTE | Report per step. Surface surprises. Ask before deviating. |
+| REFLECT | Show expected vs actual. Propose: continue, re-plan, or close. |
+| RE-PLAN | Reference decision log. Explain pivot. Get approval. |
 
-## When NOT to Use This
+## When NOT to Use
 
-- Simple single-file changes
-- Tasks with obvious, well-known solutions
-- Quick bug fixes with known root cause
-- When the user says "just do it"
+Simple single-file changes, obvious solutions, known-root-cause bugs, or "just do it".
 
 ## References
 
-Read these as needed — they contain detailed templates, examples, and expanded rules:
-
-- `references/file-formats.md` — Templates for every `{plan-dir}` file with examples
-- `references/complexity-control.md` — Full anti-complexity protocol, forbidden patterns, nuclear option
-- `references/code-hygiene.md` — Change manifest format, revert procedures, forbidden leftovers
-- `references/decision-anchoring.md` — When/how to anchor decisions in code, format, audit rules
+- `references/file-formats.md` — templates for all `{plan-dir}` files
+- `references/complexity-control.md` — anti-complexity protocol, forbidden patterns
+- `references/code-hygiene.md` — change manifest, revert procedures
+- `references/decision-anchoring.md` — when/how to anchor decisions in code
