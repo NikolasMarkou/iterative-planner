@@ -97,15 +97,30 @@ not your memory of what they say.
 
 ## Bootstrapping
 
-On a complex task, run the bootstrap script to initialize the plan directory:
+The bootstrap script manages plan directories. It supports subcommands:
 
 ```bash
-node <skill-path>/scripts/bootstrap.mjs "goal description"
+node <skill-path>/scripts/bootstrap.mjs "goal"              # Create new plan (backward-compatible)
+node <skill-path>/scripts/bootstrap.mjs new "goal"           # Create new plan
+node <skill-path>/scripts/bootstrap.mjs new --force "goal"   # Close active plan, create new one
+node <skill-path>/scripts/bootstrap.mjs resume               # Output current plan state for re-entry
+node <skill-path>/scripts/bootstrap.mjs status               # One-line state summary
+node <skill-path>/scripts/bootstrap.mjs close                # Close active plan (preserves directory)
 ```
 
-This creates `.claude/.plan_YYYY-MM-DD_XXXXXXXX/` with all plan files, and writes
+**`new`** creates `.claude/.plan_YYYY-MM-DD_XXXXXXXX/` with all plan files, and writes
 `.claude/.current_plan` pointing to it. If `.current_plan` already points to an active
-plan directory, it refuses (resume from existing state instead).
+plan directory, it refuses — use `resume` to continue, `close` to end it, or `--force`
+to close and start fresh.
+
+**`resume`** reads the active plan's state, plan, progress, and decisions files and
+outputs a summary: current state, iteration, step, goal, progress counts, and file
+paths. Use this at the start of a new session to re-enter the protocol.
+
+**`status`** prints a single line: state, iteration, step, goal, and plan directory.
+
+**`close`** removes the `.current_plan` pointer. The plan directory is preserved —
+decision logs and findings remain available for reference.
 
 After bootstrap, begin EXPLORE immediately.
 

@@ -39,13 +39,18 @@ iterative-planner/
 
 ### Bootstrap
 
-Initialize the plan directory in a project root:
+Manage plan directories from a project root:
 
 ```bash
-node <skill-path>/scripts/bootstrap.mjs "goal description"
+node <skill-path>/scripts/bootstrap.mjs "goal"              # Create new plan (backward-compatible)
+node <skill-path>/scripts/bootstrap.mjs new "goal"           # Create new plan
+node <skill-path>/scripts/bootstrap.mjs new --force "goal"   # Close active plan, create new one
+node <skill-path>/scripts/bootstrap.mjs resume               # Output current plan state for re-entry
+node <skill-path>/scripts/bootstrap.mjs status               # One-line state summary
+node <skill-path>/scripts/bootstrap.mjs close                # Close active plan (preserves directory)
 ```
 
-This creates `.claude/.plan_YYYY-MM-DD_XXXXXXXX/` with `state.md`, `plan.md`, `decisions.md`, `findings.md`, `progress.md`, `findings/`, and `checkpoints/`. It also writes `.claude/.current_plan` with the plan directory name for discovery.
+`new` creates `.claude/.plan_YYYY-MM-DD_XXXXXXXX/` with `state.md`, `plan.md`, `decisions.md`, `findings.md`, `progress.md`, `findings/`, and `checkpoints/`. It also writes `.claude/.current_plan` with the plan directory name for discovery.
 
 The script is idempotent-safe: it refuses to run if `.claude/.current_plan` already points to an active plan.
 

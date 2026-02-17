@@ -157,13 +157,20 @@ Trigger phrases: *"plan this"*, *"figure out"*, *"help me think through"*, *"I'v
 
 ## Bootstrapping
 
-Initialize the plan directory from your project root:
+Manage plan directories from your project root:
 
 ```bash
-node <skill-path>/scripts/bootstrap.mjs "goal description"
+node <skill-path>/scripts/bootstrap.mjs "goal"              # Create new plan (backward-compatible)
+node <skill-path>/scripts/bootstrap.mjs new "goal"           # Create new plan
+node <skill-path>/scripts/bootstrap.mjs new --force "goal"   # Close active plan, create new one
+node <skill-path>/scripts/bootstrap.mjs resume               # Output current plan state for re-entry
+node <skill-path>/scripts/bootstrap.mjs status               # One-line state summary
+node <skill-path>/scripts/bootstrap.mjs close                # Close active plan (preserves directory)
 ```
 
-This creates the plan directory under `.claude/`, writes the pointer file (`.claude/.current_plan`), and drops the agent into the EXPLORE state. The script is idempotent-safe -- it refuses to run if an active plan already exists.
+`new` creates the plan directory under `.claude/`, writes the pointer file (`.claude/.current_plan`), and drops the agent into the EXPLORE state. If an active plan already exists, it refuses -- use `resume` to continue, `close` to end it, or `new --force` to close and start fresh.
+
+`resume` outputs the current plan state (state, iteration, step, goal, progress) for quick re-entry into the protocol. `status` prints a single-line summary. `close` removes the pointer file but preserves the plan directory for reference.
 
 ### Git Integration
 
