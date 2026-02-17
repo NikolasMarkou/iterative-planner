@@ -9,23 +9,16 @@ DIST_DIR := dist
 # Files to include in the skill package
 SKILL_FILE := src/SKILL.md
 REFERENCE_FILES := $(wildcard src/references/*.md)
-SCRIPT_FILES := $(wildcard src/scripts/*.sh)
+SCRIPT_FILES := $(wildcard src/scripts/*.mjs)
 DOC_FILES := README.md LICENSE CHANGELOG.md
 
 # Default target
 .PHONY: all
 all: package
 
-# Create build directories
-$(BUILD_DIR):
-	mkdir -p $(BUILD_DIR)
-
-$(DIST_DIR):
-	mkdir -p $(DIST_DIR)
-
 # Build the skill package structure
 .PHONY: build
-build: $(BUILD_DIR)
+build:
 	@echo "Building skill package: $(SKILL_NAME)"
 	mkdir -p $(BUILD_DIR)/$(SKILL_NAME)
 	mkdir -p $(BUILD_DIR)/$(SKILL_NAME)/references
@@ -42,7 +35,7 @@ build: $(BUILD_DIR)
 
 # Create a combined single-file skill (SKILL.md with references inlined)
 .PHONY: build-combined
-build-combined: $(BUILD_DIR)
+build-combined:
 	@echo "Building combined single-file skill..."
 	mkdir -p $(BUILD_DIR)
 	cp $(SKILL_FILE) $(BUILD_DIR)/$(SKILL_NAME)-combined.md
@@ -60,21 +53,24 @@ build-combined: $(BUILD_DIR)
 
 # Package as zip for distribution
 .PHONY: package
-package: build $(DIST_DIR)
+package: build
 	@echo "Packaging skill as zip..."
+	mkdir -p $(DIST_DIR)
 	cd $(BUILD_DIR) && zip -r ../$(DIST_DIR)/$(SKILL_NAME)-v$(VERSION).zip $(SKILL_NAME)
 	@echo "Package created: $(DIST_DIR)/$(SKILL_NAME)-v$(VERSION).zip"
 
 # Package combined single-file version
 .PHONY: package-combined
-package-combined: build-combined $(DIST_DIR)
+package-combined: build-combined
+	mkdir -p $(DIST_DIR)
 	cp $(BUILD_DIR)/$(SKILL_NAME)-combined.md $(DIST_DIR)/
 	@echo "Combined skill copied to: $(DIST_DIR)/$(SKILL_NAME)-combined.md"
 
 # Create tarball
 .PHONY: package-tar
-package-tar: build $(DIST_DIR)
+package-tar: build
 	@echo "Packaging skill as tarball..."
+	mkdir -p $(DIST_DIR)
 	cd $(BUILD_DIR) && tar -czvf ../$(DIST_DIR)/$(SKILL_NAME)-v$(VERSION).tar.gz $(SKILL_NAME)
 	@echo "Package created: $(DIST_DIR)/$(SKILL_NAME)-v$(VERSION).tar.gz"
 
@@ -92,15 +88,15 @@ validate:
 # Check script syntax
 .PHONY: lint
 lint:
-	@echo "Checking shell script syntax..."
-	bash -n src/scripts/bootstrap.sh
+	@echo "Checking script syntax..."
+	node --check src/scripts/bootstrap.mjs
 	@echo "Syntax check passed!"
 
 # Run tests
 .PHONY: test
 test: lint
-	@echo "Running bootstrap.sh help check..."
-	bash src/scripts/bootstrap.sh --help 2>/dev/null || true
+	@echo "Running bootstrap.mjs help check..."
+	node src/scripts/bootstrap.mjs --help 2>/dev/null || true
 	@echo "Tests passed!"
 
 # Clean build artifacts
@@ -128,7 +124,7 @@ help:
 	@echo "  make package-combined - Create single-file skill package"
 	@echo "  make package-tar     - Create tarball package"
 	@echo "  make validate        - Validate skill structure"
-	@echo "  make lint            - Check shell script syntax"
+	@echo "  make lint            - Check script syntax"
 	@echo "  make test            - Run tests"
 	@echo "  make clean           - Remove build artifacts"
 	@echo "  make list            - Show package contents"

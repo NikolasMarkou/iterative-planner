@@ -47,7 +47,7 @@ function Invoke-Build {
     Copy-Item "src/references/*.md" "$skillDir/references/"
 
     # Copy scripts
-    Copy-Item "src/scripts/*.sh" "$skillDir/scripts/"
+    Copy-Item "src/scripts/*.mjs" "$skillDir/scripts/"
 
     # Copy documentation
     @("README.md", "LICENSE", "CHANGELOG.md") | ForEach-Object {
@@ -163,8 +163,8 @@ function Invoke-Validate {
 }
 
 function Invoke-Lint {
-    Write-Host "Checking shell script syntax..." -ForegroundColor Yellow
-    bash -n src/scripts/bootstrap.sh
+    Write-Host "Checking script syntax..." -ForegroundColor Yellow
+    node --check src/scripts/bootstrap.mjs
     if ($LASTEXITCODE -eq 0) {
         Write-Host "Syntax check passed!" -ForegroundColor Green
     } else {
