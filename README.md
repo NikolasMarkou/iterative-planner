@@ -61,9 +61,9 @@ stateDiagram-v2
 |-------|-------------|------------|
 | **EXPLORE** | Read code, search, ask questions, map the problem. | Read-only on project files. All notes go to the plan directory. |
 | **PLAN** | Design the approach. List every file to touch. Set success criteria. | No code changes. User must approve before execution begins. |
-| **EXECUTE** | Implement one step at a time. Commit after each success. | 2 fix attempts max per step. Revert-first on any failure. |
-| **REFLECT** | Compare results against written success criteria. | Evidence-based. No "it seems fine" -- check the criteria. |
-| **RE-PLAN** | Pivot based on what was learned. Log the decision. | Must explain what failed and why. User approves new direction. |
+| **EXECUTE** | Implement one step at a time. Commit after each success. | 2 fix attempts max per step. Revert-first on failure. Surprise discoveries → REFLECT. |
+| **REFLECT** | Compare results against written criteria. Check if findings still hold. | Evidence-based. Contradicted findings → back to EXPLORE. |
+| **RE-PLAN** | Pivot based on what was learned. Correct wrong findings. Log the decision. | Must explain what failed and why. User approves new direction. |
 | **CLOSE** | Write summary. Audit decision anchors in code. Clean up. | Verify no leftover debug code or orphaned imports. |
 
 ---
@@ -72,7 +72,7 @@ stateDiagram-v2
 
 ### Persistent Memory That Survives Context Rot
 
-Everything important is written to a plan directory on disk (`.claude/.plan_YYYY-MM-DD_XXXXXXXX/`). When the context window fills up and earlier messages are compressed or lost, the agent re-reads its own notes. State, decisions, findings, progress -- all on disk, all recoverable, even across sessions.
+Everything important is written to a plan directory on disk (`.claude/.plan_YYYY-MM-DD_XXXXXXXX/`). When the context window fills up and earlier messages are compressed or lost, the agent re-reads its own notes. State, decisions, findings, progress -- all on disk, all recoverable, even across sessions. When execution reveals that earlier findings were wrong, they're corrected in place with `[CORRECTED iter-N]` markers -- the agent learns from its own mistakes rather than repeating them.
 
 ```
 .claude/
@@ -81,8 +81,8 @@ Everything important is written to a plan directory on disk (`.claude/.plan_YYYY
     ├── state.md            # Where am I? What step? What iteration?
     ├── plan.md             # The living plan (rewritten each iteration)
     ├── decisions.md        # Append-only log of every decision and pivot
-    ├── findings.md         # Index of all discoveries
-    ├── findings/           # Detailed research files
+    ├── findings.md         # Index of discoveries (corrected when wrong)
+    ├── findings/           # Detailed research files (subagents write here)
     ├── progress.md         # Done vs remaining
     ├── checkpoints/        # Snapshots before risky changes
     └── summary.md          # Written at close
