@@ -42,7 +42,7 @@ stateDiagram-v2
 
 | From → To | Trigger |
 |-----------|---------|
-| EXPLORE → PLAN | Sufficient context. Findings written. |
+| EXPLORE → PLAN | Sufficient context. ≥3 indexed findings in `findings.md`. |
 | PLAN → EXPLORE | Can't state problem, can't list files, or insufficient findings. |
 | PLAN → PLAN | User rejects plan. Revise and re-present. |
 | PLAN → EXECUTE | User explicitly approves. |
@@ -125,12 +125,13 @@ R = read, W = write, — = do not touch (wrong state if you are).
 - Flush to `findings.md` + `findings/` after every 2 reads.
 - Include file paths + code path traces (e.g. `auth.rb:23` → `SessionStore#find` → `redis_store.rb:get`).
 - DO NOT skip EXPLORE even if you think you know the answer.
+- **Minimum depth**: ≥3 indexed findings in `findings.md` before transitioning to PLAN. Findings must cover: (1) problem scope, (2) affected files, (3) existing patterns or constraints. Fewer than 3 → keep exploring.
 - Use **Task subagents** to parallelize research. All subagent output → `{plan-dir}/findings/` files. Never rely on context-only results. **Main agent** updates `findings.md` index after subagents write — subagents don't touch the index.
 - Use "think hard" / "ultrathink" for complex analysis.
 - REFLECT → EXPLORE loops: append to existing findings, don't overwrite. Mark corrections with `[CORRECTED iter-N]`.
 
 ### PLAN
-- **Gate check**: read `findings.md`, `findings/*`, `decisions.md` before writing anything. If not read → read now. No exceptions.
+- **Gate check**: read `findings.md`, `findings/*`, `decisions.md` before writing anything. If not read → read now. No exceptions. If `findings.md` has <3 indexed findings → go back to EXPLORE.
 - **Problem Statement first** — before designing steps, write in `plan.md`: (1) what behavior is expected, (2) invariants — what must always be true, (3) edge cases at boundaries. Can't state the problem clearly → go back to EXPLORE.
 - Write `plan.md`: problem statement, steps, failure modes, risks, success criteria, complexity budget.
 - **Failure Mode Analysis** — for each external dependency or integration point in the plan, answer: what if slow? returns garbage? is down? What's the blast radius? Write to plan.md `Failure Modes` section. No dependencies → write "None identified" (proves you checked).
@@ -141,19 +142,22 @@ R = read, W = write, — = do not touch (wrong state if you are).
 - Wait for explicit user approval.
 
 ### EXECUTE
-- Re-read `state.md` + `plan.md` before each step. Re-read `decisions.md` before any fix.
+- **Pre-Step Checklist** in `state.md`: reset all boxes `[ ]`, then check each `[x]` as completed before starting the step. This is the file-based enforcement of Mandatory Re-reads.
 - Iteration 1, first EXECUTE → create `checkpoints/cp-000-iter1.md` (nuclear fallback). "Git State" = commit hash BEFORE changes (the restore point).
 - One step at a time. Post-Step Gate after each (see below).
 - Checkpoint before risky changes (3+ files, shared modules, destructive ops). Name: `cp-NNN-iterN.md` (e.g. `cp-001-iter2.md`). Increment NNN globally across iterations.
 - Commit after each successful step: `[iter-N/step-M] description`.
 - If something breaks → STOP. 2 fix attempts max (Autonomy Leash). Each must follow Revert-First.
+- **Irreversible operations** (DB migrations, external API calls with side effects, service config changes, deletion of non-git-tracked files): mark step `[IRREVERSIBLE]` in `plan.md` during PLAN. Before executing: (1) get explicit user confirmation, (2) document rollback plan in checkpoint, (3) dry-run first if available. See `references/code-hygiene.md`.
 - **Surprise discovery** (behavior contradicts findings, unknown dependency, wrong assumption) → note in `state.md`, finish or revert current step, transition to REFLECT. Do NOT silently update findings during EXECUTE.
 - Add `# DECISION D-NNN` comments where needed (`references/decision-anchoring.md`).
 
-#### Post-Step Gate (MANDATORY — all 3 before moving on)
+#### Post-Step Gate (successful steps only — all 3 before moving on)
 1. `plan.md` — mark step `[x]`, advance marker, update complexity budget
 2. `progress.md` — move item Remaining → Completed, set next In Progress
 3. `state.md` — update step number, append to change manifest
+
+On **failed step**: skip gate. Follow Autonomy Leash (revert-first, 2 attempts max).
 
 ### REFLECT
 - Read `plan.md` (criteria) + `progress.md` before evaluating.

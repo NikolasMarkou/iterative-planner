@@ -10,13 +10,19 @@ Single source of truth for "where am I?"
 # Current State: EXECUTE
 ## Iteration: 3
 ## Current Plan Step: 2 of 5
-## Last Transition: PLAN → EXECUTE (approved by user)
+## Pre-Step Checklist (reset before each EXECUTE step)
+- [x] Re-read state.md (this file)
+- [x] Re-read plan.md
+- [x] Re-read progress.md
+- [ ] Re-read decisions.md (if fix attempt)
+- [x] Checkpoint created (if risky step or irreversible op)
 ## Fix Attempts (resets per plan step)
 - (none yet for current step)
 ## Change Manifest (current iteration)
 - [x] `lib/session/token_service.rb` — CREATED (step 1, committed abc123)
 - [ ] `app/middleware/auth.rb` — MODIFIED lines 23-45 (step 2, uncommitted)
 - [ ] `config/initializers/session.rb` — MODIFIED (step 2, uncommitted)
+## Last Transition: PLAN → EXECUTE (approved by user)
 ## Transition History:
 - EXPLORE → PLAN (gathered enough context on auth system)
 - PLAN → EXECUTE (user approved approach A)
@@ -72,7 +78,7 @@ approaches v1 (in-place migration) and v2 (dual-write) were abandoned.
 1. [x] Create TokenService abstraction
 2. [ ] Wire TokenService into auth middleware  ← CURRENT
 3. [ ] Add fallback path for legacy cookie sessions
-4. [ ] Migration script for existing sessions
+4. [ ] [IRREVERSIBLE] Migration script for existing sessions
 5. [ ] Integration tests
 
 ## Failure Modes
@@ -98,6 +104,7 @@ approaches v1 (in-place migration) and v2 (dual-write) were abandoned.
 **Problem Statement** is mandatory. Can't state invariants and edge cases → go back to EXPLORE.
 **Failure Modes** table is mandatory when external dependencies exist. No dependencies → write "None identified".
 **Files To Modify** is mandatory. Can't list them → go back to EXPLORE.
+**`[IRREVERSIBLE]`** tag on steps with side effects that can't be undone via git (DB migrations, external API calls, service config, non-tracked file deletion). Requires: user confirmation, rollback plan in checkpoint, dry-run if available.
 
 ## decisions.md
 

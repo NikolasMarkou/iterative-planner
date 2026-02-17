@@ -52,6 +52,19 @@ git checkout <cp-000-commit> -- .  # revert to initial checkpoint
 
 Log: "NUCLEAR REVERT to initial state. All N iterations reverted. Stashed for recovery."
 
+## Irreversible Operations
+
+Steps tagged `[IRREVERSIBLE]` in `plan.md` — side effects that git cannot undo.
+
+**Examples**: DB migrations, external API calls with side effects, service config changes, deletion of non-git-tracked files, sending notifications/emails.
+
+**Before executing**:
+1. Get **explicit user confirmation** — present what will happen and that it cannot be auto-reverted.
+2. Document **rollback plan** in checkpoint — manual steps to undo (e.g. "run down migration", "delete API key via dashboard").
+3. **Dry-run first** if available (e.g. `--dry-run`, `--check`, `--plan` flags). Show output to user before real run.
+
+**If it fails**: manual rollback per checkpoint plan. Do NOT retry without user direction.
+
 ## Forbidden Leftovers
 
 After any revert, grep for these — if found, revert is incomplete:

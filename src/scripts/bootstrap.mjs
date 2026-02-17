@@ -98,6 +98,12 @@ function cmdNew(goal, force) {
     `# Current State: EXPLORE
 ## Iteration: 0
 ## Current Plan Step: N/A
+## Pre-Step Checklist (reset before each EXECUTE step)
+- [ ] Re-read state.md (this file)
+- [ ] Re-read plan.md
+- [ ] Re-read progress.md
+- [ ] Re-read decisions.md (if fix attempt)
+- [ ] Checkpoint created (if risky step or irreversible op)
 ## Fix Attempts (resets per plan step)
 - (none yet)
 ## Change Manifest (current iteration)
