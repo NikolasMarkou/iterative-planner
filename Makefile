@@ -2,7 +2,7 @@
 # Packages the repository into a distributable Claude skill format
 
 SKILL_NAME := iterative-planner
-VERSION := 1.2.2
+VERSION := $(shell cat VERSION)
 BUILD_DIR := build
 DIST_DIR := dist
 

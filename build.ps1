@@ -8,7 +8,7 @@ param(
 )
 
 $SkillName = "iterative-planner"
-$Version = "1.2.2"
+$Version = (Get-Content "$PSScriptRoot/VERSION" -Raw).Trim()
 $BuildDir = "build"
 $DistDir = "dist"
 
