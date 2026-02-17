@@ -84,7 +84,7 @@ memory. **Re-read them during the conversation, not just at the start.**
 
 | When | Read | Why |
 |------|------|-----|
-| Before starting any EXECUTE step | `state.md`, `plan.md` | Confirm what step you're on, check change manifest and fix attempts |
+| Before starting any EXECUTE step | `state.md`, `plan.md`, `progress.md` | Confirm what step you're on, check manifest, fix attempts, and verify progress is in sync |
 | Before writing a fix | `decisions.md` | Don't repeat a failed approach. Check if this area hit 3-strike. |
 | Before modifying code with `DECISION` comments | The referenced `decisions.md` entry | Understand why the code is this way before changing it |
 | Before entering PLAN or RE-PLAN | `decisions.md`, `findings.md`, relevant `findings/*` | Ground the new plan in what's actually known, not stale context |
@@ -161,7 +161,7 @@ Quick reference: when each file is read (R) and written (W) in each state.
 | decisions.md | — | R+W (read rejected approaches, log chosen) | R (before fixes) | R+W (log findings) | R+W (log pivot + complexity) | R (audit anchors) |
 | findings.md | W (flush every 2 reads) | R | — | — | R | — |
 | findings/* | W (subagents) | R | — | — | R | — |
-| progress.md | — | W (populate remaining) | W (update per step) | R+W (update status) | W (mark pivot) | — |
+| progress.md | — | W (populate remaining) | R+W (Post-Step Gate — mandatory) | R+W (cross-validate, update status) | W (mark pivot) | — |
 | checkpoints/* | — | — | W (before risky steps) | — | R (revert targets) | — |
 | summary.md | — | — | — | — | — | W |
 
@@ -208,13 +208,22 @@ EXPLORE → PLAN → [user approves] → EXECUTE → REFLECT
 - **Before writing any fix, re-read `decisions.md`** to avoid repeating failed approaches.
 - **On first EXECUTE of iteration 1**: create an initial checkpoint in `checkpoints/cp-000.md` recording the clean starting state. This is the nuclear option fallback.
 - One plan step at a time. Reflect after each.
-- **After each step**:
-  - **Write** `plan.md`: mark the completed step `[x]`, advance current step marker.
-  - **Write** `progress.md`: move completed item to "Completed", update "In Progress".
-  - **Write** `state.md`: update "Current Plan Step" and change manifest.
-  - **Write** `plan.md` complexity budget: update file/abstraction/line counts.
+- **After each step, complete ALL items in the Post-Step Gate before moving on.**
 - Checkpoint before risky changes (3+ files, shared modules, destructive ops).
 - Commit after each successful step: `[iter-N/step-M] description`.
+
+#### Post-Step Gate (MANDATORY)
+
+**Do NOT proceed to the next step or transition to REFLECT until every box is checked.**
+
+After completing a plan step, update these three files as a single batch:
+
+1. **`plan.md`**: mark the completed step `[x]`, advance current step marker, update complexity budget counts.
+2. **`progress.md`**: move the completed item from "Remaining" → "Completed" (or "In Progress" → "Completed"). Update "In Progress" with the next step if continuing.
+3. **`state.md`**: update "Current Plan Step" number and append to the change manifest.
+
+If any of these three writes is skipped, the plan state becomes inconsistent — progress.md
+will drift from plan.md, and REFLECT will evaluate against stale data.
 - **Decision Anchoring**: Add `# DECISION D-NNN` comments on code with significant
   decision history. Read `references/decision-anchoring.md` for when and how.
 - If something breaks: **STOP. Do not write new code.** You get 2 autonomous fix
@@ -225,6 +234,7 @@ EXPLORE → PLAN → [user approves] → EXECUTE → REFLECT
 
 ### During REFLECT
 - **Read** `plan.md` (success criteria) and `progress.md` before evaluating.
+- **Cross-validate**: every step marked `[x]` in `plan.md` must appear under "Completed" in `progress.md`. If they are out of sync, update `progress.md` **before** evaluating results. This is a consistency gate — do not skip it.
 - **Read** `decisions.md` to check for 3-strike patterns in the area that failed.
 - Compare what happened vs what was expected against the **written criteria**, not memory.
 - Answer the 5 Simplification Checks (see `references/complexity-control.md`).
