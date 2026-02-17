@@ -144,6 +144,29 @@ function Invoke-Validate {
         if ($content -notmatch "(?m)^description:") {
             $errors += "ERROR: SKILL.md missing 'description' in frontmatter"
         }
+
+        # Verify all references/ cross-references resolve to actual files
+        Write-Host "Checking cross-references..."
+        $refs = [regex]::Matches($content, 'references/[a-z0-9_-]+\.md') | ForEach-Object { $_.Value } | Sort-Object -Unique
+        foreach ($ref in $refs) {
+            if (-not (Test-Path "src/$ref")) {
+                $errors += "ERROR: SKILL.md references src/$ref but file not found"
+            }
+        }
+
+        # Verify transition table entries appear in Mermaid diagram
+        Write-Host "Checking state machine consistency..."
+        $transitions = @(
+            @("EXPLORE", "PLAN"), @("PLAN", "EXPLORE"), @("PLAN", "EXECUTE"),
+            @("EXECUTE", "REFLECT"), @("REFLECT", "CLOSE"), @("REFLECT", "RE.PLAN"),
+            @("REFLECT", "EXPLORE"), @("RE.PLAN", "PLAN")
+        )
+        foreach ($pair in $transitions) {
+            $pattern = "$($pair[0]).*$($pair[1])"
+            if ($content -notmatch $pattern) {
+                $errors += "ERROR: Transition $($pair[0]) -> $($pair[1]) missing from SKILL.md"
+            }
+        }
     }
 
     # Check directories
@@ -152,6 +175,17 @@ function Invoke-Validate {
     }
     if (-not (Test-Path "src/scripts")) {
         $errors += "ERROR: src/scripts/ directory not found"
+    }
+
+    # Verify bootstrap.mjs creates expected plan directory files
+    if (Test-Path "src/scripts/bootstrap.mjs") {
+        Write-Host "Checking bootstrap file list..."
+        $bsContent = Get-Content "src/scripts/bootstrap.mjs" -Raw
+        foreach ($f in @("state.md", "plan.md", "decisions.md", "findings.md", "progress.md")) {
+            if ($bsContent -notmatch [regex]::Escape($f)) {
+                $errors += "ERROR: bootstrap.mjs does not create $f"
+            }
+        }
     }
 
     if ($errors.Count -gt 0) {

@@ -180,6 +180,8 @@ Updated during EXPLORE. Corrected during RE-PLAN when earlier findings prove wro
 
 Self-contained research artifacts. Subagents write directly to `{plan-dir}/findings/` — never rely on context-only results.
 
+**Naming**: `findings/{topic-slug}.md` — kebab-case, descriptive. Examples: `auth-system.md`, `test-coverage.md`, `db-schema.md`. Prevents collisions when multiple subagents run in parallel.
+
 Example subagent prompt:
 > Explore the authentication system. Write your findings to `{plan-dir}/findings/auth-system.md`.
 > Include file paths with line numbers and code path traces showing execution flow.

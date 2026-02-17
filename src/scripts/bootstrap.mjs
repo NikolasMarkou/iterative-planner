@@ -8,12 +8,13 @@
 //   node bootstrap.mjs resume                  Output current plan state for re-entry
 //   node bootstrap.mjs status                  One-line state summary
 //   node bootstrap.mjs close                   Close active plan (preserves directory)
+//   node bootstrap.mjs list                    Show all plan directories (active and closed)
 //
 // Creates .claude/.plan_YYYY-MM-DD_XXXXXXXX/ (date + 8-char hex seed) in cwd.
 // Writes .claude/.current_plan with the directory name for discovery.
 // Requires Node.js 18+ (guaranteed by Claude Code).
 
-import { mkdirSync, writeFileSync, readFileSync, unlinkSync, existsSync } from "fs";
+import { mkdirSync, writeFileSync, readFileSync, readdirSync, renameSync, unlinkSync, existsSync } from "fs";
 import { join } from "path";
 import { randomBytes } from "crypto";
 
@@ -181,7 +182,8 @@ ${goal}
 `
   );
 
-  writeFileSync(pointerFile, planDirName);
+  writeFileSync(pointerFile + ".tmp", planDirName);
+  renameSync(pointerFile + ".tmp", pointerFile);
   ensureGitignore();
 
   console.log(`Initialized .claude/${planDirName}/`);
@@ -207,7 +209,7 @@ function cmdResume() {
   const iteration = extractField(state, /^## Iteration:\s*(.+)$/m) || "?";
   const step = extractField(state, /^## Current Plan Step:\s*(.+)$/m) || "N/A";
   const lastTransition = extractField(state, /^## Last Transition:\s*(.+)$/m) || "?";
-  const goal = extractField(plan, /^## Goal\s*\n(.+)$/m) || "No goal found";
+  const goal = extractField(plan, /^## Goal\s*\n([\s\S]+?)(?=\n## |\s*$)/m) || "No goal found";
 
   console.log(`Resuming .claude/${planDirName}/`);
   console.log(`  State:      ${currentState}`);
@@ -254,7 +256,7 @@ function cmdStatus() {
   const currentState = extractField(state, /^# Current State:\s*(.+)$/m) || "UNKNOWN";
   const iteration = extractField(state, /^## Iteration:\s*(.+)$/m) || "?";
   const step = extractField(state, /^## Current Plan Step:\s*(.+)$/m) || "N/A";
-  const goal = extractField(plan, /^## Goal\s*\n(.+)$/m) || "?";
+  const goal = extractField(plan, /^## Goal\s*\n([\s\S]+?)(?=\n## |\s*$)/m) || "?";
 
   console.log(`[${currentState}] iter=${iteration} step=${step} | ${goal} | .claude/${planDirName}`);
 }
@@ -281,6 +283,35 @@ function cmdClose(opts = {}) {
   }
 }
 
+function cmdList() {
+  if (!existsSync(claudeDir)) {
+    console.log("No .claude/ directory found.");
+    process.exit(0);
+  }
+
+  const activeName = readPointer();
+  const entries = readdirSync(claudeDir, { withFileTypes: true })
+    .filter((d) => d.isDirectory() && d.name.startsWith(".plan_"))
+    .map((d) => d.name)
+    .sort();
+
+  if (entries.length === 0) {
+    console.log("No plan directories found.");
+    process.exit(0);
+  }
+
+  console.log(`Plan directories in .claude/ (${entries.length} total):`);
+  for (const name of entries) {
+    const marker = name === activeName ? " ← active" : "";
+    const state = readPlanFile(name, "state.md");
+    const plan = readPlanFile(name, "plan.md");
+    const currentState = extractField(state, /^# Current State:\s*(.+)$/m) || "?";
+    const goal = extractField(plan, /^## Goal\s*\n([\s\S]+?)(?=\n## |\s*$)/m) || "?";
+    const goalOneLine = goal.split("\n")[0].slice(0, 60);
+    console.log(`  ${name}  [${currentState}] ${goalOneLine}${marker}`);
+  }
+}
+
 function printUsage() {
   console.log(`Usage: node bootstrap.mjs <command> [options]
 
@@ -290,6 +321,7 @@ Commands:
   resume                  Output current plan state for re-entry
   status                  One-line state summary
   close                   Close active plan (preserves directory)
+  list                    Show all plan directories (active and closed)
 
 Backward-compatible:
   node bootstrap.mjs "goal"   Same as: node bootstrap.mjs new "goal"`);
@@ -300,7 +332,7 @@ Backward-compatible:
 // ---------------------------------------------------------------------------
 
 const args = process.argv.slice(2);
-const subcommands = new Set(["new", "resume", "status", "close", "help"]);
+const subcommands = new Set(["new", "resume", "status", "close", "list", "help"]);
 
 if (args.length === 0) {
   printUsage();
@@ -323,6 +355,8 @@ if (!subcommands.has(cmd)) {
   cmdStatus();
 } else if (cmd === "close") {
   cmdClose();
+} else if (cmd === "list") {
+  cmdList();
 } else if (cmd === "help") {
   printUsage();
 }

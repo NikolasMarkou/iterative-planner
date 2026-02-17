@@ -79,6 +79,7 @@ node <skill-path>/scripts/bootstrap.mjs new --force "goal"   # Close active plan
 node <skill-path>/scripts/bootstrap.mjs resume               # Re-entry summary for new sessions
 node <skill-path>/scripts/bootstrap.mjs status               # One-line state summary
 node <skill-path>/scripts/bootstrap.mjs close                # Close plan (preserves directory)
+node <skill-path>/scripts/bootstrap.mjs list                 # Show all plan directories
 ```
 
 `new` refuses if active plan exists — use `resume`, `close`, or `--force`.
@@ -126,7 +127,7 @@ R = read, W = write, — = do not touch (wrong state if you are).
 - Include file paths + code path traces (e.g. `auth.rb:23` → `SessionStore#find` → `redis_store.rb:get`).
 - DO NOT skip EXPLORE even if you think you know the answer.
 - **Minimum depth**: ≥3 indexed findings in `findings.md` before transitioning to PLAN. Findings must cover: (1) problem scope, (2) affected files, (3) existing patterns or constraints. Fewer than 3 → keep exploring.
-- Use **Task subagents** to parallelize research. All subagent output → `{plan-dir}/findings/` files. Never rely on context-only results. **Main agent** updates `findings.md` index after subagents write — subagents don't touch the index.
+- Use **Task subagents** to parallelize research. All subagent output → `{plan-dir}/findings/` files. Never rely on context-only results. **Main agent** updates `findings.md` index after subagents write — subagents don't touch the index. **Naming**: `findings/{topic-slug}.md` (kebab-case, descriptive — e.g. `auth-system.md`, `test-coverage.md`).
 - Use "think hard" / "ultrathink" for complex analysis.
 - REFLECT → EXPLORE loops: append to existing findings, don't overwrite. Mark corrections with `[CORRECTED iter-N]`.
 

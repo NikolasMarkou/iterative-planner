@@ -1,7 +1,7 @@
 # Iterative Planner
 
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Skill](https://img.shields.io/badge/Skill-v1.6.0-green.svg)](CHANGELOG.md)
+[![Skill](https://img.shields.io/badge/Skill-v1.7.0-green.svg)](CHANGELOG.md)
 [![Sponsored by Electi](https://img.shields.io/badge/Sponsored%20by-Electi-red.svg)](https://www.electiconsulting.com)
 
 **Stop watching Claude go off the rails on complex tasks.**
@@ -156,11 +156,12 @@ node <skill-path>/scripts/bootstrap.mjs new --force "goal"   # Close active plan
 node <skill-path>/scripts/bootstrap.mjs resume               # Output current plan state for re-entry
 node <skill-path>/scripts/bootstrap.mjs status               # One-line state summary
 node <skill-path>/scripts/bootstrap.mjs close                # Close active plan (preserves directory)
+node <skill-path>/scripts/bootstrap.mjs list                 # Show all plan directories
 ```
 
 `new` creates the plan directory under `.claude/`, writes the pointer file (`.claude/.current_plan`), and drops the agent into the EXPLORE state. If an active plan already exists, it refuses -- use `resume` to continue, `close` to end it, or `new --force` to close and start fresh.
 
-`resume` outputs the current plan state (state, iteration, step, goal, progress) for quick re-entry into the protocol. `status` prints a single-line summary. `close` removes the pointer file but preserves the plan directory for reference.
+`resume` outputs the current plan state (state, iteration, step, goal, progress) for quick re-entry into the protocol. `status` prints a single-line summary. `close` removes the pointer file but preserves the plan directory for reference. `list` shows all plan directories under `.claude/` (active and closed) with their state and goal.
 
 ### Git Integration
 

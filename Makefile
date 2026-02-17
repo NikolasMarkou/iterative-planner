@@ -83,6 +83,26 @@ validate:
 	@grep -q "^description:" $(SKILL_FILE) || (echo "ERROR: SKILL.md missing 'description' in frontmatter" && exit 1)
 	@test -d src/references || (echo "ERROR: src/references/ directory not found" && exit 1)
 	@test -d src/scripts || (echo "ERROR: src/scripts/ directory not found" && exit 1)
+	@# Verify all references/ cross-references in SKILL.md resolve to actual files
+	@echo "Checking cross-references..."
+	@for ref in $$(grep -oP 'references/[a-z0-9_-]+\.md' $(SKILL_FILE) | sort -u); do \
+		test -f "src/$$ref" || (echo "ERROR: $(SKILL_FILE) references src/$$ref but file not found" && exit 1); \
+	done
+	@# Verify bootstrap.mjs creates expected plan directory files
+	@echo "Checking bootstrap file list..."
+	@for f in state.md plan.md decisions.md findings.md progress.md; do \
+		grep -q "\"$$f\"" src/scripts/bootstrap.mjs || \
+		grep -q "'$$f'" src/scripts/bootstrap.mjs || \
+		grep -q "$$f" src/scripts/bootstrap.mjs || \
+		(echo "ERROR: bootstrap.mjs does not create $$f" && exit 1); \
+	done
+	@# Verify transition table entries appear in Mermaid diagram
+	@echo "Checking state machine consistency..."
+	@for pair in "EXPLORE.*PLAN" "PLAN.*EXPLORE" "PLAN.*EXECUTE" "EXECUTE.*REFLECT" \
+		"REFLECT.*CLOSE" "REFLECT.*RE.PLAN" "REFLECT.*EXPLORE" "RE.PLAN.*PLAN"; do \
+		grep -qP "$$pair" $(SKILL_FILE) || \
+		(echo "ERROR: Transition $$pair missing from SKILL.md" && exit 1); \
+	done
 	@echo "Validation passed!"
 
 # Check script syntax

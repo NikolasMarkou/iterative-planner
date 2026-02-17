@@ -43,6 +43,7 @@ node <skill-path>/scripts/bootstrap.mjs new --force "goal"   # Close active plan
 node <skill-path>/scripts/bootstrap.mjs resume               # Output current plan state for re-entry
 node <skill-path>/scripts/bootstrap.mjs status               # One-line state summary
 node <skill-path>/scripts/bootstrap.mjs close                # Close active plan (preserves directory)
+node <skill-path>/scripts/bootstrap.mjs list                 # Show all plan directories
 ```
 
 `new` creates plan directory with all files + writes `.claude/.current_plan` pointer. Idempotent-safe: refuses if active plan exists.
