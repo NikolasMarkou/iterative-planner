@@ -1,13 +1,10 @@
 # Code Hygiene Reference
 
-Failed code must not survive into the next iteration. Dirty state from a failed
-EXECUTE is the #1 source of compounding bugs — you end up debugging your debug code.
-
----
+Failed code must not survive into the next iteration. Dirty state from failed EXECUTE = compounding bugs.
 
 ## Change Manifest
 
-During EXECUTE, maintain a **change manifest** in `state.md`:
+Maintain in `state.md` during EXECUTE:
 
 ```markdown
 ## Change Manifest (current iteration)
@@ -16,74 +13,50 @@ During EXECUTE, maintain a **change manifest** in `state.md`:
 - [ ] `config/initializers/session.rb` — MODIFIED (step 2, uncommitted)
 ```
 
-Update this after every file create/modify/delete. This is how you know exactly
-what to revert.
+Update after every file create/modify/delete. `[x]` = committed, `[ ]` = uncommitted.
+Reset manifest on iteration increment (PLAN → EXECUTE). Prior iteration's committed changes don't need tracking.
 
-**Reset the Change Manifest when the iteration counter increments** (PLAN → EXECUTE
-transition). The new iteration starts with a clean manifest. Changes kept from
-the prior iteration are already committed and don't need tracking.
+## On Failed Step (→ REFLECT)
 
----
+Successful steps should already be committed. This applies only to the failed step.
 
-## On Failed Step (Entering REFLECT)
-
-If a step fails and you're transitioning to REFLECT (including after a leash hit):
-
-**Note:** Successful steps should already be committed before entering REFLECT.
-This revert procedure applies only when a step has failed.
-
-1. **Revert all uncommitted changes** from the failed step immediately.
+1. Revert all uncommitted changes immediately:
    ```
-   git checkout -- <files from change manifest that are uncommitted>
-   git clean -fd  # remove untracked files created in failed step
+   git checkout -- <uncommitted files from manifest>
+   git clean -fd  # remove untracked files from failed step
    ```
-2. Update the change manifest to reflect the revert.
-3. Log what was reverted in `decisions.md`.
+2. Update change manifest.
+3. Log reverted files in `decisions.md`.
 
-The codebase after a failed step must be in the **exact same state as after the
-last successful commit**. No half-applied changes. No leftover debug code.
-No commented-out attempts.
-
----
+Codebase after failed step = exact state of last successful commit. No half-applied changes, debug code, or commented-out attempts.
 
 ## On RE-PLAN
 
-When transitioning to RE-PLAN, decide explicitly:
+Decide explicitly:
 
-1. **Keep committed work from successful steps?** If the successful steps are still
-   valid under the new plan, keep them. Note in `decisions.md`: "Keeping steps 1-2,
-   reverting step 3."
-2. **Revert everything from this iteration?** If the new plan takes a fundamentally
-   different approach, revert to the last checkpoint:
+1. **Keep successful commits?** If valid under new plan → keep. Log: "Keeping steps 1-2, reverting step 3."
+2. **Revert everything?** If fundamentally different approach:
    ```
    git checkout <checkpoint-commit> -- .
    ```
-   Note in `decisions.md`: "Reverted all changes from iteration N. Starting clean
-   from checkpoint cp-NNN."
-3. **Never leave partial work.** The codebase must be in a known-good state before
-   PLAN begins. "Known-good" means: tests pass, no uncommitted changes, no dead code
-   from failed attempts.
+   Log: "Reverted all changes from iteration N. Starting from checkpoint cp-NNN."
+3. **Never leave partial work.** Known-good before PLAN = tests pass, no uncommitted changes, no dead code.
 
----
+## Nuclear Option (Full Revert)
 
-## On Nuclear Option (Full Revert)
-
-When reverting all iterations:
 ```
-git stash  # safety net in case user wants to recover something
-git checkout <cp-000-commit> -- .  # revert to initial checkpoint from before iteration 1
+git stash  # safety net
+git checkout <cp-000-commit> -- .  # revert to initial checkpoint
 ```
-Log in `decisions.md`: "NUCLEAR REVERT to initial state. All N iterations reverted.
-Stashed in git stash for recovery if needed."
 
----
+Log: "NUCLEAR REVERT to initial state. All N iterations reverted. Stashed for recovery."
 
 ## Forbidden Leftovers
 
-After any revert, grep for these — if found, the revert is incomplete:
+After any revert, grep for these — if found, revert is incomplete:
 
-- `// TODO: fix this` or `# FIXME` added during the failed attempt
+- `// TODO` / `# FIXME` added during failed attempt
 - `console.log`, `print()`, `debugger` statements you added
-- Commented-out code blocks from the failed approach
-- Import statements for modules that no longer exist
-- Test files for code that was reverted
+- Commented-out code from failed approach
+- Import statements for removed modules
+- Test files for reverted code

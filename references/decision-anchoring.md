@@ -1,28 +1,20 @@
 # Decision Anchoring Reference
 
-Code that survived multiple iterations carries invisible context. Without comments,
-the next person (or next session) will see "weird" code and "fix" it — undoing a
-deliberate choice that took 3 failed attempts to reach.
-
----
+Code from multiple iterations carries invisible context. Without anchors, someone will "fix" a deliberate choice that took 3 failed attempts to reach.
 
 ## When to Anchor
 
-Add a decision anchor comment when ANY of these are true:
+Add `# DECISION D-NNN` when ANY apply:
 
-- The code implements an approach chosen **after a prior approach failed**
-- The implementation is **non-obvious** and someone would reasonably ask "why not do X instead?"
-- A simpler-looking alternative was **deliberately rejected** (and you know why)
-- The code works around a **framework/library/dependency constraint**
-- A **3-strike** forced a fundamentally different approach to this area
-
----
+- Code implements approach chosen **after a prior approach failed**
+- Implementation is **non-obvious** ("why not do X instead?")
+- Simpler-looking alternative was **deliberately rejected**
+- Code works around a **framework/library/dependency constraint**
+- **3-strike** forced a different approach
 
 ## Format
 
-Keep it short. Reference the decision ID from `decisions.md`. Don't duplicate
-the full reasoning — just enough to stop someone from blindly changing it, and
-a pointer to the full story.
+Short. Reference decision ID from `decisions.md`. Enough to stop blind changes + pointer to full story.
 
 ```python
 # DECISION D-003: Using stateless tokens instead of dual-write.
@@ -42,28 +34,16 @@ def authenticate!(request)
 end
 ```
 
----
-
 ## Rules
 
-- **One comment block per decision, at the point of impact.** Not scattered across
-  multiple files saying the same thing.
-- **Reference the decision ID** (`D-NNN`). The full story lives in `decisions.md`.
-- **State what NOT to do** and why. The anchor's job is to prevent regression,
-  not explain the implementation.
-- **Strip anchors for rejected code.** If you revert code that had anchors, the
-  anchors go too. Anchors only live on surviving code.
-- **Don't anchor trivial choices.** Only anchor when there's real decision history
-  behind it. A straightforward implementation needs no anchor even if it went
-  through the planning process.
-
----
+- **One comment block per decision, at point of impact.** Not scattered across files.
+- **Reference decision ID** (`D-NNN`). Full story lives in `decisions.md`.
+- **State what NOT to do** and why. Prevent regression, not explain implementation.
+- **Strip anchors for reverted code.** Anchors only live on surviving code.
+- **Don't anchor trivial choices.** Only when real decision history exists.
 
 ## Audit at CLOSE
 
-Before writing `summary.md`, scan `decisions.md` for entries with failed
-alternatives or 3-strike pivots. For each, verify the corresponding code has
-a decision anchor comment. The plan directory is ephemeral — the code outlives it.
+Before `summary.md`: scan `decisions.md` for failed alternatives / 3-strike pivots. Verify corresponding code has anchor comments. Plan directory is ephemeral — code outlives it.
 
-In `summary.md`, list files that carry decision anchors and which decision IDs
-they reference (see the summary.md template in `references/file-formats.md`).
+In `summary.md`: list files with anchors and which `D-NNN` they reference.

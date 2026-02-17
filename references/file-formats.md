@@ -1,8 +1,6 @@
 # File Formats Reference
 
-Detailed templates and examples for every file in the plan directory (`{plan-dir}`).
-
----
+Templates and examples for every `{plan-dir}` file.
 
 ## state.md
 
@@ -28,14 +26,9 @@ Single source of truth for "where am I?"
 - PLAN → EXECUTE (user approved revised plan)
 ```
 
-Update this file on every state transition. The transition history is the
-complete audit trail of the task.
+Update on every state transition.
 
-The Fix Attempts section tracks autonomous fix attempts on the current plan step.
-After 2 failed attempts, you MUST stop and wait for user direction. The counter
-resets when: the user gives direction, you move to a new step, or you enter RE-PLAN.
-
-Example of a leash hit:
+**Fix Attempts**: tracks autonomous fixes on current step. After 2 fails → STOP. Resets on: user direction, new step, RE-PLAN. Leash hit example:
 
 ```markdown
 ## Fix Attempts (resets per plan step)
@@ -44,20 +37,12 @@ Example of a leash hit:
 - Step 2: LEASH HIT. Transitioned to REFLECT. Waiting for user direction.
 ```
 
-The Change Manifest tracks every file created, modified, or deleted during the
-current iteration. Mark committed changes with `[x]` and uncommitted with `[ ]`.
-On failed step or RE-PLAN, revert all uncommitted changes. On nuclear option,
-revert everything. See the Code Hygiene section in SKILL.md.
-
----
+**Change Manifest**: `[x]` = committed, `[ ]` = uncommitted. On failed step / RE-PLAN → revert uncommitted. See `code-hygiene.md`.
 
 ## plan.md
 
-The living plan. Gets **rewritten** each iteration, not appended.
-Old plans are preserved via `decisions.md` entries.
-
-Include **only the recommended approach**. Rejected alternatives and prior
-failed approaches belong in `decisions.md`, not here.
+Living plan. **Rewritten** each iteration (old plans preserved via `decisions.md`).
+Only recommended approach. Rejected alternatives → `decisions.md`.
 
 ```markdown
 # Plan v3: Token-Based Session Migration
@@ -96,14 +81,11 @@ approaches v1 (in-place migration) and v2 (dual-write) were abandoned.
 - Lines added vs removed: +45/-12 (target: net negative or neutral)
 ```
 
-The **Files To Modify** section is mandatory. If you can't list the files,
-you haven't explored enough — go back to EXPLORE.
-
----
+**Files To Modify** is mandatory. Can't list them → go back to EXPLORE.
 
 ## decisions.md
 
-Append-only. **Never edit or delete past entries.** This is institutional memory.
+Append-only. **Never edit or delete past entries.**
 
 ```markdown
 # Decision Log
@@ -116,8 +98,7 @@ Append-only. **Never edit or delete past entries.** This is institutional memory
 ## D-002 | REFLECT → RE-PLAN | 2025-01-15
 **Context**: Approach A fails — Redis session format is coupled to cookie serializer
 **What Failed**: Cannot deserialize existing sessions with new token format
-**What Was Learned**: Session format is not just storage, it's tied to the entire
-  serialization pipeline in `lib/session/serializer.rb`
+**What Was Learned**: Session format tied to entire serialization pipeline in `lib/session/serializer.rb`
 **Root Cause**: Tight coupling between cookie format and session store
 **Complexity Assessment**:
 - Lines added in failed attempt: 34
@@ -141,18 +122,13 @@ Append-only. **Never edit or delete past entries.** This is institutional memory
 **Reasoning**: Tokens are stateless, eliminates Redis growth problem entirely
 ```
 
-The Complexity Assessment block is mandatory for all RE-PLAN entries.
-
----
+Complexity Assessment block is mandatory for all RE-PLAN entries.
 
 ## findings.md
 
-Updated during EXPLORE phases. Structured discoveries about the codebase and problem.
-Always include **file paths with line numbers** and **code path traces** showing
-how execution flows through the system.
+Updated during EXPLORE. Always include **file paths with line numbers** and **code path traces**.
 
-`findings.md` is the **summary and index**. Detailed findings go in `findings/` as
-individual files — one per topic or subagent research task.
+`findings.md` = summary + index. Detailed findings → `findings/` as individual files.
 
 ### findings.md (summary/index)
 
@@ -165,17 +141,14 @@ individual files — one per topic or subagent research task.
 - [Dependencies](findings/dependencies.md) — gem constraints, Rails version pins
 
 ## Key Constraints
-- SessionSerializer is shared between cookie middleware AND API auth (see auth-system.md)
-- rack-session gem pins us to cookie-compatible format (see dependencies.md)
+- SessionSerializer shared between cookie middleware AND API auth (see auth-system.md)
+- rack-session gem pins cookie-compatible format (see dependencies.md)
 - No integration tests for session migration (see test-coverage.md)
 ```
 
-### findings/ directory (detailed files)
+### findings/ directory
 
-Each file is a self-contained research artifact. When using subagents, **instruct
-each subagent to write its output directly to a file in `{plan-dir}/findings/`**. Do not
-rely on subagent results living only in the context window — they will be lost to
-compaction.
+Self-contained research artifacts. Subagents write directly to `{plan-dir}/findings/` — never rely on context-only results.
 
 Example subagent prompt:
 > Explore the authentication system. Write your findings to `{plan-dir}/findings/auth-system.md`.
@@ -199,28 +172,19 @@ authenticate! → SessionStore#find (line 45) → RedisStore#get (line 12) → R
 
 ## Key Coupling
 - `SessionSerializer` used by both cookie middleware AND API auth
-  - Cookie middleware calls `SessionSerializer.load` (line 34)
-  - API auth calls `SessionSerializer.load` via `ApiAuth#from_token` (line 67)
-  - Changing session format affects BOTH web and API flows
+  - Cookie middleware: `SessionSerializer.load` (line 34)
+  - API auth: `SessionSerializer.load` via `ApiAuth#from_token` (line 67)
+  - Changing format affects BOTH flows
   - File: lib/session/serializer.rb:34-89
 
 ## Dependencies
-- `rack-session` gem pins us to cookie-compatible session format
+- `rack-session` gem pins cookie-compatible session format
 - Upgrading rack-session requires Rails 7.1+ (currently on 7.0.4)
 ```
 
-Write findings as you discover them. Include file paths and line numbers.
-This file is your "notes" — structure is flexible but should be scannable.
-
----
-
 ## progress.md
 
-Flat checklist. **Updated in every phase that changes task status:**
-- PLAN: populate "Remaining" from plan steps.
-- EXECUTE: move items to "In Progress" → "Completed" after each step.
-- REFLECT: mark items as failed/blocked if step didn't succeed.
-- RE-PLAN: annotate items affected by the pivot.
+Flat checklist. Updated in: PLAN (populate Remaining), EXECUTE (move items), REFLECT (mark failed/blocked), RE-PLAN (annotate pivot).
 
 ```markdown
 # Progress
@@ -244,11 +208,7 @@ Flat checklist. **Updated in every phase that changes task status:**
 - Nothing currently
 ```
 
----
-
 ## checkpoints/cp-NNN.md
-
-Created before risky EXECUTE steps.
 
 ```markdown
 # Checkpoint 003
@@ -266,17 +226,15 @@ rm lib/session/token_service.rb
 ```
 
 ### When to Checkpoint
-- **Before iteration 1 EXECUTE begins**: create `cp-000.md` recording the clean starting state. This is the nuclear option fallback.
+- **Iteration 1, first EXECUTE**: `cp-000.md` = clean starting state (nuclear fallback)
 - Before modifying 3+ files simultaneously
-- Before changing any shared/core module
-- Before destructive operations (migrations, deletions)
-- When the user says "I'm not sure about this"
-
----
+- Before changing shared/core modules
+- Before destructive operations
+- When user says "I'm not sure about this"
 
 ## summary.md
 
-Written at CLOSE. Final outcome and lessons learned.
+Written at CLOSE.
 
 ```markdown
 # Summary: Auth Session Migration
@@ -292,8 +250,8 @@ cookie fallback for legacy clients.
 
 ## Key Decisions
 - See decisions.md for full log
-- Critical insight: session format was coupled to serialization pipeline,
-  not just storage. This invalidated the first two approaches.
+- Critical insight: session format coupled to serialization pipeline,
+  not just storage. Invalidated first two approaches.
 
 ## Files Changed
 - app/middleware/auth.rb (modified)
@@ -302,13 +260,12 @@ cookie fallback for legacy clients.
 - test/integration/token_auth_test.rb (new)
 
 ## Decision Anchors in Code
-Files containing `# DECISION D-NNN` comments that explain non-obvious choices from failed iterations:
-- `app/middleware/auth.rb:23` — why token-based instead of cookie migration (D-003); direct Redis call, not SessionStore (D-005)
-- `lib/session/token_service.rb:1` — D-003: stateless tokens over dual-write
-- `lib/session/token_service.rb:15` — why stateless over dual-write (D-002, D-003)
+- `app/middleware/auth.rb:23` — D-003 (token-based over cookie migration), D-005 (direct Redis call)
+- `lib/session/token_service.rb:1` — D-003 (stateless tokens over dual-write)
+- `lib/session/token_service.rb:15` — D-002, D-003 (stateless over dual-write)
 
 ## Lessons
 - Check format coupling before assuming storage changes are isolated
 - Stateless > stateful when migrating session systems
-- Dual-write is only viable when TTLs are short
+- Dual-write only viable with short TTLs
 ```

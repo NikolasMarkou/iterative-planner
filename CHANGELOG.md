@@ -4,6 +4,16 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.2.1] - 2026-02-17
+
+### Changed
+- **Reference files compressed**: 621 → 480 lines (−23%), 3,520 → 2,482 words (−29%)
+  - `complexity-control.md`: −34% lines / −45% words — removed motivational preambles, tightened rule descriptions
+  - `code-hygiene.md`: −30% lines / −34% words — compressed procedure steps, removed redundant explanations
+  - `decision-anchoring.md`: −29% lines / −30% words — tightened trigger list and rules
+  - `file-formats.md`: −14% lines / −17% words — trimmed prose around templates (code blocks preserved)
+  - All rules, thresholds, code templates, procedures, and cross-references preserved
+
 ## [1.2.0] - 2026-02-17
 
 ### Changed
