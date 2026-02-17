@@ -14,18 +14,6 @@ The result: Claude handles multi-file refactors, complex migrations, and gnarly 
 
 ---
 
-## Quick Start
-
-**Option 1 -- Single file (fastest)**
-Download `iterative-planner-combined.md` from [Releases](https://github.com/NikolasMarkou/iterative-planner/releases) and paste it into Claude's Custom Instructions.
-
-**Option 2 -- Full package**
-Download the zip from Releases. Upload `src/SKILL.md` and the `src/references/` folder to a Claude Project.
-
-Then give Claude a complex task, or just say: **"plan this"**
-
----
-
 ## The Problem This Solves
 
 Without structure, AI agents working on non-trivial tasks tend to:
@@ -40,31 +28,40 @@ Iterative Planner prevents all of this through a formal state machine, mandatory
 
 ---
 
+## Quick Start
+
+**Option 1 -- Single file (fastest)**
+Download `iterative-planner-combined.md` from [Releases](https://github.com/NikolasMarkou/iterative-planner/releases) and paste it into Claude's Custom Instructions.
+
+**Option 2 -- Full package**
+Download the zip from Releases. Upload `src/SKILL.md` and the `src/references/` folder to a Claude Project.
+
+Then give Claude a complex task, or just say: **"plan this"**
+
+---
+
 ## How It Works
 
 The skill is a six-state machine. Every transition is logged. Every decision is recorded. The filesystem is the source of truth -- not the context window.
 
-```
-              +----------+
-              |  EXPLORE  |---- enough context ---->+-----------+
-              +----------+                          |   PLAN    |
-                    ^                               +-----+-----+
-                    |                                     |
-                 need more                             approved
-                  context                                 |
-                    |                                     v
-              +-----+------+                        +----------+
-              |  REFLECT   |<---- observe result ---|  EXECUTE  |
-              +-----+------+                        +----------+
-                    |
-              +-----+-----------------+
-              |                       |
-           solved                 not solved
-              |                       |
-              v                       v
-        +----------+           +----------+
-        |  CLOSE   |           | RE-PLAN  |----> back to PLAN
-        +----------+           +----------+
+```mermaid
+stateDiagram-v2
+    [*] --> EXPLORE
+    EXPLORE --> PLAN : enough context
+    PLAN --> EXECUTE : approved
+    EXECUTE --> REFLECT : observe result
+    REFLECT --> EXPLORE : need more context
+    REFLECT --> CLOSE : solved
+    REFLECT --> RE_PLAN : not solved
+    RE_PLAN --> PLAN : revised approach
+    CLOSE --> [*]
+
+    state EXPLORE {
+        direction LR
+        [*] --> Read_code
+        Read_code --> Search
+        Search --> Map_problem
+    }
 ```
 
 | State | What happens | Boundaries |
@@ -86,16 +83,16 @@ Everything important is written to a plan directory on disk (`.claude/.plan_YYYY
 
 ```
 .claude/
-+-- .current_plan
-+-- .plan_2026-02-14_a3f1b2c9/
-    +-- state.md          # Where am I? What step? What iteration?
-    +-- plan.md           # The living plan (rewritten each iteration)
-    +-- decisions.md      # Append-only log of every decision and pivot
-    +-- findings.md       # Index of all discoveries
-    +-- findings/         # Detailed research files
-    +-- progress.md       # Done vs remaining
-    +-- checkpoints/      # Snapshots before risky changes
-    +-- summary.md        # Written at close
+├── .current_plan
+└── .plan_2026-02-14_a3f1b2c9/
+    ├── state.md            # Where am I? What step? What iteration?
+    ├── plan.md             # The living plan (rewritten each iteration)
+    ├── decisions.md        # Append-only log of every decision and pivot
+    ├── findings.md         # Index of all discoveries
+    ├── findings/           # Detailed research files
+    ├── progress.md         # Done vs remaining
+    ├── checkpoints/        # Snapshots before risky changes
+    └── summary.md          # Written at close
 ```
 
 ### The Autonomy Leash
@@ -210,22 +207,22 @@ make clean                   # Clean build artifacts
 
 ```
 iterative-planner/
-+-- README.md              # This file
-+-- CLAUDE.md              # AI assistant guidance for contributing
-+-- CHANGELOG.md           # Version history
-+-- LICENSE                # GNU GPLv3
-+-- VERSION                # Single source of truth for version number
-+-- Makefile               # Unix/Linux/macOS build
-+-- build.ps1              # Windows PowerShell build
-+-- src/
-    +-- SKILL.md              # Core protocol -- the complete skill specification
-    +-- scripts/
-    |   +-- bootstrap.mjs      # Plan directory initializer (Node.js 18+)
-    +-- references/
-        +-- complexity-control.md   # Anti-complexity protocol and forbidden patterns
-        +-- code-hygiene.md         # Change manifests, revert procedures, cleanup rules
-        +-- decision-anchoring.md   # When and how to anchor decisions in code
-        +-- file-formats.md         # Templates for every plan directory file
+├── README.md                 # This file
+├── CLAUDE.md                 # AI assistant guidance for contributing
+├── CHANGELOG.md              # Version history
+├── LICENSE                   # GNU GPLv3
+├── VERSION                   # Single source of truth for version number
+├── Makefile                  # Unix/Linux/macOS build
+├── build.ps1                 # Windows PowerShell build
+└── src/
+    ├── SKILL.md              # Core protocol -- the complete skill specification
+    ├── scripts/
+    │   └── bootstrap.mjs     # Plan directory initializer (Node.js 18+)
+    └── references/
+        ├── complexity-control.md   # Anti-complexity protocol and forbidden patterns
+        ├── code-hygiene.md         # Change manifests, revert procedures, cleanup rules
+        ├── decision-anchoring.md   # When and how to anchor decisions in code
+        └── file-formats.md         # Templates for every plan directory file
 ```
 
 ---
