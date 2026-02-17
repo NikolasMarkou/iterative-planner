@@ -110,7 +110,7 @@ R = read, W = write, — = do not touch (wrong state if you are).
 | findings.md | W | R | — | R | R+W | — |
 | findings/* | W | R | — | R | R+W | — |
 | progress.md | — | W | R+W | R+W | W | — |
-| checkpoints/* | — | — | W | — | R | — |
+| checkpoints/* | — | — | W | R | R | — |
 | summary.md | — | — | — | — | — | W |
 
 ## Per-State Rules
@@ -137,9 +137,9 @@ R = read, W = write, — = do not touch (wrong state if you are).
 
 ### EXECUTE
 - Re-read `state.md` + `plan.md` before each step. Re-read `decisions.md` before any fix.
-- Iteration 1, first EXECUTE → create `checkpoints/cp-000.md` (nuclear fallback).
+- Iteration 1, first EXECUTE → create `checkpoints/cp-000-iter1.md` (nuclear fallback). "Git State" = commit hash BEFORE changes (the restore point).
 - One step at a time. Post-Step Gate after each (see below).
-- Checkpoint before risky changes (3+ files, shared modules, destructive ops).
+- Checkpoint before risky changes (3+ files, shared modules, destructive ops). Name: `cp-NNN-iterN.md` (e.g. `cp-001-iter2.md`). Increment NNN globally across iterations.
 - Commit after each successful step: `[iter-N/step-M] description`.
 - If something breaks → STOP. 2 fix attempts max (Autonomy Leash). Each must follow Revert-First.
 - **Surprise discovery** (behavior contradicts findings, unknown dependency, wrong assumption) → note in `state.md`, finish or revert current step, transition to REFLECT. Do NOT silently update findings during EXECUTE.
@@ -153,6 +153,7 @@ R = read, W = write, — = do not touch (wrong state if you are).
 ### REFLECT
 - Read `plan.md` (criteria) + `progress.md` before evaluating.
 - Read `findings.md` + relevant `findings/*` — check if discoveries during EXECUTE contradict earlier findings. Note contradictions in `decisions.md`.
+- Read `checkpoints/*` — know what rollback options exist before deciding next transition. Note available restore points in `decisions.md` if transitioning to RE-PLAN.
 - Cross-validate: every `[x]` in plan.md must be "Completed" in progress.md. Fix drift first.
 - Read `decisions.md` — check 3-strike patterns.
 - Compare against **written criteria**, not memory. Run 5 Simplification Checks (`references/complexity-control.md`).
@@ -166,6 +167,10 @@ R = read, W = write, — = do not touch (wrong state if you are).
 
 ### RE-PLAN
 - Read `decisions.md`, `findings.md`, relevant `findings/*`.
+- Read `checkpoints/*` — decide keep vs revert:
+  - **Keep successful commits** when: steps already committed are valid under the new approach. Log: "Keeping steps 1-2, reverting step 3."
+  - **Revert to checkpoint** when: new approach is fundamentally different, or kept commits would conflict. Log: "Reverting to cp-NNN. Reason: [why]."
+  - **Default**: if unsure, revert to latest checkpoint. Safer than debugging stale state.
 - If earlier findings proved wrong or incomplete → update `findings.md` + `findings/*` with corrections. Mark corrections: `[CORRECTED iter-N]` + what changed and why. Append, don't delete original text.
 - Write `decisions.md`: log pivot + mandatory Complexity Assessment.
 - Write `state.md` + `progress.md` (mark failed items, note pivot).
@@ -177,18 +182,19 @@ Default response to failure = simplify, not add. See `references/complexity-cont
 
 **Revert-First** — when something breaks: (1) STOP (2) revert? (3) delete? (4) one-liner? (5) none → REFLECT.
 **10-Line Rule** — fix needs >10 new lines → it's not a fix → REFLECT.
-**3-Strike Rule** — same area breaks 3× → RE-PLAN with fundamentally different approach.
+**3-Strike Rule** — same area breaks 3× → RE-PLAN with fundamentally different approach. Revert to checkpoint covering the struck area.
 **Complexity Budget** — tracked in plan.md: files added 0/3, abstractions 0/2, lines net-zero target.
 **Forbidden**: wrapper cascades, config toggles, copy-paste, exception swallowing, type escapes, adapters, "temporary" workarounds.
-**Nuclear Option** — iteration 5 + bloat >2× scope → recommend full revert.
+**Nuclear Option** — iteration 5 + bloat >2× scope → recommend full revert to `cp-000` (or later checkpoint if user agrees).
 
 ## Autonomy Leash (CRITICAL)
 
 When a step fails during EXECUTE:
 1. **2 fix attempts max** — each must follow Revert-First + 10-Line Rule.
 2. Both fail → **STOP COMPLETELY.** No 3rd fix. No silent alternative. No skipping ahead.
-3. Present: what step should do, what happened, 2 attempts, root cause guess.
-4. Transition → REFLECT. Log leash hit in `state.md`. Wait for user.
+3. Revert uncommitted changes to last clean commit. Codebase must be known-good before presenting.
+4. Present: what step should do, what happened, 2 attempts, root cause guess, available checkpoints for rollback.
+5. Transition → REFLECT. Log leash hit in `state.md`. Wait for user.
 
 Track attempts in `state.md`. Resets on: user direction, new step, or RE-PLAN.
 **No exceptions.** Unguided fix chains derail projects.
@@ -218,13 +224,14 @@ If iteration > 5 → STOP: going in circles? harder than scoped? break into smal
 4. `decisions.md` → what was tried / failed
 5. `progress.md` → done vs remaining
 6. `findings.md` + `findings/*` → discovered context
-7. Resume from current state. Never start over.
+7. `checkpoints/*` → available rollback points and their git hashes
+8. Resume from current state. Never start over.
 
 ## Git Integration
 
 - EXPLORE/PLAN/REFLECT/RE-PLAN: no commits.
 - EXECUTE: commit per successful step `[iter-N/step-M] desc`. Failed step → revert uncommitted.
-- RE-PLAN: keep successful commits or revert to checkpoint. No partial state.
+- RE-PLAN: keep successful commits if valid under new plan, or `git checkout <checkpoint-commit> -- .` to revert. No partial state. Log choice in `decisions.md`.
 - CLOSE: final commit + tag. Add `.claude/.plan_*` and `.current_plan` to `.gitignore`.
 
 ## User Interaction

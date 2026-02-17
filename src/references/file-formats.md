@@ -231,17 +231,21 @@ Flat checklist. Updated in: PLAN (populate Remaining), EXECUTE (move items), REF
 - Nothing currently
 ```
 
-## checkpoints/cp-NNN.md
+## checkpoints/cp-NNN-iterN.md
+
+Name: `cp-NNN-iterN.md` — NNN increments globally, iterN = iteration when created. Example: `cp-000-iter1.md`, `cp-001-iter2.md`.
+
+**"Git State" = commit BEFORE changes** (the restore point). This is the hash you use in `git checkout` to roll back.
 
 ```markdown
-# Checkpoint 003
+# Checkpoint 001 (iteration 2)
 
 ## Created: Before wiring TokenService into middleware
-## Git State: commit abc123f
+## Git State: commit abc123f  ← commit BEFORE these changes (restore point)
 ## Files That Will Change:
-- app/middleware/auth.rb
-- config/initializers/session.rb
-- lib/session/token_service.rb (new)
+- app/middleware/auth.rb (modify)
+- config/initializers/session.rb (modify)
+- lib/session/token_service.rb (create)
 
 ## Rollback:
 git checkout abc123f -- app/middleware/auth.rb config/initializers/session.rb
@@ -249,10 +253,10 @@ rm lib/session/token_service.rb
 ```
 
 ### When to Checkpoint
-- **Iteration 1, first EXECUTE**: `cp-000.md` = clean starting state (nuclear fallback)
+- **Iteration 1, first EXECUTE**: `cp-000-iter1.md` = clean starting state (nuclear fallback)
 - Before modifying 3+ files simultaneously
-- Before changing shared/core modules
-- Before destructive operations
+- Before changing shared/core modules (used by multiple callers or multiple systems)
+- Before destructive operations (schema changes, file deletions, config overwrites)
 - User expresses uncertainty
 
 ## summary.md

@@ -4,6 +4,23 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.5.0] - 2026-02-17
+
+### Changed
+- **Checkpoint lifecycle expanded** — File Lifecycle Matrix: REFLECT gains R (read checkpoints to know rollback options before deciding transition)
+- **Checkpoint naming encodes iteration** — `cp-NNN.md` → `cp-NNN-iterN.md` (e.g. `cp-001-iter2.md`). NNN increments globally.
+- **Checkpoint "Git State" clarified** — explicitly documented as the commit BEFORE changes (the restore point), not after
+- **RE-PLAN keep-vs-revert decision criteria** — keep when steps are valid under new approach + tests pass; revert when fundamentally different approach or commits would conflict; default when unsure = revert to latest checkpoint
+- **REFLECT reads checkpoints** — notes available restore points in `decisions.md` when transitioning to RE-PLAN
+- **Autonomy leash includes checkpoints** — on leash hit: revert uncommitted first, present available checkpoints to user
+- **3-strike rule specifies rollback** — revert to checkpoint covering the struck area
+- **Nuclear option allows later checkpoint** — default is `cp-000` but user may choose a later checkpoint if partial progress is worth keeping
+- **Recovery protocol includes checkpoints** — `checkpoints/*` now listed as step 7 (rollback points and git hashes)
+- **Git integration RE-PLAN line expanded** — clarifies keep/revert logic and requires logging choice in `decisions.md`
+- **code-hygiene.md RE-PLAN section** — added decision criteria, "read checkpoints first", default-to-revert guidance
+- **complexity-control.md** — 3-strike adds checkpoint rollback step; nuclear option clarifies checkpoint selection
+- **file-formats.md checkpoint template** — updated naming, clarified git state semantics, added parenthetical examples for risky change triggers
+
 ## [1.4.0] - 2026-02-17
 
 ### Changed

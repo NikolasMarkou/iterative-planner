@@ -60,8 +60,9 @@ Same area needs fixes 3× across iterations:
 2. → REFLECT.
 3. Log: "3-STRIKE TRIGGERED on [file/module]" in `decisions.md`.
 4. Do NOT attempt fix #4.
-5. → RE-PLAN: "fundamentally different approach for [file/module]."
-6. Consider: is this code even necessary?
+5. Revert to checkpoint covering the struck area. If no matching checkpoint → revert uncommitted, then decide in RE-PLAN.
+6. → RE-PLAN: "fundamentally different approach for [file/module]."
+7. Consider: is this code even necessary?
 
 ## Forbidden Fix Patterns
 
@@ -93,6 +94,7 @@ Iteration 5 AND total lines added > 2× original scope:
 
 1. Present full decision log to user.
 2. Recommend: revert ALL, start clean with `decisions.md` knowledge.
-3. If agreed → revert to initial checkpoint, RE-PLAN from scratch using only decision log.
+3. If agreed → revert to `cp-000` (initial checkpoint). User may choose a later checkpoint if partial progress is worth keeping — confirm explicitly.
+4. RE-PLAN from scratch using only decision log.
 
 Protocol working as designed — not failure.

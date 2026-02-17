@@ -32,15 +32,16 @@ Codebase after failed step = last successful commit. No half-applied changes, no
 
 ## On RE-PLAN
 
-Decide explicitly for each:
+Read `checkpoints/*` first — know your rollback options. Decide explicitly:
 
-1. **Keep successful commits?** If valid under new plan → keep. Log: "Keeping steps 1-2, reverting step 3."
-2. **Revert everything?** If fundamentally different approach:
+1. **Keep successful commits?** When: steps already committed are valid under new approach AND tests pass with them. Log: "Keeping steps 1-2, reverting step 3."
+2. **Revert to checkpoint?** When: new approach is fundamentally different, or kept commits would conflict/mislead. Choose the latest checkpoint that gives a clean base:
    ```
    git checkout <checkpoint-commit> -- .
    ```
    Log: "Reverted all changes from iteration N. Starting from checkpoint cp-NNN."
-3. **No partial work.** Known-good before PLAN = tests pass, no uncommitted changes, no dead code.
+3. **Default when unsure**: revert to latest checkpoint. Safer than debugging stale state from a different approach.
+4. **No partial work.** Known-good before PLAN = tests pass, no uncommitted changes, no dead code.
 
 ## Nuclear Option (Full Revert)
 
