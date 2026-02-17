@@ -22,10 +22,11 @@ iterative-planner/
 ├── SKILL.md                          # Core protocol (state machine, rules) - the main instruction set
 ├── README.md                         # User documentation
 ├── LICENSE                           # GNU GPLv3
+├── VERSION                           # Single source of truth for version number
 ├── CHANGELOG.md                      # Version history
 ├── CLAUDE.md                         # This file
-├── Makefile                          # Unix/Linux/macOS build script
-├── build.ps1                         # Windows PowerShell build script
+├── Makefile                          # Unix/Linux/macOS build script (reads VERSION)
+├── build.ps1                         # Windows PowerShell build script (reads VERSION)
 ├── scripts/
 │   └── bootstrap.mjs                 # Initializes .claude/.plan_YYYY-MM-DD_XXXXXXXX/ directory (Node.js 18+)
 └── references/                       # Knowledge base documents
@@ -81,6 +82,7 @@ Do not duplicate protocol content here. If you need to understand the protocol, 
 - **SKILL.md** is the core protocol. Changes here affect all planning behavior. It is the complete skill specification that Claude Code loads.
 - **references/** files provide supplementary knowledge. They are read on-demand by the skill, not loaded upfront. Add new reference files for expanded guidance.
 - **scripts/bootstrap.mjs** requires Node.js 18+ (guaranteed by Claude Code). It is idempotent-safe (refuses if `.claude/.current_plan` already points to an active plan).
+- **VERSION** is the single source of truth for the version number. Both `Makefile` and `build.ps1` read from it. When bumping the version, edit only `VERSION` (and `CHANGELOG.md`).
 - When editing the protocol, keep the state machine diagram, transition rules table, file lifecycle matrix, and file format references in sync across SKILL.md and references/.
 
 ### Tech Stack
