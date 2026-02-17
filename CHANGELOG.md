@@ -8,10 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 - **Unified language style across all agent-facing files** to match SKILL.md's terse, imperative, operator-manual voice
-  - `references/complexity-control.md`: conversational phrasing → imperative fragments (5 edits)
-  - `references/code-hygiene.md`: explanatory sentences → compressed directives (7 edits)
-  - `references/decision-anchoring.md`: narrative intro → arrow-notation style (2 edits)
-  - `references/file-formats.md`: redundant prose → compressed phrasing (3 edits)
+  - `src/references/complexity-control.md`: conversational phrasing → imperative fragments (5 edits)
+  - `src/references/code-hygiene.md`: explanatory sentences → compressed directives (7 edits)
+  - `src/references/decision-anchoring.md`: narrative intro → arrow-notation style (2 edits)
+  - `src/references/file-formats.md`: redundant prose → compressed phrasing (3 edits)
   - `CLAUDE.md`: verbose prose sections → terse fragments (8 sections rewritten)
   - Net result: −12 lines, zero semantic changes
 
@@ -27,16 +27,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 - **Reference files compressed**: 621 → 480 lines (−23%), 3,520 → 2,482 words (−29%)
-  - `complexity-control.md`: −34% lines / −45% words — removed motivational preambles, tightened rule descriptions
-  - `code-hygiene.md`: −30% lines / −34% words — compressed procedure steps, removed redundant explanations
-  - `decision-anchoring.md`: −29% lines / −30% words — tightened trigger list and rules
-  - `file-formats.md`: −14% lines / −17% words — trimmed prose around templates (code blocks preserved)
+  - `src/references/complexity-control.md`: −34% lines / −45% words — removed motivational preambles, tightened rule descriptions
+  - `src/references/code-hygiene.md`: −30% lines / −34% words — compressed procedure steps, removed redundant explanations
+  - `src/references/decision-anchoring.md`: −29% lines / −30% words — tightened trigger list and rules
+  - `src/references/file-formats.md`: −14% lines / −17% words — trimmed prose around templates (code blocks preserved)
   - All rules, thresholds, code templates, procedures, and cross-references preserved
 
 ## [1.2.0] - 2026-02-17
 
 ### Changed
-- **SKILL.md compressed**: 386 → 244 lines (−37%), 3,007 → 1,697 words (−44%)
+- **src/SKILL.md compressed**: 386 → 244 lines (−37%), 3,007 → 1,697 words (−44%)
   - ASCII state diagram replaced with mermaid `stateDiagram-v2`
   - Per-state prose sections replaced with terse bullet lists
   - Post-Step Gate compressed to 3-line numbered checklist
@@ -60,7 +60,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [1.0.0] - 2026-02-14
 
 ### Added
-- **Core Protocol (SKILL.md)**: Complete state-machine driven iterative planning and execution protocol
+- **Core Protocol (src/SKILL.md)**: Complete state-machine driven iterative planning and execution protocol
   - EXPLORE: Context gathering with parallel subagent support
   - PLAN: Structured approach design with complexity budgets
   - EXECUTE: Step-by-step implementation with change manifests
@@ -69,18 +69,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - CLOSE: Summary writing with decision-anchored comment auditing
 - **State Machine**: Full transition rules with mandatory re-read protocol
 - **Autonomy Leash**: 2-attempt limit per plan step, then STOP and present to user
-- **Complexity Control** (`references/complexity-control.md`):
+- **Complexity Control** (`src/references/complexity-control.md`):
   - Revert-First Policy (revert → delete → one-liner → REFLECT)
   - 10-Line Rule (>10 lines = not a fix)
   - 3-Strike Rule (same area breaks 3x = wrong approach)
   - Complexity Budget tracking (files, abstractions, lines)
   - Forbidden Fix Patterns (wrapper cascades, config toggles, exception swallowing, etc.)
   - Nuclear Option (full revert at iteration 5 if bloat > 2x scope)
-- **File Formats Reference** (`references/file-formats.md`):
+- **File Formats Reference** (`src/references/file-formats.md`):
   - Templates for state.md, plan.md, decisions.md, findings.md, progress.md
   - Checkpoint and summary file formats
   - Examples for each file type
-- **Bootstrap Script** (`scripts/bootstrap.mjs`):
+- **Bootstrap Script** (`src/scripts/bootstrap.mjs`):
   - Initializes `.claude/.plan_YYYY-MM-DD_XXXXXXXX/` directory structure under `.claude/`
   - Creates state.md, plan.md, decisions.md, findings.md, progress.md
   - Writes `.claude/.current_plan` pointer file for plan directory discovery

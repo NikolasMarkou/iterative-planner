@@ -20,7 +20,7 @@ The result: Claude handles multi-file refactors, complex migrations, and gnarly 
 Download `iterative-planner-combined.md` from [Releases](https://github.com/NikolasMarkou/iterative-planner/releases) and paste it into Claude's Custom Instructions.
 
 **Option 2 -- Full package**
-Download the zip from Releases. Upload `SKILL.md` and the `references/` folder to a Claude Project.
+Download the zip from Releases. Upload `src/SKILL.md` and the `src/references/` folder to a Claude Project.
 
 Then give Claude a complex task, or just say: **"plan this"**
 
@@ -210,20 +210,22 @@ make clean                   # Clean build artifacts
 
 ```
 iterative-planner/
-+-- SKILL.md              # Core protocol -- the complete skill specification
 +-- README.md              # This file
 +-- CLAUDE.md              # AI assistant guidance for contributing
 +-- CHANGELOG.md           # Version history
 +-- LICENSE                # GNU GPLv3
++-- VERSION                # Single source of truth for version number
 +-- Makefile               # Unix/Linux/macOS build
 +-- build.ps1              # Windows PowerShell build
-+-- scripts/
-|   +-- bootstrap.mjs      # Plan directory initializer (Node.js 18+)
-+-- references/
-    +-- complexity-control.md   # Anti-complexity protocol and forbidden patterns
-    +-- code-hygiene.md         # Change manifests, revert procedures, cleanup rules
-    +-- decision-anchoring.md   # When and how to anchor decisions in code
-    +-- file-formats.md         # Templates for every plan directory file
++-- src/
+    +-- SKILL.md              # Core protocol -- the complete skill specification
+    +-- scripts/
+    |   +-- bootstrap.mjs      # Plan directory initializer (Node.js 18+)
+    +-- references/
+        +-- complexity-control.md   # Anti-complexity protocol and forbidden patterns
+        +-- code-hygiene.md         # Change manifests, revert procedures, cleanup rules
+        +-- decision-anchoring.md   # When and how to anchor decisions in code
+        +-- file-formats.md         # Templates for every plan directory file
 ```
 
 ---

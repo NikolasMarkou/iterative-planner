@@ -12,7 +12,6 @@ Use cases: multi-file tasks, migrations, refactoring, failed tasks, debugging, a
 
 ```
 iterative-planner/
-├── SKILL.md                          # Core protocol (state machine, rules) - the main instruction set
 ├── README.md                         # User documentation
 ├── LICENSE                           # GNU GPLv3
 ├── VERSION                           # Single source of truth for version number
@@ -20,13 +19,15 @@ iterative-planner/
 ├── CLAUDE.md                         # This file
 ├── Makefile                          # Unix/Linux/macOS build script (reads VERSION)
 ├── build.ps1                         # Windows PowerShell build script (reads VERSION)
-├── scripts/
-│   └── bootstrap.mjs                 # Initializes .claude/.plan_YYYY-MM-DD_XXXXXXXX/ directory (Node.js 18+)
-└── references/                       # Knowledge base documents
-    ├── complexity-control.md         # Anti-complexity protocol (revert-first, 3-strike, nuclear option)
-    ├── code-hygiene.md               # Change manifest format, revert procedures, forbidden leftovers
-    ├── decision-anchoring.md         # When/how to anchor decisions in code, format, audit rules
-    └── file-formats.md               # Templates and examples for all plan directory files
+└── src/
+    ├── SKILL.md                      # Core protocol (state machine, rules) - the main instruction set
+    ├── scripts/
+    │   └── bootstrap.mjs             # Initializes .claude/.plan_YYYY-MM-DD_XXXXXXXX/ directory (Node.js 18+)
+    └── references/                   # Knowledge base documents
+        ├── complexity-control.md     # Anti-complexity protocol (revert-first, 3-strike, nuclear option)
+        ├── code-hygiene.md           # Change manifest format, revert procedures, forbidden leftovers
+        ├── decision-anchoring.md     # When/how to anchor decisions in code, format, audit rules
+        └── file-formats.md           # Templates and examples for all plan directory files
 ```
 
 ## Key Commands
@@ -52,27 +53,27 @@ Complex task, or: "plan this", "figure out", "help me think through", "I've been
 
 ## Protocol Reference
 
-Complete spec in **SKILL.md**. Key sections:
+Complete spec in **src/SKILL.md**. Key sections:
 
-- **State Machine & Transitions**: SKILL.md "State Machine" and "Transition Rules" sections
-- **Mandatory Re-reads**: SKILL.md "Mandatory Re-reads" section
-- **Autonomy Leash**: SKILL.md "Autonomy Leash" section
-- **Complexity Control**: SKILL.md "Complexity Control" section + `references/complexity-control.md`
-- **Code Hygiene**: SKILL.md "Code Hygiene" section + `references/code-hygiene.md`
-- **Decision Anchoring**: SKILL.md "Decision Anchoring" section + `references/decision-anchoring.md`
-- **Git Integration**: SKILL.md "Git Integration" section
+- **State Machine & Transitions**: src/SKILL.md "State Machine" and "Transition Rules" sections
+- **Mandatory Re-reads**: src/SKILL.md "Mandatory Re-reads" section
+- **Autonomy Leash**: src/SKILL.md "Autonomy Leash" section
+- **Complexity Control**: src/SKILL.md "Complexity Control" section + `src/references/complexity-control.md`
+- **Code Hygiene**: src/SKILL.md "Code Hygiene" section + `src/references/code-hygiene.md`
+- **Decision Anchoring**: src/SKILL.md "Decision Anchoring" section + `src/references/decision-anchoring.md`
+- **Git Integration**: src/SKILL.md "Git Integration" section
 
-Do not duplicate protocol content here. Read SKILL.md directly.
+Do not duplicate protocol content here. Read src/SKILL.md directly.
 
 ## Working with This Codebase
 
 ### File Modification Guidelines
 
-- **SKILL.md** — core protocol. Changes affect all planning behavior.
-- **references/** — supplementary knowledge, read on-demand. Add new files for expanded guidance.
-- **scripts/bootstrap.mjs** — requires Node.js 18+. Idempotent-safe (refuses if active plan exists).
+- **src/SKILL.md** — core protocol. Changes affect all planning behavior.
+- **src/references/** — supplementary knowledge, read on-demand. Add new files for expanded guidance.
+- **src/scripts/bootstrap.mjs** — requires Node.js 18+. Idempotent-safe (refuses if active plan exists).
 - **VERSION** — single source of truth. `Makefile` + `build.ps1` read from it. Bump only `VERSION` + `CHANGELOG.md`.
-- Keep state machine diagram, transition rules, file lifecycle matrix, and file format references in sync across SKILL.md and references/.
+- Keep state machine diagram, transition rules, file lifecycle matrix, and file format references in sync across src/SKILL.md and src/references/.
 
 ### Tech Stack
 
@@ -106,9 +107,9 @@ make clean                   # Clean artifacts
 ### Validation Checklist
 
 - [ ] `.\build.ps1 validate` passes (or `make validate`)
-- [ ] SKILL.md has `name:` and `description:` in YAML frontmatter
-- [ ] All cross-references in SKILL.md point to existing files in `references/`
+- [ ] src/SKILL.md has `name:` and `description:` in YAML frontmatter
+- [ ] All cross-references in src/SKILL.md point to existing files in `src/references/`
 - [ ] State machine diagram matches transition rules table
 - [ ] File Lifecycle Matrix matches state machine states and plan directory file list
-- [ ] `scripts/bootstrap.mjs` creates all files referenced in `references/file-formats.md`
-- [ ] Plan directory structure in SKILL.md matches bootstrap.mjs output
+- [ ] `src/scripts/bootstrap.mjs` creates all files referenced in `src/references/file-formats.md`
+- [ ] Plan directory structure in src/SKILL.md matches bootstrap.mjs output

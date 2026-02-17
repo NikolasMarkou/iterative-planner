@@ -41,13 +41,13 @@ function Invoke-Build {
     New-Item -ItemType Directory -Force -Path "$skillDir/scripts" | Out-Null
 
     # Copy main skill file
-    Copy-Item "SKILL.md" $skillDir
+    Copy-Item "src/SKILL.md" $skillDir
 
     # Copy reference files
-    Copy-Item "references/*.md" "$skillDir/references/"
+    Copy-Item "src/references/*.md" "$skillDir/references/"
 
     # Copy scripts
-    Copy-Item "scripts/*.sh" "$skillDir/scripts/"
+    Copy-Item "src/scripts/*.sh" "$skillDir/scripts/"
 
     # Copy documentation
     @("README.md", "LICENSE", "CHANGELOG.md") | ForEach-Object {
@@ -67,11 +67,11 @@ function Invoke-BuildCombined {
     $outputFile = Join-Path $BuildDir "$SkillName-combined.md"
 
     # Start with SKILL.md
-    $content = Get-Content "SKILL.md" -Raw
+    $content = Get-Content "src/SKILL.md" -Raw
     $content += "`n`n---`n`n# Bundled References`n"
 
     # Append each reference file
-    Get-ChildItem "references/*.md" | ForEach-Object {
+    Get-ChildItem "src/references/*.md" | ForEach-Object {
         $content += "`n---`n`n"
         $content += Get-Content $_.FullName -Raw
     }
@@ -134,10 +134,10 @@ function Invoke-Validate {
     $errors = @()
 
     # Check SKILL.md exists
-    if (-not (Test-Path "SKILL.md")) {
-        $errors += "ERROR: SKILL.md not found"
+    if (-not (Test-Path "src/SKILL.md")) {
+        $errors += "ERROR: src/SKILL.md not found"
     } else {
-        $content = Get-Content "SKILL.md" -Raw
+        $content = Get-Content "src/SKILL.md" -Raw
         if ($content -notmatch "(?m)^name:") {
             $errors += "ERROR: SKILL.md missing 'name' in frontmatter"
         }
@@ -147,11 +147,11 @@ function Invoke-Validate {
     }
 
     # Check directories
-    if (-not (Test-Path "references")) {
-        $errors += "ERROR: references/ directory not found"
+    if (-not (Test-Path "src/references")) {
+        $errors += "ERROR: src/references/ directory not found"
     }
-    if (-not (Test-Path "scripts")) {
-        $errors += "ERROR: scripts/ directory not found"
+    if (-not (Test-Path "src/scripts")) {
+        $errors += "ERROR: src/scripts/ directory not found"
     }
 
     if ($errors.Count -gt 0) {
@@ -164,7 +164,7 @@ function Invoke-Validate {
 
 function Invoke-Lint {
     Write-Host "Checking shell script syntax..." -ForegroundColor Yellow
-    bash -n scripts/bootstrap.sh
+    bash -n src/scripts/bootstrap.sh
     if ($LASTEXITCODE -eq 0) {
         Write-Host "Syntax check passed!" -ForegroundColor Green
     } else {

@@ -7,9 +7,9 @@ BUILD_DIR := build
 DIST_DIR := dist
 
 # Files to include in the skill package
-SKILL_FILE := SKILL.md
-REFERENCE_FILES := $(wildcard references/*.md)
-SCRIPT_FILES := $(wildcard scripts/*.sh)
+SKILL_FILE := src/SKILL.md
+REFERENCE_FILES := $(wildcard src/references/*.md)
+SCRIPT_FILES := $(wildcard src/scripts/*.sh)
 DOC_FILES := README.md LICENSE CHANGELOG.md
 
 # Default target
@@ -85,22 +85,22 @@ validate:
 	@test -f $(SKILL_FILE) || (echo "ERROR: $(SKILL_FILE) not found" && exit 1)
 	@grep -q "^name:" $(SKILL_FILE) || (echo "ERROR: SKILL.md missing 'name' in frontmatter" && exit 1)
 	@grep -q "^description:" $(SKILL_FILE) || (echo "ERROR: SKILL.md missing 'description' in frontmatter" && exit 1)
-	@test -d references || (echo "ERROR: references/ directory not found" && exit 1)
-	@test -d scripts || (echo "ERROR: scripts/ directory not found" && exit 1)
+	@test -d src/references || (echo "ERROR: src/references/ directory not found" && exit 1)
+	@test -d src/scripts || (echo "ERROR: src/scripts/ directory not found" && exit 1)
 	@echo "Validation passed!"
 
 # Check script syntax
 .PHONY: lint
 lint:
 	@echo "Checking shell script syntax..."
-	bash -n scripts/bootstrap.sh
+	bash -n src/scripts/bootstrap.sh
 	@echo "Syntax check passed!"
 
 # Run tests
 .PHONY: test
 test: lint
 	@echo "Running bootstrap.sh help check..."
-	bash scripts/bootstrap.sh --help 2>/dev/null || true
+	bash src/scripts/bootstrap.sh --help 2>/dev/null || true
 	@echo "Tests passed!"
 
 # Clean build artifacts
