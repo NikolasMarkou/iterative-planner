@@ -55,13 +55,6 @@ stateDiagram-v2
     REFLECT --> RE_PLAN : not solved
     RE_PLAN --> PLAN : revised approach
     CLOSE --> [*]
-
-    state EXPLORE {
-        direction LR
-        [*] --> Read_code
-        Read_code --> Search
-        Search --> Map_problem
-    }
 ```
 
 | State | What happens | Boundaries |
