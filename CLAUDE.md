@@ -1,19 +1,12 @@
 # CLAUDE.md
 
-This file provides guidance for Claude (AI) when working with the Iterative Planner codebase.
+Guidance for working with the Iterative Planner codebase.
 
 ## Project Purpose
 
-**Iterative Planner v1.1** is a Claude Code skill that implements a state-machine driven iterative planning and execution protocol for complex coding tasks. It replaces linear plan-then-execute with a cycle of Explore, Plan, Execute, Reflect, Re-plan.
+Claude Code skill — state-machine driven iterative planning and execution. Cycle: Explore → Plan → Execute → Reflect → Re-plan. Filesystem (`.claude/.plan_YYYY-MM-DD_XXXXXXXX/`) as persistent memory.
 
-The skill uses the filesystem (`.claude/.plan_YYYY-MM-DD_XXXXXXXX/` directory) as persistent working memory to survive context rot, track decisions, and enable rollback.
-
-Use cases include:
-- Complex multi-file coding tasks
-- Migration and refactoring projects
-- Tasks that have failed before
-- Debugging complex issues
-- Any task touching 3+ files or spanning 2+ systems
+Use cases: multi-file tasks, migrations, refactoring, failed tasks, debugging, anything 3+ files or 2+ systems.
 
 ## Repository Structure
 
@@ -51,19 +44,15 @@ node <skill-path>/scripts/bootstrap.mjs status               # One-line state su
 node <skill-path>/scripts/bootstrap.mjs close                # Close active plan (preserves directory)
 ```
 
-`new` creates `.claude/.plan_YYYY-MM-DD_XXXXXXXX/` with `state.md`, `plan.md`, `decisions.md`, `findings.md`, `progress.md`, `findings/`, and `checkpoints/`. It also writes `.claude/.current_plan` with the plan directory name for discovery.
+`new` creates plan directory with all files + writes `.claude/.current_plan` pointer. Idempotent-safe: refuses if active plan exists.
 
-The script is idempotent-safe: it refuses to run if `.claude/.current_plan` already points to an active plan.
+### Activation Triggers
 
-### Activating the Protocol
-
-Users activate the protocol by giving Claude a complex task, or saying things like:
-- "plan this", "figure out", "help me think through"
-- "I've been struggling with", "debug this complex issue"
+Complex task, or: "plan this", "figure out", "help me think through", "I've been struggling with", "debug this complex issue".
 
 ## Protocol Reference
 
-The complete protocol specification lives in **SKILL.md** — the file Claude Code loads as the skill. Key sections:
+Complete spec in **SKILL.md**. Key sections:
 
 - **State Machine & Transitions**: SKILL.md "State Machine" and "Transition Rules" sections
 - **Mandatory Re-reads**: SKILL.md "Mandatory Re-reads" section
@@ -73,17 +62,17 @@ The complete protocol specification lives in **SKILL.md** — the file Claude Co
 - **Decision Anchoring**: SKILL.md "Decision Anchoring" section + `references/decision-anchoring.md`
 - **Git Integration**: SKILL.md "Git Integration" section
 
-Do not duplicate protocol content here. If you need to understand the protocol, read SKILL.md directly.
+Do not duplicate protocol content here. Read SKILL.md directly.
 
 ## Working with This Codebase
 
 ### File Modification Guidelines
 
-- **SKILL.md** is the core protocol. Changes here affect all planning behavior. It is the complete skill specification that Claude Code loads.
-- **references/** files provide supplementary knowledge. They are read on-demand by the skill, not loaded upfront. Add new reference files for expanded guidance.
-- **scripts/bootstrap.mjs** requires Node.js 18+ (guaranteed by Claude Code). It is idempotent-safe (refuses if `.claude/.current_plan` already points to an active plan).
-- **VERSION** is the single source of truth for the version number. Both `Makefile` and `build.ps1` read from it. When bumping the version, edit only `VERSION` (and `CHANGELOG.md`).
-- When editing the protocol, keep the state machine diagram, transition rules table, file lifecycle matrix, and file format references in sync across SKILL.md and references/.
+- **SKILL.md** — core protocol. Changes affect all planning behavior.
+- **references/** — supplementary knowledge, read on-demand. Add new files for expanded guidance.
+- **scripts/bootstrap.mjs** — requires Node.js 18+. Idempotent-safe (refuses if active plan exists).
+- **VERSION** — single source of truth. `Makefile` + `build.ps1` read from it. Bump only `VERSION` + `CHANGELOG.md`.
+- Keep state machine diagram, transition rules, file lifecycle matrix, and file format references in sync across SKILL.md and references/.
 
 ### Tech Stack
 
@@ -107,9 +96,8 @@ make validate                # Validate structure
 make clean                   # Clean artifacts
 ```
 
-### Adding New Reference Material
+### Reference File Pattern
 
-Reference files should follow this pattern:
 1. Clear section headers
 2. Tables for quick reference
 3. Code snippets where applicable

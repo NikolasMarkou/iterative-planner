@@ -1,6 +1,6 @@
 # Code Hygiene Reference
 
-Failed code must not survive into the next iteration. Dirty state from failed EXECUTE = compounding bugs.
+Failed code must not survive. Dirty state from failed EXECUTE = compounding bugs.
 
 ## Change Manifest
 
@@ -14,13 +14,13 @@ Maintain in `state.md` during EXECUTE:
 ```
 
 Update after every file create/modify/delete. `[x]` = committed, `[ ]` = uncommitted.
-Reset manifest on iteration increment (PLAN → EXECUTE). Prior iteration's committed changes don't need tracking.
+Reset on iteration increment (PLAN → EXECUTE). Prior iteration's commits need no tracking.
 
 ## On Failed Step (→ REFLECT)
 
-Successful steps should already be committed. This applies only to the failed step.
+Successful steps already committed. Applies only to failed step.
 
-1. Revert all uncommitted changes immediately:
+1. Revert uncommitted immediately:
    ```
    git checkout -- <uncommitted files from manifest>
    git clean -fd  # remove untracked files from failed step
@@ -28,11 +28,11 @@ Successful steps should already be committed. This applies only to the failed st
 2. Update change manifest.
 3. Log reverted files in `decisions.md`.
 
-Codebase after failed step = exact state of last successful commit. No half-applied changes, debug code, or commented-out attempts.
+Codebase after failed step = last successful commit. No half-applied changes, no debug code, no commented-out attempts.
 
 ## On RE-PLAN
 
-Decide explicitly:
+Decide explicitly for each:
 
 1. **Keep successful commits?** If valid under new plan → keep. Log: "Keeping steps 1-2, reverting step 3."
 2. **Revert everything?** If fundamentally different approach:
@@ -40,7 +40,7 @@ Decide explicitly:
    git checkout <checkpoint-commit> -- .
    ```
    Log: "Reverted all changes from iteration N. Starting from checkpoint cp-NNN."
-3. **Never leave partial work.** Known-good before PLAN = tests pass, no uncommitted changes, no dead code.
+3. **No partial work.** Known-good before PLAN = tests pass, no uncommitted changes, no dead code.
 
 ## Nuclear Option (Full Revert)
 

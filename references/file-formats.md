@@ -102,7 +102,7 @@ approaches v1 (in-place migration) and v2 (dual-write) were abandoned.
 ## decisions.md
 
 Append-only. **Never edit or delete past entries.**
-Every entry must include a **Trade-off** line: "X **at the cost of** Y". Never log a decision without stating what it costs.
+Every entry must include a **Trade-off** line: "X **at the cost of** Y".
 
 ```markdown
 # Decision Log
@@ -142,7 +142,7 @@ Every entry must include a **Trade-off** line: "X **at the cost of** Y". Never l
 **Reasoning**: Tokens are stateless, eliminates Redis growth problem entirely
 ```
 
-Complexity Assessment block is mandatory for all RE-PLAN entries.
+Complexity Assessment mandatory for all RE-PLAN entries.
 
 ## findings.md
 
@@ -250,7 +250,7 @@ rm lib/session/token_service.rb
 - Before modifying 3+ files simultaneously
 - Before changing shared/core modules
 - Before destructive operations
-- When user says "I'm not sure about this"
+- User expresses uncertainty
 
 ## summary.md
 

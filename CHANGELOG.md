@@ -4,6 +4,17 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.2.3] - 2026-02-17
+
+### Changed
+- **Unified language style across all agent-facing files** to match SKILL.md's terse, imperative, operator-manual voice
+  - `references/complexity-control.md`: conversational phrasing → imperative fragments (5 edits)
+  - `references/code-hygiene.md`: explanatory sentences → compressed directives (7 edits)
+  - `references/decision-anchoring.md`: narrative intro → arrow-notation style (2 edits)
+  - `references/file-formats.md`: redundant prose → compressed phrasing (3 edits)
+  - `CLAUDE.md`: verbose prose sections → terse fragments (8 sections rewritten)
+  - Net result: −12 lines, zero semantic changes
+
 ## [1.2.2] - 2026-02-17
 
 ### Added

@@ -4,7 +4,7 @@ Default response to failure = simplify, not add.
 
 ## The Complexity Ratchet — Recognize It
 
-You're hitting it when:
+Signs:
 - Wrapping a function in another function to "handle" an issue
 - Adding try/catch to suppress a symptom
 - Creating adapter/bridge/shim between things you just wrote
@@ -29,12 +29,12 @@ Any limit hit → STOP → REFLECT. Ask: "Root cause or symptom?"
 
 ## Revert-First Policy
 
-When something breaks during EXECUTE:
+Something breaks during EXECUTE:
 
 1. STOP. No new code.
-2. Read + understand the error. Write it in decisions.md.
-3. Fix by REVERTING? → revert (verify clean: no leftover debug code/imports/TODOs).
-4. Fix by DELETING? → delete.
+2. Read the error. Log in `decisions.md`.
+3. REVERT? → revert. Verify clean: no debug code/imports/TODOs.
+4. DELETE? → delete.
 5. ONE-LINE fix? → do it.
 6. None → STOP → REFLECT.
 
@@ -44,7 +44,7 @@ When something breaks during EXECUTE:
 
 ## Simplification Checks (REFLECT)
 
-Re-read `{plan-dir}/decisions.md` first. Then answer in `decisions.md`:
+Re-read `decisions.md`. Answer in `decisions.md`:
 
 1. **Could I delete code instead?** Best fix = removing what broke.
 2. **Symptom or root cause?** Band-aids compound.
@@ -65,7 +65,7 @@ Same area needs fixes 3× across iterations:
 
 ## Forbidden Fix Patterns
 
-If you catch yourself doing one, revert.
+Catch yourself doing one → revert.
 
 | Pattern | Looks Like | Do Instead |
 |---------|-----------|------------|
@@ -95,4 +95,4 @@ Iteration 5 AND total lines added > 2× original scope:
 2. Recommend: revert ALL, start clean with `decisions.md` knowledge.
 3. If agreed → revert to initial checkpoint, RE-PLAN from scratch using only decision log.
 
-This is the protocol working as designed — not failure.
+Protocol working as designed — not failure.

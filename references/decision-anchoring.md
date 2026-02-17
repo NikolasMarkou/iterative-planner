@@ -1,6 +1,6 @@
 # Decision Anchoring Reference
 
-Code from multiple iterations carries invisible context. Without anchors, someone will "fix" a deliberate choice that took 3 failed attempts to reach.
+Code from failed iterations carries invisible context. Without anchors → someone "fixes" a deliberate choice back to known-broken.
 
 ## When to Anchor
 
@@ -44,6 +44,6 @@ end
 
 ## Audit at CLOSE
 
-Before `summary.md`: scan `decisions.md` for failed alternatives / 3-strike pivots. Verify corresponding code has anchor comments. Plan directory is ephemeral — code outlives it.
+Before `summary.md`: scan `decisions.md` for failed alternatives / 3-strike pivots. Verify corresponding code has anchor comments. Plan directory is ephemeral — anchors in code outlive it.
 
 In `summary.md`: list files with anchors and which `D-NNN` they reference.
