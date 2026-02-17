@@ -44,11 +44,19 @@ Update on every state transition.
 Living plan. **Rewritten** each iteration (old plans preserved via `decisions.md`).
 Only recommended approach. Rejected alternatives → `decisions.md`.
 
+**Problem Statement** is mandatory — expected behavior, invariants, edge cases. Can't write it clearly → go back to EXPLORE.
+**Failure Modes** table is mandatory when plan touches external dependencies or integration points. "None identified" if genuinely none (proves you checked).
+
 ```markdown
 # Plan v3: Token-Based Session Migration
 
 ## Goal
 Migrate session handling from cookie-based to token-based auth.
+
+## Problem Statement
+**Expected behavior**: Users authenticate once, receive a token, and subsequent requests are validated statelessly without hitting the session store.
+**Invariants**: (1) Active sessions must never be silently invalidated during migration. (2) Cookie-based clients must continue working until fully migrated. (3) Token validation must not depend on Redis availability.
+**Edge cases**: Expired cookies with valid Redis sessions. Concurrent requests during token issuance. Clock skew on token expiry.
 
 ## Context
 See findings.md for codebase analysis. See decisions.md for why
@@ -67,6 +75,12 @@ approaches v1 (in-place migration) and v2 (dual-write) were abandoned.
 4. [ ] Migration script for existing sessions
 5. [ ] Integration tests
 
+## Failure Modes
+| Dependency | Slow | Bad Data | Down | Blast Radius |
+|---|---|---|---|---|
+| Redis (legacy fallback) | Token path unaffected; cookie path degrades to timeouts | Corrupted session → force re-auth | Cookie clients lose sessions; token clients unaffected | Legacy users only |
+| JWT signing key | N/A | Invalid tokens → all token clients locked out | Same as bad data | All new-auth users |
+
 ## Risks
 - Step 3 might break SSO flow (see findings.md line 47)
 
@@ -81,11 +95,14 @@ approaches v1 (in-place migration) and v2 (dual-write) were abandoned.
 - Lines added vs removed: +45/-12 (target: net negative or neutral)
 ```
 
+**Problem Statement** is mandatory. Can't state invariants and edge cases → go back to EXPLORE.
+**Failure Modes** table is mandatory when external dependencies exist. No dependencies → write "None identified".
 **Files To Modify** is mandatory. Can't list them → go back to EXPLORE.
 
 ## decisions.md
 
 Append-only. **Never edit or delete past entries.**
+Every entry must include a **Trade-off** line: "X **at the cost of** Y". Never log a decision without stating what it costs.
 
 ```markdown
 # Decision Log
@@ -93,6 +110,7 @@ Append-only. **Never edit or delete past entries.**
 ## D-001 | EXPLORE → PLAN | 2025-01-15
 **Context**: Auth system uses 3 different session stores (Redis, DB, in-memory)
 **Decision**: Start with approach A (in-place migration of Redis sessions)
+**Trade-off**: Fastest path to 80% coverage **at the cost of** ignoring DB/in-memory stores and risking format coupling issues
 **Reasoning**: Redis sessions are 80% of traffic, smallest blast radius
 
 ## D-002 | REFLECT → RE-PLAN | 2025-01-15
@@ -106,6 +124,7 @@ Append-only. **Never edit or delete past entries.**
 - Could the fix have been simpler? Yes — should have checked format coupling first
 - Am I adding or removing complexity with the new plan? Removing (eliminates adapter)
 **Decision**: Switch to approach B (dual-write with gradual migration)
+**Trade-off**: Safe rollback and format decoupling **at the cost of** doubled storage for TTL duration
 **Reasoning**: Decouples new format from legacy, allows rollback
 
 ## D-003 | REFLECT → RE-PLAN | 2025-01-15
@@ -119,6 +138,7 @@ Append-only. **Never edit or delete past entries.**
 - Could the fix have been simpler? Yes — the problem is architectural, not code-level
 - Am I adding or removing complexity with the new plan? Removing (stateless tokens)
 **Decision**: Switch to approach C (token-based with cookie fallback)
+**Trade-off**: Stateless validation and zero storage growth **at the cost of** maintaining two auth paths during migration
 **Reasoning**: Tokens are stateless, eliminates Redis growth problem entirely
 ```
 

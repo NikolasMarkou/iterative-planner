@@ -126,8 +126,10 @@ R = read, W = write, — = do not touch (wrong state if you are).
 
 ### PLAN
 - Read `findings.md`, `findings/*`, `decisions.md` first.
-- Write `plan.md`: steps, risks, success criteria, complexity budget.
-- Write `decisions.md`: log chosen approach + why (mandatory even for first plan).
+- **Problem Statement first** — before designing steps, write in `plan.md`: (1) what behavior is expected, (2) invariants — what must always be true, (3) edge cases at boundaries. Can't state the problem clearly → go back to EXPLORE.
+- Write `plan.md`: problem statement, steps, failure modes, risks, success criteria, complexity budget.
+- **Failure Mode Analysis** — for each external dependency or integration point in the plan, answer: what if slow? returns garbage? is down? What's the blast radius? Write to plan.md `Failure Modes` section. No dependencies → write "None identified" (proves you checked).
+- Write `decisions.md`: log chosen approach + why (mandatory even for first plan). **Trade-off rule** — phrase every decision as **"X at the cost of Y"**. Never recommend without stating what it costs.
 - Write `state.md` + `progress.md`.
 - List **every file** to modify/create. Can't list them → go back to EXPLORE.
 - Only recommended approach in plan. Alternatives → `decisions.md`.

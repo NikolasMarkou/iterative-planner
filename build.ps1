@@ -8,7 +8,7 @@ param(
 )
 
 $SkillName = "iterative-planner"
-$Version = "1.2.1"
+$Version = "1.2.2"
 $BuildDir = "build"
 $DistDir = "dist"
 
