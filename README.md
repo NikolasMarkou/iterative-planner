@@ -1,7 +1,7 @@
 # Iterative Planner
 
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Skill](https://img.shields.io/badge/Skill-v1.5.0-green.svg)](CHANGELOG.md)
+[![Skill](https://img.shields.io/badge/Skill-v1.5.1-green.svg)](CHANGELOG.md)
 [![Sponsored by Electi](https://img.shields.io/badge/Sponsored%20by-Electi-red.svg)](https://www.electiconsulting.com)
 
 **Stop watching Claude go off the rails on complex tasks.**
@@ -174,7 +174,7 @@ The skill integrates cleanly with git:
 | RE-PLAN | Decide: keep successful commits or revert to checkpoint. |
 | CLOSE | Final commit with summary. |
 
-Add `.claude/.plan_*` and `.claude/.current_plan` to `.gitignore` -- unless your team wants decision logs for post-mortems.
+Bootstrap automatically adds `.claude/.plan_*` and `.claude/.current_plan` to `.gitignore` -- preventing plan files from being committed during EXECUTE step commits. Remove these patterns if your team wants decision logs for post-mortems.
 
 ---
 

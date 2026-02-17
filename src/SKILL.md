@@ -19,6 +19,8 @@ Write to disk immediately. The context window will rot. The files won't.
 ```mermaid
 stateDiagram-v2
     EXPLORE --> PLAN : enough context
+    PLAN --> EXPLORE : need more context
+    PLAN --> PLAN : user rejects / revise
     PLAN --> EXECUTE : user approves
     EXECUTE --> REFLECT : step done/failed/surprise
     REFLECT --> CLOSE : all criteria met
@@ -41,6 +43,8 @@ stateDiagram-v2
 | From → To | Trigger |
 |-----------|---------|
 | EXPLORE → PLAN | Sufficient context. Findings written. |
+| PLAN → EXPLORE | Can't state problem, can't list files, or insufficient findings. |
+| PLAN → PLAN | User rejects plan. Revise and re-present. |
 | PLAN → EXECUTE | User explicitly approves. |
 | EXECUTE → REFLECT | Step completes, fails, surprises, or leash hit. |
 | REFLECT → CLOSE | All success criteria met. |
@@ -78,6 +82,7 @@ node <skill-path>/scripts/bootstrap.mjs close                # Close plan (prese
 ```
 
 `new` refuses if active plan exists — use `resume`, `close`, or `--force`.
+`new` ensures `.gitignore` includes `.claude/.plan_*` and `.claude/.current_plan` — prevents plan files from being committed during EXECUTE step commits.
 After bootstrap → begin EXPLORE. User-provided context → write to `findings.md` first.
 
 ## Filesystem Structure
@@ -107,9 +112,9 @@ R = read, W = write, — = do not touch (wrong state if you are).
 | state.md | W | W | R+W | W | W | W |
 | plan.md | — | W | R+W | R | R | R |
 | decisions.md | — | R+W | R | R+W | R+W | R |
-| findings.md | W | R | — | R | R+W | — |
-| findings/* | W | R | — | R | R+W | — |
-| progress.md | — | W | R+W | R+W | W | — |
+| findings.md | W | R | — | R | R+W | R |
+| findings/* | W | R | — | R | R+W | R |
+| progress.md | — | W | R+W | R+W | W | R |
 | checkpoints/* | — | — | W | R | R | — |
 | summary.md | — | — | — | — | — | W |
 
@@ -232,7 +237,7 @@ If iteration > 5 → STOP: going in circles? harder than scoped? break into smal
 - EXPLORE/PLAN/REFLECT/RE-PLAN: no commits.
 - EXECUTE: commit per successful step `[iter-N/step-M] desc`. Failed step → revert uncommitted.
 - RE-PLAN: keep successful commits if valid under new plan, or `git checkout <checkpoint-commit> -- .` to revert. No partial state. Log choice in `decisions.md`.
-- CLOSE: final commit + tag. Add `.claude/.plan_*` and `.current_plan` to `.gitignore`.
+- CLOSE: final commit + tag.
 
 ## User Interaction
 

@@ -25,6 +25,21 @@ const pointerFile = join(claudeDir, ".current_plan");
 // Helpers
 // ---------------------------------------------------------------------------
 
+function ensureGitignore() {
+  const gitignorePath = join(cwd, ".gitignore");
+  const patterns = [".claude/.plan_*", ".claude/.current_plan"];
+  let content = "";
+  try {
+    content = readFileSync(gitignorePath, "utf-8");
+  } catch {
+    // No .gitignore yet — will create
+  }
+  const missing = patterns.filter((p) => !content.split("\n").some((line) => line.trim() === p));
+  if (missing.length === 0) return;
+  const suffix = (content && !content.endsWith("\n") ? "\n" : "") + missing.join("\n") + "\n";
+  writeFileSync(gitignorePath, content + suffix);
+}
+
 function readPointer() {
   try {
     const name = readFileSync(pointerFile, "utf-8").trim();
@@ -161,6 +176,7 @@ ${goal}
   );
 
   writeFileSync(pointerFile, planDirName);
+  ensureGitignore();
 
   console.log(`Initialized .claude/${planDirName}/`);
   console.log(`  Pointer: .claude/.current_plan → ${planDirName}`);
