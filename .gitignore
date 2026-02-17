@@ -2,6 +2,12 @@
 build/
 dist/
 
+# Claude Code
+.claude/
+
+# Windows artifact
+nul
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
