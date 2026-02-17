@@ -1,7 +1,7 @@
 # Iterative Planner
 
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Protocol](https://img.shields.io/badge/Protocol-v1.1-green.svg)](CHANGELOG.md)
+[![Skill](https://img.shields.io/badge/Skill-v1.2.3-green.svg)](CHANGELOG.md)
 [![Sponsored by Electi](https://img.shields.io/badge/Sponsored%20by-Electi-red.svg)](https://www.electiconsulting.com)
 
 **Stop watching Claude go off the rails on complex tasks.**
@@ -42,7 +42,7 @@ Iterative Planner prevents all of this through a formal state machine, mandatory
 
 ## How It Works
 
-The protocol is a six-state machine. Every transition is logged. Every decision is recorded. The filesystem is the source of truth -- not the context window.
+The skill is a six-state machine. Every transition is logged. Every decision is recorded. The filesystem is the source of truth -- not the context window.
 
 ```
               +----------+
@@ -174,7 +174,7 @@ node <skill-path>/scripts/bootstrap.mjs close                # Close active plan
 
 ### Git Integration
 
-The protocol integrates cleanly with git:
+The skill integrates cleanly with git:
 
 | Phase | Git behavior |
 |-------|-------------|
