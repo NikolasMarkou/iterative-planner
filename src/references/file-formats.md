@@ -146,9 +146,9 @@ Complexity Assessment mandatory for all RE-PLAN entries.
 
 ## findings.md
 
-Updated during EXPLORE. Always include **file paths with line numbers** and **code path traces**.
+Updated during EXPLORE. Corrected during RE-PLAN when earlier findings prove wrong. Always include **file paths with line numbers** and **code path traces**.
 
-`findings.md` = summary + index. Detailed findings → `findings/` as individual files.
+`findings.md` = summary + index. Detailed findings → `findings/` as individual files. **Main agent** owns the index — subagents write to `findings/` only.
 
 ### findings.md (summary/index)
 
@@ -164,6 +164,9 @@ Updated during EXPLORE. Always include **file paths with line numbers** and **co
 - SessionSerializer shared between cookie middleware AND API auth (see auth-system.md)
 - rack-session gem pins cookie-compatible format (see dependencies.md)
 - No integration tests for session migration (see test-coverage.md)
+
+## Corrections
+- [CORRECTED iter-2] Redis session format is coupled to serialization pipeline, not just storage (see auth-system.md) — original finding assumed isolated storage format
 ```
 
 ### findings/ directory

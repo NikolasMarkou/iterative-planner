@@ -107,8 +107,8 @@ R = read, W = write, — = do not touch (wrong state if you are).
 | state.md | W | W | R+W | W | W | W |
 | plan.md | — | W | R+W | R | R | R |
 | decisions.md | — | R+W | R | R+W | R+W | R |
-| findings.md | W | R | — | — | R | — |
-| findings/* | W | R | — | — | R | — |
+| findings.md | W | R | — | R | R+W | — |
+| findings/* | W | R | — | R | R+W | — |
 | progress.md | — | W | R+W | R+W | W | — |
 | checkpoints/* | — | — | W | — | R | — |
 | summary.md | — | — | — | — | — | W |
@@ -120,12 +120,12 @@ R = read, W = write, — = do not touch (wrong state if you are).
 - Flush to `findings.md` + `findings/` after every 2 reads.
 - Include file paths + code path traces (e.g. `auth.rb:23` → `SessionStore#find` → `redis_store.rb:get`).
 - DO NOT skip EXPLORE even if you think you know the answer.
-- Use **Task subagents** to parallelize research. All subagent output → `{plan-dir}/findings/` files. Never rely on context-only results.
+- Use **Task subagents** to parallelize research. All subagent output → `{plan-dir}/findings/` files. Never rely on context-only results. **Main agent** updates `findings.md` index after subagents write — subagents don't touch the index.
 - Use "think hard" / "ultrathink" for complex analysis.
-- REFLECT → EXPLORE loops: append to existing findings, don't overwrite.
+- REFLECT → EXPLORE loops: append to existing findings, don't overwrite. Mark corrections with `[CORRECTED iter-N]`.
 
 ### PLAN
-- Read `findings.md`, `findings/*`, `decisions.md` first.
+- **Gate check**: read `findings.md`, `findings/*`, `decisions.md` before writing anything. If not read → read now. No exceptions.
 - **Problem Statement first** — before designing steps, write in `plan.md`: (1) what behavior is expected, (2) invariants — what must always be true, (3) edge cases at boundaries. Can't state the problem clearly → go back to EXPLORE.
 - Write `plan.md`: problem statement, steps, failure modes, risks, success criteria, complexity budget.
 - **Failure Mode Analysis** — for each external dependency or integration point in the plan, answer: what if slow? returns garbage? is down? What's the blast radius? Write to plan.md `Failure Modes` section. No dependencies → write "None identified" (proves you checked).
@@ -142,6 +142,7 @@ R = read, W = write, — = do not touch (wrong state if you are).
 - Checkpoint before risky changes (3+ files, shared modules, destructive ops).
 - Commit after each successful step: `[iter-N/step-M] description`.
 - If something breaks → STOP. 2 fix attempts max (Autonomy Leash). Each must follow Revert-First.
+- **Surprise discovery** (behavior contradicts findings, unknown dependency, wrong assumption) → note in `state.md`, finish or revert current step, transition to REFLECT. Do NOT silently update findings during EXECUTE.
 - Add `# DECISION D-NNN` comments where needed (`references/decision-anchoring.md`).
 
 #### Post-Step Gate (MANDATORY — all 3 before moving on)
@@ -151,6 +152,7 @@ R = read, W = write, — = do not touch (wrong state if you are).
 
 ### REFLECT
 - Read `plan.md` (criteria) + `progress.md` before evaluating.
+- Read `findings.md` + relevant `findings/*` — check if discoveries during EXECUTE contradict earlier findings. Note contradictions in `decisions.md`.
 - Cross-validate: every `[x]` in plan.md must be "Completed" in progress.md. Fix drift first.
 - Read `decisions.md` — check 3-strike patterns.
 - Compare against **written criteria**, not memory. Run 5 Simplification Checks (`references/complexity-control.md`).
@@ -160,10 +162,11 @@ R = read, W = write, — = do not touch (wrong state if you are).
 |-----------|--------------|
 | All criteria met + tests pass | → CLOSE |
 | Failure understood, new approach clear | → RE-PLAN |
-| Unknowns need investigation | → EXPLORE |
+| Unknowns need investigation, or findings contradicted | → EXPLORE (update findings first) |
 
 ### RE-PLAN
 - Read `decisions.md`, `findings.md`, relevant `findings/*`.
+- If earlier findings proved wrong or incomplete → update `findings.md` + `findings/*` with corrections. Mark corrections: `[CORRECTED iter-N]` + what changed and why. Append, don't delete original text.
 - Write `decisions.md`: log pivot + mandatory Complexity Assessment.
 - Write `state.md` + `progress.md` (mark failed items, note pivot).
 - Present options to user → get approval → transition to PLAN.
