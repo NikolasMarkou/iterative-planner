@@ -14,7 +14,7 @@
 // Writes .claude/.current_plan with the directory name for discovery.
 // Requires Node.js 18+ (guaranteed by Claude Code).
 
-import { mkdirSync, writeFileSync, readFileSync, readdirSync, renameSync, unlinkSync, existsSync } from "fs";
+import { mkdirSync, writeFileSync, readFileSync, readdirSync, renameSync, unlinkSync, existsSync, rmSync } from "fs";
 import { join } from "path";
 import { randomBytes } from "crypto";
 
@@ -38,7 +38,9 @@ function ensureGitignore() {
   const missing = patterns.filter((p) => !content.split("\n").some((line) => line.trim() === p));
   if (missing.length === 0) return;
   const suffix = (content && !content.endsWith("\n") ? "\n" : "") + missing.join("\n") + "\n";
-  writeFileSync(gitignorePath, content + suffix);
+  const updated = content + suffix;
+  writeFileSync(gitignorePath + ".tmp", updated);
+  renameSync(gitignorePath + ".tmp", gitignorePath);
 }
 
 function readPointer() {
@@ -85,18 +87,20 @@ function cmdNew(goal, force) {
     cmdClose({ silent: true });
   }
 
-  const timestamp = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
-  const dateStr = new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const timestamp = now.toISOString().replace(/\.\d{3}Z$/, "Z");
+  const dateStr = now.toISOString().slice(0, 10);
   const hexStr = randomBytes(4).toString("hex");
   const planDirName = `.plan_${dateStr}_${hexStr}`;
   const planDir = join(claudeDir, planDirName);
 
-  mkdirSync(join(planDir, "checkpoints"), { recursive: true });
-  mkdirSync(join(planDir, "findings"), { recursive: true });
+  try {
+    mkdirSync(join(planDir, "checkpoints"), { recursive: true });
+    mkdirSync(join(planDir, "findings"), { recursive: true });
 
-  writeFileSync(
-    join(planDir, "state.md"),
-    `# Current State: EXPLORE
+    writeFileSync(
+      join(planDir, "state.md"),
+      `# Current State: EXPLORE
 ## Iteration: 0
 ## Current Plan Step: N/A
 ## Pre-Step Checklist (reset before each EXECUTE step)
@@ -113,14 +117,17 @@ function cmdNew(goal, force) {
 ## Transition History:
 - INIT → EXPLORE (task started)
 `
-  );
+    );
 
-  writeFileSync(
-    join(planDir, "plan.md"),
-    `# Plan v0
+    writeFileSync(
+      join(planDir, "plan.md"),
+      `# Plan v0
 
 ## Goal
 ${goal}
+
+## Problem Statement
+*To be defined during PLAN. (1) Expected behavior, (2) invariants, (3) edge cases.*
 
 ## Context
 *Pending EXPLORE phase. Findings will inform the approach.*
@@ -130,6 +137,9 @@ ${goal}
 
 ## Steps
 *To be determined after EXPLORE.*
+
+## Failure Modes
+*To be determined during PLAN. For each dependency/integration: what if slow, garbage, down?*
 
 ## Risks
 *To be determined after EXPLORE.*
@@ -142,18 +152,18 @@ ${goal}
 - New abstractions (classes/modules/interfaces): 0/2 max
 - Lines added vs removed: +0/-0 (target: net negative or neutral)
 `
-  );
+    );
 
-  writeFileSync(
-    join(planDir, "decisions.md"),
-    `# Decision Log
+    writeFileSync(
+      join(planDir, "decisions.md"),
+      `# Decision Log
 *Append-only. Never edit past entries.*
 `
-  );
+    );
 
-  writeFileSync(
-    join(planDir, "findings.md"),
-    `# Findings
+    writeFileSync(
+      join(planDir, "findings.md"),
+      `# Findings
 *Summary and index of all findings. Detailed files go in findings/ directory.*
 
 ## Index
@@ -162,11 +172,11 @@ ${goal}
 ## Key Constraints
 *To be populated during EXPLORE.*
 `
-  );
+    );
 
-  writeFileSync(
-    join(planDir, "progress.md"),
-    `# Progress
+    writeFileSync(
+      join(planDir, "progress.md"),
+      `# Progress
 
 ## Completed
 *Nothing yet.*
@@ -180,11 +190,24 @@ ${goal}
 ## Blocked
 *Nothing currently.*
 `
-  );
+    );
 
-  writeFileSync(pointerFile + ".tmp", planDirName);
-  renameSync(pointerFile + ".tmp", pointerFile);
-  ensureGitignore();
+    writeFileSync(pointerFile + ".tmp", planDirName);
+    renameSync(pointerFile + ".tmp", pointerFile);
+  } catch (err) {
+    try { rmSync(planDir, { recursive: true, force: true }); } catch {}
+    try { if (existsSync(pointerFile + ".tmp")) unlinkSync(pointerFile + ".tmp"); } catch {}
+    try { if (existsSync(pointerFile)) unlinkSync(pointerFile); } catch {}
+    console.error(`ERROR: Failed to create plan directory: ${err.message}`);
+    process.exit(1);
+  }
+
+  try {
+    ensureGitignore();
+  } catch (err) {
+    console.error(`WARNING: Plan created but .gitignore update failed: ${err.message}`);
+    console.error(`  Manually add .claude/.plan_* and .claude/.current_plan to .gitignore.`);
+  }
 
   console.log(`Initialized .claude/${planDirName}/`);
   console.log(`  Pointer: .claude/.current_plan → ${planDirName}`);
@@ -209,7 +232,7 @@ function cmdResume() {
   const iteration = extractField(state, /^## Iteration:\s*(.+)$/m) || "?";
   const step = extractField(state, /^## Current Plan Step:\s*(.+)$/m) || "N/A";
   const lastTransition = extractField(state, /^## Last Transition:\s*(.+)$/m) || "?";
-  const goal = extractField(plan, /^## Goal\s*\n([\s\S]+?)(?=\n## |\s*$)/m) || "No goal found";
+  const goal = extractField(plan, /^## Goal\s*\n([\s\S]+?)(?=\n## |$)/m) || "No goal found";
 
   console.log(`Resuming .claude/${planDirName}/`);
   console.log(`  State:      ${currentState}`);
@@ -234,6 +257,23 @@ function cmdResume() {
     }
   }
 
+  // Print checkpoint listing
+  const checkpointDir = join(claudeDir, planDirName, "checkpoints");
+  let checkpointFiles = [];
+  try {
+    checkpointFiles = readdirSync(checkpointDir).filter((f) => f.endsWith(".md")).sort();
+  } catch {}
+  if (checkpointFiles.length > 0) {
+    console.log();
+    console.log(`  Checkpoints (${checkpointFiles.length}):`);
+    for (const cp of checkpointFiles) {
+      console.log(`    ${cp} → .claude/${planDirName}/checkpoints/${cp}`);
+    }
+  } else {
+    console.log();
+    console.log(`  Checkpoints: none`);
+  }
+
   console.log();
   console.log(`  Recovery files:`);
   console.log(`    state.md     → .claude/${planDirName}/state.md`);
@@ -256,7 +296,7 @@ function cmdStatus() {
   const currentState = extractField(state, /^# Current State:\s*(.+)$/m) || "UNKNOWN";
   const iteration = extractField(state, /^## Iteration:\s*(.+)$/m) || "?";
   const step = extractField(state, /^## Current Plan Step:\s*(.+)$/m) || "N/A";
-  const goal = extractField(plan, /^## Goal\s*\n([\s\S]+?)(?=\n## |\s*$)/m) || "?";
+  const goal = extractField(plan, /^## Goal\s*\n([\s\S]+?)(?=\n## |$)/m) || "?";
 
   console.log(`[${currentState}] iter=${iteration} step=${step} | ${goal} | .claude/${planDirName}`);
 }
@@ -271,7 +311,7 @@ function cmdClose(opts = {}) {
     return;
   }
 
-  unlinkSync(pointerFile);
+  try { unlinkSync(pointerFile); } catch {}
 
   if (!opts.silent) {
     console.log(`Closed plan: .claude/${planDirName}`);
@@ -306,7 +346,7 @@ function cmdList() {
     const state = readPlanFile(name, "state.md");
     const plan = readPlanFile(name, "plan.md");
     const currentState = extractField(state, /^# Current State:\s*(.+)$/m) || "?";
-    const goal = extractField(plan, /^## Goal\s*\n([\s\S]+?)(?=\n## |\s*$)/m) || "?";
+    const goal = extractField(plan, /^## Goal\s*\n([\s\S]+?)(?=\n## |$)/m) || "?";
     const goalOneLine = goal.split("\n")[0].slice(0, 60);
     console.log(`  ${name}  [${currentState}] ${goalOneLine}${marker}`);
   }
@@ -342,12 +382,16 @@ if (args.length === 0) {
 const cmd = args[0];
 
 if (!subcommands.has(cmd)) {
-  // Backward compat: treat first arg as goal for `new`
-  cmdNew(args[0], false);
+  if (cmd.startsWith("-")) {
+    console.error(`ERROR: Unknown flag "${cmd}". Use "help" for usage.`);
+    process.exit(1);
+  }
+  // Backward compat: treat args as goal for `new`
+  cmdNew(args.join(" ") || "No goal specified", false);
 } else if (cmd === "new") {
   const force = args.includes("--force");
   const goalArgs = args.slice(1).filter((a) => a !== "--force");
-  const goal = goalArgs[0] || "No goal specified";
+  const goal = goalArgs.join(" ") || "No goal specified";
   cmdNew(goal, force);
 } else if (cmd === "resume") {
   cmdResume();

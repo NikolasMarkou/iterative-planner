@@ -1,7 +1,7 @@
 # Iterative Planner
 
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Skill](https://img.shields.io/badge/Skill-v1.7.0-green.svg)](CHANGELOG.md)
+[![Skill](https://img.shields.io/badge/Skill-v1.8.0-green.svg)](CHANGELOG.md)
 [![Sponsored by Electi](https://img.shields.io/badge/Sponsored%20by-Electi-red.svg)](https://www.electiconsulting.com)
 
 **Stop watching Claude go off the rails on complex tasks.**
@@ -32,6 +32,7 @@ Iterative Planner prevents all of this through a formal state machine, mandatory
 
 **Option 1 -- Single file (fastest)**
 Download `iterative-planner-combined.md` from [Releases](https://github.com/NikolasMarkou/iterative-planner/releases) and paste it into Claude's Custom Instructions.
+> Note: The single-file version does not include `bootstrap.mjs`. Plan directories must be created manually. For full bootstrap support, use the zip package.
 
 **Option 2 -- Full package**
 Download the zip from Releases. Upload `src/SKILL.md` and the `src/references/` folder to a Claude Project.
@@ -48,6 +49,8 @@ The skill is a six-state machine. Every transition is logged. Every decision is 
 stateDiagram-v2
     [*] --> EXPLORE
     EXPLORE --> PLAN : enough context
+    PLAN --> EXPLORE : need more context
+    PLAN --> PLAN : user rejects / revise
     PLAN --> EXECUTE : approved
     EXECUTE --> REFLECT : observe result
     REFLECT --> EXPLORE : need more context

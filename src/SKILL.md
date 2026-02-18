@@ -18,6 +18,7 @@ Write to disk immediately. The context window will rot. The files won't.
 
 ```mermaid
 stateDiagram-v2
+    [*] --> EXPLORE
     EXPLORE --> PLAN : enough context
     PLAN --> EXPLORE : need more context
     PLAN --> PLAN : user rejects / revise
@@ -27,6 +28,7 @@ stateDiagram-v2
     REFLECT --> RE_PLAN : failed / better approach
     REFLECT --> EXPLORE : need more context
     RE_PLAN --> PLAN : new approach ready
+    CLOSE --> [*]
 ```
 
 | State | Purpose | Allowed Actions |
@@ -224,7 +226,8 @@ See `references/decision-anchoring.md`.
 ## Iteration Limits
 
 Increment on PLAN → EXECUTE. Iteration 0 = EXPLORE-only (pre-plan). First real = iteration 1.
-If iteration > 5 → STOP: going in circles? harder than scoped? break into smaller tasks?
+- **Iteration 5**: if total lines added > 2× original scope → Nuclear Option (`references/complexity-control.md`). Otherwise proceed with caution.
+- **Iteration 6+**: hard STOP. Going in circles? Harder than scoped? Break into smaller tasks.
 
 ## Recovery from Context Loss
 

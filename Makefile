@@ -49,6 +49,12 @@ build-combined:
 		echo "" >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md; \
 		cat $$ref >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md; \
 	done
+	@echo "" >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@echo "---" >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@echo "" >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@echo "> **Note**: This combined file does not include \`bootstrap.mjs\`. Bootstrap commands" >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@echo "> referenced in the protocol require the full package. Plan directories must be" >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@echo "> created manually or by using the zip/tarball distribution." >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	@echo "Combined skill created: $(BUILD_DIR)/$(SKILL_NAME)-combined.md"
 
 # Package as zip for distribution
@@ -85,7 +91,7 @@ validate:
 	@test -d src/scripts || (echo "ERROR: src/scripts/ directory not found" && exit 1)
 	@# Verify all references/ cross-references in SKILL.md resolve to actual files
 	@echo "Checking cross-references..."
-	@for ref in $$(grep -oP 'references/[a-z0-9_-]+\.md' $(SKILL_FILE) | sort -u); do \
+	@for ref in $$(grep -oE 'references/[a-z0-9_-]+\.md' $(SKILL_FILE) | sort -u); do \
 		test -f "src/$$ref" || (echo "ERROR: $(SKILL_FILE) references src/$$ref but file not found" && exit 1); \
 	done
 	@# Verify bootstrap.mjs creates expected plan directory files
@@ -96,11 +102,17 @@ validate:
 		grep -q "$$f" src/scripts/bootstrap.mjs || \
 		(echo "ERROR: bootstrap.mjs does not create $$f" && exit 1); \
 	done
+	@# Verify bootstrap.mjs creates expected subdirectories
+	@echo "Checking bootstrap directory creation..."
+	@for d in checkpoints findings; do \
+		grep -q "$$d" src/scripts/bootstrap.mjs || \
+		(echo "ERROR: bootstrap.mjs does not create $$d/ directory" && exit 1); \
+	done
 	@# Verify transition table entries appear in Mermaid diagram
 	@echo "Checking state machine consistency..."
-	@for pair in "EXPLORE.*PLAN" "PLAN.*EXPLORE" "PLAN.*EXECUTE" "EXECUTE.*REFLECT" \
-		"REFLECT.*CLOSE" "REFLECT.*RE.PLAN" "REFLECT.*EXPLORE" "RE.PLAN.*PLAN"; do \
-		grep -qP "$$pair" $(SKILL_FILE) || \
+	@for pair in "EXPLORE.*PLAN" "PLAN.*EXPLORE" "PLAN.*PLAN" "PLAN.*EXECUTE" "EXECUTE.*REFLECT" \
+		"REFLECT.*CLOSE" "REFLECT.*RE[-_]PLAN" "REFLECT.*EXPLORE" "RE[-_]PLAN.*PLAN"; do \
+		grep -qE "$$pair" $(SKILL_FILE) || \
 		(echo "ERROR: Transition $$pair missing from SKILL.md" && exit 1); \
 	done
 	@echo "Validation passed!"
@@ -115,8 +127,17 @@ lint:
 # Run tests
 .PHONY: test
 test: lint
-	@echo "Running bootstrap.mjs help check..."
-	node src/scripts/bootstrap.mjs --help 2>/dev/null || true
+	@echo "Running bootstrap.mjs tests..."
+	@# Verify help exits cleanly
+	node src/scripts/bootstrap.mjs help > /dev/null
+	@# Round-trip: new → status → close (uses temp directory to avoid clobbering active plans)
+	@TMPDIR=$$(mktemp -d) && \
+		cd "$$TMPDIR" && \
+		node "$(CURDIR)/src/scripts/bootstrap.mjs" new "test goal" > /dev/null && \
+		node "$(CURDIR)/src/scripts/bootstrap.mjs" status | grep -q "test goal" && \
+		node "$(CURDIR)/src/scripts/bootstrap.mjs" close > /dev/null && \
+		rm -rf "$$TMPDIR" && \
+		echo "  Round-trip (new → status → close) passed."
 	@echo "Tests passed!"
 
 # Clean build artifacts

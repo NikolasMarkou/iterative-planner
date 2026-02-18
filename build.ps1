@@ -22,8 +22,10 @@ function Show-Help {
     Write-Host "  build-combined   - Build single-file skill with inlined references"
     Write-Host "  package          - Create zip package"
     Write-Host "  package-combined - Create single-file skill in dist/"
+    Write-Host "  package-tar      - Create tarball package"
     Write-Host "  validate         - Validate skill structure"
-    Write-Host "  lint             - Check shell script syntax"
+    Write-Host "  lint             - Check script syntax"
+    Write-Host "  test             - Run tests"
     Write-Host "  clean            - Remove build artifacts"
     Write-Host "  list             - Show package contents"
     Write-Host "  help             - Show this help"
@@ -75,6 +77,11 @@ function Invoke-BuildCombined {
         $content += "`n---`n`n"
         $content += Get-Content $_.FullName -Raw
     }
+
+    $content += "`n---`n`n"
+    $content += "> **Note**: This combined file does not include ``bootstrap.mjs``. Bootstrap commands`n"
+    $content += "> referenced in the protocol require the full package. Plan directories must be`n"
+    $content += "> created manually or by using the zip/tarball distribution.`n"
 
     Set-Content -Path $outputFile -Value $content
 
@@ -157,9 +164,9 @@ function Invoke-Validate {
         # Verify transition table entries appear in Mermaid diagram
         Write-Host "Checking state machine consistency..."
         $transitions = @(
-            @("EXPLORE", "PLAN"), @("PLAN", "EXPLORE"), @("PLAN", "EXECUTE"),
-            @("EXECUTE", "REFLECT"), @("REFLECT", "CLOSE"), @("REFLECT", "RE.PLAN"),
-            @("REFLECT", "EXPLORE"), @("RE.PLAN", "PLAN")
+            @("EXPLORE", "PLAN"), @("PLAN", "EXPLORE"), @("PLAN", "PLAN"),
+            @("PLAN", "EXECUTE"), @("EXECUTE", "REFLECT"), @("REFLECT", "CLOSE"),
+            @("REFLECT", "RE[-_]PLAN"), @("REFLECT", "EXPLORE"), @("RE[-_]PLAN", "PLAN")
         )
         foreach ($pair in $transitions) {
             $pattern = "$($pair[0]).*$($pair[1])"
@@ -186,6 +193,13 @@ function Invoke-Validate {
                 $errors += "ERROR: bootstrap.mjs does not create $f"
             }
         }
+        # Verify bootstrap.mjs creates expected subdirectories
+        Write-Host "Checking bootstrap directory creation..."
+        foreach ($d in @("checkpoints", "findings")) {
+            if ($bsContent -notmatch [regex]::Escape($d)) {
+                $errors += "ERROR: bootstrap.mjs does not create $d/ directory"
+            }
+        }
     }
 
     if ($errors.Count -gt 0) {
@@ -207,6 +221,64 @@ function Invoke-Lint {
     }
 }
 
+function Invoke-PackageTar {
+    Invoke-Build
+
+    Write-Host "Packaging skill as tarball..." -ForegroundColor Yellow
+
+    New-Item -ItemType Directory -Force -Path $DistDir | Out-Null
+
+    $tarFile = Join-Path (Resolve-Path $DistDir) "$SkillName-v$Version.tar.gz"
+    $sourcePath = Join-Path $BuildDir $SkillName
+
+    tar -czvf $tarFile -C $BuildDir $SkillName
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Tarball creation failed!" -ForegroundColor Red
+        exit 1
+    }
+
+    Write-Host "Package created: $tarFile" -ForegroundColor Green
+}
+
+function Invoke-Test {
+    Invoke-Lint
+
+    Write-Host "Running bootstrap.mjs tests..." -ForegroundColor Yellow
+
+    # Verify help exits cleanly
+    node src/scripts/bootstrap.mjs help | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Help command failed!" -ForegroundColor Red
+        exit 1
+    }
+
+    # Round-trip: new -> status -> close (uses temp directory to avoid clobbering active plans)
+    $tmpDir = Join-Path ([System.IO.Path]::GetTempPath()) "iterative-planner-test-$([System.Guid]::NewGuid().ToString('N').Substring(0,8))"
+    New-Item -ItemType Directory -Force -Path $tmpDir | Out-Null
+    try {
+        Push-Location $tmpDir
+        $scriptPath = Join-Path $PSScriptRoot "src/scripts/bootstrap.mjs"
+        node $scriptPath new "test goal" | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "new command failed" }
+        $status = node $scriptPath status
+        if ($LASTEXITCODE -ne 0) { throw "status command failed" }
+        if ($status -notmatch "test goal") { throw "status output missing goal" }
+        node $scriptPath close | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "close command failed" }
+        Write-Host "  Round-trip (new -> status -> close) passed."
+    }
+    catch {
+        Write-Host "Test failed: $_" -ForegroundColor Red
+        exit 1
+    }
+    finally {
+        Pop-Location
+        Remove-Item -Recurse -Force $tmpDir -ErrorAction SilentlyContinue
+    }
+
+    Write-Host "Tests passed!" -ForegroundColor Green
+}
+
 function Invoke-Clean {
     Write-Host "Cleaning build artifacts..." -ForegroundColor Yellow
 
@@ -226,7 +298,7 @@ function Invoke-List {
     Write-Host "Package contents:" -ForegroundColor Cyan
     Get-ChildItem -Recurse (Join-Path $BuildDir $SkillName) |
         Where-Object { -not $_.PSIsContainer } |
-        ForEach-Object { $_.FullName.Replace((Get-Location).Path + "\", "") }
+        ForEach-Object { $_.FullName.Replace((Get-Location).Path + [IO.Path]::DirectorySeparatorChar, "") }
 }
 
 # Execute command
@@ -235,8 +307,10 @@ switch ($Command.ToLower()) {
     "build-combined"   { Invoke-BuildCombined }
     "package"          { Invoke-Package }
     "package-combined" { Invoke-PackageCombined }
+    "package-tar"      { Invoke-PackageTar }
     "validate"         { Invoke-Validate }
     "lint"             { Invoke-Lint }
+    "test"             { Invoke-Test }
     "clean"            { Invoke-Clean }
     "list"             { Invoke-List }
     "help"             { Show-Help }
