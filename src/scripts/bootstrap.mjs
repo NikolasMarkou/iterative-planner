@@ -74,6 +74,20 @@ function extractField(content, pattern) {
 function cmdNew(goal, force) {
   mkdirSync(claudeDir, { recursive: true });
 
+  // Warn about orphaned plan directories (no pointer, but directories exist)
+  try {
+    const activeName = readPointer();
+    const allPlans = readdirSync(claudeDir, { withFileTypes: true })
+      .filter((d) => d.isDirectory() && d.name.startsWith(".plan_"))
+      .map((d) => d.name);
+    const orphans = allPlans.filter((name) => name !== activeName);
+    if (orphans.length > 0 && !activeName) {
+      console.error(`WARNING: Found ${orphans.length} plan director${orphans.length === 1 ? "y" : "ies"} with no active pointer:`);
+      for (const o of orphans) console.error(`  .claude/${o}`);
+      console.error(`  These may be from a previous crash. Use 'list' to inspect.`);
+    }
+  } catch { /* .claude/ may be empty or not scannable */ }
+
   const existing = readPointer();
   if (existing && !force) {
     console.error(`ERROR: Active plan directory already exists: .claude/${existing}`);
@@ -195,9 +209,9 @@ ${goal}
     writeFileSync(pointerFile + ".tmp", planDirName);
     renameSync(pointerFile + ".tmp", pointerFile);
   } catch (err) {
-    try { rmSync(planDir, { recursive: true, force: true }); } catch {}
-    try { if (existsSync(pointerFile + ".tmp")) unlinkSync(pointerFile + ".tmp"); } catch {}
-    try { if (existsSync(pointerFile)) unlinkSync(pointerFile); } catch {}
+    try { rmSync(planDir, { recursive: true, force: true }); } catch (e) { console.error(`WARNING: Failed to clean up partial plan directory: ${planDir}`); }
+    try { if (existsSync(pointerFile + ".tmp")) unlinkSync(pointerFile + ".tmp"); } catch (e) { console.error("WARNING: Failed to clean up temp pointer file."); }
+    try { if (existsSync(pointerFile)) unlinkSync(pointerFile); } catch (e) { console.error("WARNING: Failed to clean up pointer file."); }
     console.error(`ERROR: Failed to create plan directory: ${err.message}`);
     process.exit(1);
   }
@@ -232,13 +246,13 @@ function cmdResume() {
   const iteration = extractField(state, /^## Iteration:\s*(.+)$/m) || "?";
   const step = extractField(state, /^## Current Plan Step:\s*(.+)$/m) || "N/A";
   const lastTransition = extractField(state, /^## Last Transition:\s*(.+)$/m) || "?";
-  const goal = extractField(plan, /^## Goal\s*\n([\s\S]+?)(?=\n## |$)/m) || "No goal found";
+  const goal = extractField(plan, /\n## Goal\s*\n([\s\S]+?)(?=\n## |$)/) || "No goal found";
 
   console.log(`Resuming .claude/${planDirName}/`);
   console.log(`  State:      ${currentState}`);
   console.log(`  Iteration:  ${iteration}`);
   console.log(`  Step:       ${step}`);
-  console.log(`  Goal:       ${goal}`);
+  console.log(`  Goal:       ${goal.split("\n")[0]}`);
   console.log(`  Last:       ${lastTransition}`);
   console.log();
 
@@ -262,7 +276,7 @@ function cmdResume() {
   let checkpointFiles = [];
   try {
     checkpointFiles = readdirSync(checkpointDir).filter((f) => f.endsWith(".md")).sort();
-  } catch {}
+  } catch { /* checkpoints dir may not exist */ }
   if (checkpointFiles.length > 0) {
     console.log();
     console.log(`  Checkpoints (${checkpointFiles.length}):`);
@@ -296,9 +310,9 @@ function cmdStatus() {
   const currentState = extractField(state, /^# Current State:\s*(.+)$/m) || "UNKNOWN";
   const iteration = extractField(state, /^## Iteration:\s*(.+)$/m) || "?";
   const step = extractField(state, /^## Current Plan Step:\s*(.+)$/m) || "N/A";
-  const goal = extractField(plan, /^## Goal\s*\n([\s\S]+?)(?=\n## |$)/m) || "?";
+  const goal = extractField(plan, /\n## Goal\s*\n([\s\S]+?)(?=\n## |$)/) || "?";
 
-  console.log(`[${currentState}] iter=${iteration} step=${step} | ${goal} | .claude/${planDirName}`);
+  console.log(`[${currentState}] iter=${iteration} step=${step} | ${goal.split("\n")[0].slice(0, 60)} | .claude/${planDirName}`);
 }
 
 function cmdClose(opts = {}) {
@@ -311,13 +325,15 @@ function cmdClose(opts = {}) {
     return;
   }
 
-  try { unlinkSync(pointerFile); } catch {}
+  try { unlinkSync(pointerFile); } catch { /* already removed — TOCTOU safe */ }
 
   if (!opts.silent) {
     console.log(`Closed plan: .claude/${planDirName}`);
     console.log(`  Pointer .claude/.current_plan removed.`);
     console.log(`  Plan directory preserved at .claude/${planDirName}/`);
     console.log(`  Decision log and findings remain available for reference.`);
+    console.log(`  Note: This is an administrative close. The protocol CLOSE state`);
+    console.log(`  (summary.md, decision audit) should be completed by the agent first.`);
   } else {
     console.log(`  Closed previous plan: .claude/${planDirName}`);
   }
@@ -346,7 +362,7 @@ function cmdList() {
     const state = readPlanFile(name, "state.md");
     const plan = readPlanFile(name, "plan.md");
     const currentState = extractField(state, /^# Current State:\s*(.+)$/m) || "?";
-    const goal = extractField(plan, /^## Goal\s*\n([\s\S]+?)(?=\n## |$)/m) || "?";
+    const goal = extractField(plan, /\n## Goal\s*\n([\s\S]+?)(?=\n## |$)/) || "?";
     const goalOneLine = goal.split("\n")[0].slice(0, 60);
     console.log(`  ${name}  [${currentState}] ${goalOneLine}${marker}`);
   }

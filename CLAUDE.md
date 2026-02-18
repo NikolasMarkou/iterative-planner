@@ -86,16 +86,30 @@ Do not duplicate protocol content here. Read src/SKILL.md directly.
 
 ```bash
 # Windows (PowerShell)
+.\build.ps1 build            # Build skill package structure
+.\build.ps1 build-combined   # Build single-file skill with inlined references
 .\build.ps1 package          # Create zip package
-.\build.ps1 package-combined # Create single-file skill
-.\build.ps1 validate         # Validate structure
-.\build.ps1 clean            # Clean artifacts
+.\build.ps1 package-combined # Create single-file skill in dist/
+.\build.ps1 package-tar      # Create tarball package
+.\build.ps1 validate         # Validate skill structure
+.\build.ps1 lint             # Check script syntax
+.\build.ps1 test             # Run tests (lint + round-trip)
+.\build.ps1 clean            # Remove build artifacts
+.\build.ps1 list             # Show package contents
+.\build.ps1 help             # Show available commands
 
 # Unix/Linux/macOS
-make package                 # Create zip package
-make package-combined        # Create single-file skill
-make validate                # Validate structure
-make clean                   # Clean artifacts
+make build                   # Build skill package structure
+make build-combined          # Build single-file skill with inlined references
+make package                 # Create zip package (default)
+make package-combined        # Create single-file skill package
+make package-tar             # Create tarball package
+make validate                # Validate skill structure
+make lint                    # Check script syntax
+make test                    # Run tests (lint + round-trip)
+make clean                   # Remove build artifacts
+make list                    # Show package contents
+make help                    # Show available targets
 ```
 
 ### Reference File Pattern

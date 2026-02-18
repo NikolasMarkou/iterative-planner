@@ -131,13 +131,14 @@ test: lint
 	@# Verify help exits cleanly
 	node src/scripts/bootstrap.mjs help > /dev/null
 	@# Round-trip: new → status → close (uses temp directory to avoid clobbering active plans)
-	@TMPDIR=$$(mktemp -d) && \
+	@bash -c '\
+		TMPDIR=$$(mktemp -d); \
+		trap "rm -rf \"$$TMPDIR\"" EXIT; \
 		cd "$$TMPDIR" && \
 		node "$(CURDIR)/src/scripts/bootstrap.mjs" new "test goal" > /dev/null && \
 		node "$(CURDIR)/src/scripts/bootstrap.mjs" status | grep -q "test goal" && \
 		node "$(CURDIR)/src/scripts/bootstrap.mjs" close > /dev/null && \
-		rm -rf "$$TMPDIR" && \
-		echo "  Round-trip (new → status → close) passed."
+		echo "  Round-trip (new → status → close) passed."'
 	@echo "Tests passed!"
 
 # Clean build artifacts

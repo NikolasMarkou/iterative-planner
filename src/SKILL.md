@@ -23,7 +23,7 @@ stateDiagram-v2
     PLAN --> EXPLORE : need more context
     PLAN --> PLAN : user rejects / revise
     PLAN --> EXECUTE : user approves
-    EXECUTE --> REFLECT : step done/failed/surprise
+    EXECUTE --> REFLECT : phase ends/failed/surprise/leash
     REFLECT --> CLOSE : all criteria met
     REFLECT --> RE_PLAN : failed / better approach
     REFLECT --> EXPLORE : need more context
@@ -48,7 +48,7 @@ stateDiagram-v2
 | PLAN → EXPLORE | Can't state problem, can't list files, or insufficient findings. |
 | PLAN → PLAN | User rejects plan. Revise and re-present. |
 | PLAN → EXECUTE | User explicitly approves. |
-| EXECUTE → REFLECT | Step completes, fails, surprises, or leash hit. |
+| EXECUTE → REFLECT | Execution phase ends (all steps done, failure, surprise, or leash hit). |
 | REFLECT → CLOSE | All success criteria met. |
 | REFLECT → RE-PLAN | Failure or better approach found. |
 | REFLECT → EXPLORE | Need more context before re-planning. |
@@ -86,6 +86,7 @@ node <skill-path>/scripts/bootstrap.mjs list                 # Show all plan dir
 
 `new` refuses if active plan exists — use `resume`, `close`, or `--force`.
 `new` ensures `.gitignore` includes `.claude/.plan_*` and `.claude/.current_plan` — prevents plan files from being committed during EXECUTE step commits.
+`close` is an administrative operation — removes the `.current_plan` pointer only. The protocol CLOSE state (writing `summary.md`, auditing decision anchors) should be completed by the agent before running `close`.
 After bootstrap → begin EXPLORE. User-provided context → write to `findings.md` first.
 
 ## Filesystem Structure
@@ -108,7 +109,7 @@ Templates: `references/file-formats.md`
 
 ### File Lifecycle Matrix
 
-R = read, W = write, — = do not touch (wrong state if you are).
+R = read only | W = update (implicit read + write) | R+W = distinct read and write operations | — = do not touch (wrong state if you are).
 
 | File | EXPLORE | PLAN | EXECUTE | REFLECT | RE-PLAN | CLOSE |
 |------|---------|------|---------|---------|---------|-------|
@@ -231,6 +232,7 @@ Increment on PLAN → EXECUTE. Iteration 0 = EXPLORE-only (pre-plan). First real
 
 ## Recovery from Context Loss
 
+0. If `.claude/.current_plan` is missing or corrupted: run `bootstrap.mjs list` to find plan directories, then recreate the pointer: `echo ".plan_YYYY-MM-DD_XXXXXXXX" > .claude/.current_plan` (substitute actual directory name).
 1. `.claude/.current_plan` → plan dir name
 2. `state.md` → where you are
 3. `plan.md` → current plan
