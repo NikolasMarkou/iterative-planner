@@ -1,7 +1,7 @@
 # Iterative Planner
 
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Skill](https://img.shields.io/badge/Skill-v1.8.0-green.svg)](CHANGELOG.md)
+[![Skill](https://img.shields.io/badge/Skill-v1.9.0-green.svg)](CHANGELOG.md)
 [![Sponsored by Electi](https://img.shields.io/badge/Sponsored%20by-Electi-red.svg)](https://www.electiconsulting.com)
 
 **Stop watching Claude go off the rails on complex tasks.**
@@ -90,6 +90,36 @@ Everything important is written to a plan directory on disk (`.claude/.plan_YYYY
     ├── checkpoints/        # Snapshots before risky changes
     └── summary.md          # Written at close
 ```
+
+### Structured Findings That Accumulate and Self-Correct
+
+Most AI agents treat research as throwaway context -- they read files, form impressions, and start coding. When the context window compresses those early reads, the impressions vanish too.
+
+Iterative Planner makes research a first-class artifact. During EXPLORE, every discovery is written to a `findings.md` index and detailed `findings/` files with **file paths, line numbers, and execution flow traces**. The agent cannot even transition to PLAN until it has at least 3 indexed findings covering problem scope, affected files, and existing patterns.
+
+```markdown
+# Findings
+
+## Index
+- [Auth System Architecture](findings/auth-system.md) — entry points, session stores, serialization coupling
+- [Test Coverage](findings/test-coverage.md) — coverage gaps, missing integration tests
+- [Dependencies](findings/dependencies.md) — gem constraints, Rails version pins
+
+## Key Constraints
+- SessionSerializer shared between cookie middleware AND API auth (see auth-system.md)
+- rack-session gem pins cookie-compatible format (see dependencies.md)
+
+## Corrections
+- [CORRECTED iter-2] Redis session format is coupled to serialization pipeline,
+  not just storage (see auth-system.md) — original finding assumed isolated storage
+```
+
+This matters in practice because:
+
+- **Findings survive context loss.** When the context window fills up, the agent re-reads its own research from disk. Nothing discovered in hour one is lost in hour three.
+- **Findings self-correct.** When execution reveals that an earlier finding was wrong, it gets a `[CORRECTED iter-N]` marker -- the original stays for traceability, but the correction is what the agent acts on. No silent rewrites; no repeating mistakes.
+- **Subagents contribute without collisions.** Research is parallelized via Task subagents that each write to `findings/{topic-slug}.md`. The main agent owns the index; subagents write details. Multiple agents can explore different subsystems simultaneously without stepping on each other.
+- **Findings gate the plan.** The transition from EXPLORE to PLAN requires minimum depth -- you can't design a solution before you understand the problem. If the agent can't state the problem clearly, list the files involved, and identify constraints, it stays in EXPLORE.
 
 ### The Autonomy Leash
 
