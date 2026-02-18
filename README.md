@@ -224,6 +224,12 @@ iterative-planner/
 
 ---
 
+## Sponsored by
+
+This project is sponsored by **[Electi Consulting](https://www.electiconsulting.com)** -- a technology consultancy specializing in AI, blockchain, cryptography, and data science. Founded in 2017 and headquartered in Limassol, Cyprus, with a London presence, Electi combines academic rigor with enterprise-grade delivery across clients including the European Central Bank, US Navy, and Cyprus Securities and Exchange Commission.
+
+---
+
 ## License
 
 [GNU General Public License v3.0](LICENSE)
