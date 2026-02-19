@@ -10,10 +10,6 @@ AI coding agents fail in predictable ways. They plan once, execute linearly, and
 
 Iterative Planner is a Claude Code skill that replaces this pattern with a disciplined cycle: **Explore, Plan, Execute, Reflect, Re-plan.** It uses the filesystem as persistent working memory -- so when the context window inevitably fills up, nothing is lost. Every decision, every failed approach, every discovery is written to disk and available for recovery -- not just within a single plan, but across plans.
 
-<p align="center">
-  <img src="images/logo-v1.jpeg" alt="Iterative Planner" width="200">
-</p>
-
 ---
 
 ## Quick Start
