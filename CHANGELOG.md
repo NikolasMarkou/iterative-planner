@@ -4,6 +4,12 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.1.1] - 2026-02-19
+
+### Changed
+- **Quick Start reordered** — Option 1 is now zip package install to `~/.claude/skills/` (recommended). Single-file moved to Option 2.
+- **README badge** bumped to v2.1.0.
+
 ## [2.1.0] - 2026-02-19
 
 ### Added
