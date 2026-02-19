@@ -50,7 +50,7 @@ stateDiagram-v2
 | PLAN → PLAN | User rejects plan. Revise and re-present. |
 | PLAN → EXECUTE | User explicitly approves. |
 | EXECUTE → REFLECT | Execution phase ends (all steps done, failure, surprise, or leash hit). |
-| REFLECT → CLOSE | All success criteria met. |
+| REFLECT → CLOSE | All criteria verified PASS in `verification.md`. |
 | REFLECT → RE-PLAN | Failure or better approach found. |
 | REFLECT → EXPLORE | Need more context before re-planning. |
 | RE-PLAN → PLAN | New approach formulated. Decision logged. |
@@ -104,6 +104,7 @@ plans/
     ├── findings.md                # Summary + index of findings
     ├── findings/                  # Detailed finding files (subagents write here)
     ├── progress.md                # Done vs remaining
+    ├── verification.md            # Verification results per REFLECT cycle
     ├── checkpoints/               # Snapshots before risky changes
     └── summary.md                 # Written at CLOSE
 ```
@@ -122,6 +123,7 @@ R = read only | W = update (implicit read + write) | R+W = distinct read and wri
 | findings.md | W | R | — | R | R+W | R |
 | findings/* | W | R | — | R | R+W | R |
 | progress.md | — | W | R+W | R+W | W | R |
+| verification.md | — | W | W | W | R | R |
 | checkpoints/* | — | — | W | R | R | — |
 | summary.md | — | — | — | — | — | W |
 | plans/FINDINGS.md | R | R | — | — | R | W(merge) |
@@ -143,9 +145,11 @@ R = read only | W = update (implicit read + write) | R+W = distinct read and wri
 ### PLAN
 - **Gate check**: read `findings.md`, `findings/*`, `decisions.md`, `plans/FINDINGS.md`, `plans/DECISIONS.md` before writing anything. If not read → read now. No exceptions. If `findings.md` has <3 indexed findings → go back to EXPLORE.
 - **Problem Statement first** — before designing steps, write in `plan.md`: (1) what behavior is expected, (2) invariants — what must always be true, (3) edge cases at boundaries. Can't state the problem clearly → go back to EXPLORE.
-- Write `plan.md`: problem statement, steps, failure modes, risks, success criteria, complexity budget.
+- Write `plan.md`: problem statement, steps, failure modes, risks, success criteria, verification strategy, complexity budget.
+- **Verification Strategy** — for each success criterion, define: what test/check to run, what command to execute, what result means "pass". Write to plan.md `Verification Strategy` section. Plans with no testable criteria → write "N/A — manual review only" (proves you checked). See `references/file-formats.md` for template.
 - **Failure Mode Analysis** — for each external dependency or integration point in the plan, answer: what if slow? returns garbage? is down? What's the blast radius? Write to plan.md `Failure Modes` section. No dependencies → write "None identified" (proves you checked).
 - Write `decisions.md`: log chosen approach + why (mandatory even for first plan). **Trade-off rule** — phrase every decision as **"X at the cost of Y"**. Never recommend without stating what it costs.
+- Write `verification.md` with initial template (criteria table populated from success criteria, methods from verification strategy, results pending).
 - Write `state.md` + `progress.md`.
 - List **every file** to modify/create. Can't list them → go back to EXPLORE.
 - Only recommended approach in plan. Alternatives → `decisions.md`.
@@ -170,17 +174,18 @@ R = read only | W = update (implicit read + write) | R+W = distinct read and wri
 On **failed step**: skip gate. Follow Autonomy Leash (revert-first, 2 attempts max).
 
 ### REFLECT
-- Read `plan.md` (criteria) + `progress.md` before evaluating.
+- Read `plan.md` (criteria + verification strategy) + `progress.md` before evaluating.
 - Read `findings.md` + relevant `findings/*` — check if discoveries during EXECUTE contradict earlier findings. Note contradictions in `decisions.md`.
 - Read `checkpoints/*` — know what rollback options exist before deciding next transition. Note available restore points in `decisions.md` if transitioning to RE-PLAN.
 - Cross-validate: every `[x]` in plan.md must be "Completed" in progress.md. Fix drift first.
+- **Run verification** — execute each check defined in the Verification Strategy. Record results in `verification.md`: criterion, method, command/action, result (PASS/FAIL), evidence (output summary or log reference). See `references/file-formats.md` for template.
 - Read `decisions.md` — check 3-strike patterns.
 - Compare against **written criteria**, not memory. Run 5 Simplification Checks (`references/complexity-control.md`).
 - Write `decisions.md` (what happened, learned, root cause) + `progress.md` + `state.md`.
 
 | Condition | → Transition |
 |-----------|--------------|
-| All criteria met + tests pass | → CLOSE |
+| All criteria verified PASS in `verification.md` | → CLOSE |
 | Failure understood, new approach clear | → RE-PLAN |
 | Unknowns need investigation, or findings contradicted | → EXPLORE (update findings first) |
 
