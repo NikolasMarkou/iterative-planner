@@ -108,6 +108,12 @@ validate:
 		grep -q "$$d" src/scripts/bootstrap.mjs || \
 		(echo "ERROR: bootstrap.mjs does not create $$d/ directory" && exit 1); \
 	done
+	@# Verify bootstrap.mjs references consolidated files
+	@echo "Checking consolidated file references..."
+	@grep -q "FINDINGS.md" src/scripts/bootstrap.mjs || \
+		(echo "ERROR: bootstrap.mjs does not reference FINDINGS.md" && exit 1)
+	@grep -q "DECISIONS.md" src/scripts/bootstrap.mjs || \
+		(echo "ERROR: bootstrap.mjs does not reference DECISIONS.md" && exit 1)
 	@# Verify transition table entries appear in Mermaid diagram
 	@echo "Checking state machine consistency..."
 	@for pair in "EXPLORE.*PLAN" "PLAN.*EXPLORE" "PLAN.*PLAN" "PLAN.*EXECUTE" "EXECUTE.*REFLECT" \
@@ -138,6 +144,8 @@ test: lint
 		node "$(CURDIR)/src/scripts/bootstrap.mjs" new "test goal" > /dev/null && \
 		node "$(CURDIR)/src/scripts/bootstrap.mjs" status | grep -q "test goal" && \
 		node "$(CURDIR)/src/scripts/bootstrap.mjs" close > /dev/null && \
+		test -f plans/FINDINGS.md || (echo "ERROR: plans/FINDINGS.md not created after close" && exit 1) && \
+		test -f plans/DECISIONS.md || (echo "ERROR: plans/DECISIONS.md not created after close" && exit 1) && \
 		echo "  Round-trip (new → status → close) passed."'
 	@echo "Tests passed!"
 

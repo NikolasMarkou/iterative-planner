@@ -200,6 +200,14 @@ function Invoke-Validate {
                 $errors += "ERROR: bootstrap.mjs does not create $d/ directory"
             }
         }
+        # Verify bootstrap.mjs references consolidated files
+        Write-Host "Checking consolidated file references..."
+        if ($bsContent -notmatch "FINDINGS\.md") {
+            $errors += "ERROR: bootstrap.mjs does not reference FINDINGS.md"
+        }
+        if ($bsContent -notmatch "DECISIONS\.md") {
+            $errors += "ERROR: bootstrap.mjs does not reference DECISIONS.md"
+        }
     }
 
     if ($errors.Count -gt 0) {
@@ -265,6 +273,8 @@ function Invoke-Test {
         if ($status -notmatch "test goal") { throw "status output missing goal" }
         node $scriptPath close | Out-Null
         if ($LASTEXITCODE -ne 0) { throw "close command failed" }
+        if (-not (Test-Path "plans/FINDINGS.md")) { throw "plans/FINDINGS.md not created after close" }
+        if (-not (Test-Path "plans/DECISIONS.md")) { throw "plans/DECISIONS.md not created after close" }
         Write-Host "  Round-trip (new -> status -> close) passed."
     }
     catch {

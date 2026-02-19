@@ -268,6 +268,71 @@ rm lib/session/token_service.rb
 - Before destructive operations (schema changes, file deletions, config overwrites)
 - User expresses uncertainty
 
+## plans/FINDINGS.md (consolidated)
+
+Cross-plan findings archive. Entries merged from per-plan `findings.md` on close. Per-plan headings demoted one level (## → ###) and nested under a `## plan_YYYY-MM-DD_XXXXXXXX` section. Relative `findings/` links rewritten to `plan_YYYY-MM-DD_XXXXXXXX/findings/`.
+
+**Newest first** — most recently closed plan appears at the top (after the header). This keeps the most relevant context immediately accessible without reading the entire file.
+
+Created automatically by bootstrap on first `new`. Updated on each `close`.
+
+```markdown
+# Consolidated Findings
+*Cross-plan findings archive. Entries merged from per-plan findings.md on close. Newest first.*
+
+## plan_2026-02-20_b4e2c3d0
+### Index
+- [Database Schema](plan_2026-02-20_b4e2c3d0/findings/db-schema.md) — table relationships
+### Key Constraints
+- Foreign key constraints prevent cascade delete on users table
+
+## plan_2026-02-19_a3f1b2c9
+### Index
+- [Auth System](plan_2026-02-19_a3f1b2c9/findings/auth-system.md) — entry points, session stores
+### Key Constraints
+- SessionSerializer shared between cookie middleware AND API auth
+```
+
+Usage:
+- Read at start of EXPLORE and during PLAN gate check for cross-plan context
+- Do not edit directly — content is merged automatically on `close`
+- Agent/user can curate (remove stale sections) manually if needed
+
+## plans/DECISIONS.md (consolidated)
+
+Cross-plan decision archive. Entries merged from per-plan `decisions.md` on close. Decision IDs (D-NNN) are scoped to their plan section — no cross-plan deduplication.
+
+**Newest first** — most recently closed plan appears at the top (after the header).
+
+Created automatically by bootstrap on first `new`. Updated on each `close`.
+
+```markdown
+# Consolidated Decisions
+*Cross-plan decision archive. Entries merged from per-plan decisions.md on close. Newest first.*
+
+## plan_2026-02-20_b4e2c3d0
+### D-001 | EXPLORE → PLAN | 2025-01-20
+**Context**: Users table migration needed
+**Decision**: Use reversible migration with dual-column approach
+**Trade-off**: Zero-downtime migration **at the cost of** temporary schema complexity
+
+## plan_2026-02-19_a3f1b2c9
+### D-001 | EXPLORE → PLAN | 2025-01-15
+**Context**: Auth system uses 3 different session stores
+**Decision**: Start with approach A (in-place migration)
+**Trade-off**: Fastest path **at the cost of** ignoring DB/in-memory stores
+
+### D-002 | REFLECT → RE-PLAN | 2025-01-15
+**Context**: Approach A fails — format coupling
+**Decision**: Switch to approach B (dual-write)
+**Trade-off**: Safe rollback **at the cost of** doubled storage
+```
+
+Usage:
+- Read at start of EXPLORE and during PLAN gate check — learn what was tried before
+- Do not edit directly — content is merged automatically on `close`
+- Decision IDs are scoped per plan section (each plan starts at D-001)
+
 ## summary.md
 
 Written at CLOSE.

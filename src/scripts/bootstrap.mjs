@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Bootstrap and manage plan directories under .claude/ in the current working directory (project root).
+// Bootstrap and manage plan directories under plans/ in the current working directory (project root).
 //
 // Usage:
 //   node bootstrap.mjs "goal"                  Create a new plan (backward-compatible)
@@ -10,8 +10,8 @@
 //   node bootstrap.mjs close                   Close active plan (preserves directory)
 //   node bootstrap.mjs list                    Show all plan directories (active and closed)
 //
-// Creates .claude/.plan_YYYY-MM-DD_XXXXXXXX/ (date + 8-char hex seed) in cwd.
-// Writes .claude/.current_plan with the directory name for discovery.
+// Creates plans/plan_YYYY-MM-DD_XXXXXXXX/ (date + 8-char hex seed) in cwd.
+// Writes plans/.current_plan with the directory name for discovery.
 // Requires Node.js 18+ (guaranteed by Claude Code).
 
 import { mkdirSync, writeFileSync, readFileSync, readdirSync, renameSync, unlinkSync, existsSync, rmSync } from "fs";
@@ -19,8 +19,8 @@ import { join } from "path";
 import { randomBytes } from "crypto";
 
 const cwd = process.cwd();
-const claudeDir = join(cwd, ".claude");
-const pointerFile = join(claudeDir, ".current_plan");
+const plansDir = join(cwd, "plans");
+const pointerFile = join(plansDir, ".current_plan");
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -28,7 +28,7 @@ const pointerFile = join(claudeDir, ".current_plan");
 
 function ensureGitignore() {
   const gitignorePath = join(cwd, ".gitignore");
-  const patterns = [".claude/.plan_*", ".claude/.current_plan"];
+  const patterns = ["plans/"];
   let content = "";
   try {
     content = readFileSync(gitignorePath, "utf-8");
@@ -46,7 +46,7 @@ function ensureGitignore() {
 function readPointer() {
   try {
     const name = readFileSync(pointerFile, "utf-8").trim();
-    if (name && existsSync(join(claudeDir, name))) return name;
+    if (name && existsSync(join(plansDir, name))) return name;
     return null;
   } catch {
     return null;
@@ -55,7 +55,7 @@ function readPointer() {
 
 function readPlanFile(planDirName, filename) {
   try {
-    return readFileSync(join(claudeDir, planDirName, filename), "utf-8");
+    return readFileSync(join(plansDir, planDirName, filename), "utf-8");
   } catch {
     return null;
   }
@@ -67,30 +67,99 @@ function extractField(content, pattern) {
   return match ? match[1].trim() : null;
 }
 
+function ensureConsolidatedFiles() {
+  const findingsPath = join(plansDir, "FINDINGS.md");
+  const decisionsPath = join(plansDir, "DECISIONS.md");
+  if (!existsSync(findingsPath)) {
+    writeFileSync(findingsPath, `# Consolidated Findings
+*Cross-plan findings archive. Entries merged from per-plan findings.md on close. Newest first.*
+`);
+  }
+  if (!existsSync(decisionsPath)) {
+    writeFileSync(decisionsPath, `# Consolidated Decisions
+*Cross-plan decision archive. Entries merged from per-plan decisions.md on close. Newest first.*
+`);
+  }
+}
+
+function prependToConsolidated(filePath, planDirName, newSection) {
+  // Insert new section after the header (H1 + boilerplate), before existing plan sections.
+  // Newest plans appear first so the most recent context is read first.
+  let existing = "";
+  try { existing = readFileSync(filePath, "utf-8"); } catch { /* file may not exist */ }
+  // Split at first ## (plan section heading) — everything before is the header
+  const firstH2 = existing.indexOf("\n## ");
+  let header, body;
+  if (firstH2 >= 0) {
+    header = existing.slice(0, firstH2);
+    body = existing.slice(firstH2);
+  } else {
+    header = existing.trimEnd();
+    body = "";
+  }
+  const merged = header + `\n\n## ${planDirName}\n${newSection}\n` + body;
+  writeFileSync(filePath + ".tmp", merged);
+  renameSync(filePath + ".tmp", filePath);
+}
+
+function mergeToConsolidated(planDirName) {
+  // Merge per-plan findings.md → plans/FINDINGS.md (newest first)
+  const findingsContent = readPlanFile(planDirName, "findings.md");
+  if (findingsContent) {
+    let stripped = findingsContent
+      .replace(/^# Findings\n/, "")
+      .replace(/^\*Summary and index of all findings\. Detailed files go in findings\/ directory\.\*\n?/, "")
+      .replace(/\n?\*Cross-plan context: see plans\/FINDINGS\.md and plans\/DECISIONS\.md\*\n?/g, "\n");
+    // Demote ## → ###
+    stripped = stripped.replace(/^## /gm, "### ");
+    // Rewrite relative findings/ links to planDirName/findings/
+    stripped = stripped.replace(/\(findings\//g, `(${planDirName}/findings/`);
+    stripped = stripped.trim();
+    if (stripped) {
+      prependToConsolidated(join(plansDir, "FINDINGS.md"), planDirName, stripped);
+    }
+  }
+
+  // Merge per-plan decisions.md → plans/DECISIONS.md (newest first)
+  const decisionsContent = readPlanFile(planDirName, "decisions.md");
+  if (decisionsContent) {
+    let stripped = decisionsContent
+      .replace(/^# Decision Log\n/, "")
+      .replace(/^\*Append-only\. Never edit past entries\.\*\n?/, "")
+      .replace(/\n?\*Cross-plan context: see plans\/FINDINGS\.md and plans\/DECISIONS\.md\*\n?/g, "\n");
+    // Demote ## → ###
+    stripped = stripped.replace(/^## /gm, "### ");
+    stripped = stripped.trim();
+    if (stripped) {
+      prependToConsolidated(join(plansDir, "DECISIONS.md"), planDirName, stripped);
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Commands
 // ---------------------------------------------------------------------------
 
 function cmdNew(goal, force) {
-  mkdirSync(claudeDir, { recursive: true });
+  mkdirSync(plansDir, { recursive: true });
 
   // Warn about orphaned plan directories (no pointer, but directories exist)
   try {
     const activeName = readPointer();
-    const allPlans = readdirSync(claudeDir, { withFileTypes: true })
-      .filter((d) => d.isDirectory() && d.name.startsWith(".plan_"))
+    const allPlans = readdirSync(plansDir, { withFileTypes: true })
+      .filter((d) => d.isDirectory() && d.name.startsWith("plan_"))
       .map((d) => d.name);
     const orphans = allPlans.filter((name) => name !== activeName);
     if (orphans.length > 0 && !activeName) {
       console.error(`WARNING: Found ${orphans.length} plan director${orphans.length === 1 ? "y" : "ies"} with no active pointer:`);
-      for (const o of orphans) console.error(`  .claude/${o}`);
+      for (const o of orphans) console.error(`  plans/${o}`);
       console.error(`  These may be from a previous crash. Use 'list' to inspect.`);
     }
-  } catch { /* .claude/ may be empty or not scannable */ }
+  } catch { /* plans/ may be empty or not scannable */ }
 
   const existing = readPointer();
   if (existing && !force) {
-    console.error(`ERROR: Active plan directory already exists: .claude/${existing}`);
+    console.error(`ERROR: Active plan directory already exists: plans/${existing}`);
     console.error(`  To resume:      node ${process.argv[1]} resume`);
     console.error(`  To view status:  node ${process.argv[1]} status`);
     console.error(`  To close it:     node ${process.argv[1]} close`);
@@ -105,8 +174,12 @@ function cmdNew(goal, force) {
   const timestamp = now.toISOString().replace(/\.\d{3}Z$/, "Z");
   const dateStr = now.toISOString().slice(0, 10);
   const hexStr = randomBytes(4).toString("hex");
-  const planDirName = `.plan_${dateStr}_${hexStr}`;
-  const planDir = join(claudeDir, planDirName);
+  const planDirName = `plan_${dateStr}_${hexStr}`;
+  const planDir = join(plansDir, planDirName);
+
+  // Check if consolidated files exist for cross-plan context seeding
+  const hasConsolidated = existsSync(join(plansDir, "FINDINGS.md")) || existsSync(join(plansDir, "DECISIONS.md"));
+  const crossPlanNote = hasConsolidated ? "\n*Cross-plan context: see plans/FINDINGS.md and plans/DECISIONS.md*\n" : "";
 
   try {
     mkdirSync(join(planDir, "checkpoints"), { recursive: true });
@@ -172,14 +245,14 @@ ${goal}
       join(planDir, "decisions.md"),
       `# Decision Log
 *Append-only. Never edit past entries.*
-`
+${crossPlanNote}`
     );
 
     writeFileSync(
       join(planDir, "findings.md"),
       `# Findings
 *Summary and index of all findings. Detailed files go in findings/ directory.*
-
+${crossPlanNote}
 ## Index
 *To be populated during EXPLORE.*
 
@@ -206,6 +279,9 @@ ${goal}
 `
     );
 
+    // Ensure consolidated files exist at plans/ root
+    ensureConsolidatedFiles();
+
     writeFileSync(pointerFile + ".tmp", planDirName);
     renameSync(pointerFile + ".tmp", pointerFile);
   } catch (err) {
@@ -220,13 +296,14 @@ ${goal}
     ensureGitignore();
   } catch (err) {
     console.error(`WARNING: Plan created but .gitignore update failed: ${err.message}`);
-    console.error(`  Manually add .claude/.plan_* and .claude/.current_plan to .gitignore.`);
+    console.error(`  Manually add plans/ to .gitignore.`);
   }
 
-  console.log(`Initialized .claude/${planDirName}/`);
-  console.log(`  Pointer: .claude/.current_plan → ${planDirName}`);
+  console.log(`Initialized plans/${planDirName}/`);
+  console.log(`  Pointer: plans/.current_plan → ${planDirName}`);
   console.log(`  Goal: ${goal}`);
   console.log(`  State: EXPLORE (iteration 0)`);
+  console.log(`  Cross-plan context: plans/FINDINGS.md, plans/DECISIONS.md`);
   console.log(`  Next: Read code, ask questions, write findings.`);
 }
 
@@ -248,7 +325,7 @@ function cmdResume() {
   const lastTransition = extractField(state, /^## Last Transition:\s*(.+)$/m) || "?";
   const goal = extractField(plan, /\n## Goal\s*\n([\s\S]+?)(?=\n## |$)/) || "No goal found";
 
-  console.log(`Resuming .claude/${planDirName}/`);
+  console.log(`Resuming plans/${planDirName}/`);
   console.log(`  State:      ${currentState}`);
   console.log(`  Iteration:  ${iteration}`);
   console.log(`  Step:       ${step}`);
@@ -272,7 +349,7 @@ function cmdResume() {
   }
 
   // Print checkpoint listing
-  const checkpointDir = join(claudeDir, planDirName, "checkpoints");
+  const checkpointDir = join(plansDir, planDirName, "checkpoints");
   let checkpointFiles = [];
   try {
     checkpointFiles = readdirSync(checkpointDir).filter((f) => f.endsWith(".md")).sort();
@@ -281,7 +358,7 @@ function cmdResume() {
     console.log();
     console.log(`  Checkpoints (${checkpointFiles.length}):`);
     for (const cp of checkpointFiles) {
-      console.log(`    ${cp} → .claude/${planDirName}/checkpoints/${cp}`);
+      console.log(`    ${cp} → plans/${planDirName}/checkpoints/${cp}`);
     }
   } else {
     console.log();
@@ -290,11 +367,15 @@ function cmdResume() {
 
   console.log();
   console.log(`  Recovery files:`);
-  console.log(`    state.md     → .claude/${planDirName}/state.md`);
-  console.log(`    plan.md      → .claude/${planDirName}/plan.md`);
-  console.log(`    decisions.md → .claude/${planDirName}/decisions.md`);
-  console.log(`    progress.md  → .claude/${planDirName}/progress.md`);
-  console.log(`    findings.md  → .claude/${planDirName}/findings.md`);
+  console.log(`    state.md     → plans/${planDirName}/state.md`);
+  console.log(`    plan.md      → plans/${planDirName}/plan.md`);
+  console.log(`    decisions.md → plans/${planDirName}/decisions.md`);
+  console.log(`    progress.md  → plans/${planDirName}/progress.md`);
+  console.log(`    findings.md  → plans/${planDirName}/findings.md`);
+  console.log();
+  console.log(`  Consolidated context:`);
+  console.log(`    plans/FINDINGS.md  — cross-plan findings archive`);
+  console.log(`    plans/DECISIONS.md — cross-plan decision archive`);
 }
 
 function cmdStatus() {
@@ -312,7 +393,7 @@ function cmdStatus() {
   const step = extractField(state, /^## Current Plan Step:\s*(.+)$/m) || "N/A";
   const goal = extractField(plan, /\n## Goal\s*\n([\s\S]+?)(?=\n## |$)/) || "?";
 
-  console.log(`[${currentState}] iter=${iteration} step=${step} | ${goal.split("\n")[0].slice(0, 60)} | .claude/${planDirName}`);
+  console.log(`[${currentState}] iter=${iteration} step=${step} | ${goal.split("\n")[0].slice(0, 60)} | plans/${planDirName}`);
 }
 
 function cmdClose(opts = {}) {
@@ -325,29 +406,40 @@ function cmdClose(opts = {}) {
     return;
   }
 
+  // Merge per-plan findings/decisions to consolidated files before removing pointer
+  try {
+    ensureConsolidatedFiles();
+    mergeToConsolidated(planDirName);
+  } catch (err) {
+    if (!opts.silent) {
+      console.error(`WARNING: Merge to consolidated files failed: ${err.message}`);
+      console.error(`  Per-plan files remain intact at plans/${planDirName}/`);
+    }
+  }
+
   try { unlinkSync(pointerFile); } catch { /* already removed — TOCTOU safe */ }
 
   if (!opts.silent) {
-    console.log(`Closed plan: .claude/${planDirName}`);
-    console.log(`  Pointer .claude/.current_plan removed.`);
-    console.log(`  Plan directory preserved at .claude/${planDirName}/`);
-    console.log(`  Decision log and findings remain available for reference.`);
+    console.log(`Closed plan: plans/${planDirName}`);
+    console.log(`  Pointer plans/.current_plan removed.`);
+    console.log(`  Plan directory preserved at plans/${planDirName}/`);
+    console.log(`  Findings/decisions merged to plans/FINDINGS.md and plans/DECISIONS.md.`);
     console.log(`  Note: This is an administrative close. The protocol CLOSE state`);
     console.log(`  (summary.md, decision audit) should be completed by the agent first.`);
   } else {
-    console.log(`  Closed previous plan: .claude/${planDirName}`);
+    console.log(`  Closed previous plan: plans/${planDirName}`);
   }
 }
 
 function cmdList() {
-  if (!existsSync(claudeDir)) {
-    console.log("No .claude/ directory found.");
+  if (!existsSync(plansDir)) {
+    console.log("No plans/ directory found.");
     process.exit(0);
   }
 
   const activeName = readPointer();
-  const entries = readdirSync(claudeDir, { withFileTypes: true })
-    .filter((d) => d.isDirectory() && d.name.startsWith(".plan_"))
+  const entries = readdirSync(plansDir, { withFileTypes: true })
+    .filter((d) => d.isDirectory() && d.name.startsWith("plan_"))
     .map((d) => d.name)
     .sort();
 
@@ -356,7 +448,7 @@ function cmdList() {
     process.exit(0);
   }
 
-  console.log(`Plan directories in .claude/ (${entries.length} total):`);
+  console.log(`Plan directories in plans/ (${entries.length} total):`);
   for (const name of entries) {
     const marker = name === activeName ? " ← active" : "";
     const state = readPlanFile(name, "state.md");

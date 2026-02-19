@@ -4,7 +4,7 @@ Guidance for working with the Iterative Planner codebase.
 
 ## Project Purpose
 
-Claude Code skill — state-machine driven iterative planning and execution. Cycle: Explore → Plan → Execute → Reflect → Re-plan. Filesystem (`.claude/.plan_YYYY-MM-DD_XXXXXXXX/`) as persistent memory.
+Claude Code skill — state-machine driven iterative planning and execution. Cycle: Explore → Plan → Execute → Reflect → Re-plan. Filesystem (`plans/plan_YYYY-MM-DD_XXXXXXXX/`) as persistent memory.
 
 Use cases: multi-file tasks, migrations, refactoring, failed tasks, debugging, anything 3+ files or 2+ systems.
 
@@ -22,7 +22,7 @@ iterative-planner/
 └── src/
     ├── SKILL.md                      # Core protocol (state machine, rules) - the main instruction set
     ├── scripts/
-    │   └── bootstrap.mjs             # Initializes .claude/.plan_YYYY-MM-DD_XXXXXXXX/ directory (Node.js 18+)
+    │   └── bootstrap.mjs             # Initializes plans/plan_YYYY-MM-DD_XXXXXXXX/ directory (Node.js 18+)
     └── references/                   # Knowledge base documents
         ├── complexity-control.md     # Anti-complexity protocol (revert-first, 3-strike, nuclear option)
         ├── code-hygiene.md           # Change manifest format, revert procedures, forbidden leftovers
@@ -46,7 +46,7 @@ node <skill-path>/scripts/bootstrap.mjs close                # Close active plan
 node <skill-path>/scripts/bootstrap.mjs list                 # Show all plan directories
 ```
 
-`new` creates plan directory with all files + writes `.claude/.current_plan` pointer. Idempotent-safe: refuses if active plan exists.
+`new` creates plan directory with all files + writes `plans/.current_plan` pointer. Creates `plans/FINDINGS.md` and `plans/DECISIONS.md` if they don't exist. Idempotent-safe: refuses if active plan exists.
 
 ### Activation Triggers
 
@@ -128,3 +128,5 @@ make help                    # Show available targets
 - [ ] File Lifecycle Matrix matches state machine states and plan directory file list
 - [ ] `src/scripts/bootstrap.mjs` creates all files referenced in `src/references/file-formats.md`
 - [ ] Plan directory structure in src/SKILL.md matches bootstrap.mjs output
+- [ ] `src/scripts/bootstrap.mjs` creates and references `FINDINGS.md` and `DECISIONS.md` consolidated files
+- [ ] Consolidated files contain merged content after `close`

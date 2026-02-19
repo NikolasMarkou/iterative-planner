@@ -1,30 +1,14 @@
 # Iterative Planner
 
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Skill](https://img.shields.io/badge/Skill-v1.9.0-green.svg)](CHANGELOG.md)
+[![Skill](https://img.shields.io/badge/Skill-v2.0.0-green.svg)](CHANGELOG.md)
 [![Sponsored by Electi](https://img.shields.io/badge/Sponsored%20by-Electi-red.svg)](https://www.electiconsulting.com)
 
 **Stop watching Claude go off the rails on complex tasks.**
 
 AI coding agents fail in predictable ways. They plan once, execute linearly, and when something breaks, they pile on fixes until the codebase is buried under wrappers, adapters, and "temporary" workarounds. By the time context rot kicks in, they've forgotten what they were even trying to do.
 
-Iterative Planner is a Claude Code skill that replaces this pattern with a disciplined cycle: **Explore, Plan, Execute, Reflect, Re-plan.** It uses the filesystem as persistent working memory -- so when the context window inevitably fills up, nothing is lost. Every decision, every failed approach, every discovery is written to disk and available for recovery.
-
-The result: Claude handles multi-file refactors, complex migrations, and gnarly debugging sessions the way a senior engineer would -- methodically, with full awareness of what has already been tried and why it failed.
-
----
-
-## The Problem This Solves
-
-Without structure, AI agents working on non-trivial tasks tend to:
-
-- **Lose context** mid-task and repeat work or contradict earlier decisions
-- **Compound failures** by adding complexity on top of broken code instead of reverting
-- **Go rogue** after a failure, silently switching approaches without telling you
-- **Leave debris** -- dead code, orphaned imports, debug statements -- from failed attempts scattered across the codebase
-- **Forget what was tried** and cycle through the same failed approaches
-
-Iterative Planner prevents all of this through a formal state machine, mandatory filesystem checkpoints, and strict rules about what the agent can and cannot do when things go wrong.
+Iterative Planner is a Claude Code skill that replaces this pattern with a disciplined cycle: **Explore, Plan, Execute, Reflect, Re-plan.** It uses the filesystem as persistent working memory -- so when the context window inevitably fills up, nothing is lost. Every decision, every failed approach, every discovery is written to disk and available for recovery -- not just within a single plan, but across plans.
 
 ---
 
@@ -62,12 +46,12 @@ stateDiagram-v2
 
 | State | What happens | Boundaries |
 |-------|-------------|------------|
-| **EXPLORE** | Read code, search, ask questions, map the problem. | Read-only on project files. All notes go to the plan directory. |
+| **EXPLORE** | Read code, search, ask questions, map the problem. Read consolidated findings/decisions from previous plans. | Read-only on project files. All notes go to the plan directory. |
 | **PLAN** | Design the approach. List every file to touch. Set success criteria. | No code changes. User must approve before execution begins. |
 | **EXECUTE** | Implement one step at a time. Commit after each success. | 2 fix attempts max per step. Revert-first on failure. Surprise discoveries → REFLECT. |
 | **REFLECT** | Compare results against written criteria. Check if findings still hold. | Evidence-based. Contradicted findings → back to EXPLORE. |
 | **RE-PLAN** | Pivot based on what was learned. Correct wrong findings. Log the decision. | Must explain what failed and why. User approves new direction. |
-| **CLOSE** | Write summary. Audit decision anchors in code. Clean up. | Verify no leftover debug code or orphaned imports. |
+| **CLOSE** | Write summary. Audit decision anchors. Merge findings and decisions to consolidated files. | Verify no leftover debug code or orphaned imports. |
 
 ---
 
@@ -75,20 +59,49 @@ stateDiagram-v2
 
 ### Persistent Memory That Survives Context Rot
 
-Everything important is written to a plan directory on disk (`.claude/.plan_YYYY-MM-DD_XXXXXXXX/`). When the context window fills up and earlier messages are compressed or lost, the agent re-reads its own notes. State, decisions, findings, progress -- all on disk, all recoverable, even across sessions. When execution reveals that earlier findings were wrong, they're corrected in place with `[CORRECTED iter-N]` markers -- the agent learns from its own mistakes rather than repeating them.
+Everything important is written to a `plans/` directory on disk. When the context window fills up and earlier messages are compressed or lost, the agent re-reads its own notes. State, decisions, findings, progress -- all on disk, all recoverable, even across sessions.
 
 ```
-.claude/
-├── .current_plan
-└── .plan_2026-02-14_a3f1b2c9/
-    ├── state.md            # Where am I? What step? What iteration?
-    ├── plan.md             # The living plan (rewritten each iteration)
-    ├── decisions.md        # Append-only log of every decision and pivot
-    ├── findings.md         # Index of discoveries (corrected when wrong)
-    ├── findings/           # Detailed research files (subagents write here)
-    ├── progress.md         # Done vs remaining
-    ├── checkpoints/        # Snapshots before risky changes
-    └── summary.md          # Written at close
+plans/
+├── .current_plan               # → active plan directory name
+├── FINDINGS.md                 # Consolidated findings across all plans (newest first)
+├── DECISIONS.md                # Consolidated decisions across all plans (newest first)
+└── plan_2026-02-14_a3f1b2c9/
+    ├── state.md                # Where am I? What step? What iteration?
+    ├── plan.md                 # The living plan (rewritten each iteration)
+    ├── decisions.md            # Append-only log of every decision and pivot
+    ├── findings.md             # Index of discoveries (corrected when wrong)
+    ├── findings/               # Detailed research files (subagents write here)
+    ├── progress.md             # Done vs remaining
+    ├── checkpoints/            # Snapshots before risky changes
+    └── summary.md              # Written at close
+```
+
+### Cross-Plan Knowledge Transfer
+
+When a plan is closed, its findings and decisions are merged into consolidated files at the `plans/` root -- `FINDINGS.md` and `DECISIONS.md`. The most recently closed plan appears first, so the freshest context is immediately accessible without reading the entire file.
+
+When a new plan starts, the agent reads these consolidated files during EXPLORE to learn what was discovered and decided in previous plans. Per-plan files are seeded with a cross-plan context reference. This means:
+
+- A migration plan can build on the codebase analysis from a previous debugging plan
+- Failed approaches are visible to future plans -- no repeating the same mistakes
+- Findings that were corrected in one plan carry their corrections forward
+
+```markdown
+# Consolidated Findings
+*Cross-plan findings archive. Entries merged from per-plan findings.md on close. Newest first.*
+
+## plan_2026-02-20_b4e2c3d0
+### Index
+- [Database Schema](plan_2026-02-20_b4e2c3d0/findings/db-schema.md) — table relationships
+### Key Constraints
+- Foreign key constraints prevent cascade delete on users table
+
+## plan_2026-02-19_a3f1b2c9
+### Index
+- [Auth System](plan_2026-02-19_a3f1b2c9/findings/auth-system.md) — entry points, session stores
+### Key Constraints
+- SessionSerializer shared between cookie middleware AND API auth
 ```
 
 ### Structured Findings That Accumulate and Self-Correct
@@ -97,29 +110,7 @@ Most AI agents treat research as throwaway context -- they read files, form impr
 
 Iterative Planner makes research a first-class artifact. During EXPLORE, every discovery is written to a `findings.md` index and detailed `findings/` files with **file paths, line numbers, and execution flow traces**. The agent cannot even transition to PLAN until it has at least 3 indexed findings covering problem scope, affected files, and existing patterns.
 
-```markdown
-# Findings
-
-## Index
-- [Auth System Architecture](findings/auth-system.md) — entry points, session stores, serialization coupling
-- [Test Coverage](findings/test-coverage.md) — coverage gaps, missing integration tests
-- [Dependencies](findings/dependencies.md) — gem constraints, Rails version pins
-
-## Key Constraints
-- SessionSerializer shared between cookie middleware AND API auth (see auth-system.md)
-- rack-session gem pins cookie-compatible format (see dependencies.md)
-
-## Corrections
-- [CORRECTED iter-2] Redis session format is coupled to serialization pipeline,
-  not just storage (see auth-system.md) — original finding assumed isolated storage
-```
-
-This matters in practice because:
-
-- **Findings survive context loss.** When the context window fills up, the agent re-reads its own research from disk. Nothing discovered in hour one is lost in hour three.
-- **Findings self-correct.** When execution reveals that an earlier finding was wrong, it gets a `[CORRECTED iter-N]` marker -- the original stays for traceability, but the correction is what the agent acts on. No silent rewrites; no repeating mistakes.
-- **Subagents contribute without collisions.** Research is parallelized via Task subagents that each write to `findings/{topic-slug}.md`. The main agent owns the index; subagents write details. Multiple agents can explore different subsystems simultaneously without stepping on each other.
-- **Findings gate the plan.** The transition from EXPLORE to PLAN requires minimum depth -- you can't design a solution before you understand the problem. If the agent can't state the problem clearly, list the files involved, and identify constraints, it stays in EXPLORE.
+When execution reveals that an earlier finding was wrong, it gets a `[CORRECTED iter-N]` marker -- the original stays for traceability, but the correction is what the agent acts on. Subagents contribute in parallel by writing to `findings/{topic-slug}.md` without collisions.
 
 ### The Autonomy Leash
 
@@ -183,22 +174,21 @@ Trigger phrases: *"plan this"*, *"figure out"*, *"help me think through"*, *"I'v
 Manage plan directories from your project root:
 
 ```bash
-node <skill-path>/scripts/bootstrap.mjs "goal"              # Create new plan (backward-compatible)
 node <skill-path>/scripts/bootstrap.mjs new "goal"           # Create new plan
 node <skill-path>/scripts/bootstrap.mjs new --force "goal"   # Close active plan, create new one
 node <skill-path>/scripts/bootstrap.mjs resume               # Output current plan state for re-entry
 node <skill-path>/scripts/bootstrap.mjs status               # One-line state summary
-node <skill-path>/scripts/bootstrap.mjs close                # Close active plan (preserves directory)
+node <skill-path>/scripts/bootstrap.mjs close                # Close active plan (merges + preserves)
 node <skill-path>/scripts/bootstrap.mjs list                 # Show all plan directories
 ```
 
-`new` creates the plan directory under `.claude/`, writes the pointer file (`.claude/.current_plan`), and drops the agent into the EXPLORE state. If an active plan already exists, it refuses -- use `resume` to continue, `close` to end it, or `new --force` to close and start fresh.
+**`new`** creates the plan directory under `plans/`, writes the pointer file (`plans/.current_plan`), creates consolidated files (`plans/FINDINGS.md`, `plans/DECISIONS.md`) if they don't exist, and drops the agent into EXPLORE. Refuses if an active plan already exists -- use `resume` to continue, `close` to end it, or `new --force` to close and start fresh.
 
-`resume` outputs the current plan state (state, iteration, step, goal, progress) for quick re-entry into the protocol. `status` prints a single-line summary. `close` removes the pointer file but preserves the plan directory for reference. `list` shows all plan directories under `.claude/` (active and closed) with their state and goal.
+**`close`** merges per-plan findings and decisions into the consolidated files (newest first), removes the pointer file, and preserves the plan directory for reference. This is an administrative operation -- the protocol CLOSE state (writing `summary.md`, auditing decision anchors) should be completed by the agent before running `close`.
+
+**`resume`** outputs the current plan state (state, iteration, step, goal, progress, checkpoints, consolidated file paths) for quick re-entry. **`status`** prints a single-line summary. **`list`** shows all plan directories under `plans/` (active and closed) with their state and goal.
 
 ### Git Integration
-
-The skill integrates cleanly with git:
 
 | Phase | Git behavior |
 |-------|-------------|
@@ -208,7 +198,7 @@ The skill integrates cleanly with git:
 | RE-PLAN | Decide: keep successful commits or revert to checkpoint. |
 | CLOSE | Final commit with summary. |
 
-Bootstrap automatically adds `.claude/.plan_*` and `.claude/.current_plan` to `.gitignore` -- preventing plan files from being committed during EXECUTE step commits. Remove these patterns if your team wants decision logs for post-mortems.
+Bootstrap automatically adds `plans/` to `.gitignore` -- preventing plan files from being committed during EXECUTE step commits. Remove this pattern if your team wants decision logs for post-mortems.
 
 ---
 
@@ -219,12 +209,14 @@ Bootstrap automatically adds `.claude/.plan_*` and `.claude/.current_plan` to `.
 .\build.ps1 package          # Create zip package
 .\build.ps1 package-combined # Create single-file skill
 .\build.ps1 validate         # Validate structure
+.\build.ps1 test             # Run tests (lint + round-trip)
 .\build.ps1 clean            # Clean build artifacts
 
 # Unix / Linux / macOS
 make package                 # Create zip package
 make package-combined        # Create single-file skill
 make validate                # Validate structure
+make test                    # Run tests (lint + round-trip)
 make clean                   # Clean build artifacts
 ```
 

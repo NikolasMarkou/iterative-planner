@@ -11,8 +11,9 @@ description: >
 **Core Principle**: Context Window = RAM. Filesystem = Disk.
 Write to disk immediately. The context window will rot. The files won't.
 
-**`{plan-dir}`** = `.claude/.plan_YYYY-MM-DD_XXXXXXXX/` (active plan directory under project root).
-**Discovery**: `.claude/.current_plan` contains the plan directory name. One active plan at a time.
+**`{plan-dir}`** = `plans/plan_YYYY-MM-DD_XXXXXXXX/` (active plan directory under project root).
+**Discovery**: `plans/.current_plan` contains the plan directory name. One active plan at a time.
+**Cross-plan context**: `plans/FINDINGS.md` and `plans/DECISIONS.md` persist across plans (merged on close).
 
 ## State Machine
 
@@ -38,7 +39,7 @@ stateDiagram-v2
 | EXECUTE | Implement step-by-step | Edit files, run commands, write code. |
 | REFLECT | Evaluate results | Read outputs, run tests. Update decisions.md. |
 | RE-PLAN | Revise direction | Log pivot in decisions.md. Do NOT write plan.md yet. |
-| CLOSE | Finalize | Write summary.md. Audit decision anchors. |
+| CLOSE | Finalize | Write summary.md. Audit decision anchors. Merge findings/decisions to consolidated files. |
 
 ### Transitions
 
@@ -55,7 +56,7 @@ stateDiagram-v2
 | RE-PLAN → PLAN | New approach formulated. Decision logged. |
 
 Every transition → log in `state.md`. RE-PLAN transitions → also log in `decisions.md` (what failed, what learned, why new direction).
-At CLOSE → audit decision anchors (`references/decision-anchoring.md`).
+At CLOSE → audit decision anchors (`references/decision-anchoring.md`). Merge per-plan findings/decisions to `plans/FINDINGS.md` and `plans/DECISIONS.md`.
 
 ### Mandatory Re-reads (CRITICAL)
 
@@ -85,24 +86,26 @@ node <skill-path>/scripts/bootstrap.mjs list                 # Show all plan dir
 ```
 
 `new` refuses if active plan exists — use `resume`, `close`, or `--force`.
-`new` ensures `.gitignore` includes `.claude/.plan_*` and `.claude/.current_plan` — prevents plan files from being committed during EXECUTE step commits.
+`new` ensures `.gitignore` includes `plans/` — prevents plan files from being committed during EXECUTE step commits.
 `close` is an administrative operation — removes the `.current_plan` pointer only. The protocol CLOSE state (writing `summary.md`, auditing decision anchors) should be completed by the agent before running `close`.
 After bootstrap → begin EXPLORE. User-provided context → write to `findings.md` first.
 
 ## Filesystem Structure
 
 ```
-.claude/
-├── .current_plan              # → active plan directory name
-└── .plan_2026-02-14_a3f1b2c9/ # {plan-dir}
-    ├── state.md               # Current state + transition log
-    ├── plan.md                # Living plan (rewritten each iteration)
-    ├── decisions.md           # Append-only decision/pivot log
-    ├── findings.md            # Summary + index of findings
-    ├── findings/              # Detailed finding files (subagents write here)
-    ├── progress.md            # Done vs remaining
-    ├── checkpoints/           # Snapshots before risky changes
-    └── summary.md             # Written at CLOSE
+plans/
+├── .current_plan                  # → active plan directory name
+├── FINDINGS.md                    # Consolidated findings across all plans (merged on close)
+├── DECISIONS.md                   # Consolidated decisions across all plans (merged on close)
+└── plan_2026-02-14_a3f1b2c9/      # {plan-dir}
+    ├── state.md                   # Current state + transition log
+    ├── plan.md                    # Living plan (rewritten each iteration)
+    ├── decisions.md               # Append-only decision/pivot log
+    ├── findings.md                # Summary + index of findings
+    ├── findings/                  # Detailed finding files (subagents write here)
+    ├── progress.md                # Done vs remaining
+    ├── checkpoints/               # Snapshots before risky changes
+    └── summary.md                 # Written at CLOSE
 ```
 
 Templates: `references/file-formats.md`
@@ -121,10 +124,13 @@ R = read only | W = update (implicit read + write) | R+W = distinct read and wri
 | progress.md | — | W | R+W | R+W | W | R |
 | checkpoints/* | — | — | W | R | R | — |
 | summary.md | — | — | — | — | — | W |
+| plans/FINDINGS.md | R | R | — | — | R | W(merge) |
+| plans/DECISIONS.md | R | R | — | — | R | W(merge) |
 
 ## Per-State Rules
 
 ### EXPLORE
+- Read `plans/FINDINGS.md` and `plans/DECISIONS.md` at start of EXPLORE for cross-plan context.
 - Read code, grep, glob, search. One focused question at a time.
 - Flush to `findings.md` + `findings/` after every 2 reads.
 - Include file paths + code path traces (e.g. `auth.rb:23` → `SessionStore#find` → `redis_store.rb:get`).
@@ -135,7 +141,7 @@ R = read only | W = update (implicit read + write) | R+W = distinct read and wri
 - REFLECT → EXPLORE loops: append to existing findings, don't overwrite. Mark corrections with `[CORRECTED iter-N]`.
 
 ### PLAN
-- **Gate check**: read `findings.md`, `findings/*`, `decisions.md` before writing anything. If not read → read now. No exceptions. If `findings.md` has <3 indexed findings → go back to EXPLORE.
+- **Gate check**: read `findings.md`, `findings/*`, `decisions.md`, `plans/FINDINGS.md`, `plans/DECISIONS.md` before writing anything. If not read → read now. No exceptions. If `findings.md` has <3 indexed findings → go back to EXPLORE.
 - **Problem Statement first** — before designing steps, write in `plan.md`: (1) what behavior is expected, (2) invariants — what must always be true, (3) edge cases at boundaries. Can't state the problem clearly → go back to EXPLORE.
 - Write `plan.md`: problem statement, steps, failure modes, risks, success criteria, complexity budget.
 - **Failure Mode Analysis** — for each external dependency or integration point in the plan, answer: what if slow? returns garbage? is down? What's the blast radius? Write to plan.md `Failure Modes` section. No dependencies → write "None identified" (proves you checked).
@@ -232,15 +238,16 @@ Increment on PLAN → EXECUTE. Iteration 0 = EXPLORE-only (pre-plan). First real
 
 ## Recovery from Context Loss
 
-0. If `.claude/.current_plan` is missing or corrupted: run `bootstrap.mjs list` to find plan directories, then recreate the pointer: `echo ".plan_YYYY-MM-DD_XXXXXXXX" > .claude/.current_plan` (substitute actual directory name).
-1. `.claude/.current_plan` → plan dir name
+0. If `plans/.current_plan` is missing or corrupted: run `bootstrap.mjs list` to find plan directories, then recreate the pointer: `echo "plan_YYYY-MM-DD_XXXXXXXX" > plans/.current_plan` (substitute actual directory name).
+1. `plans/.current_plan` → plan dir name
 2. `state.md` → where you are
 3. `plan.md` → current plan
 4. `decisions.md` → what was tried / failed
 5. `progress.md` → done vs remaining
 6. `findings.md` + `findings/*` → discovered context
 7. `checkpoints/*` → available rollback points and their git hashes
-8. Resume from current state. Never start over.
+8. `plans/FINDINGS.md` + `plans/DECISIONS.md` → cross-plan context from previous plans
+9. Resume from current state. Never start over.
 
 ## Git Integration
 
