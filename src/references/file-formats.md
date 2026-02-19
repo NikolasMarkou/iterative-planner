@@ -95,6 +95,19 @@ approaches v1 (in-place migration) and v2 (dual-write) were abandoned.
 - New integration tests for token flow pass
 - Legacy sessions gracefully degrade
 
+## Verification Strategy
+### Required
+- Tests: `bundle exec rspec` — all specs pass (exit 0)
+- Integration: `bundle exec rspec spec/integration/token_auth_spec.rb` — new token flow tests pass
+
+### Conditional
+- [ ] Behavioral diff: compare `/api/auth/validate` response before/after (token field added)
+- [ ] Smoke test: POST /login with test credential → 200 + valid token
+
+### N/A
+- Data fixtures (no data migration)
+- Dry-run (no irreversible DB ops — migration script is separate step with own dry-run)
+
 ## Complexity Budget
 - Files added: 1/3 max
 - New abstractions (classes/modules/interfaces): 1/2 max
@@ -103,6 +116,7 @@ approaches v1 (in-place migration) and v2 (dual-write) were abandoned.
 
 **Problem Statement** is mandatory. Can't state invariants and edge cases → go back to EXPLORE.
 **Failure Modes** table is mandatory when external dependencies exist. No dependencies → write "None identified".
+**Verification Strategy** is mandatory. For each success criterion, define what check to run and what "pass" means. No testable criteria → write "N/A — manual review only".
 **Files To Modify** is mandatory. Can't list them → go back to EXPLORE.
 **`[IRREVERSIBLE]`** tag on steps with side effects that can't be undone via git (DB migrations, external API calls, service config, non-tracked file deletion). Requires: user confirmation, rollback plan in checkpoint, dry-run if available.
 
@@ -239,6 +253,41 @@ Flat checklist. Updated in: PLAN (populate Remaining), EXECUTE (move items), REF
 ## Blocked
 - Nothing currently
 ```
+
+## verification.md
+
+Written during PLAN (initial template with criteria), updated during EXECUTE (per-step results), completed during REFLECT (full verification pass). Rewritten each iteration (not append-only — each REFLECT cycle produces a fresh verification).
+
+```markdown
+# Verification Results (Iteration 3)
+
+## Criteria Verification
+| # | Criterion (from plan.md) | Method | Command/Action | Result | Evidence |
+|---|--------------------------|--------|----------------|--------|----------|
+| 1 | All existing tests pass | Automated | `bundle exec rspec` | PASS | 47/47 specs, 0 failures |
+| 2 | New integration tests pass | Automated | `bundle exec rspec spec/integration/token_auth_spec.rb` | PASS | 3/3 specs |
+| 3 | Legacy sessions degrade gracefully | Manual | Tested 5 legacy cookie sessions via curl | PASS | All responded < 1s, no errors |
+
+## Additional Checks
+| Check | Command/Action | Result | Details |
+|-------|----------------|--------|---------|
+| Lint | `rubocop --format simple` | PASS | 0 offenses |
+| Behavioral diff | diff /api/auth/validate response | EXPECTED DIFF | Token field added (intentional) |
+| Smoke test | POST /login with test credential | PASS | 200 + valid JWT returned |
+
+## Verdict
+- Criteria passed: 3/3
+- Blockers: none
+- Recommendation: → CLOSE
+```
+
+**Criteria Verification table** is mandatory — one row per success criterion from `plan.md`. **Result** must be PASS or FAIL. **Evidence** must be concrete (counts, output excerpts, log references) — not "looks good" or "seems to work".
+
+**Additional Checks** is optional — for lint, type checks, behavioral diffs, smoke tests, or other verification not directly tied to a success criterion.
+
+**Verdict** is mandatory — count of pass/fail, blockers, and recommended transition.
+
+Plans with no testable criteria: write "N/A — manual review only" in Method column. Still record the manual review outcome in Result + Evidence.
 
 ## checkpoints/cp-NNN-iterN.md
 
