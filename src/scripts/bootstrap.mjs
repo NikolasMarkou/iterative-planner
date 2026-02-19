@@ -284,6 +284,25 @@ ${crossPlanNote}
 `
     );
 
+    writeFileSync(
+      join(planDir, "verification.md"),
+      `# Verification Results
+*Populated during PLAN (template), updated during EXECUTE (per-step), completed during REFLECT (full pass).*
+*Rewritten each iteration — not append-only.*
+
+## Criteria Verification
+| # | Criterion (from plan.md) | Method | Command/Action | Result | Evidence |
+|---|--------------------------|--------|----------------|--------|----------|
+| *To be populated from plan.md Success Criteria + Verification Strategy during PLAN.* ||||||
+
+## Additional Checks
+*Optional: lint, type checks, behavioral diffs, smoke tests.*
+
+## Verdict
+*To be completed during REFLECT.*
+`
+    );
+
     // Ensure consolidated files exist at plans/ root
     ensureConsolidatedFiles();
 

@@ -44,13 +44,25 @@ Something breaks during EXECUTE:
 
 ## Simplification Checks (REFLECT)
 
-Re-read `decisions.md`. Answer in `decisions.md`:
+Re-read `decisions.md`. Answer in `decisions.md` using this format:
+
+```markdown
+**Simplification Checks**:
+1. Could I delete code instead? [yes/no — what]
+2. Symptom or root cause? [symptom/root — why]
+3. Would a junior dev understand? [yes/no — what's complex]
+4. Fighting the framework? [yes/no — what]
+5. What if I revert everything? [worth it/not — why]
+**Blocker found**: [yes/no — if yes, must address before CLOSE]
+```
 
 1. **Could I delete code instead?** Best fix = removing what broke.
 2. **Symptom or root cause?** Band-aids compound.
 3. **Would a junior dev understand?** Needs a paragraph to explain → too complex.
 4. **Fighting the framework?** Writing adapters/shims → using it wrong. Read docs.
 5. **What if I revert everything?** Sunk cost ≠ reason to continue. Three clean attempts > one Frankenstein.
+
+If any check reveals a blocker → document in `decisions.md` → must address before CLOSE (RE-PLAN or fix).
 
 ## 3-Strike Rule
 
