@@ -96,7 +96,7 @@ validate:
 	done
 	@# Verify bootstrap.mjs creates expected plan directory files
 	@echo "Checking bootstrap file list..."
-	@for f in state.md plan.md decisions.md findings.md progress.md; do \
+	@for f in state.md plan.md decisions.md findings.md progress.md verification.md; do \
 		grep -q "\"$$f\"" src/scripts/bootstrap.mjs || \
 		grep -q "'$$f'" src/scripts/bootstrap.mjs || \
 		grep -q "$$f" src/scripts/bootstrap.mjs || \

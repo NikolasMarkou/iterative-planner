@@ -188,7 +188,7 @@ function Invoke-Validate {
     if (Test-Path "src/scripts/bootstrap.mjs") {
         Write-Host "Checking bootstrap file list..."
         $bsContent = Get-Content "src/scripts/bootstrap.mjs" -Raw
-        foreach ($f in @("state.md", "plan.md", "decisions.md", "findings.md", "progress.md")) {
+        foreach ($f in @("state.md", "plan.md", "decisions.md", "findings.md", "progress.md", "verification.md")) {
             if ($bsContent -notmatch [regex]::Escape($f)) {
                 $errors += "ERROR: bootstrap.mjs does not create $f"
             }

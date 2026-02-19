@@ -126,7 +126,7 @@ make help                    # Show available targets
 - [ ] All cross-references in src/SKILL.md point to existing files in `src/references/`
 - [ ] State machine diagram matches transition rules table
 - [ ] File Lifecycle Matrix matches state machine states and plan directory file list
-- [ ] `src/scripts/bootstrap.mjs` creates all files referenced in `src/references/file-formats.md`
-- [ ] Plan directory structure in src/SKILL.md matches bootstrap.mjs output
+- [ ] `src/scripts/bootstrap.mjs` creates all files referenced in `src/references/file-formats.md` (including `verification.md`)
+- [ ] Plan directory structure in src/SKILL.md matches bootstrap.mjs output (including `verification.md`)
 - [ ] `src/scripts/bootstrap.mjs` creates and references `FINDINGS.md` and `DECISIONS.md` consolidated files
 - [ ] Consolidated files contain merged content after `close`
