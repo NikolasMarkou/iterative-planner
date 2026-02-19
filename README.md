@@ -1,7 +1,7 @@
 # Iterative Planner
 
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Skill](https://img.shields.io/badge/Skill-v2.1.0-green.svg)](CHANGELOG.md)
+[![Skill](https://img.shields.io/badge/Skill-v2.1.1-green.svg)](CHANGELOG.md)
 [![Sponsored by Electi](https://img.shields.io/badge/Sponsored%20by-Electi-red.svg)](https://www.electiconsulting.com)
 
 **Stop watching Claude go off the rails on complex tasks.**
@@ -76,6 +76,7 @@ plans/
     ├── findings.md             # Index of discoveries (corrected when wrong)
     ├── findings/               # Detailed research files (subagents write here)
     ├── progress.md             # Done vs remaining
+    ├── verification.md         # Verification results per REFLECT cycle
     ├── checkpoints/            # Snapshots before risky changes
     └── summary.md              # Written at close
 ```
