@@ -14,12 +14,15 @@ Iterative Planner is a Claude Code skill that replaces this pattern with a disci
 
 ## Quick Start
 
-**Option 1 -- Single file (fastest)**
+**Option 1 -- Zip package (recommended)**
+Download the zip from [Releases](https://github.com/NikolasMarkou/iterative-planner/releases) and unzip into your local skills directory:
+```bash
+unzip iterative-planner-v*.zip -d ~/.claude/skills/
+```
+
+**Option 2 -- Single file**
 Download `iterative-planner-combined.md` from [Releases](https://github.com/NikolasMarkou/iterative-planner/releases) and paste it into Claude's Custom Instructions.
 > Note: The single-file version does not include `bootstrap.mjs`. Plan directories must be created manually. For full bootstrap support, use the zip package.
-
-**Option 2 -- Full package**
-Download the zip from Releases. Upload `src/SKILL.md` and the `src/references/` folder to a Claude Project.
 
 Then give Claude a complex task, or just say: **"plan this"**
 
