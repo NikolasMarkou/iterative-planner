@@ -102,14 +102,22 @@ function prependToConsolidated(filePath, planDirName, newSection) {
   renameSync(filePath + ".tmp", filePath);
 }
 
+function stripHeader(content) {
+  // Strip everything before the first ## heading (the actual user content).
+  // This avoids fragile exact-match regexes on boilerplate text that the agent may edit.
+  const firstH2 = content.search(/^## /m);
+  return firstH2 >= 0 ? content.slice(firstH2) : content;
+}
+
+function stripCrossPlanNote(content) {
+  return content.replace(/\n?\*Cross-plan context: see plans\/FINDINGS\.md and plans\/DECISIONS\.md\*\n?/g, "\n");
+}
+
 function mergeToConsolidated(planDirName) {
   // Merge per-plan findings.md → plans/FINDINGS.md (newest first)
   const findingsContent = readPlanFile(planDirName, "findings.md");
   if (findingsContent) {
-    let stripped = findingsContent
-      .replace(/^# Findings\n/, "")
-      .replace(/^\*Summary and index of all findings\. Detailed files go in findings\/ directory\.\*\n?/, "")
-      .replace(/\n?\*Cross-plan context: see plans\/FINDINGS\.md and plans\/DECISIONS\.md\*\n?/g, "\n");
+    let stripped = stripCrossPlanNote(stripHeader(findingsContent));
     // Demote ## → ###
     stripped = stripped.replace(/^## /gm, "### ");
     // Rewrite relative findings/ links to planDirName/findings/
@@ -123,10 +131,7 @@ function mergeToConsolidated(planDirName) {
   // Merge per-plan decisions.md → plans/DECISIONS.md (newest first)
   const decisionsContent = readPlanFile(planDirName, "decisions.md");
   if (decisionsContent) {
-    let stripped = decisionsContent
-      .replace(/^# Decision Log\n/, "")
-      .replace(/^\*Append-only\. Never edit past entries\.\*\n?/, "")
-      .replace(/\n?\*Cross-plan context: see plans\/FINDINGS\.md and plans\/DECISIONS\.md\*\n?/g, "\n");
+    let stripped = stripCrossPlanNote(stripHeader(decisionsContent));
     // Demote ## → ###
     stripped = stripped.replace(/^## /gm, "### ");
     stripped = stripped.trim();

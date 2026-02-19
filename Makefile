@@ -8,7 +8,7 @@ DIST_DIR := dist
 
 # Files to include in the skill package
 SKILL_FILE := src/SKILL.md
-REFERENCE_FILES := $(wildcard src/references/*.md)
+REFERENCE_FILES := $(sort $(wildcard src/references/*.md))
 SCRIPT_FILES := $(wildcard src/scripts/*.mjs)
 DOC_FILES := README.md LICENSE CHANGELOG.md
 
