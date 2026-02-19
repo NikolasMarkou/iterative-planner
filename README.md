@@ -1,7 +1,11 @@
+<p align="center">
+  <img src="images/logo-v1.jpeg" alt="Iterative Planner" width="200">
+</p>
+
 # Iterative Planner
 
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Skill](https://img.shields.io/badge/Skill-v2.0.0-green.svg)](CHANGELOG.md)
+[![Skill](https://img.shields.io/badge/Skill-v2.1.0-green.svg)](CHANGELOG.md)
 [![Sponsored by Electi](https://img.shields.io/badge/Sponsored%20by-Electi-red.svg)](https://www.electiconsulting.com)
 
 **Stop watching Claude go off the rails on complex tasks.**
