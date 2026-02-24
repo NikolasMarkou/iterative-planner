@@ -174,6 +174,8 @@ function cmdNew(goal, force) {
   if (existing && force) {
     cmdClose({ silent: true });
   }
+  // Save old pointer name for recovery if --force was used and new plan creation fails
+  const previousPlan = force ? existing : null;
 
   const now = new Date();
   const timestamp = now.toISOString().replace(/\.\d{3}Z$/, "Z");
@@ -311,7 +313,15 @@ ${crossPlanNote}
   } catch (err) {
     try { rmSync(planDir, { recursive: true, force: true }); } catch (e) { console.error(`WARNING: Failed to clean up partial plan directory: ${planDir}`); }
     try { if (existsSync(pointerFile + ".tmp")) unlinkSync(pointerFile + ".tmp"); } catch (e) { console.error("WARNING: Failed to clean up temp pointer file."); }
-    try { if (existsSync(pointerFile)) unlinkSync(pointerFile); } catch (e) { console.error("WARNING: Failed to clean up pointer file."); }
+    // If --force was used, restore the old pointer so the previous plan is not orphaned
+    if (previousPlan) {
+      try {
+        writeFileSync(pointerFile, previousPlan);
+        console.error(`WARNING: Restored pointer to previous plan: plans/${previousPlan}`);
+      } catch (e) { console.error(`WARNING: Failed to restore pointer to previous plan: plans/${previousPlan}`); }
+    } else {
+      try { if (existsSync(pointerFile)) unlinkSync(pointerFile); } catch (e) { console.error("WARNING: Failed to clean up pointer file."); }
+    }
     console.error(`ERROR: Failed to create plan directory: ${err.message}`);
     process.exit(1);
   }

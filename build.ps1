@@ -251,39 +251,12 @@ function Invoke-PackageTar {
 function Invoke-Test {
     Invoke-Lint
 
-    Write-Host "Running bootstrap.mjs tests..." -ForegroundColor Yellow
+    Write-Host "Running bootstrap.mjs test suite..." -ForegroundColor Yellow
 
-    # Verify help exits cleanly
-    node src/scripts/bootstrap.mjs help | Out-Null
+    node --test src/scripts/bootstrap.test.mjs
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "Help command failed!" -ForegroundColor Red
+        Write-Host "Tests failed!" -ForegroundColor Red
         exit 1
-    }
-
-    # Round-trip: new -> status -> close (uses temp directory to avoid clobbering active plans)
-    $tmpDir = Join-Path ([System.IO.Path]::GetTempPath()) "iterative-planner-test-$([System.Guid]::NewGuid().ToString('N').Substring(0,8))"
-    New-Item -ItemType Directory -Force -Path $tmpDir | Out-Null
-    try {
-        Push-Location $tmpDir
-        $scriptPath = Join-Path $PSScriptRoot "src/scripts/bootstrap.mjs"
-        node $scriptPath new "test goal" | Out-Null
-        if ($LASTEXITCODE -ne 0) { throw "new command failed" }
-        $status = node $scriptPath status
-        if ($LASTEXITCODE -ne 0) { throw "status command failed" }
-        if ($status -notmatch "test goal") { throw "status output missing goal" }
-        node $scriptPath close | Out-Null
-        if ($LASTEXITCODE -ne 0) { throw "close command failed" }
-        if (-not (Test-Path "plans/FINDINGS.md")) { throw "plans/FINDINGS.md not created after close" }
-        if (-not (Test-Path "plans/DECISIONS.md")) { throw "plans/DECISIONS.md not created after close" }
-        Write-Host "  Round-trip (new -> status -> close) passed."
-    }
-    catch {
-        Write-Host "Test failed: $_" -ForegroundColor Red
-        exit 1
-    }
-    finally {
-        Pop-Location
-        Remove-Item -Recurse -Force $tmpDir -ErrorAction SilentlyContinue
     }
 
     Write-Host "Tests passed!" -ForegroundColor Green

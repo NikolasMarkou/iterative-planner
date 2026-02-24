@@ -133,20 +133,8 @@ lint:
 # Run tests
 .PHONY: test
 test: lint
-	@echo "Running bootstrap.mjs tests..."
-	@# Verify help exits cleanly
-	node src/scripts/bootstrap.mjs help > /dev/null
-	@# Round-trip: new → status → close (uses temp directory to avoid clobbering active plans)
-	@bash -c '\
-		TMPDIR=$$(mktemp -d); \
-		trap "rm -rf \"$$TMPDIR\"" EXIT; \
-		cd "$$TMPDIR" && \
-		node "$(CURDIR)/src/scripts/bootstrap.mjs" new "test goal" > /dev/null && \
-		node "$(CURDIR)/src/scripts/bootstrap.mjs" status | grep -q "test goal" && \
-		node "$(CURDIR)/src/scripts/bootstrap.mjs" close > /dev/null && \
-		test -f plans/FINDINGS.md || (echo "ERROR: plans/FINDINGS.md not created after close" && exit 1) && \
-		test -f plans/DECISIONS.md || (echo "ERROR: plans/DECISIONS.md not created after close" && exit 1) && \
-		echo "  Round-trip (new → status → close) passed."'
+	@echo "Running bootstrap.mjs test suite..."
+	node --test src/scripts/bootstrap.test.mjs
 	@echo "Tests passed!"
 
 # Clean build artifacts
