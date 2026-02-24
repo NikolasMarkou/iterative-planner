@@ -241,6 +241,9 @@ ${goal}
 ## Success Criteria
 *To be defined before first EXECUTE.*
 
+## Verification Strategy
+*To be defined during PLAN. For each success criterion, define what check to run and what "pass" means.*
+
 ## Complexity Budget
 - Files added: 0/3 max
 - New abstractions (classes/modules/interfaces): 0/2 max
@@ -295,7 +298,7 @@ ${crossPlanNote}
 ## Criteria Verification
 | # | Criterion (from plan.md) | Method | Command/Action | Result | Evidence |
 |---|--------------------------|--------|----------------|--------|----------|
-| *To be populated from plan.md Success Criteria + Verification Strategy during PLAN.* ||||||
+| 1 | *To be populated during PLAN* | - | - | PENDING | - |
 
 ## Additional Checks
 *Optional: lint, type checks, behavioral diffs, smoke tests.*
@@ -439,6 +442,19 @@ function cmdClose(opts = {}) {
     }
     return;
   }
+
+  // Update state.md with CLOSE transition before removing pointer
+  try {
+    const statePath = join(plansDir, planDirName, "state.md");
+    const stateContent = readFileSync(statePath, "utf-8");
+    const prevState = stateContent.match(/^# Current State:\s*(.+)$/m)?.[1] || "UNKNOWN";
+    const timestamp = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+    const updated = stateContent
+      .replace(/^# Current State:\s*.+$/m, "# Current State: CLOSE")
+      .replace(/^## Last Transition:\s*.+$/m, `## Last Transition: ${prevState} → CLOSE (${timestamp})`)
+      + `- ${prevState} → CLOSE (bootstrap close)\n`;
+    writeFileSync(statePath, updated);
+  } catch { /* state.md update is best-effort */ }
 
   // Merge per-plan findings/decisions to consolidated files before removing pointer
   try {

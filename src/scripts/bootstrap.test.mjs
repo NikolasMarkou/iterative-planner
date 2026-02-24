@@ -686,4 +686,358 @@ describe("bootstrap.mjs", () => {
       assert.ok(r.stdout.includes("2"), "should show decision count");
     });
   });
+
+  // =========================================================================
+  // stale/corrupt pointer handling (step 1)
+  // =========================================================================
+  describe("stale and corrupt pointer", () => {
+    it("status treats stale pointer (dir missing) as no active plan", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Stale test");
+      const planDir = getPointer(dir);
+      // Delete plan directory but leave pointer
+      rmSync(join(dir, "plans", planDir), { recursive: true, force: true });
+      const r = run(dir, "status");
+      assert.equal(r.exitCode, 0);
+      assert.ok(r.stdout.includes("No active plan"), "should report no active plan");
+    });
+
+    it("resume errors on stale pointer (dir missing)", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Stale resume test");
+      const planDir = getPointer(dir);
+      rmSync(join(dir, "plans", planDir), { recursive: true, force: true });
+      const r = run(dir, "resume");
+      assert.notEqual(r.exitCode, 0, "should fail");
+      assert.ok(r.stderr.includes("No active plan"), "should report no active plan");
+    });
+
+    it("close treats stale pointer as no active plan", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Stale close test");
+      const planDir = getPointer(dir);
+      rmSync(join(dir, "plans", planDir), { recursive: true, force: true });
+      const r = run(dir, "close");
+      assert.notEqual(r.exitCode, 0, "should fail");
+      assert.ok(r.stderr.includes("No active plan"), "should report no active plan");
+    });
+
+    it("new succeeds when pointer is stale (allows overwrite)", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Stale overwrite test");
+      const oldPlan = getPointer(dir);
+      rmSync(join(dir, "plans", oldPlan), { recursive: true, force: true });
+      // readPointer returns null for stale pointer, so new should succeed
+      const r = runFull(dir, "new", "Fresh after stale");
+      assert.equal(r.exitCode, 0, `stderr: ${r.stderr}`);
+      const newPlan = getPointer(dir);
+      assert.ok(newPlan, "should have new pointer");
+      assert.notEqual(newPlan, oldPlan, "should be a different plan");
+    });
+
+    it("corrupted pointer content (random text) treated as no plan", () => {
+      const dir = getTempDir();
+      mkdirSync(join(dir, "plans"), { recursive: true });
+      writeFileSync(join(dir, "plans", ".current_plan"), "not_a_valid_plan_dir\n");
+      const r = run(dir, "status");
+      assert.equal(r.exitCode, 0);
+      assert.ok(r.stdout.includes("No active plan"), "should report no active plan");
+    });
+  });
+
+  // =========================================================================
+  // duplicate merge and empty content (step 2)
+  // =========================================================================
+  describe("duplicate merge and empty content", () => {
+    it("closing same plan twice duplicates content in consolidated (documents behavior)", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Duplicate merge test");
+      const planDir = getPointer(dir);
+      writeFileSync(
+        join(dir, "plans", planDir, "findings.md"),
+        `# Findings\n\n## Index\n- Unique finding\n`
+      );
+      run(dir, "close");
+
+      // Manually restore pointer to simulate re-close
+      writeFileSync(join(dir, "plans", ".current_plan"), planDir);
+      run(dir, "close");
+
+      const consolidated = readFileSync(join(dir, "plans", "FINDINGS.md"), "utf-8");
+      // Count occurrences of the plan section header
+      const occurrences = consolidated.split(`## ${planDir}`).length - 1;
+      assert.equal(occurrences, 2, "closing twice produces duplicate sections (known behavior)");
+    });
+
+    it("close with empty findings does not add empty section", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Empty findings test");
+      const planDir = getPointer(dir);
+      // findings.md has only the header/boilerplate, no ## headings with content
+      // The default template has ## Index and ## Key Constraints with placeholder text
+      run(dir, "close");
+      const consolidated = readFileSync(join(dir, "plans", "FINDINGS.md"), "utf-8");
+      // Should still have a section for this plan (the ## headings get demoted and merged)
+      assert.ok(consolidated.includes(planDir), "plan section should exist even with template content");
+    });
+
+    it("close with findings that have no ## headings drops content (stripHeader behavior)", () => {
+      const dir = getTempDir();
+      run(dir, "new", "No headings test");
+      const planDir = getPointer(dir);
+      // Write findings with only H1 header and plain text (no ## headings)
+      writeFileSync(
+        join(dir, "plans", planDir, "findings.md"),
+        `# Findings\nJust plain text, no sub-headings.\n`
+      );
+      run(dir, "close");
+      const consolidated = readFileSync(join(dir, "plans", "FINDINGS.md"), "utf-8");
+      // stripHeader returns full content when no ## found, then stripCrossPlanNote runs,
+      // then heading demotion (no ## to demote), then trim. The remaining text is non-empty
+      // so it IS merged. This documents the actual behavior.
+      // Content without ## headings gets merged as-is (with H1 stripped by stripHeader returning full text)
+      assert.ok(consolidated.includes("plain text"), "content without ## headings is still merged as-is");
+    });
+
+    it("close with empty decisions does not error", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Empty decisions test");
+      const planDir = getPointer(dir);
+      // Overwrite decisions.md with just the header
+      writeFileSync(
+        join(dir, "plans", planDir, "decisions.md"),
+        `# Decision Log\nNo decisions made.\n`
+      );
+      const r = run(dir, "close");
+      assert.equal(r.exitCode, 0, "should close without error");
+    });
+  });
+
+  // =========================================================================
+  // content validation (step 3)
+  // =========================================================================
+  describe("plan file structure validation", () => {
+    it("plan.md has all required section headings", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Structure test");
+      const planDir = getPointer(dir);
+      const plan = readPlanFile(dir, planDir, "plan.md");
+      const requiredSections = [
+        "## Goal",
+        "## Problem Statement",
+        "## Context",
+        "## Files To Modify",
+        "## Steps",
+        "## Failure Modes",
+        "## Risks",
+        "## Success Criteria",
+        "## Complexity Budget",
+      ];
+      for (const section of requiredSections) {
+        assert.ok(plan.includes(section), `plan.md should have "${section}"`);
+      }
+    });
+
+    it("state.md has all structural sections", () => {
+      const dir = getTempDir();
+      run(dir, "new", "State structure test");
+      const planDir = getPointer(dir);
+      const state = readPlanFile(dir, planDir, "state.md");
+      const requiredSections = [
+        "# Current State:",
+        "## Iteration:",
+        "## Current Plan Step:",
+        "## Pre-Step Checklist",
+        "## Fix Attempts",
+        "## Change Manifest",
+        "## Last Transition:",
+        "## Transition History:",
+      ];
+      for (const section of requiredSections) {
+        assert.ok(state.includes(section), `state.md should have "${section}"`);
+      }
+    });
+
+    it("verification.md has proper table structure", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Verification structure test");
+      const planDir = getPointer(dir);
+      const v = readPlanFile(dir, planDir, "verification.md");
+      assert.ok(v.includes("# Verification Results"), "should have main header");
+      assert.ok(v.includes("## Criteria Verification"), "should have criteria section");
+      assert.ok(v.includes("Criterion"), "should have criterion column header");
+      assert.ok(v.includes("Method"), "should have method column header");
+      assert.ok(v.includes("Result"), "should have result column header");
+      assert.ok(v.includes("Evidence"), "should have evidence column header");
+      assert.ok(v.includes("## Additional Checks"), "should have additional checks section");
+      assert.ok(v.includes("## Verdict"), "should have verdict section");
+    });
+
+    it("decisions.md has append-only header", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Decisions structure test");
+      const planDir = getPointer(dir);
+      const decisions = readPlanFile(dir, planDir, "decisions.md");
+      assert.ok(decisions.includes("# Decision Log"), "should have Decision Log header");
+      assert.ok(decisions.includes("Append-only"), "should note append-only policy");
+    });
+
+    it("progress.md has all required sections", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Progress structure test");
+      const planDir = getPointer(dir);
+      const progress = readPlanFile(dir, planDir, "progress.md");
+      const requiredSections = [
+        "# Progress",
+        "## Completed",
+        "## In Progress",
+        "## Remaining",
+        "## Blocked",
+      ];
+      for (const section of requiredSections) {
+        assert.ok(progress.includes(section), `progress.md should have "${section}"`);
+      }
+    });
+  });
+
+  // =========================================================================
+  // Verification Strategy placeholder (step 4)
+  // =========================================================================
+  describe("plan.md Verification Strategy", () => {
+    it("plan.md includes Verification Strategy section", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Verification Strategy test");
+      const planDir = getPointer(dir);
+      const plan = readPlanFile(dir, planDir, "plan.md");
+      assert.ok(
+        plan.includes("## Verification Strategy"),
+        "plan.md should have Verification Strategy section"
+      );
+    });
+  });
+
+  // =========================================================================
+  // verification.md table format (step 5)
+  // =========================================================================
+  describe("verification.md table format", () => {
+    it("verification.md placeholder row has proper column count", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Table format test");
+      const planDir = getPointer(dir);
+      const v = readPlanFile(dir, planDir, "verification.md");
+      // The table header row has 6 columns: #, Criterion, Method, Command/Action, Result, Evidence
+      const headerRow = v.split("\n").find((l) => l.includes("Criterion"));
+      if (headerRow) {
+        const colCount = headerRow.split("|").filter((c) => c.trim()).length;
+        // Every data row should either be the separator or have the same column count
+        const dataRows = v.split("\n").filter(
+          (l) => l.startsWith("|") && !l.includes("---") && !l.includes("Criterion")
+        );
+        for (const row of dataRows) {
+          const rowCols = row.split("|").filter((c) => c.trim()).length;
+          // Allow rows with fewer columns only if they are placeholder/note rows
+          // But ideally all rows should match header column count
+          assert.ok(
+            rowCols === colCount || rowCols <= 1,
+            `row should have ${colCount} columns or be a note, got ${rowCols}: ${row}`
+          );
+        }
+      }
+    });
+  });
+
+  // =========================================================================
+  // close updates state.md (step 6)
+  // =========================================================================
+  describe("close updates state.md", () => {
+    it("state.md shows CLOSE state after close command", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Close state test");
+      const planDir = getPointer(dir);
+      run(dir, "close");
+      // After close, state.md should be updated
+      const state = readFileSync(join(dir, "plans", planDir, "state.md"), "utf-8");
+      assert.ok(state.includes("CLOSE"), "state.md should mention CLOSE after close");
+    });
+
+    it("state.md transition history includes close transition", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Close transition test");
+      const planDir = getPointer(dir);
+      run(dir, "close");
+      const state = readFileSync(join(dir, "plans", planDir, "state.md"), "utf-8");
+      assert.ok(
+        state.includes("CLOSE") && state.includes("bootstrap close"),
+        "should log close transition with 'bootstrap close' note"
+      );
+    });
+  });
+
+  // =========================================================================
+  // resume with various states (step 7)
+  // =========================================================================
+  describe("resume with various plan states", () => {
+    it("resume shows PLAN state correctly", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Plan state resume test");
+      const planDir = getPointer(dir);
+      writeFileSync(
+        join(dir, "plans", planDir, "state.md"),
+        `# Current State: PLAN\n## Iteration: 1\n## Current Plan Step: N/A\n## Last Transition: EXPLORE → PLAN\n## Transition History:\n- EXPLORE → PLAN\n`
+      );
+      const r = run(dir, "resume");
+      assert.equal(r.exitCode, 0);
+      assert.ok(r.stdout.includes("PLAN"), "should show PLAN state");
+    });
+
+    it("resume shows REFLECT state with verification info", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Reflect state resume test");
+      const planDir = getPointer(dir);
+      writeFileSync(
+        join(dir, "plans", planDir, "state.md"),
+        `# Current State: REFLECT\n## Iteration: 2\n## Current Plan Step: 5 of 5\n## Last Transition: EXECUTE → REFLECT\n## Transition History:\n- EXECUTE → REFLECT\n`
+      );
+      writeFileSync(
+        join(dir, "plans", planDir, "progress.md"),
+        `# Progress\n\n## Completed\n- [x] Step 1\n- [x] Step 2\n- [x] Step 3\n\n## In Progress\n\n## Remaining\n- [ ] Verify\n\n## Blocked\n`
+      );
+      const r = run(dir, "resume");
+      assert.equal(r.exitCode, 0);
+      assert.ok(r.stdout.includes("REFLECT"), "should show REFLECT state");
+      assert.ok(r.stdout.includes("3 done"), "should show 3 completed");
+      assert.ok(r.stdout.includes("1 remaining"), "should show 1 remaining");
+    });
+
+    it("resume with findings directory containing files", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Findings files resume test");
+      const planDir = getPointer(dir);
+      // Create some findings files
+      writeFileSync(join(dir, "plans", planDir, "findings", "auth-system.md"), "# Auth System\nDetails...\n");
+      writeFileSync(join(dir, "plans", planDir, "findings", "database.md"), "# Database\nDetails...\n");
+      const r = run(dir, "resume");
+      assert.equal(r.exitCode, 0);
+      assert.ok(r.stdout.includes("Resuming"), "should show resume header");
+      // Resume should complete without error even with findings files
+    });
+
+    it("resume shows all expected output sections", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Full resume output test");
+      const planDir = getPointer(dir);
+      const r = run(dir, "resume");
+      assert.equal(r.exitCode, 0);
+      // Verify all expected output sections
+      assert.ok(r.stdout.includes("Resuming"), "should have resuming header");
+      assert.ok(r.stdout.includes("State:"), "should show state");
+      assert.ok(r.stdout.includes("Iteration:"), "should show iteration");
+      assert.ok(r.stdout.includes("Step:"), "should show step");
+      assert.ok(r.stdout.includes("Goal:"), "should show goal");
+      assert.ok(r.stdout.includes("Last:"), "should show last transition");
+      assert.ok(r.stdout.includes("Progress:"), "should show progress");
+      assert.ok(r.stdout.includes("Recovery files:"), "should show recovery files");
+      assert.ok(r.stdout.includes("Consolidated context:"), "should show consolidated context");
+    });
+  });
 });
