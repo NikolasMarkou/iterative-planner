@@ -88,7 +88,7 @@ node <skill-path>/scripts/bootstrap.mjs list                 # Show all plan dir
 `new` refuses if active plan exists — use `resume`, `close`, or `--force`.
 `new` ensures `.gitignore` includes `plans/` — prevents plan files from being committed during EXECUTE step commits.
 `close` merges per-plan findings/decisions to consolidated files, updates `state.md`, and removes the `.current_plan` pointer. The protocol CLOSE state (writing `summary.md`, auditing decision anchors) should be completed by the agent before running `close`.
-After bootstrap → begin EXPLORE. User-provided context → write to `findings.md` first.
+After bootstrap → **read every file in `{plan-dir}`** (`state.md`, `plan.md`, `decisions.md`, `findings.md`, `progress.md`, `verification.md`) before doing anything else. Then begin EXPLORE. User-provided context → write to `findings.md` first.
 
 ## Filesystem Structure
 
@@ -134,7 +134,7 @@ R = read only | W = update (implicit read + write) | R+W = distinct read and wri
 ## Per-State Rules
 
 ### EXPLORE
-- Read `plans/FINDINGS.md` and `plans/DECISIONS.md` at start of EXPLORE for cross-plan context.
+- Read `state.md`, `plans/FINDINGS.md` and `plans/DECISIONS.md` at start of EXPLORE for cross-plan context.
 - Read code, grep, glob, search. One focused question at a time.
 - Flush to `findings.md` + `findings/` after every 2 reads. **Read the file first** before each write.
 - Include file paths + code path traces (e.g. `auth.rb:23` → `SessionStore#find` → `redis_store.rb:get`).
@@ -145,7 +145,7 @@ R = read only | W = update (implicit read + write) | R+W = distinct read and wri
 - REFLECT → EXPLORE loops: append to existing findings, don't overwrite. Mark corrections with `[CORRECTED iter-N]`.
 
 ### PLAN
-- **Gate check**: read `findings.md`, `findings/*`, `decisions.md`, `plans/FINDINGS.md`, `plans/DECISIONS.md` before writing anything. If not read → read now. No exceptions. If `findings.md` has <3 indexed findings → go back to EXPLORE.
+- **Gate check**: read `state.md`, `plan.md`, `findings.md`, `findings/*`, `decisions.md`, `progress.md`, `verification.md`, `plans/FINDINGS.md`, `plans/DECISIONS.md` before writing anything. If not read → read now. No exceptions. If `findings.md` has <3 indexed findings → go back to EXPLORE.
 - **Problem Statement first** — before designing steps, write in `plan.md`: (1) what behavior is expected, (2) invariants — what must always be true, (3) edge cases at boundaries. Can't state the problem clearly → go back to EXPLORE.
 - Write `plan.md`: problem statement, steps, failure modes, risks, success criteria, verification strategy, complexity budget.
 - **Verification Strategy** — for each success criterion, define: what test/check to run, what command to execute, what result means "pass". Write to plan.md `Verification Strategy` section. Plans with no testable criteria → write "N/A — manual review only" (proves you checked). See `references/file-formats.md` for template.
