@@ -68,7 +68,7 @@ These files are active working memory. Re-read during the conversation, not just
 | Before writing a fix | `decisions.md` | Don't repeat failed approaches. Check 3-strike. |
 | Before modifying `DECISION`-commented code | Referenced `decisions.md` entry | Understand why before changing |
 | Before PLAN or RE-PLAN | `decisions.md`, `findings.md`, `findings/*` | Ground plan in known facts |
-| Before any REFLECT | `plan.md` (criteria), `progress.md` | Compare against written criteria, not vibes |
+| Before any REFLECT | `plan.md` (criteria), `progress.md`, `verification.md` | Compare against written criteria, not vibes |
 | Every 10 tool calls | `state.md` | Reorient. Right step? Scope crept? |
 
 **>50 messages**: re-read `state.md` + `plan.md` before every response. Files are truth, not memory.
@@ -115,6 +115,8 @@ Templates: `references/file-formats.md`
 
 R = read only | W = update (implicit read + write) | R+W = distinct read and write operations | — = do not touch (wrong state if you are).
 
+**Read-before-write rule**: Always read a plan file before writing/overwriting it — even on the first update after bootstrap. Claude Code's Write tool will reject writes to files you haven't read in the current session. This applies to every W and R+W cell below.
+
 | File | EXPLORE | PLAN | EXECUTE | REFLECT | RE-PLAN | CLOSE |
 |------|---------|------|---------|---------|---------|-------|
 | state.md | W | W | R+W | W | W | W |
@@ -134,7 +136,7 @@ R = read only | W = update (implicit read + write) | R+W = distinct read and wri
 ### EXPLORE
 - Read `plans/FINDINGS.md` and `plans/DECISIONS.md` at start of EXPLORE for cross-plan context.
 - Read code, grep, glob, search. One focused question at a time.
-- Flush to `findings.md` + `findings/` after every 2 reads.
+- Flush to `findings.md` + `findings/` after every 2 reads. **Read the file first** before each write.
 - Include file paths + code path traces (e.g. `auth.rb:23` → `SessionStore#find` → `redis_store.rb:get`).
 - DO NOT skip EXPLORE even if you think you know the answer.
 - **Minimum depth**: ≥3 indexed findings in `findings.md` before transitioning to PLAN. Findings must cover: (1) problem scope, (2) affected files, (3) existing patterns or constraints. Fewer than 3 → keep exploring.
@@ -149,8 +151,8 @@ R = read only | W = update (implicit read + write) | R+W = distinct read and wri
 - **Verification Strategy** — for each success criterion, define: what test/check to run, what command to execute, what result means "pass". Write to plan.md `Verification Strategy` section. Plans with no testable criteria → write "N/A — manual review only" (proves you checked). See `references/file-formats.md` for template.
 - **Failure Mode Analysis** — for each external dependency or integration point in the plan, answer: what if slow? returns garbage? is down? What's the blast radius? Write to plan.md `Failure Modes` section. No dependencies → write "None identified" (proves you checked).
 - Write `decisions.md`: log chosen approach + why (mandatory even for first plan). **Trade-off rule** — phrase every decision as **"X at the cost of Y"**. Never recommend without stating what it costs.
-- Write `verification.md` with initial template (criteria table populated from success criteria, methods from verification strategy, results pending).
-- Write `state.md` + `progress.md`.
+- Read then write `verification.md` with initial template (criteria table populated from success criteria, methods from verification strategy, results pending).
+- Read then write `state.md` + `progress.md`.
 - List **every file** to modify/create. Can't list them → go back to EXPLORE.
 - Only recommended approach in plan. Alternatives → `decisions.md`.
 - Wait for explicit user approval.
@@ -178,7 +180,7 @@ On **failed step**: skip gate. Follow Autonomy Leash (revert-first, 2 attempts m
 - Read `findings.md` + relevant `findings/*` — check if discoveries during EXECUTE contradict earlier findings. Note contradictions in `decisions.md`.
 - Read `checkpoints/*` — know what rollback options exist before deciding next transition. Note available restore points in `decisions.md` if transitioning to RE-PLAN.
 - Cross-validate: every `[x]` in plan.md must be "Completed" in progress.md. Fix drift first.
-- **Run verification** — execute each check defined in the Verification Strategy. Record results in `verification.md`: criterion, method, command/action, result (PASS/FAIL), evidence (output summary or log reference). See `references/file-formats.md` for template.
+- **Run verification** — execute each check defined in the Verification Strategy. Read `verification.md`, then record results: criterion, method, command/action, result (PASS/FAIL), evidence (output summary or log reference). See `references/file-formats.md` for template.
 - Read `decisions.md` — check 3-strike patterns.
 - Compare against **written criteria**, not memory. Run 5 Simplification Checks (`references/complexity-control.md`).
 - Write `decisions.md` (what happened, learned, root cause) + `progress.md` + `state.md`.
