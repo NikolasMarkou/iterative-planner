@@ -32,11 +32,10 @@ Any limit hit → STOP → REFLECT. Ask: "Root cause or symptom?"
 Something breaks during EXECUTE:
 
 1. STOP. No new code.
-2. Read the error. Log in `decisions.md`.
-3. REVERT? → revert. Verify clean: no debug code/imports/TODOs.
-4. DELETE? → delete.
-5. ONE-LINE fix? → do it.
-6. None → STOP → REFLECT.
+2. REVERT? → revert. Verify clean: no debug code/imports/TODOs.
+3. DELETE? → delete.
+4. ONE-LINE fix? → do it.
+5. None → STOP → REFLECT.
 
 **10-Line Rule**: fix needs >10 new lines → not a fix → REFLECT.
 

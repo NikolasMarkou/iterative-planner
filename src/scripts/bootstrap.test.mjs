@@ -3,7 +3,7 @@
 // Run: node --test src/scripts/bootstrap.test.mjs
 // Requires: Node.js 18+
 
-import { describe, it, before, afterEach } from "node:test";
+import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, readFileSync, writeFileSync, existsSync, rmSync, readdirSync } from "fs";
 import { join, resolve } from "path";
@@ -191,16 +191,6 @@ describe("bootstrap.mjs", () => {
       const planDir = getPointer(dir);
       const decisions = readPlanFile(dir, planDir, "decisions.md");
       assert.ok(decisions.includes("plans/DECISIONS.md"), "should reference consolidated decisions");
-    });
-
-    it("verification.md has criteria table structure", () => {
-      const dir = getTempDir();
-      run(dir, "new", "Test goal");
-      const planDir = getPointer(dir);
-      const v = readPlanFile(dir, planDir, "verification.md");
-      assert.ok(v.includes("# Verification Results"), "should have header");
-      assert.ok(v.includes("Criterion"), "should have criteria table");
-      assert.ok(v.includes("## Verdict"), "should have verdict section");
     });
 
     it("progress.md starts with EXPLORE in progress", () => {
@@ -831,6 +821,7 @@ describe("bootstrap.mjs", () => {
         "## Failure Modes",
         "## Risks",
         "## Success Criteria",
+        "## Verification Strategy",
         "## Complexity Budget",
       ];
       for (const section of requiredSections) {
@@ -897,22 +888,6 @@ describe("bootstrap.mjs", () => {
       for (const section of requiredSections) {
         assert.ok(progress.includes(section), `progress.md should have "${section}"`);
       }
-    });
-  });
-
-  // =========================================================================
-  // Verification Strategy placeholder (step 4)
-  // =========================================================================
-  describe("plan.md Verification Strategy", () => {
-    it("plan.md includes Verification Strategy section", () => {
-      const dir = getTempDir();
-      run(dir, "new", "Verification Strategy test");
-      const planDir = getPointer(dir);
-      const plan = readPlanFile(dir, planDir, "plan.md");
-      assert.ok(
-        plan.includes("## Verification Strategy"),
-        "plan.md should have Verification Strategy section"
-      );
     });
   });
 

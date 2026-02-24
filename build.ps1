@@ -4,7 +4,7 @@
 
 param(
     [Parameter(Position=0)]
-    [string]$Command = "help"
+    [string]$Command = "package"
 )
 
 $SkillName = "iterative-planner"
@@ -73,7 +73,7 @@ function Invoke-BuildCombined {
     $content += "`n`n---`n`n# Bundled References`n"
 
     # Append each reference file
-    Get-ChildItem "src/references/*.md" | ForEach-Object {
+    Get-ChildItem "src/references/*.md" | Sort-Object Name | ForEach-Object {
         $content += "`n---`n`n"
         $content += Get-Content $_.FullName -Raw
     }

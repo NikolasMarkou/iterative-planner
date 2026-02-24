@@ -87,7 +87,7 @@ node <skill-path>/scripts/bootstrap.mjs list                 # Show all plan dir
 
 `new` refuses if active plan exists — use `resume`, `close`, or `--force`.
 `new` ensures `.gitignore` includes `plans/` — prevents plan files from being committed during EXECUTE step commits.
-`close` is an administrative operation — removes the `.current_plan` pointer only. The protocol CLOSE state (writing `summary.md`, auditing decision anchors) should be completed by the agent before running `close`.
+`close` merges per-plan findings/decisions to consolidated files, updates `state.md`, and removes the `.current_plan` pointer. The protocol CLOSE state (writing `summary.md`, auditing decision anchors) should be completed by the agent before running `close`.
 After bootstrap → begin EXPLORE. User-provided context → write to `findings.md` first.
 
 ## Filesystem Structure
@@ -162,7 +162,7 @@ R = read only | W = update (implicit read + write) | R+W = distinct read and wri
 - Checkpoint before risky changes (3+ files, shared modules, destructive ops). Name: `cp-NNN-iterN.md` (e.g. `cp-001-iter2.md`). Increment NNN globally across iterations.
 - Commit after each successful step: `[iter-N/step-M] description`.
 - If something breaks → STOP. 2 fix attempts max (Autonomy Leash). Each must follow Revert-First.
-- **Irreversible operations** (DB migrations, external API calls with side effects, service config changes, deletion of non-git-tracked files): mark step `[IRREVERSIBLE]` in `plan.md` during PLAN. Before executing: (1) get explicit user confirmation, (2) document rollback plan in checkpoint, (3) dry-run first if available. See `references/code-hygiene.md`.
+- **Irreversible operations** (DB migrations, external API calls, service config, non-tracked file deletion): mark step `[IRREVERSIBLE]` in `plan.md` during PLAN. Full procedure: `references/code-hygiene.md`.
 - **Surprise discovery** (behavior contradicts findings, unknown dependency, wrong assumption) → note in `state.md`, finish or revert current step, transition to REFLECT. Do NOT silently update findings during EXECUTE.
 - Add `# DECISION D-NNN` comments where needed (`references/decision-anchoring.md`).
 
@@ -191,10 +191,7 @@ On **failed step**: skip gate. Follow Autonomy Leash (revert-first, 2 attempts m
 
 ### RE-PLAN
 - Read `decisions.md`, `findings.md`, relevant `findings/*`.
-- Read `checkpoints/*` — decide keep vs revert:
-  - **Keep successful commits** when: steps already committed are valid under the new approach. Log: "Keeping steps 1-2, reverting step 3."
-  - **Revert to checkpoint** when: new approach is fundamentally different, or kept commits would conflict. Log: "Reverting to cp-NNN. Reason: [why]."
-  - **Default**: if unsure, revert to latest checkpoint. Safer than debugging stale state.
+- Read `checkpoints/*` — decide keep vs revert. Default: if unsure, revert to latest checkpoint. See `references/code-hygiene.md` for full decision framework.
 - If earlier findings proved wrong or incomplete → update `findings.md` + `findings/*` with corrections. Mark corrections: `[CORRECTED iter-N]` + what changed and why. Append, don't delete original text.
 - Write `decisions.md`: log pivot + mandatory Complexity Assessment.
 - Write `state.md` + `progress.md` (mark failed items, note pivot).
@@ -209,7 +206,7 @@ Default response to failure = simplify, not add. See `references/complexity-cont
 **3-Strike Rule** — same area breaks 3× → RE-PLAN with fundamentally different approach. Revert to checkpoint covering the struck area.
 **Complexity Budget** — tracked in plan.md: files added 0/3, abstractions 0/2, lines net-zero target.
 **Forbidden**: wrapper cascades, config toggles, copy-paste, exception swallowing, type escapes, adapters, "temporary" workarounds.
-**Nuclear Option** — iteration 5 + bloat >2× scope → recommend full revert to `cp-000` (or later checkpoint if user agrees).
+**Nuclear Option** — iteration 5 + bloat >2× scope → recommend full revert to `cp-000` (or later checkpoint if user agrees). Otherwise proceed with caution. See `references/complexity-control.md`.
 
 ## Autonomy Leash (CRITICAL)
 
@@ -238,7 +235,6 @@ See `references/decision-anchoring.md`.
 ## Iteration Limits
 
 Increment on PLAN → EXECUTE. Iteration 0 = EXPLORE-only (pre-plan). First real = iteration 1.
-- **Iteration 5**: if total lines added > 2× original scope → Nuclear Option (`references/complexity-control.md`). Otherwise proceed with caution.
 - **Iteration 6+**: hard STOP. Going in circles? Harder than scoped? Break into smaller tasks.
 
 ## Recovery from Context Loss
