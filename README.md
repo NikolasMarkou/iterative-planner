@@ -1,7 +1,7 @@
 # Iterative Planner
 
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Skill](https://img.shields.io/badge/Skill-v2.1.2-green.svg)](CHANGELOG.md)
+[![Skill](https://img.shields.io/badge/Skill-v2.2.0-green.svg)](CHANGELOG.md)
 [![Sponsored by Electi](https://img.shields.io/badge/Sponsored%20by-Electi-red.svg)](https://www.electiconsulting.com)
 
 **Stop watching Claude go off the rails on complex tasks.**
@@ -241,7 +241,7 @@ iterative-planner/
     ├── SKILL.md              # Core protocol -- the complete skill specification
     ├── scripts/
     │   ├── bootstrap.mjs     # Plan directory initializer (Node.js 18+)
-    │   └── bootstrap.test.mjs # Test suite (node:test, 64 tests)
+    │   └── bootstrap.test.mjs # Test suite (node:test, 73 tests)
     └── references/
         ├── complexity-control.md   # Anti-complexity protocol and forbidden patterns
         ├── code-hygiene.md         # Change manifests, revert procedures, cleanup rules

@@ -4,6 +4,18 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.2.0] - 2026-03-02
+
+### Added
+- **Cross-plan institutional memory (`plans/LESSONS.md`)** — new consolidated file for capturing user corrections, recurring mistakes, and workflow preferences across plans. Bootstrap creates it on first `new`. Referenced in SKILL.md at 5 protocol points: EXPLORE (read at start), PLAN gate check, RE-PLAN (review before pivot), CLOSE (merge lessons learned), and Recovery. 9 new tests added (73 total).
+
+### Fixed
+- **README badge updated** — was `v2.1.2`, now matches VERSION.
+- **Test count corrected** — CLAUDE.md and README.md said "64 tests"; actual is 73.
+- **build.ps1 header comment completed** — listed 7 of 11 commands; now lists all 11.
+- **Test file excluded from packages** — `*.mjs` glob in Makefile and build.ps1 was including `bootstrap.test.mjs` (~58KB) in distribution packages. Now explicitly copies only `bootstrap.mjs`.
+- **LESSONS.md added to build validation** — Makefile and build.ps1 now check that `bootstrap.mjs` references `LESSONS.md`, matching existing checks for `FINDINGS.md` and `DECISIONS.md`.
+
 ## [2.1.4] - 2026-02-24
 
 ### Fixed

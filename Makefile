@@ -9,7 +9,7 @@ DIST_DIR := dist
 # Files to include in the skill package
 SKILL_FILE := src/SKILL.md
 REFERENCE_FILES := $(sort $(wildcard src/references/*.md))
-SCRIPT_FILES := $(wildcard src/scripts/*.mjs)
+SCRIPT_FILES := $(filter-out %.test.mjs,$(wildcard src/scripts/*.mjs))
 DOC_FILES := README.md LICENSE CHANGELOG.md
 
 # Default target
@@ -114,6 +114,8 @@ validate:
 		(echo "ERROR: bootstrap.mjs does not reference FINDINGS.md" && exit 1)
 	@grep -q "DECISIONS.md" src/scripts/bootstrap.mjs || \
 		(echo "ERROR: bootstrap.mjs does not reference DECISIONS.md" && exit 1)
+	@grep -q "LESSONS.md" src/scripts/bootstrap.mjs || \
+		(echo "ERROR: bootstrap.mjs does not reference LESSONS.md" && exit 1)
 	@# Verify transition table entries appear in Mermaid diagram
 	@echo "Checking state machine consistency..."
 	@for pair in "EXPLORE.*PLAN" "PLAN.*EXPLORE" "PLAN.*PLAN" "PLAN.*EXECUTE" "EXECUTE.*REFLECT" \

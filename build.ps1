@@ -1,6 +1,6 @@
 # build.ps1 - PowerShell build script for Iterative Planner Claude Skill
 # Usage: .\build.ps1 [command]
-# Commands: build, build-combined, package, validate, clean, list, help
+# Commands: build, build-combined, package, package-combined, package-tar, validate, lint, test, clean, list, help
 
 param(
     [Parameter(Position=0)]
@@ -49,7 +49,7 @@ function Invoke-Build {
     Copy-Item "src/references/*.md" "$skillDir/references/"
 
     # Copy scripts
-    Copy-Item "src/scripts/*.mjs" "$skillDir/scripts/"
+    Get-ChildItem "src/scripts/*.mjs" -Exclude "*.test.mjs" | Copy-Item -Destination "$skillDir/scripts/"
 
     # Copy documentation
     @("README.md", "LICENSE", "CHANGELOG.md") | ForEach-Object {
@@ -207,6 +207,9 @@ function Invoke-Validate {
         }
         if ($bsContent -notmatch "DECISIONS\.md") {
             $errors += "ERROR: bootstrap.mjs does not reference DECISIONS.md"
+        }
+        if ($bsContent -notmatch "LESSONS\.md") {
+            $errors += "ERROR: bootstrap.mjs does not reference LESSONS.md"
         }
     }
 
