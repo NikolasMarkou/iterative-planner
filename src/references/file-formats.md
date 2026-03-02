@@ -323,7 +323,13 @@ Cross-plan findings archive. Entries merged from per-plan `findings.md` on close
 
 **Newest first** — most recently closed plan appears at the top (after the header). This keeps the most relevant context immediately accessible without reading the entire file.
 
+**Read limit**: Always read with `limit: 600`. Compressed summary + recent plan sections fit within this.
+
+**Compression**: When >500 lines, a compressed summary (≤100 lines) is inserted between `<!-- COMPRESSED-SUMMARY -->` markers after the header. See "Consolidated File Compression" in SKILL.md.
+
 Created automatically by bootstrap on first `new`. Updated on each `close`.
+
+### Without compression (<500 lines)
 
 ```markdown
 # Consolidated Findings
@@ -342,10 +348,40 @@ Created automatically by bootstrap on first `new`. Updated on each `close`.
 - SessionSerializer shared between cookie middleware AND API auth
 ```
 
+### With compression (>500 lines)
+
+```markdown
+# Consolidated Findings
+*Cross-plan findings archive. Entries merged from per-plan findings.md on close. Newest first.*
+
+<!-- COMPRESSED-SUMMARY -->
+## Summary (compressed)
+*Auto-compressed from 847 lines. Read full content below line 600 if needed.*
+
+### Key Findings
+- Auth system uses cookie-based sessions with Redis backing (3 stores: Redis, DB, in-memory)
+- SessionSerializer is shared between cookie middleware AND API auth — changing format affects both
+- Foreign key constraints prevent cascade delete on users table
+- rack-session gem pins cookie-compatible format, requires Rails 7.1+ to upgrade
+- No integration tests existed for session migration paths
+<!-- /COMPRESSED-SUMMARY -->
+
+## plan_2026-02-20_b4e2c3d0
+### Index
+- [Database Schema](plan_2026-02-20_b4e2c3d0/findings/db-schema.md) — table relationships
+### Key Constraints
+- Foreign key constraints prevent cascade delete on users table
+
+## plan_2026-02-19_a3f1b2c9
+### Index
+...
+```
+
 Usage:
-- Read at start of EXPLORE and during PLAN gate check for cross-plan context
+- Read (limit: 600) at start of EXPLORE and during PLAN gate check for cross-plan context
 - Do not edit directly — content is merged automatically on `close`
 - Agent/user can curate (remove stale sections) manually if needed
+- When compressing: only summarize `## plan_*` sections, SKIP content between `<!-- COMPRESSED-SUMMARY -->` markers
 
 ## plans/DECISIONS.md (consolidated)
 
@@ -353,7 +389,13 @@ Cross-plan decision archive. Entries merged from per-plan `decisions.md` on clos
 
 **Newest first** — most recently closed plan appears at the top (after the header).
 
+**Read limit**: Always read with `limit: 600`. Compressed summary + recent plan sections fit within this.
+
+**Compression**: When >500 lines, a compressed summary (≤100 lines) is inserted between `<!-- COMPRESSED-SUMMARY -->` markers after the header. See "Consolidated File Compression" in SKILL.md.
+
 Created automatically by bootstrap on first `new`. Updated on each `close`.
+
+### Without compression (<500 lines)
 
 ```markdown
 # Consolidated Decisions
@@ -377,10 +419,70 @@ Created automatically by bootstrap on first `new`. Updated on each `close`.
 **Trade-off**: Safe rollback **at the cost of** doubled storage
 ```
 
+### With compression (>500 lines)
+
+```markdown
+# Consolidated Decisions
+*Cross-plan decision archive. Entries merged from per-plan decisions.md on close. Newest first.*
+
+<!-- COMPRESSED-SUMMARY -->
+## Summary (compressed)
+*Auto-compressed from 623 lines. Read full content below line 600 if needed.*
+
+### Key Decisions
+- Auth: Token-based sessions chosen over cookie migration (format coupling) and dual-write (memory doubling)
+- DB: Reversible migration with dual-column approach for zero-downtime
+- DO NOT: In-place Redis session migration (format coupled to serializer pipeline)
+- DO NOT: Dual-write sessions (30-day TTLs cause 2x memory)
+<!-- /COMPRESSED-SUMMARY -->
+
+## plan_2026-02-20_b4e2c3d0
+### D-001 | EXPLORE → PLAN | 2025-01-20
+...
+```
+
 Usage:
-- Read at start of EXPLORE and during PLAN gate check — learn what was tried before
+- Read (limit: 600) at start of EXPLORE and during PLAN gate check — learn what was tried before
 - Do not edit directly — content is merged automatically on `close`
 - Decision IDs are scoped per plan section (each plan starts at D-001)
+- When compressing: only summarize `## plan_*` sections, SKIP content between `<!-- COMPRESSED-SUMMARY -->` markers
+
+## plans/LESSONS.md
+
+Cross-plan institutional memory. **Rewritten** (not appended) at CLOSE to stay ≤200 lines. Read before PLAN.
+
+```markdown
+# Lessons Learned
+*Cross-plan lessons. Updated and consolidated on close. Max 200 lines — rewrite, don't append forever.*
+*Read before any PLAN state. This is institutional memory.*
+
+## Patterns That Work
+- Token-based auth is simpler than session migration — prefer stateless when possible
+- Always check format coupling before assuming storage changes are isolated
+- Checkpoint before any 3+ file change — rollback cost is near zero, re-work cost is high
+
+## What To Avoid
+- Dual-write strategies with long TTLs (storage grows unbounded)
+- In-place format migrations when serializer is shared across subsystems
+- Adapters/wrappers as fixes — they accumulate and obscure the real problem
+
+## Codebase Gotchas
+- SessionSerializer is shared between cookie middleware AND API auth — changes affect both
+- rack-session gem pins cookie-compatible format; upgrading requires Rails 7.1+
+- Foreign key constraints on users table prevent cascade delete
+
+## Recurring Traps
+- "Just add an adapter" → 3-strike pattern. Simplify instead.
+- Skipping EXPLORE because "I already know this" → missed constraints every time
+```
+
+Usage:
+- Read at start of EXPLORE, before PLAN gate check, and before RE-PLAN
+- At CLOSE: read current file, integrate significant lessons from this plan, rewrite entire file ≤200 lines
+- Consolidate aggressively — merge related lessons, drop low-value or stale entries
+- Focus on: recurring patterns, failed approaches, successful strategies, codebase gotchas
+- Drop: one-off findings, detailed decision reasoning, plan-specific details
+- Created automatically by bootstrap on first `new`
 
 ## summary.md
 

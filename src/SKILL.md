@@ -13,7 +13,7 @@ Write to disk immediately. The context window will rot. The files won't.
 
 **`{plan-dir}`** = `plans/plan_YYYY-MM-DD_XXXXXXXX/` (active plan directory under project root).
 **Discovery**: `plans/.current_plan` contains the plan directory name. One active plan at a time.
-**Cross-plan context**: `plans/FINDINGS.md` and `plans/DECISIONS.md` persist across plans (merged on close).
+**Cross-plan context**: `plans/FINDINGS.md` and `plans/DECISIONS.md` persist across plans (merged on close). `plans/LESSONS.md` persists across plans (updated on close, max 200 lines).
 
 ## State Machine
 
@@ -39,7 +39,7 @@ stateDiagram-v2
 | EXECUTE | Implement step-by-step | Edit files, run commands, write code. |
 | REFLECT | Evaluate results | Read outputs, run tests. Update decisions.md. |
 | RE-PLAN | Revise direction | Log pivot in decisions.md. Do NOT write plan.md yet. |
-| CLOSE | Finalize | Write summary.md. Audit decision anchors. Merge findings/decisions to consolidated files. |
+| CLOSE | Finalize | Write summary.md. Audit decision anchors. Merge findings/decisions to consolidated files. Update LESSONS.md (≤200 lines). Compress if >500 lines. |
 
 ### Transitions
 
@@ -56,7 +56,7 @@ stateDiagram-v2
 | RE-PLAN → PLAN | New approach formulated. Decision logged. |
 
 Every transition → log in `state.md`. RE-PLAN transitions → also log in `decisions.md` (what failed, what learned, why new direction).
-At CLOSE → audit decision anchors (`references/decision-anchoring.md`). Merge per-plan findings/decisions to `plans/FINDINGS.md` and `plans/DECISIONS.md`.
+At CLOSE → audit decision anchors (`references/decision-anchoring.md`). Merge per-plan findings/decisions to `plans/FINDINGS.md` and `plans/DECISIONS.md`. Update `plans/LESSONS.md` with significant lessons (rewrite to ≤200 lines). Compress consolidated files if >500 lines (see "Consolidated File Compression").
 
 ### Mandatory Re-reads (CRITICAL)
 
@@ -67,7 +67,7 @@ These files are active working memory. Re-read during the conversation, not just
 | Before any EXECUTE step | `state.md`, `plan.md`, `progress.md` | Confirm step, manifest, fix attempts, progress sync |
 | Before writing a fix | `decisions.md` | Don't repeat failed approaches. Check 3-strike. |
 | Before modifying `DECISION`-commented code | Referenced `decisions.md` entry | Understand why before changing |
-| Before PLAN or RE-PLAN | `decisions.md`, `findings.md`, `findings/*` | Ground plan in known facts |
+| Before PLAN or RE-PLAN | `decisions.md`, `findings.md`, `findings/*`, `plans/LESSONS.md` | Ground plan in known facts + institutional memory |
 | Before any REFLECT | `plan.md` (criteria), `progress.md`, `verification.md` | Compare against written criteria, not vibes |
 | Every 10 tool calls | `state.md` | Reorient. Right step? Scope crept? |
 
@@ -87,7 +87,7 @@ node <skill-path>/scripts/bootstrap.mjs list                 # Show all plan dir
 
 `new` refuses if active plan exists — use `resume`, `close`, or `--force`.
 `new` ensures `.gitignore` includes `plans/` — prevents plan files from being committed during EXECUTE step commits.
-`close` merges per-plan findings/decisions to consolidated files, updates `state.md`, and removes the `.current_plan` pointer. The protocol CLOSE state (writing `summary.md`, auditing decision anchors) should be completed by the agent before running `close`.
+`close` merges per-plan findings/decisions to consolidated files, updates `state.md`, and removes the `.current_plan` pointer. The protocol CLOSE state (writing `summary.md`, auditing decision anchors, updating `plans/LESSONS.md`) should be completed by the agent before running `close`.
 After bootstrap → **read every file in `{plan-dir}`** (`state.md`, `plan.md`, `decisions.md`, `findings.md`, `progress.md`, `verification.md`) before doing anything else. Then begin EXPLORE. User-provided context → write to `findings.md` first.
 
 ## Filesystem Structure
@@ -97,6 +97,7 @@ plans/
 ├── .current_plan                  # → active plan directory name
 ├── FINDINGS.md                    # Consolidated findings across all plans (merged on close)
 ├── DECISIONS.md                   # Consolidated decisions across all plans (merged on close)
+├── LESSONS.md                     # Cross-plan lessons learned (≤200 lines, rewritten on close)
 └── plan_2026-02-14_a3f1b2c9/      # {plan-dir}
     ├── state.md                   # Current state + transition log
     ├── plan.md                    # Living plan (rewritten each iteration)
@@ -128,13 +129,62 @@ R = read only | W = update (implicit read + write) | R+W = distinct read and wri
 | verification.md | — | W | W | W | R | R |
 | checkpoints/* | — | — | W | R | R | — |
 | summary.md | — | — | — | — | — | W |
-| plans/FINDINGS.md | R | R | — | — | R | W(merge) |
-| plans/DECISIONS.md | R | R | — | — | R | W(merge) |
+| plans/FINDINGS.md | R(600) | R(600) | — | — | R(600) | W(merge+compress) |
+| plans/DECISIONS.md | R(600) | R(600) | — | — | R(600) | W(merge+compress) |
+| plans/LESSONS.md | R | R | — | — | R | W(rewrite≤200) |
+
+## Consolidated File Compression
+
+`plans/FINDINGS.md` and `plans/DECISIONS.md` grow across plans. Prevent context window bloat:
+
+**Threshold**: >500 lines → compressed summary needed. Bootstrap prints `ACTION NEEDED` after merge.
+
+**Read limit**: Always read consolidated files with `limit: 600`. The compressed summary + most recent plan section fits within this. Older content is preserved on disk but not loaded.
+
+**Compression protocol** (during CLOSE, after merge):
+1. Check line count. If ≤500 → no action needed.
+2. If >500 and NO `<!-- COMPRESSED-SUMMARY -->` marker exists → create new summary.
+3. If >500 and marker already exists → REPLACE content between markers. Never summarize the old summary — read only the raw plan sections below the markers to write the new summary.
+
+**Format** — insert between H1 header and first `## plan_` section:
+```markdown
+<!-- COMPRESSED-SUMMARY -->
+## Summary (compressed)
+*Auto-compressed from N lines. Read full content below line 600 if needed.*
+
+### Key Findings
+- (≤50 lines of consolidated findings across all plans)
+
+### Key Decisions
+- (≤50 lines of consolidated decisions across all plans)
+<!-- /COMPRESSED-SUMMARY -->
+```
+
+**Rules**:
+- Max 100 lines between markers (total, including section headers).
+- Focus on: outcomes, active constraints, things NOT to do (failed approaches), anchored decisions.
+- Drop: iteration details, timestamps, verbose reasoning — those survive in full content below.
+- **Failsafe**: when writing the summary, SKIP everything between `<!-- COMPRESSED-SUMMARY -->` and `<!-- /COMPRESSED-SUMMARY -->` markers. Only summarize the actual plan sections (`## plan_*`). This prevents summaries of summaries.
+
+## Lessons Learned (`plans/LESSONS.md`)
+
+Institutional memory across plans. Unlike FINDINGS.md and DECISIONS.md which grow via append+merge, LESSONS.md is **rewritten** to stay ≤200 lines.
+
+**When to update**: At CLOSE, before running `bootstrap.mjs close`. Read the current file, integrate significant lessons from the plan, and rewrite the entire file — consolidating, deduplicating, and pruning stale entries.
+
+**When to read**: Before PLAN, before RE-PLAN, and at start of EXPLORE. This is the first thing to check for institutional memory — what patterns work, what doesn't, what to avoid.
+
+**Rules**:
+- **Hard cap: 200 lines.** If an update would exceed 200 lines, consolidate aggressively — merge related lessons, drop low-value entries, tighten wording.
+- **Rewrite, don't append.** Each update produces a complete, self-contained file. No "added on date X" markers.
+- **Focus on**: recurring patterns, failed approaches and why, successful strategies, codebase-specific gotchas, constraints that surprised you.
+- **Drop**: one-off findings (those belong in FINDINGS.md), detailed decision reasoning (that's in DECISIONS.md), anything plan-specific that won't help future plans.
+- Created automatically by bootstrap on first `new`.
 
 ## Per-State Rules
 
 ### EXPLORE
-- Read `state.md`, `plans/FINDINGS.md` and `plans/DECISIONS.md` at start of EXPLORE for cross-plan context.
+- Read `state.md`, `plans/FINDINGS.md` and `plans/DECISIONS.md` (limit: 600 lines), and `plans/LESSONS.md` at start of EXPLORE for cross-plan context.
 - Read code, grep, glob, search. One focused question at a time.
 - Flush to `findings.md` + `findings/` after every 2 reads. **Read the file first** before each write.
 - Include file paths + code path traces (e.g. `auth.rb:23` → `SessionStore#find` → `redis_store.rb:get`).
@@ -145,7 +195,7 @@ R = read only | W = update (implicit read + write) | R+W = distinct read and wri
 - REFLECT → EXPLORE loops: append to existing findings, don't overwrite. Mark corrections with `[CORRECTED iter-N]`.
 
 ### PLAN
-- **Gate check**: read `state.md`, `plan.md`, `findings.md`, `findings/*`, `decisions.md`, `progress.md`, `verification.md`, `plans/FINDINGS.md`, `plans/DECISIONS.md` before writing anything. If not read → read now. No exceptions. If `findings.md` has <3 indexed findings → go back to EXPLORE.
+- **Gate check**: read `state.md`, `plan.md`, `findings.md`, `findings/*`, `decisions.md`, `progress.md`, `verification.md`, `plans/FINDINGS.md` (limit: 600), `plans/DECISIONS.md` (limit: 600), `plans/LESSONS.md` before writing anything. If not read → read now. No exceptions. If `findings.md` has <3 indexed findings → go back to EXPLORE.
 - **Problem Statement first** — before designing steps, write in `plan.md`: (1) what behavior is expected, (2) invariants — what must always be true, (3) edge cases at boundaries. Can't state the problem clearly → go back to EXPLORE.
 - Write `plan.md`: problem statement, steps, failure modes, risks, success criteria, verification strategy, complexity budget.
 - **Verification Strategy** — for each success criterion, define: what test/check to run, what command to execute, what result means "pass". Write to plan.md `Verification Strategy` section. Plans with no testable criteria → write "N/A — manual review only" (proves you checked). See `references/file-formats.md` for template.
@@ -192,7 +242,7 @@ On **failed step**: skip gate. Follow Autonomy Leash (revert-first, 2 attempts m
 | Unknowns need investigation, or findings contradicted | → EXPLORE (update findings first) |
 
 ### RE-PLAN
-- Read `decisions.md`, `findings.md`, relevant `findings/*`.
+- Read `decisions.md`, `findings.md`, relevant `findings/*`, `plans/LESSONS.md`.
 - Read `checkpoints/*` — decide keep vs revert. Default: if unsure, revert to latest checkpoint. See `references/code-hygiene.md` for full decision framework.
 - If earlier findings proved wrong or incomplete → update `findings.md` + `findings/*` with corrections. Mark corrections: `[CORRECTED iter-N]` + what changed and why. Append, don't delete original text.
 - Write `decisions.md`: log pivot + mandatory Complexity Assessment.
@@ -250,7 +300,8 @@ Increment on PLAN → EXECUTE. Iteration 0 = EXPLORE-only (pre-plan). First real
 6. `findings.md` + `findings/*` → discovered context
 7. `checkpoints/*` → available rollback points and their git hashes
 8. `plans/FINDINGS.md` + `plans/DECISIONS.md` → cross-plan context from previous plans
-9. Resume from current state. Never start over.
+9. `plans/LESSONS.md` → institutional memory (read before planning)
+10. Resume from current state. Never start over.
 
 ## Git Integration
 

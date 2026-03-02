@@ -47,7 +47,7 @@ node <skill-path>/scripts/bootstrap.mjs close                # Close active plan
 node <skill-path>/scripts/bootstrap.mjs list                 # Show all plan directories
 ```
 
-`new` creates plan directory with all files + writes `plans/.current_plan` pointer. Creates `plans/FINDINGS.md` and `plans/DECISIONS.md` if they don't exist. Idempotent-safe: refuses if active plan exists.
+`new` creates plan directory with all files + writes `plans/.current_plan` pointer. Creates `plans/FINDINGS.md`, `plans/DECISIONS.md`, and `plans/LESSONS.md` if they don't exist. Idempotent-safe: refuses if active plan exists.
 
 ### Activation Triggers
 
@@ -129,5 +129,6 @@ make help                    # Show available targets
 - [ ] File Lifecycle Matrix matches state machine states and plan directory file list
 - [ ] `src/scripts/bootstrap.mjs` creates all files referenced in `src/references/file-formats.md` (including `verification.md`)
 - [ ] Plan directory structure in src/SKILL.md matches bootstrap.mjs output (including `verification.md`)
-- [ ] `src/scripts/bootstrap.mjs` creates and references `FINDINGS.md` and `DECISIONS.md` consolidated files
+- [ ] `src/scripts/bootstrap.mjs` creates and references `FINDINGS.md`, `DECISIONS.md`, and `LESSONS.md` consolidated files
 - [ ] Consolidated files contain merged content after `close`
+- [ ] `plans/LESSONS.md` referenced in SKILL.md (EXPLORE, PLAN gate check, RE-PLAN, CLOSE, Recovery)

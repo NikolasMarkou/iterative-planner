@@ -70,6 +70,7 @@ function extractField(content, pattern) {
 function ensureConsolidatedFiles() {
   const findingsPath = join(plansDir, "FINDINGS.md");
   const decisionsPath = join(plansDir, "DECISIONS.md");
+  const lessonsPath = join(plansDir, "LESSONS.md");
   if (!existsSync(findingsPath)) {
     writeFileSync(findingsPath, `# Consolidated Findings
 *Cross-plan findings archive. Entries merged from per-plan findings.md on close. Newest first.*
@@ -78,6 +79,12 @@ function ensureConsolidatedFiles() {
   if (!existsSync(decisionsPath)) {
     writeFileSync(decisionsPath, `# Consolidated Decisions
 *Cross-plan decision archive. Entries merged from per-plan decisions.md on close. Newest first.*
+`);
+  }
+  if (!existsSync(lessonsPath)) {
+    writeFileSync(lessonsPath, `# Lessons Learned
+*Cross-plan lessons. Updated and consolidated on close. Max 200 lines — rewrite, don't append forever.*
+*Read before any PLAN state. This is institutional memory.*
 `);
   }
 }
@@ -111,6 +118,27 @@ function stripHeader(content) {
 
 function stripCrossPlanNote(content) {
   return content.replace(/\n?\*Cross-plan context: see plans\/FINDINGS\.md and plans\/DECISIONS\.md\*\n?/g, "\n");
+}
+
+const CONSOLIDATED_COMPRESS_THRESHOLD = 500;
+const COMPRESSED_SUMMARY_OPEN = "<!-- COMPRESSED-SUMMARY -->";
+const COMPRESSED_SUMMARY_CLOSE = "<!-- /COMPRESSED-SUMMARY -->";
+
+function checkConsolidatedSize(filePath, label) {
+  // After merge, warn the agent if a consolidated file exceeds the compression threshold.
+  // The agent (not this script) performs the actual summarization per SKILL.md protocol.
+  try {
+    const content = readFileSync(filePath, "utf-8");
+    const lineCount = content.split("\n").length;
+    if (lineCount > CONSOLIDATED_COMPRESS_THRESHOLD) {
+      const hasSummary = content.includes(COMPRESSED_SUMMARY_OPEN);
+      if (hasSummary) {
+        console.log(`  ACTION NEEDED: ${label} is ${lineCount} lines (>${CONSOLIDATED_COMPRESS_THRESHOLD}). Update existing compressed summary.`);
+      } else {
+        console.log(`  ACTION NEEDED: ${label} is ${lineCount} lines (>${CONSOLIDATED_COMPRESS_THRESHOLD}). Create compressed summary — see protocol.`);
+      }
+    }
+  } catch { /* file may not exist */ }
 }
 
 function mergeToConsolidated(planDirName) {
@@ -185,8 +213,8 @@ function cmdNew(goal, force) {
   const planDir = join(plansDir, planDirName);
 
   // Check if consolidated files exist for cross-plan context seeding
-  const hasConsolidated = existsSync(join(plansDir, "FINDINGS.md")) || existsSync(join(plansDir, "DECISIONS.md"));
-  const crossPlanNote = hasConsolidated ? "\n*Cross-plan context: see plans/FINDINGS.md and plans/DECISIONS.md*\n" : "";
+  const hasConsolidated = existsSync(join(plansDir, "FINDINGS.md")) || existsSync(join(plansDir, "DECISIONS.md")) || existsSync(join(plansDir, "LESSONS.md"));
+  const crossPlanNote = hasConsolidated ? "\n*Cross-plan context: see plans/FINDINGS.md, plans/DECISIONS.md, and plans/LESSONS.md*\n" : "";
 
   try {
     mkdirSync(join(planDir, "checkpoints"), { recursive: true });
@@ -340,7 +368,7 @@ ${crossPlanNote}
   console.log(`  Pointer: plans/.current_plan → ${planDirName}`);
   console.log(`  Goal: ${goal}`);
   console.log(`  State: EXPLORE (iteration 0)`);
-  console.log(`  Cross-plan context: plans/FINDINGS.md, plans/DECISIONS.md`);
+  console.log(`  Cross-plan context: plans/FINDINGS.md, plans/DECISIONS.md, plans/LESSONS.md`);
   console.log(`  Next: Read code, ask questions, write findings.`);
 }
 
@@ -413,6 +441,7 @@ function cmdResume() {
   console.log(`  Consolidated context:`);
   console.log(`    plans/FINDINGS.md  — cross-plan findings archive`);
   console.log(`    plans/DECISIONS.md — cross-plan decision archive`);
+  console.log(`    plans/LESSONS.md   — cross-plan lessons (read before PLAN)`);
 }
 
 function cmdStatus() {
@@ -460,6 +489,9 @@ function cmdClose(opts = {}) {
   try {
     ensureConsolidatedFiles();
     mergeToConsolidated(planDirName);
+    // Check if consolidated files need compression
+    checkConsolidatedSize(join(plansDir, "FINDINGS.md"), "plans/FINDINGS.md");
+    checkConsolidatedSize(join(plansDir, "DECISIONS.md"), "plans/DECISIONS.md");
   } catch (err) {
     if (!opts.silent) {
       console.error(`WARNING: Merge to consolidated files failed: ${err.message}`);
@@ -474,6 +506,7 @@ function cmdClose(opts = {}) {
     console.log(`  Pointer plans/.current_plan removed.`);
     console.log(`  Plan directory preserved at plans/${planDirName}/`);
     console.log(`  Findings/decisions merged to plans/FINDINGS.md and plans/DECISIONS.md.`);
+    console.log(`  Update plans/LESSONS.md with significant lessons (max 200 lines).`);
     console.log(`  Note: This is an administrative close. The protocol CLOSE state`);
     console.log(`  (summary.md, decision audit) should be completed by the agent first.`);
   } else {

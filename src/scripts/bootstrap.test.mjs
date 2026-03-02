@@ -146,6 +146,16 @@ describe("bootstrap.mjs", () => {
       // Consolidated files
       assert.ok(existsSync(join(dir, "plans", "FINDINGS.md")), "FINDINGS.md should exist");
       assert.ok(existsSync(join(dir, "plans", "DECISIONS.md")), "DECISIONS.md should exist");
+      assert.ok(existsSync(join(dir, "plans", "LESSONS.md")), "LESSONS.md should exist");
+    });
+
+    it("LESSONS.md has correct initial content", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Test goal");
+      const lessons = readFileSync(join(dir, "plans", "LESSONS.md"), "utf-8");
+      assert.ok(lessons.includes("# Lessons Learned"), "should have header");
+      assert.ok(lessons.includes("Max 200 lines"), "should mention 200 line limit");
+      assert.ok(lessons.includes("institutional memory"), "should mention institutional memory");
     });
 
     it("state.md starts in EXPLORE with iteration 0", () => {
@@ -191,6 +201,16 @@ describe("bootstrap.mjs", () => {
       const planDir = getPointer(dir);
       const decisions = readPlanFile(dir, planDir, "decisions.md");
       assert.ok(decisions.includes("plans/DECISIONS.md"), "should reference consolidated decisions");
+    });
+
+    it("cross-plan reference includes LESSONS.md when consolidated files exist", () => {
+      const dir = getTempDir();
+      run(dir, "new", "first");
+      run(dir, "close");
+      run(dir, "new", "second");
+      const planDir = getPointer(dir);
+      const findings = readPlanFile(dir, planDir, "findings.md");
+      assert.ok(findings.includes("LESSONS.md"), "should reference LESSONS.md in cross-plan note");
     });
 
     it("progress.md starts with EXPLORE in progress", () => {
@@ -804,6 +824,102 @@ describe("bootstrap.mjs", () => {
   });
 
   // =========================================================================
+  // consolidated file compression warnings
+  // =========================================================================
+  describe("consolidated file compression warnings", () => {
+    /** Generate a large findings.md with many ## sections to exceed 500 lines. */
+    function makeLargeFindings(lineCount) {
+      const lines = ["# Findings\n", "## Index\n"];
+      for (let i = 0; i < lineCount - 2; i++) {
+        lines.push(`- Finding line ${i}\n`);
+      }
+      return lines.join("");
+    }
+
+    /** Generate a large decisions.md with many ## sections to exceed 500 lines. */
+    function makeLargeDecisions(lineCount) {
+      const lines = ["# Decision Log\n", "## D-001 | test\n"];
+      for (let i = 0; i < lineCount - 2; i++) {
+        lines.push(`- Decision line ${i}\n`);
+      }
+      return lines.join("");
+    }
+
+    it("no warning when consolidated files are small", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Small file test");
+      const planDir = getPointer(dir);
+      writeFileSync(
+        join(dir, "plans", planDir, "findings.md"),
+        `# Findings\n\n## Index\n- Small finding\n`
+      );
+      const r = run(dir, "close");
+      assert.ok(!r.stdout.includes("ACTION NEEDED"), "should not warn for small files");
+    });
+
+    it("warns when FINDINGS.md exceeds 500 lines after merge", () => {
+      const dir = getTempDir();
+      // Seed the consolidated file with lots of content first
+      run(dir, "new", "Seed plan");
+      run(dir, "close");
+      writeFileSync(
+        join(dir, "plans", "FINDINGS.md"),
+        makeLargeFindings(510)
+      );
+      // Now merge more content
+      run(dir, "new", "Trigger plan");
+      const planDir = getPointer(dir);
+      writeFileSync(
+        join(dir, "plans", planDir, "findings.md"),
+        `# Findings\n\n## Index\n- Trigger finding\n`
+      );
+      const r = run(dir, "close");
+      assert.ok(r.stdout.includes("ACTION NEEDED"), "should warn about large file");
+      assert.ok(r.stdout.includes("plans/FINDINGS.md"), "should name the file");
+      assert.ok(r.stdout.includes("Create compressed summary"), "should say Create for new summary");
+    });
+
+    it("warns when DECISIONS.md exceeds 500 lines after merge", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Seed plan");
+      run(dir, "close");
+      writeFileSync(
+        join(dir, "plans", "DECISIONS.md"),
+        makeLargeDecisions(510)
+      );
+      run(dir, "new", "Trigger plan");
+      const planDir = getPointer(dir);
+      writeFileSync(
+        join(dir, "plans", planDir, "decisions.md"),
+        `# Decision Log\n\n## D-001 | test\n- Trigger decision\n`
+      );
+      const r = run(dir, "close");
+      assert.ok(r.stdout.includes("ACTION NEEDED"), "should warn about large file");
+      assert.ok(r.stdout.includes("plans/DECISIONS.md"), "should name the file");
+    });
+
+    it("says Update when compressed summary markers already exist", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Seed plan");
+      run(dir, "close");
+      // Write a large file that already has compressed summary markers
+      const header = `# Consolidated Findings\n*Cross-plan findings archive.*\n\n<!-- COMPRESSED-SUMMARY -->\n## Summary (compressed)\n- Old summary line\n<!-- /COMPRESSED-SUMMARY -->\n\n`;
+      const body = makeLargeFindings(510);
+      writeFileSync(join(dir, "plans", "FINDINGS.md"), header + body);
+      // Merge more
+      run(dir, "new", "Trigger update");
+      const planDir = getPointer(dir);
+      writeFileSync(
+        join(dir, "plans", planDir, "findings.md"),
+        `# Findings\n\n## Index\n- New finding\n`
+      );
+      const r = run(dir, "close");
+      assert.ok(r.stdout.includes("ACTION NEEDED"), "should warn");
+      assert.ok(r.stdout.includes("Update existing compressed summary"), "should say Update, not Create");
+    });
+  });
+
+  // =========================================================================
   // content validation (step 3)
   // =========================================================================
   describe("plan file structure validation", () => {
@@ -1013,6 +1129,36 @@ describe("bootstrap.mjs", () => {
       assert.ok(r.stdout.includes("Progress:"), "should show progress");
       assert.ok(r.stdout.includes("Recovery files:"), "should show recovery files");
       assert.ok(r.stdout.includes("Consolidated context:"), "should show consolidated context");
+      assert.ok(r.stdout.includes("LESSONS.md"), "should mention LESSONS.md in consolidated context");
+    });
+  });
+
+  // =========================================================================
+  // LESSONS.md
+  // =========================================================================
+  describe("LESSONS.md", () => {
+    it("LESSONS.md is not overwritten on second new", () => {
+      const dir = getTempDir();
+      run(dir, "new", "first");
+      run(dir, "close");
+      // Write custom content to LESSONS.md
+      writeFileSync(join(dir, "plans", "LESSONS.md"), "# Lessons Learned\n\n## Custom lesson\n- Something important\n");
+      run(dir, "new", "second");
+      const lessons = readFileSync(join(dir, "plans", "LESSONS.md"), "utf-8");
+      assert.ok(lessons.includes("Custom lesson"), "should preserve existing LESSONS.md content");
+    });
+
+    it("close output mentions LESSONS.md update", () => {
+      const dir = getTempDir();
+      run(dir, "new", "test");
+      const r = run(dir, "close");
+      assert.ok(r.stdout.includes("LESSONS.md"), "close output should mention LESSONS.md");
+    });
+
+    it("new output mentions LESSONS.md in cross-plan context", () => {
+      const dir = getTempDir();
+      const r = run(dir, "new", "test");
+      assert.ok(r.stdout.includes("LESSONS.md"), "new output should mention LESSONS.md");
     });
   });
 });
