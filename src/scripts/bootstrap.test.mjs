@@ -759,7 +759,7 @@ describe("bootstrap.mjs", () => {
   // duplicate merge and empty content (step 2)
   // =========================================================================
   describe("duplicate merge and empty content", () => {
-    it("closing same plan twice duplicates content in consolidated (documents behavior)", () => {
+    it("closing same plan twice does not duplicate content (dedup guard)", () => {
       const dir = getTempDir();
       run(dir, "new", "Duplicate merge test");
       const planDir = getPointer(dir);
@@ -776,7 +776,7 @@ describe("bootstrap.mjs", () => {
       const consolidated = readFileSync(join(dir, "plans", "FINDINGS.md"), "utf-8");
       // Count occurrences of the plan section header
       const occurrences = consolidated.split(`## ${planDir}`).length - 1;
-      assert.equal(occurrences, 2, "closing twice produces duplicate sections (known behavior)");
+      assert.equal(occurrences, 1, "dedup guard prevents duplicate sections");
     });
 
     it("close with empty findings does not add empty section", () => {
@@ -896,6 +896,34 @@ describe("bootstrap.mjs", () => {
       const r = run(dir, "close");
       assert.ok(r.stdout.includes("ACTION NEEDED"), "should warn about large file");
       assert.ok(r.stdout.includes("plans/DECISIONS.md"), "should name the file");
+    });
+
+    it("inserts new plan section after compressed summary block, not inside it", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Seed plan");
+      run(dir, "close");
+      // Write a consolidated file with compressed summary markers
+      const consolidated = `# Consolidated Findings\n*Cross-plan findings archive.*\n\n<!-- COMPRESSED-SUMMARY -->\n## Summary (compressed)\n- Old summary\n<!-- /COMPRESSED-SUMMARY -->\n\n## plan_old_1\n### Old finding\n`;
+      writeFileSync(join(dir, "plans", "FINDINGS.md"), consolidated);
+      // Merge a new plan
+      run(dir, "new", "After compression");
+      const planDir = getPointer(dir);
+      writeFileSync(
+        join(dir, "plans", planDir, "findings.md"),
+        `# Findings\n\n## Index\n- New finding\n`
+      );
+      run(dir, "close");
+      const result = readFileSync(join(dir, "plans", "FINDINGS.md"), "utf-8");
+      // New plan section must appear AFTER the closing marker
+      const closeMarkerPos = result.indexOf("<!-- /COMPRESSED-SUMMARY -->");
+      const newPlanPos = result.indexOf(`## ${planDir}`);
+      assert.ok(closeMarkerPos >= 0, "closing marker should exist");
+      assert.ok(newPlanPos >= 0, "new plan section should exist");
+      assert.ok(newPlanPos > closeMarkerPos, "new plan section must appear after compressed summary closing marker");
+      // Compressed summary markers must remain structurally intact
+      const openMarkerPos = result.indexOf("<!-- COMPRESSED-SUMMARY -->");
+      assert.ok(openMarkerPos < closeMarkerPos, "open marker before close marker");
+      assert.ok(newPlanPos > closeMarkerPos, "no plan content inside markers");
     });
 
     it("says Update when compressed summary markers already exist", () => {

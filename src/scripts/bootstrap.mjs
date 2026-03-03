@@ -90,12 +90,22 @@ function ensureConsolidatedFiles() {
 }
 
 function prependToConsolidated(filePath, planDirName, newSection) {
-  // Insert new section after the header (H1 + boilerplate), before existing plan sections.
-  // Newest plans appear first so the most recent context is read first.
+  // Insert new section after the header (H1 + boilerplate + compressed summary if present),
+  // before existing plan sections. Newest plans appear first.
   let existing = "";
   try { existing = readFileSync(filePath, "utf-8"); } catch { /* file may not exist */ }
-  // Split at first ## (plan section heading) — everything before is the header
-  const firstH2 = existing.indexOf("\n## ");
+
+  // Dedup guard: skip if this plan was already merged
+  if (existing.includes(`\n## ${planDirName}\n`)) return;
+
+  // Skip past compressed summary block if present
+  const closeMarker = existing.indexOf(COMPRESSED_SUMMARY_CLOSE);
+  const searchFrom = closeMarker >= 0
+    ? existing.indexOf("\n", closeMarker + COMPRESSED_SUMMARY_CLOSE.length)
+    : 0;
+
+  // Find first ## plan section after the header (and after compressed summary)
+  const firstH2 = searchFrom >= 0 ? existing.indexOf("\n## ", searchFrom) : -1;
   let header, body;
   if (firstH2 >= 0) {
     header = existing.slice(0, firstH2);
@@ -117,7 +127,8 @@ function stripHeader(content) {
 }
 
 function stripCrossPlanNote(content) {
-  return content.replace(/\n?\*Cross-plan context: see plans\/FINDINGS\.md and plans\/DECISIONS\.md\*\n?/g, "\n");
+  // Match both old format ("...and plans/DECISIONS.md") and new format ("...plans/DECISIONS.md, and plans/LESSONS.md")
+  return content.replace(/\n?\*Cross-plan context: see plans\/FINDINGS\.md[^*]*\*\n?/g, "\n");
 }
 
 const CONSOLIDATED_COMPRESS_THRESHOLD = 500;
