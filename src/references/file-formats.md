@@ -323,9 +323,11 @@ Cross-plan findings archive. Entries merged from per-plan `findings.md` on close
 
 **Newest first** — most recently closed plan appears at the top (after the header). This keeps the most relevant context immediately accessible without reading the entire file.
 
+**Sliding window**: Auto-trimmed to the **8 most recent** plan sections on each close. Old plan data remains in per-plan directories (`plans/plan_*/findings.md`). Keeps file naturally bounded at ~300-450 lines.
+
 **Read limit**: Always read with `limit: 600`. Compressed summary + recent plan sections fit within this.
 
-**Compression**: When >500 lines, a compressed summary (≤100 lines) is inserted between `<!-- COMPRESSED-SUMMARY -->` markers after the header. See "Consolidated File Compression" in SKILL.md.
+**Compression**: When >500 lines (rare with sliding window), a compressed summary (≤100 lines) is inserted between `<!-- COMPRESSED-SUMMARY -->` markers after the header. See "Consolidated File Management" in SKILL.md.
 
 Created automatically by bootstrap on first `new`. Updated on each `close`.
 
@@ -389,9 +391,11 @@ Cross-plan decision archive. Entries merged from per-plan `decisions.md` on clos
 
 **Newest first** — most recently closed plan appears at the top (after the header).
 
+**Sliding window**: Auto-trimmed to the **8 most recent** plan sections on each close. Old plan data remains in per-plan directories (`plans/plan_*/decisions.md`). Keeps file naturally bounded at ~300-450 lines.
+
 **Read limit**: Always read with `limit: 600`. Compressed summary + recent plan sections fit within this.
 
-**Compression**: When >500 lines, a compressed summary (≤100 lines) is inserted between `<!-- COMPRESSED-SUMMARY -->` markers after the header. See "Consolidated File Compression" in SKILL.md.
+**Compression**: When >500 lines (rare with sliding window), a compressed summary (≤100 lines) is inserted between `<!-- COMPRESSED-SUMMARY -->` markers after the header. See "Consolidated File Management" in SKILL.md.
 
 Created automatically by bootstrap on first `new`. Updated on each `close`.
 

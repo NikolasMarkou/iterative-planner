@@ -56,7 +56,7 @@ stateDiagram-v2
 | RE-PLAN → PLAN | New approach formulated. Decision logged. |
 
 Every transition → log in `state.md`. RE-PLAN transitions → also log in `decisions.md` (what failed, what learned, why new direction).
-At CLOSE → audit decision anchors (`references/decision-anchoring.md`). Merge per-plan findings/decisions to `plans/FINDINGS.md` and `plans/DECISIONS.md`. Update `plans/LESSONS.md` with significant lessons (rewrite to ≤200 lines). Compress consolidated files if >500 lines (see "Consolidated File Compression").
+At CLOSE → audit decision anchors (`references/decision-anchoring.md`). Merge per-plan findings/decisions to `plans/FINDINGS.md` and `plans/DECISIONS.md`. Update `plans/LESSONS.md` with significant lessons (rewrite to ≤200 lines). Compress consolidated files if >500 lines (see "Consolidated File Management").
 
 ### Mandatory Re-reads (CRITICAL)
 
@@ -133,13 +133,16 @@ R = read only | W = update (implicit read + write) | R+W = distinct read and wri
 | plans/DECISIONS.md | R(600) | R(600) | — | — | R(600) | W(merge+compress) |
 | plans/LESSONS.md | R | R | — | — | R | W(rewrite≤200) |
 
-## Consolidated File Compression
+## Consolidated File Management
 
-`plans/FINDINGS.md` and `plans/DECISIONS.md` grow across plans. Prevent context window bloat:
+`plans/FINDINGS.md` and `plans/DECISIONS.md` grow across plans. Two mechanisms prevent context window bloat:
 
+**Sliding window**: Bootstrap automatically trims consolidated files to the **8 most recent** plan sections on each close. Old plan sections are removed from the consolidated file but remain in their per-plan directories (`plans/plan_*/findings.md`, `plans/plan_*/decisions.md`). This keeps files naturally bounded at ~300-450 lines.
+
+**Read limit**: Always read consolidated files with `limit: 600`. The compressed summary + most recent plan sections fit within this.
+
+**Compression** (rarely needed — sliding window keeps files bounded):
 **Threshold**: >500 lines → compressed summary needed. Bootstrap prints `ACTION NEEDED` after merge.
-
-**Read limit**: Always read consolidated files with `limit: 600`. The compressed summary + most recent plan section fits within this. Older content is preserved on disk but not loaded.
 
 **Compression protocol** (during CLOSE, after merge):
 1. Check line count. If ≤500 → no action needed.

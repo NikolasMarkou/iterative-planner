@@ -108,7 +108,7 @@ function prependToConsolidated(filePath, planDirName, newSection) {
   const firstH2 = searchFrom >= 0 ? existing.indexOf("\n## ", searchFrom) : -1;
   let header, body;
   if (firstH2 >= 0) {
-    header = existing.slice(0, firstH2);
+    header = existing.slice(0, firstH2).trimEnd();
     body = existing.slice(firstH2);
   } else {
     header = existing.trimEnd();
@@ -132,6 +132,7 @@ function stripCrossPlanNote(content) {
 }
 
 const CONSOLIDATED_COMPRESS_THRESHOLD = 500;
+const MAX_CONSOLIDATED_PLANS = 8;
 const COMPRESSED_SUMMARY_OPEN = "<!-- COMPRESSED-SUMMARY -->";
 const COMPRESSED_SUMMARY_CLOSE = "<!-- /COMPRESSED-SUMMARY -->";
 
@@ -150,6 +151,26 @@ function checkConsolidatedSize(filePath, label) {
       }
     }
   } catch { /* file may not exist */ }
+}
+
+function trimConsolidatedWindow(filePath) {
+  // Keep only the MAX_CONSOLIDATED_PLANS most recent plan sections.
+  // Old data is still in per-plan directories — no information lost.
+  let content;
+  try { content = readFileSync(filePath, "utf-8"); } catch { return; }
+  // Find all ## plan_ section positions
+  const positions = [];
+  const re = /\n## plan_/g;
+  let match;
+  while ((match = re.exec(content)) !== null) {
+    positions.push(match.index);
+  }
+  if (positions.length <= MAX_CONSOLIDATED_PLANS) return;
+  // Truncate after the Nth section (keep first N, they're the newest)
+  const cutoff = positions[MAX_CONSOLIDATED_PLANS];
+  const trimmed = content.slice(0, cutoff).trimEnd() + "\n";
+  writeFileSync(filePath + ".tmp", trimmed);
+  renameSync(filePath + ".tmp", filePath);
 }
 
 function mergeToConsolidated(planDirName) {
@@ -500,7 +521,10 @@ function cmdClose(opts = {}) {
   try {
     ensureConsolidatedFiles();
     mergeToConsolidated(planDirName);
-    // Check if consolidated files need compression
+    // Sliding window: keep only the N most recent plan sections
+    trimConsolidatedWindow(join(plansDir, "FINDINGS.md"));
+    trimConsolidatedWindow(join(plansDir, "DECISIONS.md"));
+    // Check if consolidated files need compression (rarely triggers with sliding window)
     checkConsolidatedSize(join(plansDir, "FINDINGS.md"), "plans/FINDINGS.md");
     checkConsolidatedSize(join(plansDir, "DECISIONS.md"), "plans/DECISIONS.md");
   } catch (err) {
