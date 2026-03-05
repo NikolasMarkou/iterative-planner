@@ -49,17 +49,19 @@ Re-read `decisions.md`. Answer in `decisions.md` using this format:
 **Simplification Checks**:
 1. Could I delete code instead? [yes/no — what]
 2. Symptom or root cause? [symptom/root — why]
-3. Would a junior dev understand? [yes/no — what's complex]
-4. Fighting the framework? [yes/no — what]
-5. What if I revert everything? [worth it/not — why]
+3. Essential or accidental complexity? [essential/accidental — why]
+4. Would a junior dev understand? [yes/no — what's complex]
+5. Fighting the framework? [yes/no — what]
+6. What if I revert everything? [worth it/not — why]
 **Blocker found**: [yes/no — if yes, must address before CLOSE]
 ```
 
 1. **Could I delete code instead?** Best fix = removing what broke.
 2. **Symptom or root cause?** Band-aids compound.
-3. **Would a junior dev understand?** Needs a paragraph to explain → too complex.
-4. **Fighting the framework?** Writing adapters/shims → using it wrong. Read docs.
-5. **What if I revert everything?** Sunk cost ≠ reason to continue. Three clean attempts > one Frankenstein.
+3. **Essential or accidental complexity?** Essential complexity is inherent in the problem — it can be partitioned but not eliminated. Accidental complexity is self-inflicted through poor choices, wrong tools, or accumulated shortcuts. If accidental → simplify or remove. If essential → partition it, don't fight it.
+4. **Would a junior dev understand?** Needs a paragraph to explain → too complex.
+5. **Fighting the framework?** Writing adapters/shims → using it wrong. Read docs.
+6. **What if I revert everything?** Sunk cost ≠ reason to continue. Three clean attempts > one Frankenstein.
 
 If any check reveals a blocker → document in `decisions.md` → must address before CLOSE (RE-PLAN or fix).
 

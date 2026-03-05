@@ -193,6 +193,11 @@ Institutional memory across plans. Unlike FINDINGS.md and DECISIONS.md which gro
 - Include file paths + code path traces (e.g. `auth.rb:23` → `SessionStore#find` → `redis_store.rb:get`).
 - DO NOT skip EXPLORE even if you think you know the answer.
 - **Minimum depth**: ≥3 indexed findings in `findings.md` before transitioning to PLAN. Findings must cover: (1) problem scope, (2) affected files, (3) existing patterns or constraints. Fewer than 3 → keep exploring.
+- **Constraint classification** — when documenting constraints in `findings.md`, classify each as:
+  - **Hard constraint**: non-negotiable (physics, budget, existing systems, regulations, deadlines).
+  - **Soft constraint**: preferences, conventions, team familiarity — negotiable if trade-off is explicit.
+  - **Ghost constraint**: past constraints baked into current approach that **no longer apply**. Finding and removing ghost constraints unlocks options nobody thought were available.
+  Separate constraints from preferences — be honest about which is which. Can't distinguish them → keep exploring.
 - Use **Task subagents** to parallelize research. All subagent output → `{plan-dir}/findings/` files. Never rely on context-only results. **Main agent** updates `findings.md` index after subagents write — subagents don't touch the index. **Naming**: `findings/{topic-slug}.md` (kebab-case, descriptive — e.g. `auth-system.md`, `test-coverage.md`).
 - Use "think hard" / "ultrathink" for complex analysis.
 - REFLECT → EXPLORE loops: append to existing findings, don't overwrite. Mark corrections with `[CORRECTED iter-N]`.
@@ -201,6 +206,12 @@ Institutional memory across plans. Unlike FINDINGS.md and DECISIONS.md which gro
 - **Gate check**: read `state.md`, `plan.md`, `findings.md`, `findings/*`, `decisions.md`, `progress.md`, `verification.md`, `plans/FINDINGS.md` (limit: 600), `plans/DECISIONS.md` (limit: 600), `plans/LESSONS.md` before writing anything. If not read → read now. No exceptions. If `findings.md` has <3 indexed findings → go back to EXPLORE.
 - **Problem Statement first** — before designing steps, write in `plan.md`: (1) what behavior is expected, (2) invariants — what must always be true, (3) edge cases at boundaries. Can't state the problem clearly → go back to EXPLORE.
 - Write `plan.md`: problem statement, steps, failure modes, risks, success criteria, verification strategy, complexity budget.
+- **Decomposition** — when breaking the goal into steps:
+  1. Understand the whole problem before splitting into parts. Resist diving into details.
+  2. Identify natural boundaries — where do concerns separate?
+  3. Minimize dependencies between steps. If two steps must always change together, they're one step.
+  4. Start with the hardest or riskiest part (most unknowns). Easier parts rarely invalidate the plan.
+  5. When unsure whether to split or merge: split when concerns change for different reasons; merge when split pieces always change together or the split creates more coordination overhead than it removes.
 - **Verification Strategy** — for each success criterion, define: what test/check to run, what command to execute, what result means "pass". Write to plan.md `Verification Strategy` section. Plans with no testable criteria → write "N/A — manual review only" (proves you checked). See `references/file-formats.md` for template.
 - **Failure Mode Analysis** — for each external dependency or integration point in the plan, answer: what if slow? returns garbage? is down? What's the blast radius? Write to plan.md `Failure Modes` section. No dependencies → write "None identified" (proves you checked).
 - Write `decisions.md`: log chosen approach + why (mandatory even for first plan). **Trade-off rule** — phrase every decision as **"X at the cost of Y"**. Never recommend without stating what it costs.
@@ -235,7 +246,7 @@ On **failed step**: skip gate. Follow Autonomy Leash (revert-first, 2 attempts m
 - Cross-validate: every `[x]` in plan.md must be "Completed" in progress.md. Fix drift first.
 - **Run verification** — execute each check defined in the Verification Strategy. Read `verification.md`, then record results: criterion, method, command/action, result (PASS/FAIL), evidence (output summary or log reference). See `references/file-formats.md` for template.
 - Read `decisions.md` — check 3-strike patterns.
-- Compare against **written criteria**, not memory. Run 5 Simplification Checks (`references/complexity-control.md`).
+- Compare against **written criteria**, not memory. Run 6 Simplification Checks (`references/complexity-control.md`).
 - Write `decisions.md` (what happened, learned, root cause) + `progress.md` + `state.md`.
 
 | Condition | → Transition |
