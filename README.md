@@ -1,7 +1,7 @@
 # Iterative Planner
 
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Skill](https://img.shields.io/badge/Skill-v2.3.0-green.svg)](CHANGELOG.md)
+[![Skill](https://img.shields.io/badge/Skill-v2.4.0-green.svg)](CHANGELOG.md)
 [![Sponsored by Electi](https://img.shields.io/badge/Sponsored%20by-Electi-red.svg)](https://www.electiconsulting.com)
 
 **Stop watching Claude go off the rails on complex tasks.**
@@ -69,6 +69,7 @@ plans/
 ├── .current_plan               # → active plan directory name
 ├── FINDINGS.md                 # Consolidated findings across all plans (newest first)
 ├── DECISIONS.md                # Consolidated decisions across all plans (newest first)
+├── LESSONS.md                  # Cross-plan institutional memory (≤200 lines, rewritten on close)
 └── plan_2026-02-14_a3f1b2c9/
     ├── state.md                # Where am I? What step? What iteration?
     ├── plan.md                 # The living plan (rewritten each iteration)
@@ -120,6 +121,14 @@ When execution reveals that an earlier finding was wrong, it gets a `[CORRECTED 
 
 When a plan step fails, the agent gets exactly **2 small fix attempts** -- each constrained to reverting, deleting, or a one-line change. If neither works, it **stops completely** and presents the situation to you. No silent rewrites. No runaway fix chains. You stay in control of every pivot.
 
+### Structured Reasoning Frameworks
+
+The planner embeds domain-agnostic reasoning tools at each state:
+
+- **Constraint classification** (EXPLORE) -- every constraint is classified as hard (non-negotiable), soft (preferences, negotiable), or ghost (past constraints that no longer apply). Ghost constraints are the hidden opportunity -- finding them unlocks options nobody thought were available.
+- **Problem decomposition** (PLAN) -- a 5-point process: understand the whole first, identify natural boundaries, minimize dependencies between steps, start with the riskiest part, and apply split/merge criteria.
+- **Essential vs accidental complexity** (REFLECT) -- before simplifying, ask: "Is this inherent in the problem, or did we create it?" Essential complexity can only be partitioned. Accidental complexity should be removed.
+
 ### Revert-First Complexity Control
 
 The default response to failure is to simplify, never to add. When something breaks:
@@ -130,6 +139,7 @@ The default response to failure is to simplify, never to add. When something bre
 4. None of the above? **Stop.** Enter REFLECT.
 
 Additional guardrails:
+- **6 Simplification Checks** -- during REFLECT, the agent runs a structured diagnostic: delete instead? symptom or root cause? essential or accidental complexity? understandable? fighting the framework? worth reverting everything?
 - **10-Line Rule** -- if a "fix" needs more than 10 new lines, it is not a fix. It needs to go through PLAN.
 - **3-Strike Rule** -- same area breaks 3 times? The approach is wrong. Mandatory RE-PLAN with a fundamentally different strategy.
 - **Complexity Budget** -- every plan tracks files added (max 3), new abstractions (max 2), and net line count (target: net-zero or negative).

@@ -60,7 +60,7 @@ Complete spec in **src/SKILL.md**. Key sections:
 - **State Machine & Transitions**: src/SKILL.md "State Machine" and "Transition Rules" sections
 - **Mandatory Re-reads**: src/SKILL.md "Mandatory Re-reads" section
 - **Autonomy Leash**: src/SKILL.md "Autonomy Leash" section
-- **Complexity Control**: src/SKILL.md "Complexity Control" section + `src/references/complexity-control.md`
+- **Complexity Control**: src/SKILL.md "Complexity Control" section + `src/references/complexity-control.md` (6 Simplification Checks including essential vs accidental complexity)
 - **Code Hygiene**: src/SKILL.md "Code Hygiene" section + `src/references/code-hygiene.md`
 - **Decision Anchoring**: src/SKILL.md "Decision Anchoring" section + `src/references/decision-anchoring.md`
 - **Git Integration**: src/SKILL.md "Git Integration" section
