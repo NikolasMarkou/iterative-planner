@@ -1041,8 +1041,9 @@ describe("bootstrap.mjs", () => {
         "## Context",
         "## Files To Modify",
         "## Steps",
+        "## Assumptions",
         "## Failure Modes",
-        "## Risks",
+        "## Pre-Mortem & Falsification Signals",
         "## Success Criteria",
         "## Verification Strategy",
         "## Complexity Budget",
@@ -1123,18 +1124,20 @@ describe("bootstrap.mjs", () => {
       run(dir, "new", "Table format test");
       const planDir = getPointer(dir);
       const v = readPlanFile(dir, planDir, "verification.md");
-      // The table header row has 6 columns: #, Criterion, Method, Command/Action, Result, Evidence
-      const headerRow = v.split("\n").find((l) => l.includes("Criterion"));
+      // The Criteria Verification table has 6 columns: #, Criterion, Method, Command/Action, Result, Evidence
+      // Extract only lines between "## Criteria Verification" and the next "##" section
+      const lines = v.split("\n");
+      const criteriaStart = lines.findIndex((l) => l.includes("Criteria Verification"));
+      const criteriaEnd = lines.findIndex((l, i) => i > criteriaStart && l.startsWith("## "));
+      const criteriaLines = lines.slice(criteriaStart, criteriaEnd > 0 ? criteriaEnd : undefined);
+      const headerRow = criteriaLines.find((l) => l.includes("Criterion"));
       if (headerRow) {
         const colCount = headerRow.split("|").filter((c) => c.trim()).length;
-        // Every data row should either be the separator or have the same column count
-        const dataRows = v.split("\n").filter(
+        const dataRows = criteriaLines.filter(
           (l) => l.startsWith("|") && !l.includes("---") && !l.includes("Criterion")
         );
         for (const row of dataRows) {
           const rowCols = row.split("|").filter((c) => c.trim()).length;
-          // Allow rows with fewer columns only if they are placeholder/note rows
-          // But ideally all rows should match header column count
           assert.ok(
             rowCols === colCount || rowCols <= 1,
             `row should have ${colCount} columns or be a note, got ${rowCols}: ${row}`

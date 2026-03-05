@@ -75,11 +75,16 @@ approaches v1 (in-place migration) and v2 (dual-write) were abandoned.
 - `test/integration/token_auth_test.rb` (new)
 
 ## Steps
-1. [x] Create TokenService abstraction
-2. [ ] Wire TokenService into auth middleware  ← CURRENT
-3. [ ] Add fallback path for legacy cookie sessions
-4. [ ] [IRREVERSIBLE] Migration script for existing sessions
-5. [ ] Integration tests
+1. [x] Create TokenService abstraction [RISK: low] [deps: none]
+2. [ ] Wire TokenService into auth middleware  ← CURRENT [RISK: high — format coupling] [deps: 1]
+3. [ ] Add fallback path for legacy cookie sessions [RISK: medium — SSO flow] [deps: 2]
+4. [ ] [IRREVERSIBLE] Migration script for existing sessions [RISK: high] [deps: 1]
+5. [ ] Integration tests [deps: 2, 3]
+
+## Assumptions
+- Redis handles 80% of sessions (findings/auth-system.md) → steps 1-3 depend on this
+- SessionSerializer can be extended without gem conflicts (findings/dependencies.md L12) → step 2 depends on this. Falsified if gem locks serializer interface.
+- No external consumers of cookie format (findings/auth-system.md) → step 3 depends on this
 
 ## Failure Modes
 | Dependency | Slow | Bad Data | Down | Blast Radius |
@@ -87,8 +92,11 @@ approaches v1 (in-place migration) and v2 (dual-write) were abandoned.
 | Redis (legacy fallback) | Token path unaffected; cookie path degrades to timeouts | Corrupted session → force re-auth | Cookie clients lose sessions; token clients unaffected | Legacy users only |
 | JWT signing key | N/A | Invalid tokens → all token clients locked out | Same as bad data | All new-auth users |
 
-## Risks
-- Step 3 might break SSO flow (see findings.md line 47)
+## Pre-Mortem & Falsification Signals
+*Assume this plan failed. Most likely reasons → observable stop triggers:*
+1. **Cookie fallback is more complex than expected** — SSO flow depends on cookie format details we haven't fully traced (step 3) → STOP IF >2 files need changes in SSO module
+2. **Token validation has edge cases with clock skew** — distributed services may reject valid tokens near expiry (step 2) → STOP IF intermittent test failures on token expiry
+3. **Interface is wrong** — new auth path requires too many mocks → STOP IF test suite needs >3 mocks for token flow
 
 ## Success Criteria
 - All existing tests pass
@@ -115,9 +123,12 @@ approaches v1 (in-place migration) and v2 (dual-write) were abandoned.
 ```
 
 **Problem Statement** is mandatory. Can't state invariants and edge cases → go back to EXPLORE.
+**Assumptions** is mandatory. Bullet list: what you assume, which finding grounds it, which steps depend on it. See `planning-rigor.md`.
 **Failure Modes** table is mandatory when external dependencies exist. No dependencies → write "None identified".
+**Pre-Mortem & Falsification Signals** is mandatory. 2-3 failure scenarios with concrete STOP IF triggers. Can't imagine failure → plan is underspecified. See `planning-rigor.md`.
 **Verification Strategy** is mandatory. For each success criterion, define what check to run and what "pass" means. No testable criteria → write "N/A — manual review only".
 **Files To Modify** is mandatory. Can't list them → go back to EXPLORE.
+**Step annotations**: `[RISK: low/medium/high]` and `[deps: N,M]` are recommended on each step. Helps enforce risk-first ordering.
 **`[IRREVERSIBLE]`** tag on steps with side effects that can't be undone via git (DB migrations, external API calls, service config, non-tracked file deletion). Requires: user confirmation, rollback plan in checkpoint, dry-run if available.
 
 ## decisions.md
@@ -274,6 +285,14 @@ Written during PLAN (initial template with criteria), updated during EXECUTE (pe
 | Lint | `rubocop --format simple` | PASS | 0 offenses |
 | Behavioral diff | diff /api/auth/validate response | EXPECTED DIFF | Token field added (intentional) |
 | Smoke test | POST /login with test credential | PASS | 200 + valid JWT returned |
+
+## Prediction Accuracy
+| Predicted (from plan.md) | Actual | Delta |
+|--------------------------|--------|-------|
+| 5 steps | 5 steps | on target |
+| 4 files modified | 4 files modified | on target |
+| +45/-12 lines | +45/-12 lines | on budget |
+| 1 iteration (plan v3) | 1 iteration | on target |
 
 ## Verdict
 - Criteria passed: 3/3

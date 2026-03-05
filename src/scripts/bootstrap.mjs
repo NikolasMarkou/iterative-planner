@@ -290,13 +290,16 @@ ${goal}
 *To be determined after EXPLORE. List every file that will be touched.*
 
 ## Steps
-*To be determined after EXPLORE.*
+*To be determined after EXPLORE. Annotate each with [RISK: low/medium/high] and [deps: N,M].*
+
+## Assumptions
+*To be populated during PLAN. Each: what you assume, which finding grounds it, which steps depend on it.*
 
 ## Failure Modes
 *To be determined during PLAN. For each dependency/integration: what if slow, garbage, down?*
 
-## Risks
-*To be determined after EXPLORE.*
+## Pre-Mortem & Falsification Signals
+*To be determined during PLAN. Assume the plan failed — 2-3 scenarios with concrete STOP IF triggers.*
 
 ## Success Criteria
 *To be defined before first EXECUTE.*
@@ -362,6 +365,13 @@ ${crossPlanNote}
 
 ## Additional Checks
 *Optional: lint, type checks, behavioral diffs, smoke tests.*
+
+## Prediction Accuracy
+*Compare plan.md predictions against actual results during REFLECT.*
+
+| Predicted (from plan.md) | Actual | Delta |
+|--------------------------|--------|-------|
+| *To be populated during REFLECT* | - | - |
 
 ## Verdict
 *To be completed during REFLECT.*

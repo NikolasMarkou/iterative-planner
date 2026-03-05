@@ -193,6 +193,7 @@ Institutional memory across plans. Unlike FINDINGS.md and DECISIONS.md which gro
 - Include file paths + code path traces (e.g. `auth.rb:23` → `SessionStore#find` → `redis_store.rb:get`).
 - DO NOT skip EXPLORE even if you think you know the answer.
 - **Minimum depth**: ≥3 indexed findings in `findings.md` before transitioning to PLAN. Findings must cover: (1) problem scope, (2) affected files, (3) existing patterns or constraints. Fewer than 3 → keep exploring.
+- **Exploration Confidence** — before transitioning to PLAN, self-assess: problem scope [shallow/adequate/deep], solution space [narrow/open/constrained], risk visibility [blind/partial/clear]. All must be at least "adequate." Any "shallow" or "blind" → keep exploring. Record in the transition log entry in `state.md`. See `references/planning-rigor.md`.
 - **Constraint classification** — when documenting constraints in `findings.md`, classify each as:
   - **Hard constraint**: non-negotiable (physics, budget, existing systems, regulations, deadlines).
   - **Soft constraint**: preferences, conventions, team familiarity — negotiable if trade-off is explicit.
@@ -205,7 +206,7 @@ Institutional memory across plans. Unlike FINDINGS.md and DECISIONS.md which gro
 ### PLAN
 - **Gate check**: read `state.md`, `plan.md`, `findings.md`, `findings/*`, `decisions.md`, `progress.md`, `verification.md`, `plans/FINDINGS.md` (limit: 600), `plans/DECISIONS.md` (limit: 600), `plans/LESSONS.md` before writing anything. If not read → read now. No exceptions. If `findings.md` has <3 indexed findings → go back to EXPLORE.
 - **Problem Statement first** — before designing steps, write in `plan.md`: (1) what behavior is expected, (2) invariants — what must always be true, (3) edge cases at boundaries. Can't state the problem clearly → go back to EXPLORE.
-- Write `plan.md`: problem statement, steps, failure modes, risks, success criteria, verification strategy, complexity budget.
+- Write `plan.md`: problem statement, steps (with risk/dependency annotations), assumptions, failure modes, pre-mortem & falsification signals, success criteria, verification strategy, complexity budget.
 - **Decomposition** — when breaking the goal into steps:
   1. Understand the whole problem before splitting into parts. Resist diving into details.
   2. Identify natural boundaries — where do concerns separate?
@@ -213,7 +214,9 @@ Institutional memory across plans. Unlike FINDINGS.md and DECISIONS.md which gro
   4. Start with the hardest or riskiest part (most unknowns). Easier parts rarely invalidate the plan.
   5. When unsure whether to split or merge: split when concerns change for different reasons; merge when split pieces always change together or the split creates more coordination overhead than it removes.
 - **Verification Strategy** — for each success criterion, define: what test/check to run, what command to execute, what result means "pass". Write to plan.md `Verification Strategy` section. Plans with no testable criteria → write "N/A — manual review only" (proves you checked). See `references/file-formats.md` for template.
+- **Assumptions** — bullet list in plan.md: what you assume, which finding grounds it, which steps depend on it. On surprise discovery during EXECUTE → check this list first. See `references/planning-rigor.md`.
 - **Failure Mode Analysis** — for each external dependency or integration point in the plan, answer: what if slow? returns garbage? is down? What's the blast radius? Write to plan.md `Failure Modes` section. No dependencies → write "None identified" (proves you checked).
+- **Pre-Mortem & Falsification Signals** — assume the plan failed. 2-3 scenarios with concrete STOP IF triggers. If a trigger fires during EXECUTE → stop and REFLECT. Covers approach validity (distinct from Failure Modes which cover dependencies, and Autonomy Leash which covers step failure). See `references/planning-rigor.md`.
 - Write `decisions.md`: log chosen approach + why (mandatory even for first plan). **Trade-off rule** — phrase every decision as **"X at the cost of Y"**. Never recommend without stating what it costs.
 - Read then write `verification.md` with initial template (criteria table populated from success criteria, methods from verification strategy, results pending).
 - Read then write `state.md` + `progress.md`.
@@ -229,7 +232,8 @@ Institutional memory across plans. Unlike FINDINGS.md and DECISIONS.md which gro
 - Commit after each successful step: `[iter-N/step-M] description`.
 - If something breaks → STOP. 2 fix attempts max (Autonomy Leash). Each must follow Revert-First.
 - **Irreversible operations** (DB migrations, external API calls, service config, non-tracked file deletion): mark step `[IRREVERSIBLE]` in `plan.md` during PLAN. Full procedure: `references/code-hygiene.md`.
-- **Surprise discovery** (behavior contradicts findings, unknown dependency, wrong assumption) → note in `state.md`, finish or revert current step, transition to REFLECT. Do NOT silently update findings during EXECUTE.
+- **Surprise discovery** (behavior contradicts findings, unknown dependency, wrong assumption) → check plan.md Assumptions to identify which steps are invalidated. Note in `state.md`, finish or revert current step, transition to REFLECT. Do NOT silently update findings during EXECUTE.
+- **Falsification signal fires** (from Pre-Mortem & Falsification Signals in plan.md) → same as surprise discovery. Log which signal fired in `decisions.md`.
 - Add `# DECISION D-NNN` comments where needed (`references/decision-anchoring.md`).
 
 #### Post-Step Gate (successful steps only — all 3 before moving on)
@@ -245,6 +249,7 @@ On **failed step**: skip gate. Follow Autonomy Leash (revert-first, 2 attempts m
 - Read `checkpoints/*` — know what rollback options exist before deciding next transition. Note available restore points in `decisions.md` if transitioning to RE-PLAN.
 - Cross-validate: every `[x]` in plan.md must be "Completed" in progress.md. Fix drift first.
 - **Run verification** — execute each check defined in the Verification Strategy. Read `verification.md`, then record results: criterion, method, command/action, result (PASS/FAIL), evidence (output summary or log reference). See `references/file-formats.md` for template.
+- **Prediction accuracy** — compare plan.md predictions against actual results: step count, file count, line delta, iteration count. Record in `verification.md` Prediction Accuracy table. Feed significant patterns into `plans/LESSONS.md` at CLOSE. See `references/planning-rigor.md`.
 - Read `decisions.md` — check 3-strike patterns.
 - Compare against **written criteria**, not memory. Run 6 Simplification Checks (`references/complexity-control.md`).
 - Write `decisions.md` (what happened, learned, root cause) + `progress.md` + `state.md`.
@@ -258,6 +263,7 @@ On **failed step**: skip gate. Follow Autonomy Leash (revert-first, 2 attempts m
 ### RE-PLAN
 - Read `decisions.md`, `findings.md`, relevant `findings/*`, `plans/LESSONS.md`.
 - Read `checkpoints/*` — decide keep vs revert. Default: if unsure, revert to latest checkpoint. See `references/code-hygiene.md` for full decision framework.
+- **Ghost constraint scan** — before designing a new approach, ask: (1) Is the constraint that led to the failed approach still valid? (2) Are we inheriting codebase constraints that are actually preferences? (3) Did an early finding become stale? Log ghost constraints found in `decisions.md`. See `references/planning-rigor.md`.
 - If earlier findings proved wrong or incomplete → update `findings.md` + `findings/*` with corrections. Mark corrections: `[CORRECTED iter-N]` + what changed and why. Append, don't delete original text.
 - Write `decisions.md`: log pivot + mandatory Complexity Assessment.
 - Write `state.md` + `progress.md` (mark failed items, note pivot).
@@ -301,7 +307,8 @@ See `references/decision-anchoring.md`.
 ## Iteration Limits
 
 Increment on PLAN → EXECUTE. Iteration 0 = EXPLORE-only (pre-plan). First real = iteration 1.
-- **Iteration 6+**: hard STOP. Going in circles? Harder than scoped? Break into smaller tasks.
+- **Iteration 5**: mandatory decomposition analysis in `decisions.md` — identify 2-3 independent sub-goals that could each be a separate plan, with dependencies between them. See `references/planning-rigor.md`.
+- **Iteration 6+**: hard STOP. Present decomposition analysis to user. Break into smaller tasks.
 
 ## Recovery from Context Loss
 
@@ -344,3 +351,4 @@ Simple single-file changes, obvious solutions, known-root-cause bugs, or "just d
 - `references/complexity-control.md` — anti-complexity protocol, forbidden patterns
 - `references/code-hygiene.md` — change manifest, revert procedures
 - `references/decision-anchoring.md` — when/how to anchor decisions in code
+- `references/planning-rigor.md` — assumption tracking, pre-mortem, falsification signals, exploration confidence, prediction accuracy

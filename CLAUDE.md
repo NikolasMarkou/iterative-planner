@@ -28,7 +28,8 @@ iterative-planner/
         ├── complexity-control.md     # Anti-complexity protocol (revert-first, 3-strike, nuclear option)
         ├── code-hygiene.md           # Change manifest format, revert procedures, forbidden leftovers
         ├── decision-anchoring.md     # When/how to anchor decisions in code, format, audit rules
-        └── file-formats.md           # Templates and examples for all plan directory files
+        ├── file-formats.md           # Templates and examples for all plan directory files
+        └── planning-rigor.md         # Assumption tracking, pre-mortem, falsification signals, prediction accuracy
 ```
 
 ## Key Commands
@@ -63,6 +64,7 @@ Complete spec in **src/SKILL.md**. Key sections:
 - **Complexity Control**: src/SKILL.md "Complexity Control" section + `src/references/complexity-control.md` (6 Simplification Checks including essential vs accidental complexity)
 - **Code Hygiene**: src/SKILL.md "Code Hygiene" section + `src/references/code-hygiene.md`
 - **Decision Anchoring**: src/SKILL.md "Decision Anchoring" section + `src/references/decision-anchoring.md`
+- **Planning Rigor**: src/SKILL.md PLAN/EXPLORE/REFLECT/RE-PLAN sections + `src/references/planning-rigor.md` (assumptions, pre-mortem, falsification signals, exploration confidence, prediction accuracy, ghost constraints, decomposition)
 - **Git Integration**: src/SKILL.md "Git Integration" section
 
 Do not duplicate protocol content here. Read src/SKILL.md directly.

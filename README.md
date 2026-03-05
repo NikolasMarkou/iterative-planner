@@ -1,7 +1,7 @@
 # Iterative Planner
 
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Skill](https://img.shields.io/badge/Skill-v2.4.0-green.svg)](CHANGELOG.md)
+[![Skill](https://img.shields.io/badge/Skill-v2.5.0-green.svg)](CHANGELOG.md)
 [![Sponsored by Electi](https://img.shields.io/badge/Sponsored%20by-Electi-red.svg)](https://www.electiconsulting.com)
 
 **Complex tasks break AI agents. This skill fixes that.**
@@ -129,7 +129,12 @@ When a step fails, the agent gets exactly **2 small fix attempts** -- each const
 Each state embeds domain-agnostic thinking tools:
 
 - **Constraint classification** (EXPLORE) -- every constraint tagged as *hard* (non-negotiable), *soft* (preferences), or *ghost* (past constraints that no longer apply). Ghost constraints are the hidden opportunity -- finding them unlocks options nobody thought existed.
+- **Exploration confidence** (EXPLORE → PLAN gate) -- self-assess problem scope, solution space, and risk visibility before planning. "Shallow" on any dimension means keep exploring.
 - **Problem decomposition** (PLAN) -- understand the whole, identify natural boundaries, minimize step dependencies, start with the riskiest part.
+- **Assumption tracking** (PLAN) -- every plan assumption traced to a finding, linked to dependent steps. When assumptions break during execution, you know exactly what's invalidated.
+- **Pre-mortem & falsification signals** (PLAN) -- assume the plan failed, then extract concrete STOP IF triggers. Prevents confirmation bias during execution.
+- **Prediction accuracy** (REFLECT) -- compare plan predictions against reality. Calibrates future estimates via LESSONS.md.
+- **Ghost constraint hunting** (RE-PLAN) -- before pivoting, check if the constraint behind the failed approach is still valid.
 - **Essential vs accidental complexity** (REFLECT) -- before simplifying, ask: "Is this inherent in the problem, or did we create it?" Essential complexity gets partitioned. Accidental complexity gets removed.
 
 ### Revert-First Complexity Control
@@ -263,7 +268,8 @@ iterative-planner/
         ├── complexity-control.md   # Anti-complexity protocol and forbidden patterns
         ├── code-hygiene.md         # Change manifests, revert procedures, cleanup rules
         ├── decision-anchoring.md   # When and how to anchor decisions in code
-        └── file-formats.md         # Templates for every plan directory file
+        ├── file-formats.md         # Templates for every plan directory file
+        └── planning-rigor.md       # Assumptions, pre-mortem, falsification, prediction accuracy
 ```
 
 ---
