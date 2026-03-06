@@ -270,7 +270,8 @@ iterative-planner/
     ├── SKILL.md              # Core protocol -- the complete skill specification
     ├── scripts/
     │   ├── bootstrap.mjs     # Plan directory initializer (Node.js 18+)
-    │   └── bootstrap.test.mjs # Test suite (node:test, 77 tests)
+    │   ├── bootstrap.test.mjs # Test suite (node:test, 97 tests)
+    │   └── validate-plan.mjs  # Protocol compliance validator (Node.js 18+)
     └── references/
         ├── complexity-control.md   # Anti-complexity protocol and forbidden patterns
         ├── code-hygiene.md         # Change manifests, revert procedures, cleanup rules

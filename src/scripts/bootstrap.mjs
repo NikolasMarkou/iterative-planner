@@ -132,7 +132,7 @@ function stripHeader(content) {
   // Strip everything before the first ## heading (the actual user content).
   // This avoids fragile exact-match regexes on boilerplate text that the agent may edit.
   const firstH2 = content.search(/^## /m);
-  return firstH2 >= 0 ? content.slice(firstH2) : content;
+  return firstH2 >= 0 ? content.slice(firstH2) : "";
 }
 
 function stripCrossPlanNote(content) {

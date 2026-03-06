@@ -812,11 +812,10 @@ describe("bootstrap.mjs", () => {
       );
       run(dir, "close");
       const consolidated = readFileSync(join(dir, "plans", "FINDINGS.md"), "utf-8");
-      // stripHeader returns full content when no ## found, then stripCrossPlanNote runs,
-      // then heading demotion (no ## to demote), then trim. The remaining text is non-empty
-      // so it IS merged. This documents the actual behavior.
-      // Content without ## headings gets merged as-is (with H1 stripped by stripHeader returning full text)
-      assert.ok(consolidated.includes("plain text"), "content without ## headings is still merged as-is");
+      // stripHeader returns empty string when no ## found, so nothing is merged.
+      // This prevents H1 headers from being injected under H2 plan sections.
+      assert.ok(!consolidated.includes("plain text"), "content without ## headings should not be merged");
+      assert.ok(!consolidated.includes(planDir), "no plan section created when content has no ## headings");
     });
 
     it("close with empty decisions does not error", () => {
