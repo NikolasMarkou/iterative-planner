@@ -1,6 +1,6 @@
 # Planning Rigor Reference
 
-Techniques for stronger plans: surface assumptions, anticipate failure, and calibrate confidence.
+Techniques for stronger plans: surface assumptions, anticipate failure, and calibrate confidence. Domain-agnostic — applies to code, research, strategy, operations, and any structured problem-solving.
 
 ## Assumption Tracking
 
@@ -10,9 +10,9 @@ Plans depend on assumptions discovered during EXPLORE. Make them explicit so whe
 
 ```markdown
 ## Assumptions
-- Redis handles 80% of sessions (findings/auth-system.md) → steps 1-3 depend on this
-- SessionSerializer can be extended (findings/auth-system.md L34) → step 2 depends on this. Falsified if gem locks serializer interface.
-- No other consumers of cookie format (findings/dependencies.md) → step 3 depends on this
+- Market demand stays above 10k units/month (findings/market-analysis.md) → steps 1-4 depend on this
+- Existing supplier can scale to 2x capacity (findings/supply-chain.md) → step 2 depends on this. Falsified if lead time exceeds 8 weeks.
+- Regulatory approval timeline is 90 days (findings/compliance.md) → step 5 depends on this
 ```
 
 **Rules**:
@@ -20,6 +20,16 @@ Plans depend on assumptions discovered during EXPLORE. Make them explicit so whe
 - Add "Falsified if..." when the falsification condition is non-obvious.
 - On surprise discovery during EXECUTE: check Assumptions first. If a listed assumption is falsified, you know which steps to re-evaluate.
 - On RE-PLAN: review assumptions — were any wrong? Update findings with corrections.
+
+**Common assumption categories**:
+
+| Category | Example |
+|----------|---------|
+| Resource availability | "Team has bandwidth," "budget covers X," "tool Y is accessible" |
+| Environmental stability | "Requirements won't change," "API stays stable," "regulation unchanged" |
+| Capability | "System can handle load," "team has expertise," "data is clean enough" |
+| Dependency behavior | "Upstream delivers on time," "third-party service stays reliable" |
+| Scope boundaries | "Feature X is out of scope," "we only need to support Y" |
 
 ## Pre-Mortem & Falsification Signals
 
@@ -35,9 +45,9 @@ The pre-mortem generates the signals. They're the same insight — failure scena
 ```markdown
 ## Pre-Mortem & Falsification Signals
 *Assume this plan failed. Most likely reasons → observable stop triggers:*
-1. **Cookie fallback is more complex than expected** — SSO flow depends on cookie format details we haven't fully traced (step 3) → STOP IF >2 files need changes in SSO module
-2. **Token validation has edge cases with clock skew** — distributed services may reject valid tokens near expiry (step 2) → STOP IF intermittent test failures on token expiry
-3. **Interface is wrong** — new auth path requires too many mocks → STOP IF test suite needs >3 mocks for token flow
+1. **Demand forecast was wrong** — projections assumed stable growth but market is seasonal (step 1) → STOP IF first month actuals deviate >30% from forecast
+2. **Integration complexity underestimated** — assumed clean interfaces but legacy system has undocumented constraints (step 3) → STOP IF >2 unexpected interface issues in first integration attempt
+3. **Stakeholder alignment was superficial** — verbal buy-in doesn't survive budget review (step 4) → STOP IF key stakeholder raises blocking concerns after plan presentation
 ```
 
 **Rules**:
@@ -59,11 +69,19 @@ Before transitioning to PLAN, self-assess in the EXPLORE → PLAN transition log
 
 | Dimension | Levels |
 |-----------|--------|
-| **Problem scope** | shallow (key mechanics unclear) / adequate (can state problem, invariants, edge cases) / deep (traced code paths, know internals) |
+| **Problem scope** | shallow (key mechanics unclear) / adequate (can state problem, constraints, edge cases) / deep (traced causal chains, know internal dynamics) |
 | **Solution space** | narrow (one obvious approach) / open (multiple approaches identified) / constrained (few options, hard limits) |
 | **Risk visibility** | blind (unknown unknowns) / partial (some risks identified) / clear (risks mapped, unknowns located) |
 
 **Gate**: All three must be at least "adequate" to transition. Any "shallow" or "blind" → keep exploring. This is a mental check recorded in the transition log, not a separate file section.
+
+**Calibration cues by dimension**:
+
+| Dimension | "Adequate" feels like... | "Shallow/Blind" feels like... |
+|-----------|-------------------------|-------------------------------|
+| Scope | You can explain the problem to someone unfamiliar and answer their follow-ups | You'd struggle to explain why the problem exists or what constraints matter |
+| Solutions | You can name at least two viable approaches and articulate trade-offs | You have one idea and haven't considered alternatives |
+| Risks | You can list what could go wrong and where uncertainty clusters | You feel confident but can't name specific risks — that's the danger signal |
 
 ## Prediction Accuracy
 
@@ -76,16 +94,25 @@ Track how well the plan predicted reality. Builds institutional memory about sys
 | Predicted (from plan.md) | Actual | Delta |
 |--------------------------|--------|-------|
 | 5 steps | 7 steps (+2 during EXECUTE) | +40% |
-| 3 files modified | 5 files modified | +67% |
-| Net-zero lines | +45 lines | over budget |
+| 3 components affected | 5 components affected | +67% |
+| Net-neutral complexity | Moderate added complexity | over budget |
 | 1 iteration | 3 iterations | 3x underestimate |
 ```
 
 **Rules**:
 - Fill in during REFLECT by comparing plan.md (original) against actual results.
-- Focus on: step count, file count, line delta, iteration count. Add task-specific metrics if relevant.
-- Feed significant patterns into `plans/LESSONS.md` at CLOSE (e.g., "consistently underestimate file count by 50%").
+- Default metrics: step count, scope of changes, complexity delta, iteration count. Add task-specific metrics as relevant (e.g., time elapsed, resources consumed, stakeholders consulted).
+- Feed significant patterns into `plans/LESSONS.md` at CLOSE (e.g., "consistently underestimate scope by 50%").
 - Not a judgment — it's calibration data. Underestimates are normal early on. The goal is to get better over time.
+
+**Common bias patterns to watch for**:
+
+| Bias | Pattern | Antidote |
+|------|---------|----------|
+| Planning fallacy | Steps and effort consistently underestimated | Multiply initial estimate by historical correction factor |
+| Scope creep blindness | "Small additions" accumulate unnoticed | Track scope changes explicitly in progress.md |
+| Optimism on dependencies | External dependencies assumed to be reliable | Add buffer for every external dependency |
+| Complexity discount | "It's straightforward" → it wasn't | If you catch yourself saying "simple," add a risk entry |
 
 ## Ghost Constraint Hunting (RE-PLAN)
 
@@ -93,9 +120,15 @@ Ghost constraints = past constraints baked into the current approach that no lon
 
 **Active scan during RE-PLAN** — before designing a new approach, ask:
 
-1. **Is the constraint that led to the failed approach still valid?** Example: "We assumed we couldn't change the serializer because of gem X — but gem X was upgraded last month."
-2. **Are we inheriting constraints from the codebase that are actually preferences?** Example: "Everything uses Redis, so we assumed we must use Redis — but the actual requirement is 'fast key-value lookup.'"
+1. **Is the constraint that led to the failed approach still valid?** Example: "We assumed we couldn't change the vendor because of a contract — but the contract was renegotiated last quarter."
+2. **Are we inheriting environmental constraints that are actually preferences?** Example: "Everyone uses tool X, so we assumed we must use tool X — but the actual requirement is 'reliable data processing,' not a specific tool."
 3. **Did an early finding become a ghost?** Re-check findings from early EXPLORE against current understanding. Early findings are most likely to become stale.
+
+**Ghost constraint indicators**:
+- "We've always done it this way" without a traceable reason
+- A constraint that nobody can attribute to a specific requirement or decision
+- An assumption carried from a previous iteration that was never re-validated
+- Constraints inherited from analogous past projects that may not transfer
 
 Log ghost constraints found in `decisions.md` with: what the ghost was, why it no longer applies, and how removing it changes the solution space.
 

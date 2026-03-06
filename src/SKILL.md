@@ -267,7 +267,7 @@ On **failed step**: skip gate. Follow Autonomy Leash (revert-first, 2 attempts m
 ### RE-PLAN
 - Read `decisions.md`, `findings.md`, relevant `findings/*`, `plans/LESSONS.md`.
 - Read `checkpoints/*` — decide keep vs revert. Default: if unsure, revert to latest checkpoint. See `references/code-hygiene.md` for full decision framework.
-- **Ghost constraint scan** — before designing a new approach, ask: (1) Is the constraint that led to the failed approach still valid? (2) Are we inheriting codebase constraints that are actually preferences? (3) Did an early finding become stale? Log ghost constraints found in `decisions.md`. See `references/planning-rigor.md`.
+- **Ghost constraint scan** — before designing a new approach, ask: (1) Is the constraint that led to the failed approach still valid? (2) Are we inheriting environmental constraints that are actually preferences? (3) Did an early finding become stale? Log ghost constraints found in `decisions.md`. See `references/planning-rigor.md`.
 - If earlier findings proved wrong or incomplete → update `findings.md` + `findings/*` with corrections. Mark corrections: `[CORRECTED iter-N]` + what changed and why. Append, don't delete original text.
 - Write `decisions.md`: log pivot + mandatory Complexity Assessment.
 - Write `state.md` + `progress.md` (mark failed items, note pivot).
