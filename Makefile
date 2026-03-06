@@ -116,6 +116,8 @@ validate:
 		(echo "ERROR: bootstrap.mjs does not reference DECISIONS.md" && exit 1)
 	@grep -q "LESSONS.md" src/scripts/bootstrap.mjs || \
 		(echo "ERROR: bootstrap.mjs does not reference LESSONS.md" && exit 1)
+	@grep -q "INDEX.md" src/scripts/bootstrap.mjs || \
+		(echo "ERROR: bootstrap.mjs does not reference INDEX.md" && exit 1)
 	@# Verify transition table entries appear in Mermaid diagram
 	@echo "Checking state machine consistency..."
 	@for pair in "EXPLORE.*PLAN" "PLAN.*EXPLORE" "PLAN.*PLAN" "PLAN.*EXECUTE" "EXECUTE.*REFLECT" \
@@ -130,6 +132,7 @@ validate:
 lint:
 	@echo "Checking script syntax..."
 	node --check src/scripts/bootstrap.mjs
+	node --check src/scripts/validate-plan.mjs
 	@echo "Syntax check passed!"
 
 # Run tests

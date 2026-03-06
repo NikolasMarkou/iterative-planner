@@ -13,7 +13,7 @@ Write to disk immediately. The context window will rot. The files won't.
 
 **`{plan-dir}`** = `plans/plan_YYYY-MM-DD_XXXXXXXX/` (active plan directory under project root).
 **Discovery**: `plans/.current_plan` contains the plan directory name. One active plan at a time.
-**Cross-plan context**: `plans/FINDINGS.md` and `plans/DECISIONS.md` persist across plans (merged on close). `plans/LESSONS.md` persists across plans (updated on close, max 200 lines).
+**Cross-plan context**: `plans/FINDINGS.md` and `plans/DECISIONS.md` persist across plans (merged on close). `plans/LESSONS.md` persists across plans (updated on close, max 200 lines). `plans/INDEX.md` maps topics to plan directories (survives sliding window trim).
 
 ## State Machine
 
@@ -58,6 +58,10 @@ stateDiagram-v2
 Every transition → log in `state.md`. RE-PLAN transitions → also log in `decisions.md` (what failed, what learned, why new direction).
 At CLOSE → audit decision anchors (`references/decision-anchoring.md`). Merge per-plan findings/decisions to `plans/FINDINGS.md` and `plans/DECISIONS.md`. Update `plans/LESSONS.md` with significant lessons (rewrite to ≤200 lines). Compress consolidated files if >500 lines (see "Consolidated File Management").
 
+### Protocol Tiers
+
+Checks marked *(EXTENDED)* in the per-state rules may be skipped for iteration 1 single-pass plans. All other checks are **CORE** — always enforced. EXTENDED checks add value for multi-iteration plans where anchoring bias, ghost constraints, and prediction drift are real risks.
+
 ### Mandatory Re-reads (CRITICAL)
 
 These files are active working memory. Re-read during the conversation, not just at start.
@@ -83,11 +87,12 @@ node <skill-path>/scripts/bootstrap.mjs resume               # Re-entry summary 
 node <skill-path>/scripts/bootstrap.mjs status               # One-line state summary
 node <skill-path>/scripts/bootstrap.mjs close                # Close plan (preserves directory)
 node <skill-path>/scripts/bootstrap.mjs list                 # Show all plan directories
+node <skill-path>/scripts/validate-plan.mjs                  # Validate active plan compliance
 ```
 
 `new` refuses if active plan exists — use `resume`, `close`, or `--force`.
 `new` ensures `.gitignore` includes `plans/` — prevents plan files from being committed during EXECUTE step commits.
-`close` merges per-plan findings/decisions to consolidated files, updates `state.md`, and removes the `.current_plan` pointer. The protocol CLOSE state (writing `summary.md`, auditing decision anchors, updating `plans/LESSONS.md`) should be completed by the agent before running `close`.
+`close` merges per-plan findings/decisions to consolidated files, updates `state.md`, appends to `plans/INDEX.md`, snapshots `plans/LESSONS.md` to the plan directory, and removes the `.current_plan` pointer. The protocol CLOSE state (writing `summary.md`, auditing decision anchors, updating `plans/LESSONS.md`) should be completed by the agent before running `close`.
 After bootstrap → **read every file in `{plan-dir}`** (`state.md`, `plan.md`, `decisions.md`, `findings.md`, `progress.md`, `verification.md`) before doing anything else. Then begin EXPLORE. User-provided context → write to `findings.md` first.
 
 ## Filesystem Structure
@@ -98,6 +103,7 @@ plans/
 ├── FINDINGS.md                    # Consolidated findings across all plans (merged on close)
 ├── DECISIONS.md                   # Consolidated decisions across all plans (merged on close)
 ├── LESSONS.md                     # Cross-plan lessons learned (≤200 lines, rewritten on close)
+├── INDEX.md                       # Topic→directory mapping (updated on close, survives trim)
 └── plan_2026-02-14_a3f1b2c9/      # {plan-dir}
     ├── state.md                   # Current state + transition log
     ├── plan.md                    # Living plan (rewritten each iteration)
@@ -107,6 +113,7 @@ plans/
     ├── progress.md                # Done vs remaining
     ├── verification.md            # Verification results per REFLECT cycle
     ├── checkpoints/               # Snapshots before risky changes
+    ├── lessons_snapshot.md        # LESSONS.md snapshot at close (auto-created)
     └── summary.md                 # Written at CLOSE
 ```
 
@@ -132,6 +139,8 @@ R = read only | W = update (implicit read + write) | R+W = distinct read and wri
 | plans/FINDINGS.md | R(600) | R(600) | — | — | R(600) | W(merge+compress) |
 | plans/DECISIONS.md | R(600) | R(600) | — | — | R(600) | W(merge+compress) |
 | plans/LESSONS.md | R | R | — | — | R | W(rewrite≤200) |
+| plans/INDEX.md | R | — | — | — | — | W(append via bootstrap) |
+| lessons_snapshot.md | — | — | — | — | — | W(auto via bootstrap) |
 
 ## Consolidated File Management
 
@@ -187,7 +196,7 @@ Institutional memory across plans. Unlike FINDINGS.md and DECISIONS.md which gro
 ## Per-State Rules
 
 ### EXPLORE
-- Read `state.md`, `plans/FINDINGS.md` and `plans/DECISIONS.md` (limit: 600 lines), and `plans/LESSONS.md` at start of EXPLORE for cross-plan context.
+- Read `state.md`, `plans/FINDINGS.md` and `plans/DECISIONS.md` (limit: 600 lines), `plans/LESSONS.md`, and `plans/INDEX.md` at start of EXPLORE for cross-plan context. INDEX.md helps locate old findings that have been trimmed from consolidated files.
 - Read code, grep, glob, search. One focused question at a time.
 - Flush to `findings.md` + `findings/` after every 2 reads. **Read the file first** before each write.
 - Include file paths + code path traces (e.g. `auth.rb:23` → `SessionStore#find` → `redis_store.rb:get`).
@@ -249,14 +258,15 @@ On **failed step**: skip gate. Follow Autonomy Leash (revert-first, 2 attempts m
 - Read `checkpoints/*` — know what rollback options exist before deciding next transition. Note available restore points in `decisions.md` if transitioning to RE-PLAN.
 - Cross-validate: every `[x]` in plan.md must be "Completed" in progress.md. Fix drift first.
 - **Run verification** — execute each check defined in the Verification Strategy. Read `verification.md`, then record results: criterion, method, command/action, result (PASS/FAIL), evidence (output summary or log reference). See `references/file-formats.md` for template.
-- **Prediction accuracy** — compare plan.md predictions against actual results: step count, file count, line delta, iteration count. Record in `verification.md` Prediction Accuracy table. Feed significant patterns into `plans/LESSONS.md` at CLOSE. See `references/planning-rigor.md`.
+- **Run `validate-plan.mjs`** — protocol compliance check. Address any ERRORs before CLOSE. WARNs are advisory.
+- **Prediction accuracy** *(EXTENDED — skip for iteration 1)* — compare plan.md predictions against actual results: step count, file count, line delta, iteration count. Record in `verification.md` Prediction Accuracy table. Feed significant patterns into `plans/LESSONS.md` at CLOSE. See `references/planning-rigor.md`.
 - **Criteria adequacy** — before running verification, ask: do these criteria test what matters, or what was easy to test? Note gaps in `verification.md` Not Verified section.
 - **Not-verified list** — in `verification.md`, write a "Not Verified" section: what you didn't test and why (no coverage, out of scope, untestable). Absence of evidence is not evidence of absence.
-- **Devil's advocate** — before routing to CLOSE: name one reason this might still be wrong despite passing verification. If you can't think of one, be more suspicious, not less. Record in `decisions.md`.
+- **Devil's advocate** *(EXTENDED — skip for iteration 1)* — before routing to CLOSE: name one reason this might still be wrong despite passing verification. If you can't think of one, be more suspicious, not less. Record in `decisions.md`.
 - Read `decisions.md` — check 3-strike patterns.
 - Compare against **written criteria**, not memory. Run 6 Simplification Checks (`references/complexity-control.md`).
 - Write `decisions.md` (what happened, learned, root cause) + `progress.md` + `state.md`.
-- **Adversarial review (iteration ≥ 2)** — spawn a Task subagent with `verification.md`, `plan.md` (criteria), and `decisions.md`. Its job: are criteria adequate? what wasn't tested? does evidence support CLOSE? Main agent must address each concern in `decisions.md` before routing to CLOSE.
+- **Adversarial review** *(EXTENDED — iteration ≥ 2 only)* — spawn a Task subagent with `verification.md`, `plan.md` (criteria), and `decisions.md`. Its job: are criteria adequate? what wasn't tested? does evidence support CLOSE? Main agent must address each concern in `decisions.md` before routing to CLOSE.
 
 | Condition | → Transition |
 |-----------|--------------|
@@ -267,7 +277,7 @@ On **failed step**: skip gate. Follow Autonomy Leash (revert-first, 2 attempts m
 ### RE-PLAN
 - Read `decisions.md`, `findings.md`, relevant `findings/*`, `plans/LESSONS.md`.
 - Read `checkpoints/*` — decide keep vs revert. Default: if unsure, revert to latest checkpoint. See `references/code-hygiene.md` for full decision framework.
-- **Ghost constraint scan** — before designing a new approach, ask: (1) Is the constraint that led to the failed approach still valid? (2) Are we inheriting environmental constraints that are actually preferences? (3) Did an early finding become stale? Log ghost constraints found in `decisions.md`. See `references/planning-rigor.md`.
+- **Ghost constraint scan** *(EXTENDED — skip for iteration 1)* — before designing a new approach, ask: (1) Is the constraint that led to the failed approach still valid? (2) Are we inheriting environmental constraints that are actually preferences? (3) Did an early finding become stale? Log ghost constraints found in `decisions.md`. See `references/planning-rigor.md`.
 - If earlier findings proved wrong or incomplete → update `findings.md` + `findings/*` with corrections. Mark corrections: `[CORRECTED iter-N]` + what changed and why. Append, don't delete original text.
 - Write `decisions.md`: log pivot + mandatory Complexity Assessment.
 - Write `state.md` + `progress.md` (mark failed items, note pivot).
@@ -326,7 +336,8 @@ Increment on PLAN → EXECUTE. Iteration 0 = EXPLORE-only (pre-plan). First real
 7. `checkpoints/*` → available rollback points and their git hashes
 8. `plans/FINDINGS.md` + `plans/DECISIONS.md` → cross-plan context from previous plans
 9. `plans/LESSONS.md` → institutional memory (read before planning)
-10. Resume from current state. Never start over.
+10. `plans/INDEX.md` → topic-to-directory mapping (find old findings by topic when sliding window has trimmed them)
+11. Resume from current state. Never start over.
 
 ## Git Integration
 

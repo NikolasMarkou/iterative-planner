@@ -14,7 +14,7 @@
 // Writes plans/.current_plan with the directory name for discovery.
 // Requires Node.js 18+ (guaranteed by Claude Code).
 
-import { mkdirSync, writeFileSync, readFileSync, readdirSync, renameSync, unlinkSync, existsSync, rmSync } from "fs";
+import { mkdirSync, writeFileSync, readFileSync, readdirSync, renameSync, unlinkSync, existsSync, rmSync, copyFileSync } from "fs";
 import { join } from "path";
 import { randomBytes } from "crypto";
 
@@ -85,6 +85,15 @@ function ensureConsolidatedFiles() {
     writeFileSync(lessonsPath, `# Lessons Learned
 *Cross-plan lessons. Updated and consolidated on close. Max 200 lines — rewrite, don't append forever.*
 *Read before any PLAN state. This is institutional memory.*
+`);
+  }
+  const indexPath = join(plansDir, "INDEX.md");
+  if (!existsSync(indexPath)) {
+    writeFileSync(indexPath, `# Plan Index
+*Topic-to-directory mapping. Updated on close. Survives sliding window trim.*
+
+| Plan | Date | Goal | Key Topics |
+|------|------|------|------------|
 `);
   }
 }
@@ -199,6 +208,48 @@ function mergeToConsolidated(planDirName) {
       prependToConsolidated(join(plansDir, "DECISIONS.md"), planDirName, stripped);
     }
   }
+}
+
+function appendToIndex(planDirName) {
+  const indexPath = join(plansDir, "INDEX.md");
+  ensureConsolidatedFiles(); // creates INDEX.md if missing
+  let existing = "";
+  try { existing = readFileSync(indexPath, "utf-8"); } catch { /* may not exist */ }
+
+  // Dedup guard
+  if (existing.includes(`| ${planDirName} |`)) return;
+
+  // Extract goal and date from plan files
+  const plan = readPlanFile(planDirName, "plan.md");
+  const goal = extractField(plan, /\n## Goal\s*\n([\s\S]+?)(?=\n## |$)/) || "No goal";
+  const goalOneLine = goal.split("\n")[0].slice(0, 60);
+  const dateMatch = planDirName.match(/plan_(\d{4}-\d{2}-\d{2})/);
+  const date = dateMatch ? dateMatch[1] : "unknown";
+
+  // Extract key topics from findings.md index (first 3 topic slugs)
+  const findings = readPlanFile(planDirName, "findings.md");
+  let topics = "";
+  if (findings) {
+    const topicMatches = findings.match(/\[([^\]]+)\]/g);
+    if (topicMatches) {
+      topics = topicMatches.slice(0, 3).map((t) => t.replace(/[[\]]/g, "").toLowerCase()).join(", ");
+    }
+  }
+
+  const row = `| ${planDirName} | ${date} | ${goalOneLine} | ${topics} |\n`;
+  const updated = existing.trimEnd() + "\n" + row;
+  writeFileSync(indexPath + ".tmp", updated);
+  renameSync(indexPath + ".tmp", indexPath);
+}
+
+function snapshotLessons(planDirName) {
+  const lessonsPath = join(plansDir, "LESSONS.md");
+  const snapshotPath = join(plansDir, planDirName, "lessons_snapshot.md");
+  try {
+    if (existsSync(lessonsPath)) {
+      copyFileSync(lessonsPath, snapshotPath);
+    }
+  } catch { /* snapshot is best-effort */ }
 }
 
 // ---------------------------------------------------------------------------
@@ -543,6 +594,10 @@ function cmdClose(opts = {}) {
       console.error(`  Per-plan files remain intact at plans/${planDirName}/`);
     }
   }
+
+  // Update topic index and snapshot lessons before removing pointer
+  try { appendToIndex(planDirName); } catch { /* index update is best-effort */ }
+  try { snapshotLessons(planDirName); } catch { /* snapshot is best-effort */ }
 
   try { unlinkSync(pointerFile); } catch { /* already removed — TOCTOU safe */ }
 

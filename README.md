@@ -1,7 +1,7 @@
 # Iterative Planner
 
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Skill](https://img.shields.io/badge/Skill-v2.6.0-green.svg)](CHANGELOG.md)
+[![Skill](https://img.shields.io/badge/Skill-v2.7.0-green.svg)](CHANGELOG.md)
 [![Sponsored by Electi](https://img.shields.io/badge/Sponsored%20by-Electi-red.svg)](https://www.electiconsulting.com)
 
 **Complex tasks break AI agents. This skill fixes that.**
@@ -77,6 +77,7 @@ plans/
 ├── FINDINGS.md                 # Consolidated findings across all plans (newest first)
 ├── DECISIONS.md                # Consolidated decisions across all plans (newest first)
 ├── LESSONS.md                  # Cross-plan institutional memory (≤200 lines)
+├── INDEX.md                    # Topic→directory mapping (survives sliding window trim)
 └── plan_2026-02-14_a3f1b2c9/
     ├── state.md                # Current state, step, iteration
     ├── plan.md                 # The living plan (rewritten each iteration)
@@ -86,6 +87,7 @@ plans/
     ├── progress.md             # Done vs remaining
     ├── verification.md         # Verification results per REFLECT cycle
     ├── checkpoints/            # Snapshots before risky changes
+    ├── lessons_snapshot.md     # LESSONS.md snapshot at close (auto-created)
     └── summary.md              # Written at close
 ```
 
@@ -208,11 +210,12 @@ node <skill-path>/scripts/bootstrap.mjs resume               # Output current pl
 node <skill-path>/scripts/bootstrap.mjs status               # One-line state summary
 node <skill-path>/scripts/bootstrap.mjs close                # Close active plan (merges + preserves)
 node <skill-path>/scripts/bootstrap.mjs list                 # Show all plan directories
+node <skill-path>/scripts/validate-plan.mjs                  # Validate active plan compliance
 ```
 
 **`new`** creates the plan directory under `plans/`, writes the pointer file, creates consolidated files if they don't exist, and drops the agent into EXPLORE. Refuses if an active plan already exists -- use `resume` to continue, `close` to end it, or `new --force` to close and start fresh.
 
-**`close`** merges per-plan findings and decisions into the consolidated files (newest first), removes the pointer, and preserves the plan directory for reference.
+**`close`** merges per-plan findings and decisions into the consolidated files (newest first), appends to the topic index (`INDEX.md`), snapshots `LESSONS.md` to the plan directory, removes the pointer, and preserves the plan directory for reference.
 
 **`resume`** outputs the current plan state for quick re-entry. **`status`** prints a single-line summary. **`list`** shows all plan directories with their state and goal.
 

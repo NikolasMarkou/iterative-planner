@@ -23,7 +23,8 @@ iterative-planner/
     ├── SKILL.md                      # Core protocol (state machine, rules) - the main instruction set
     ├── scripts/
     │   ├── bootstrap.mjs             # Initializes plans/plan_YYYY-MM-DD_XXXXXXXX/ directory (Node.js 18+)
-    │   └── bootstrap.test.mjs        # Test suite (node:test, 77 tests)
+    │   ├── bootstrap.test.mjs        # Test suite (node:test, 89 tests)
+    │   └── validate-plan.mjs         # Protocol compliance validator (Node.js 18+)
     └── references/                   # Knowledge base documents
         ├── complexity-control.md     # Anti-complexity protocol (revert-first, 3-strike, nuclear option)
         ├── code-hygiene.md           # Change manifest format, revert procedures, forbidden leftovers
@@ -48,7 +49,7 @@ node <skill-path>/scripts/bootstrap.mjs close                # Close active plan
 node <skill-path>/scripts/bootstrap.mjs list                 # Show all plan directories
 ```
 
-`new` creates plan directory with all files + writes `plans/.current_plan` pointer. Creates `plans/FINDINGS.md`, `plans/DECISIONS.md`, and `plans/LESSONS.md` if they don't exist. Idempotent-safe: refuses if active plan exists.
+`new` creates plan directory with all files + writes `plans/.current_plan` pointer. Creates `plans/FINDINGS.md`, `plans/DECISIONS.md`, `plans/LESSONS.md`, and `plans/INDEX.md` if they don't exist. Idempotent-safe: refuses if active plan exists.
 
 ### Activation Triggers
 
@@ -134,3 +135,20 @@ make help                    # Show available targets
 - [ ] `src/scripts/bootstrap.mjs` creates and references `FINDINGS.md`, `DECISIONS.md`, and `LESSONS.md` consolidated files
 - [ ] Consolidated files contain merged content after `close`
 - [ ] `plans/LESSONS.md` referenced in SKILL.md (EXPLORE, PLAN gate check, RE-PLAN, CLOSE, Recovery)
+- [ ] `plans/INDEX.md` created by bootstrap and updated on close
+- [ ] `lessons_snapshot.md` created in plan directory on close
+- [ ] `src/scripts/validate-plan.mjs` passes syntax check
+
+## Updating Local Skill
+
+When asked to "update local skill", copy **everything** from the repo to `~/.claude/skills/iterative-planner/` — no exceptions, no partial copies:
+
+```bash
+# Full sync — mirrors repo structure exactly
+cp src/SKILL.md ~/.claude/skills/iterative-planner/SKILL.md
+cp src/scripts/*.mjs ~/.claude/skills/iterative-planner/scripts/
+cp src/references/*.md ~/.claude/skills/iterative-planner/references/
+cp README.md LICENSE CHANGELOG.md ~/.claude/skills/iterative-planner/
+```
+
+Always verify with `diff -rq` after copying. Every file, every time.

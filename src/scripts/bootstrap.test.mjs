@@ -1246,6 +1246,152 @@ describe("bootstrap.mjs", () => {
   // =========================================================================
   // LESSONS.md
   // =========================================================================
+  describe("INDEX.md", () => {
+    it("INDEX.md created on first new", () => {
+      const dir = getTempDir();
+      run(dir, "new", "test");
+      assert.ok(existsSync(join(dir, "plans", "INDEX.md")), "INDEX.md should exist after new");
+      const content = readFileSync(join(dir, "plans", "INDEX.md"), "utf-8");
+      assert.ok(content.includes("# Plan Index"), "should have header");
+      assert.ok(content.includes("| Plan |"), "should have table header");
+    });
+
+    it("INDEX.md is not overwritten on second new", () => {
+      const dir = getTempDir();
+      run(dir, "new", "first");
+      run(dir, "close");
+      // Write custom content to INDEX.md table
+      const indexPath = join(dir, "plans", "INDEX.md");
+      writeFileSync(indexPath, readFileSync(indexPath, "utf-8") + "| custom_plan | 2026-01-01 | custom goal | topics |\n");
+      run(dir, "new", "second");
+      const content = readFileSync(indexPath, "utf-8");
+      assert.ok(content.includes("custom_plan"), "should preserve existing INDEX.md content");
+    });
+
+    it("close appends plan entry to INDEX.md", () => {
+      const dir = getTempDir();
+      run(dir, "new", "index test goal");
+      const planDir = getPointer(dir);
+      run(dir, "close");
+      const content = readFileSync(join(dir, "plans", "INDEX.md"), "utf-8");
+      assert.ok(content.includes(planDir), "INDEX.md should contain the plan directory name");
+      assert.ok(content.includes("index test goal"), "INDEX.md should contain the goal");
+    });
+
+    it("close does not duplicate INDEX.md entry on double close", () => {
+      const dir = getTempDir();
+      run(dir, "new", "dedup test");
+      const planDir = getPointer(dir);
+      run(dir, "close");
+      // Manually restore pointer and close again
+      writeFileSync(join(dir, "plans", ".current_plan"), planDir);
+      run(dir, "close");
+      const content = readFileSync(join(dir, "plans", "INDEX.md"), "utf-8");
+      const count = content.split(planDir).length - 1;
+      assert.equal(count, 1, "plan should appear exactly once in INDEX.md");
+    });
+
+    it("close extracts topics from findings.md", () => {
+      const dir = getTempDir();
+      run(dir, "new", "topic extraction");
+      const planDir = getPointer(dir);
+      // Write findings with linked entries
+      const findingsPath = join(dir, "plans", planDir, "findings.md");
+      writeFileSync(findingsPath, `# Findings\n## Index\n- [Auth System](findings/auth.md)\n- [Database](findings/db.md)\n## Key Constraints\n`);
+      run(dir, "close");
+      const content = readFileSync(join(dir, "plans", "INDEX.md"), "utf-8");
+      assert.ok(content.includes("auth system"), "should extract topic from findings link");
+    });
+  });
+
+  describe("lessons_snapshot.md", () => {
+    it("close creates lessons_snapshot.md in plan directory", () => {
+      const dir = getTempDir();
+      run(dir, "new", "snapshot test");
+      const planDir = getPointer(dir);
+      run(dir, "close");
+      assert.ok(existsSync(join(dir, "plans", planDir, "lessons_snapshot.md")), "snapshot should exist");
+    });
+
+    it("lessons_snapshot.md contains LESSONS.md content at time of close", () => {
+      const dir = getTempDir();
+      run(dir, "new", "first plan");
+      run(dir, "close");
+      // Write custom content to LESSONS.md
+      writeFileSync(join(dir, "plans", "LESSONS.md"), "# Lessons Learned\n\n## Important lesson\n- Never do X\n");
+      // Create and close second plan
+      run(dir, "new", "second plan");
+      const planDir = getPointer(dir);
+      run(dir, "close");
+      const snapshot = readFileSync(join(dir, "plans", planDir, "lessons_snapshot.md"), "utf-8");
+      assert.ok(snapshot.includes("Never do X"), "snapshot should contain LESSONS.md content from before close");
+    });
+  });
+
+  describe("validate-plan.mjs", () => {
+    const VALIDATE = resolve(import.meta.dirname, "validate-plan.mjs");
+
+    function runValidate(cwd, ...args) {
+      try {
+        const result = execFileSync("node", [VALIDATE, ...args], {
+          cwd,
+          encoding: "utf-8",
+          timeout: 15000,
+          stdio: ["pipe", "pipe", "pipe"],
+        });
+        return { stdout: result, stderr: "", exitCode: 0 };
+      } catch (err) {
+        return { stdout: err.stdout || "", stderr: err.stderr || "", exitCode: err.status ?? 1 };
+      }
+    }
+
+    it("passes on a fresh plan directory", () => {
+      const dir = getTempDir();
+      run(dir, "new", "validate test");
+      const r = runValidate(dir);
+      assert.equal(r.exitCode, 0, `should pass on fresh plan: ${r.stdout}`);
+    });
+
+    it("detects invalid state transitions", () => {
+      const dir = getTempDir();
+      run(dir, "new", "transition test");
+      const planDir = getPointer(dir);
+      const statePath = join(dir, "plans", planDir, "state.md");
+      const state = readFileSync(statePath, "utf-8");
+      writeFileSync(statePath, state + "- EXPLORE → EXECUTE (bad)\n");
+      const r = runValidate(dir);
+      assert.equal(r.exitCode, 1, "should fail with invalid transition");
+      assert.ok(r.stdout.includes("EXPLORE→EXECUTE"), "should report the invalid transition");
+    });
+
+    it("warns about placeholder sections in EXECUTE state", () => {
+      const dir = getTempDir();
+      run(dir, "new", "section test");
+      const planDir = getPointer(dir);
+      // Set state to EXECUTE
+      const statePath = join(dir, "plans", planDir, "state.md");
+      const state = readFileSync(statePath, "utf-8");
+      writeFileSync(statePath, state.replace("# Current State: EXPLORE", "# Current State: EXECUTE"));
+      const r = runValidate(dir);
+      assert.equal(r.exitCode, 0, "placeholders are warnings, not errors");
+      assert.ok(r.stdout.includes("WARN"), "should warn about placeholder sections");
+    });
+
+    it("exits 1 with no active plan and no argument", () => {
+      const dir = getTempDir();
+      mkdirSync(join(dir, "plans"), { recursive: true });
+      const r = runValidate(dir);
+      assert.equal(r.exitCode, 1, "should fail with no active plan");
+    });
+
+    it("shows help with --help flag", () => {
+      const dir = getTempDir();
+      const r = runValidate(dir, "--help");
+      assert.equal(r.exitCode, 0);
+      assert.ok(r.stdout.includes("Usage"), "should show usage");
+    });
+  });
+
   describe("LESSONS.md", () => {
     it("LESSONS.md is not overwritten on second new", () => {
       const dir = getTempDir();

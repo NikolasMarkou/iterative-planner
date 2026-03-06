@@ -211,6 +211,9 @@ function Invoke-Validate {
         if ($bsContent -notmatch "LESSONS\.md") {
             $errors += "ERROR: bootstrap.mjs does not reference LESSONS.md"
         }
+        if ($bsContent -notmatch "INDEX\.md") {
+            $errors += "ERROR: bootstrap.mjs does not reference INDEX.md"
+        }
     }
 
     if ($errors.Count -gt 0) {
@@ -224,6 +227,11 @@ function Invoke-Validate {
 function Invoke-Lint {
     Write-Host "Checking script syntax..." -ForegroundColor Yellow
     node --check src/scripts/bootstrap.mjs
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Syntax check failed!" -ForegroundColor Red
+        exit 1
+    }
+    node --check src/scripts/validate-plan.mjs
     if ($LASTEXITCODE -eq 0) {
         Write-Host "Syntax check passed!" -ForegroundColor Green
     } else {

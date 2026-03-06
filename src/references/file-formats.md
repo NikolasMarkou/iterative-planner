@@ -515,6 +515,33 @@ Usage:
 - Drop: one-off findings, detailed decision reasoning, plan-specific details
 - Created automatically by bootstrap on first `new`
 
+## plans/INDEX.md
+
+Topic-to-directory mapping. Updated automatically on `close`. Survives sliding window trim — use this to locate old findings when they've been removed from consolidated files.
+
+```markdown
+# Plan Index
+*Topic-to-directory mapping. Updated on close. Survives sliding window trim.*
+
+| Plan | Date | Goal | Key Topics |
+|------|------|------|------------|
+| plan_2026-02-20_b4e2c3d0 | 2026-02-20 | Database migration | db schema, foreign keys, cascade |
+| plan_2026-02-19_a3f1b2c9 | 2026-02-19 | Auth session migration | auth, sessions, redis, tokens |
+```
+
+Usage:
+- Read during EXPLORE when cross-plan context (FINDINGS.md) doesn't contain what you need
+- Helps find per-plan findings that have been trimmed by the sliding window
+- Created automatically by bootstrap on first `new`. Updated on each `close`.
+- Topics extracted from findings.md index entries
+
+## lessons_snapshot.md
+
+Automatic snapshot of `plans/LESSONS.md` taken at close, saved to the plan directory. Allows recovery of lesson state at any point in the project's history.
+
+- Created automatically by `close` in `plans/{plan-dir}/lessons_snapshot.md`
+- Read-only reference — not updated after creation
+
 ## summary.md
 
 Written at CLOSE.
