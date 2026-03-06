@@ -50,7 +50,7 @@ stateDiagram-v2
 | PLAN → PLAN | User rejects plan. Revise and re-present. |
 | PLAN → EXECUTE | User explicitly approves. |
 | EXECUTE → REFLECT | Execution phase ends (all steps done, failure, surprise, or leash hit). |
-| REFLECT → CLOSE | All criteria verified PASS in `verification.md`. |
+| REFLECT → CLOSE | All criteria verified PASS in `verification.md`. **User confirms.** |
 | REFLECT → RE-PLAN | Failure or better approach found. |
 | REFLECT → EXPLORE | Need more context before re-planning. |
 | RE-PLAN → PLAN | New approach formulated. Decision logged. |
@@ -268,9 +268,15 @@ On **failed step**: skip gate. Follow Autonomy Leash (revert-first, 2 attempts m
 - Write `decisions.md` (what happened, learned, root cause) + `progress.md` + `state.md`.
 - **Adversarial review** *(EXTENDED — iteration ≥ 2 only)* — spawn a Task subagent with `verification.md`, `plan.md` (criteria), and `decisions.md`. Its job: are criteria adequate? what wasn't tested? does evidence support CLOSE? Main agent must address each concern in `decisions.md` before routing to CLOSE.
 
+**Present to user before routing:**
+1. What was completed (from `progress.md`)
+2. What remains (if anything)
+3. Verification results summary (PASS/FAIL counts from `verification.md`)
+4. Recommend: close, re-plan, or explore — **wait for user confirmation**
+
 | Condition | → Transition |
 |-----------|--------------|
-| All criteria verified PASS in `verification.md` | → CLOSE |
+| All criteria verified PASS in `verification.md` + **user confirms** | → CLOSE |
 | Failure understood, new approach clear | → RE-PLAN |
 | Unknowns need investigation, or findings contradicted | → EXPLORE (update findings first) |
 
@@ -353,7 +359,7 @@ Increment on PLAN → EXECUTE. Iteration 0 = EXPLORE-only (pre-plan). First real
 | EXPLORE | Ask focused questions, one at a time. Present findings. |
 | PLAN | Present plan. Wait for approval. Re-present if modified. |
 | EXECUTE | Report per step. Surface surprises. Ask before deviating. |
-| REFLECT | Show expected vs actual. Propose: continue, re-plan, or close. |
+| REFLECT | Show completed vs remaining. Present verification results. **Ask** user: close, re-plan, or explore. Never auto-close. |
 | RE-PLAN | Reference decision log. Explain pivot. Get approval. |
 
 ## When NOT to Use
