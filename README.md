@@ -232,6 +232,15 @@ node <skill-path>/scripts/validate-plan.mjs                  # Validate active p
 
 Bootstrap automatically adds `plans/` to `.gitignore`. Remove this if your team wants decision logs for post-mortems.
 
+### Merge Edge Cases (Consolidated Files)
+
+When `bootstrap.mjs close` merges per-plan files into `plans/FINDINGS.md` and `plans/DECISIONS.md`:
+
+- Only content at and below the first `##` heading is merged from per-plan files.
+- If a per-plan file has no `##` headings, it is treated as non-mergeable boilerplate and skipped.
+- Cross-plan boilerplate notes are stripped before merge to avoid duplicated metadata in consolidated files.
+- Relative links like `(findings/foo.md)` are rewritten to include the plan directory path.
+
 ---
 
 ## Contributing

@@ -308,5 +308,8 @@ switch ($Command.ToLower()) {
     "clean"            { Invoke-Clean }
     "list"             { Invoke-List }
     "help"             { Show-Help }
-    default            { Show-Help }
+    default            {
+        Show-Help
+        exit 1
+    }
 }
