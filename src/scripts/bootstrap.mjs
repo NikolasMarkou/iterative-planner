@@ -433,6 +433,16 @@ ${crossPlanNote}
 |--------------------------|--------|-------|
 | *To be populated during REFLECT* | - | - |
 
+## Convergence Metrics
+*EXTENDED — iteration 2+. First iteration: write "N/A — first iteration." See references/convergence-metrics.md.*
+
+| Metric | Previous | Current | Delta |
+|--------|----------|---------|-------|
+| Pass rate | - | - | - |
+| Scope (planned vs changed) | - | - | - |
+| New issues found | - | - | - |
+| **Convergence score** | - | - | - |
+
 ## Verdict
 *To be completed during REFLECT.*
 `
