@@ -176,6 +176,8 @@ Every entry must include a **Trade-off** line: "X **at the cost of** Y".
 
 Complexity Assessment mandatory for all PIVOT entries.
 
+**Pivot Direction Log** *(EXTENDED — 2nd PIVOT onward)* — track direction consistency across PIVOTs. Add to PIVOT entries: `**Pivot Direction**: [summary]`, `**Direction History**: [all directions]`, `**Momentum**: [ratio]`. See `convergence-metrics.md` for decision rules.
+
 **Root Cause Analysis** is mandatory for REFLECT entries that follow failure (EXECUTE → REFLECT due to failure, leash hit, or surprise). Format:
 
 ```markdown
@@ -312,6 +314,14 @@ Written during PLAN (initial template with criteria), updated during EXECUTE (pe
 | +45/-12 lines | +45/-12 lines | on budget |
 | 1 iteration (plan v3) | 1 iteration | on target |
 
+## Convergence Metrics
+| Metric | Previous | Current | Delta |
+|--------|----------|---------|-------|
+| Pass rate | 2/5 (40%) | 4/5 (80%) | +0.40 |
+| Scope (files planned vs changed) | 3 vs 4 | 3 vs 3 | stable (1.0) |
+| New issues found | 3 | 1 | improving (+1) |
+| **Convergence score** | — | **+2.4** | **Converging** |
+
 ## Verdict
 - Criteria passed: 3/3
 - Regressions: none
@@ -332,6 +342,8 @@ Written during PLAN (initial template with criteria), updated during EXECUTE (pe
 **Verdict** is mandatory — count of pass/fail, blockers, and recommended transition.
 
 Plans with no testable criteria: write "N/A — manual review only" in Method column. Still record the manual review outcome in Result + Evidence.
+
+**Convergence Metrics** *(EXTENDED — iteration 2+ only)* — quantitative convergence signal. Iteration 1: write "N/A — first iteration, no previous data to compare." Iteration 2+: compute pass rate delta, scope stability, issue trend. See `convergence-metrics.md` for formula and decision rules.
 
 ## checkpoints/cp-NNN-iterN.md
 
