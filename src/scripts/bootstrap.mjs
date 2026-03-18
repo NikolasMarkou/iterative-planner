@@ -226,13 +226,18 @@ function appendToIndex(planDirName) {
   const dateMatch = planDirName.match(/plan_(\d{4}-\d{2}-\d{2})/);
   const date = dateMatch ? dateMatch[1] : "unknown";
 
-  // Extract key topics from findings.md index (first 3 topic slugs)
+  // Extract key topics from findings.md ## Index section only (first 3 topic slugs)
   const findings = readPlanFile(planDirName, "findings.md");
   let topics = "";
   if (findings) {
-    const topicMatches = findings.match(/\[([^\]]+)\]/g);
-    if (topicMatches) {
-      topics = topicMatches.slice(0, 3).map((t) => t.replace(/[[\]]/g, "").toLowerCase()).join(", ");
+    const indexStart = findings.indexOf("\n## Index");
+    if (indexStart >= 0) {
+      const afterIndex = findings.indexOf("\n## ", indexStart + 1);
+      const indexBody = afterIndex >= 0 ? findings.slice(indexStart, afterIndex) : findings.slice(indexStart);
+      const topicMatches = indexBody.match(/\[([^\]]+)\]/g);
+      if (topicMatches) {
+        topics = topicMatches.slice(0, 3).map((t) => t.replace(/[[\]]/g, "").toLowerCase()).join(", ");
+      }
     }
   }
 

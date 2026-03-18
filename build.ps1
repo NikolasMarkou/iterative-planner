@@ -216,6 +216,22 @@ function Invoke-Validate {
         }
     }
 
+    # Verify validate-plan.mjs VALID_TRANSITIONS covers all SKILL.md transitions
+    if (Test-Path "src/scripts/validate-plan.mjs") {
+        Write-Host "Checking validator transition coverage..."
+        $vpContent = Get-Content "src/scripts/validate-plan.mjs" -Raw
+        $requiredTransitions = @(
+            "EXPLORE→PLAN", "PLAN→EXPLORE", "PLAN→PLAN",
+            "PLAN→EXECUTE", "EXECUTE→REFLECT", "REFLECT→CLOSE",
+            "REFLECT→PIVOT", "REFLECT→EXPLORE", "PIVOT→PLAN"
+        )
+        foreach ($t in $requiredTransitions) {
+            if (-not $vpContent.Contains("`"$t`"")) {
+                $errors += "ERROR: validate-plan.mjs VALID_TRANSITIONS missing $t"
+            }
+        }
+    }
+
     if ($errors.Count -gt 0) {
         $errors | ForEach-Object { Write-Host $_ -ForegroundColor Red }
         exit 1

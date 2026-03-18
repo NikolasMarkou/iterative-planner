@@ -1547,6 +1547,37 @@ describe("bootstrap.mjs", () => {
       const r = runValidate(dir);
       assert.ok(!r.stdout.includes("indexed findings"), "should count numbered-list findings without warning");
     });
+
+    it("warns about placeholder convergence metrics at iteration 2+", () => {
+      const dir = getTempDir();
+      run(dir, "new", "convergence placeholder test");
+      const planDir = getPointer(dir);
+      // Set state to REFLECT at iteration 2 — convergence metrics should be filled
+      writeFileSync(
+        join(dir, "plans", planDir, "state.md"),
+        "# Current State: REFLECT\n## Iteration: 2\n## Current Plan Step: 3\n## Last Transition: EXECUTE → REFLECT\n## Transition History:\n- INIT → EXPLORE (start)\n- EXPLORE → PLAN (ready)\n- PLAN → EXECUTE (approved)\n- EXECUTE → REFLECT (done)\n"
+      );
+      // verification.md has the section header but placeholder dashes
+      const r = runValidate(dir);
+      assert.ok(r.stdout.includes("placeholder values"), "should warn when convergence metrics are still placeholders at iteration 2+");
+    });
+  });
+
+  describe("INDEX.md topic extraction", () => {
+    it("extracts topics only from Index section, not from corrections", () => {
+      const dir = getTempDir();
+      run(dir, "new", "topic scoping test");
+      const planDir = getPointer(dir);
+      // Write findings with [CORRECTED iter-2] outside Index section
+      writeFileSync(
+        join(dir, "plans", planDir, "findings.md"),
+        "# Findings\n\n## Index\n- [Auth System](findings/auth.md) — auth\n- [DB Schema](findings/db.md) — db\n- [API Routes](findings/api.md) — api\n\n## Key Constraints\n- Something\n\n## Corrections\n- [CORRECTED iter-2] Redis not isolated\n"
+      );
+      run(dir, "close");
+      const index = readFileSync(join(dir, "plans", "INDEX.md"), "utf-8");
+      assert.ok(!index.includes("corrected iter-2"), "should not extract [CORRECTED] annotations as topics");
+      assert.ok(index.includes("auth system"), "should extract topics from Index section");
+    });
   });
 
   describe("LESSONS.md", () => {

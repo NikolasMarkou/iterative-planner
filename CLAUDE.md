@@ -23,11 +23,12 @@ iterative-planner/
     ├── SKILL.md                      # Core protocol (state machine, rules) - the main instruction set
     ├── scripts/
     │   ├── bootstrap.mjs             # Initializes plans/plan_YYYY-MM-DD_XXXXXXXX/ directory (Node.js 18+)
-    │   ├── bootstrap.test.mjs        # Test suite (node:test, 99 tests)
+    │   ├── bootstrap.test.mjs        # Test suite (node:test, 102 tests)
     │   └── validate-plan.mjs         # Protocol compliance validator (Node.js 18+)
     └── references/                   # Knowledge base documents
-        ├── complexity-control.md     # Anti-complexity protocol (revert-first, 3-strike, nuclear option)
         ├── code-hygiene.md           # Change manifest format, revert procedures, forbidden leftovers
+        ├── complexity-control.md     # Anti-complexity protocol (revert-first, 3-strike, nuclear option)
+        ├── convergence-metrics.md    # Convergence score, momentum tracker, iteration health signals
         ├── decision-anchoring.md     # When/how to anchor decisions in code, format, audit rules
         ├── file-formats.md           # Templates and examples for all plan directory files
         └── planning-rigor.md         # Assumption tracking, pre-mortem, falsification signals, prediction accuracy, root cause analysis

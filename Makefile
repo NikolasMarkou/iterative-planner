@@ -125,6 +125,13 @@ validate:
 		grep -qE "$$pair" $(SKILL_FILE) || \
 		(echo "ERROR: Transition $$pair missing from SKILL.md" && exit 1); \
 	done
+	@# Verify validate-plan.mjs VALID_TRANSITIONS covers all SKILL.md transitions
+	@echo "Checking validator transition coverage..."
+	@for pair in "EXPLORE→PLAN" "PLAN→EXPLORE" "PLAN→PLAN" "PLAN→EXECUTE" "EXECUTE→REFLECT" \
+		"REFLECT→CLOSE" "REFLECT→PIVOT" "REFLECT→EXPLORE" "PIVOT→PLAN"; do \
+		grep -qF "\"$$pair\"" src/scripts/validate-plan.mjs || \
+		(echo "ERROR: validate-plan.mjs VALID_TRANSITIONS missing $$pair" && exit 1); \
+	done
 	@echo "Validation passed!"
 
 # Check script syntax

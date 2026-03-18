@@ -218,7 +218,16 @@ function checkCrossFileConsistency(planDir, issues) {
     const stateIter = extractField(state, /^## Iteration:\s*(.+)$/m);
     if (verification && stateIter && parseInt(stateIter) >= 2) {
       if (!verification.includes("## Convergence Metrics") || !verification.includes("Convergence score")) {
-        issues.push({ severity: "WARN", check: "convergence", message: "verification.md missing Convergence Metrics for iteration 2+ (EXTENDED check — see references/convergence-metrics.md)" });
+        issues.push({ severity: "WARN", check: "convergence", message: "verification.md missing Convergence Metrics section for iteration 2+ (EXTENDED check — see references/convergence-metrics.md)" });
+      } else {
+        // Check if convergence metrics are still placeholder values (all dashes)
+        const convergenceSection = extractSection(verification, "Convergence Metrics");
+        if (convergenceSection) {
+          const scoreRow = convergenceSection.split("\n").find((l) => l.includes("Convergence score"));
+          if (scoreRow && /\|\s*-\s*\|\s*-\s*\|\s*-\s*\|/.test(scoreRow)) {
+            issues.push({ severity: "WARN", check: "convergence", message: "verification.md Convergence Metrics still has placeholder values for iteration 2+ (EXTENDED check — see references/convergence-metrics.md)" });
+          }
+        }
       }
     }
   }

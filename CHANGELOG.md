@@ -4,6 +4,15 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.11.1] - 2026-03-18
+
+### Fixed
+- **Convergence metrics WARN check was a no-op** — `validate-plan.mjs` checked for `## Convergence Metrics` and `Convergence score` strings, but the bootstrap template already contains both. Added placeholder value detection: now warns when the convergence score row still has all-dash values at iteration 2+.
+- **`appendToIndex` topic extraction was greedy** — `bootstrap.mjs` matched `[text]` across the entire `findings.md` file, causing `[CORRECTED iter-N]` annotations to leak into INDEX.md topics. Now scoped to `## Index` section only.
+- **No build-time validation of validator transitions** — if a transition was added to SKILL.md but not to `validate-plan.mjs` `VALID_TRANSITIONS`, no build step caught it. Added cross-check to both Makefile and build.ps1 `validate` targets.
+- **Test count stale in CLAUDE.md and README.md** — both said "99 tests"; actual was 100 (after v2.11.0). Now 102 tests.
+- **`convergence-metrics.md` missing from file trees** — CLAUDE.md and README.md project structure listings omitted the file. Added in alphabetical order.
+
 ## [2.11.0] - 2026-03-18
 
 ### Changed

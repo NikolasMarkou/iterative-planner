@@ -1,7 +1,7 @@
 # Iterative Planner
 
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Skill](https://img.shields.io/badge/Skill-v2.11.0-green.svg)](CHANGELOG.md)
+[![Skill](https://img.shields.io/badge/Skill-v2.11.1-green.svg)](CHANGELOG.md)
 [![Sponsored by Electi](https://img.shields.io/badge/Sponsored%20by-Electi-red.svg)](https://www.electiconsulting.com)
 
 **Complex tasks break AI agents. This skill fixes that.**
@@ -279,11 +279,12 @@ iterative-planner/
     ├── SKILL.md              # Core protocol -- the complete skill specification
     ├── scripts/
     │   ├── bootstrap.mjs     # Plan directory initializer (Node.js 18+)
-    │   ├── bootstrap.test.mjs # Test suite (node:test, 99 tests)
+    │   ├── bootstrap.test.mjs # Test suite (node:test, 102 tests)
     │   └── validate-plan.mjs  # Protocol compliance validator (Node.js 18+)
     └── references/
-        ├── complexity-control.md   # Anti-complexity protocol and forbidden patterns
         ├── code-hygiene.md         # Change manifests, revert procedures, cleanup rules
+        ├── complexity-control.md   # Anti-complexity protocol and forbidden patterns
+        ├── convergence-metrics.md  # Convergence score, momentum tracker, iteration health signals
         ├── decision-anchoring.md   # When and how to anchor decisions in code
         ├── file-formats.md         # Templates for every plan directory file
         └── planning-rigor.md       # Assumptions, pre-mortem, falsification, prediction accuracy, root cause analysis
