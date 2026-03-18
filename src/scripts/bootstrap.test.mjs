@@ -1098,6 +1098,17 @@ describe("bootstrap.mjs", () => {
       assert.ok(v.includes("## Verdict"), "should have verdict section");
     });
 
+    it("verification.md has convergence metrics section", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Convergence metrics test");
+      const planDir = getPointer(dir);
+      const v = readPlanFile(dir, planDir, "verification.md");
+      assert.ok(v.includes("## Convergence Metrics"), "should have convergence metrics section");
+      assert.ok(v.includes("Pass rate"), "should have pass rate row");
+      assert.ok(v.includes("Convergence score"), "should have convergence score row");
+      assert.ok(v.includes("convergence-metrics.md"), "should reference convergence-metrics.md");
+    });
+
     it("decisions.md has append-only header", () => {
       const dir = getTempDir();
       run(dir, "new", "Decisions structure test");
