@@ -176,6 +176,15 @@ Every entry must include a **Trade-off** line: "X **at the cost of** Y".
 
 Complexity Assessment mandatory for all PIVOT entries.
 
+**Root Cause Analysis** is mandatory for REFLECT entries that follow failure (EXECUTE → REFLECT due to failure, leash hit, or surprise). Format:
+
+```markdown
+**Root Cause Analysis**:
+1. **Immediate cause**: Redis session format uses MessagePack tied to cookie serializer
+2. **Contributing factor**: EXPLORE didn't trace serialization path beyond storage layer
+3. **Prevention**: Always trace format coupling through full pipeline, not just storage endpoints
+```
+
 ## findings.md
 
 Updated during EXPLORE. Corrected during PIVOT when earlier findings prove wrong. Always include **file paths with line numbers** and **code path traces**.
@@ -282,6 +291,9 @@ Written during PLAN (initial template with criteria), updated during EXECUTE (pe
 ## Additional Checks
 | Check | Command/Action | Result | Details |
 |-------|----------------|--------|---------|
+| Regression | `bundle exec rspec` (full suite re-run) | PASS | 47/47 specs, same as pre-iteration |
+| Scope drift | Compare state.md manifest vs plan.md Files To Modify | CLEAN | 4 files changed, all planned |
+| Diff review | Review git diff for artifacts | CLEAN | No debug code, no TODOs |
 | Lint | `rubocop --format simple` | PASS | 0 offenses |
 | Behavioral diff | diff /api/auth/validate response | EXPECTED DIFF | Token field added (intentional) |
 | Smoke test | POST /login with test credential | PASS | 200 + valid JWT returned |
@@ -302,13 +314,18 @@ Written during PLAN (initial template with criteria), updated during EXECUTE (pe
 
 ## Verdict
 - Criteria passed: 3/3
-- Blockers: none
+- Regressions: none
+- Scope drift: none
+- Simplification blockers: none
 - Recommendation: → CLOSE
 ```
 
 **Criteria Verification table** is mandatory — one row per success criterion from `plan.md`. **Result** must be PASS or FAIL. **Evidence** must be concrete (counts, output excerpts, log references) — not "looks good" or "seems to work".
 
-**Additional Checks** is optional — for lint, type checks, behavioral diffs, smoke tests, or other verification not directly tied to a success criterion.
+**Additional Checks** — includes optional checks (lint, type checks, behavioral diffs, smoke tests) and the following **required** rows every REFLECT cycle:
+- **Regression**: Re-run of previously-passing tests. Result = PASS (all still pass) or FAIL (regression found). Regressions block CLOSE.
+- **Scope drift**: Comparison of change manifest (state.md) against Files To Modify (plan.md). Result = CLEAN (no unplanned changes) or DRIFT (unplanned files changed — justify in decisions.md or revert).
+- **Diff review**: Manual review of code changes for debug artifacts, commented-out code, TODO/FIXME/HACK leftovers. Result = CLEAN or ISSUES (list them).
 
 **Not Verified** is mandatory — list what you didn't test and why (no coverage, out of scope, untestable, no environment). Forces honesty about coverage gaps. Even if empty, write "None — all criteria have automated verification."
 

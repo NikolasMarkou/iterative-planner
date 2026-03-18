@@ -114,6 +114,25 @@ Track how well the plan predicted reality. Builds institutional memory about sys
 | Optimism on dependencies | External dependencies assumed to be reliable | Add buffer for every external dependency |
 | Complexity discount | "It's straightforward" → it wasn't | If you catch yourself saying "simple," add a risk entry |
 
+## Root Cause Analysis (REFLECT after failure)
+
+When REFLECT follows a failure (step failed, leash hit, surprise discovery), structured root cause analysis prevents repeating the same class of mistake.
+
+**In `decisions.md`** — as part of the REFLECT entry:
+
+```markdown
+**Root Cause Analysis**:
+1. **Immediate cause**: [What directly caused the failure?]
+2. **Contributing factor**: [What allowed the immediate cause? Trace back one level — missing test? wrong assumption? insufficient exploration?]
+3. **Prevention**: [What would have caught this earlier? Add to LESSONS.md at CLOSE if pattern is recurring.]
+```
+
+**Rules**:
+- Required when REFLECT follows failure (EXECUTE → REFLECT due to failure, leash hit, or surprise). Skip when all criteria PASS on first attempt.
+- Keep each answer to 1-2 sentences. This is a forcing function for thought, not a report.
+- "Contributing factor" is where the real insight lives — the immediate cause is usually obvious.
+- If the contributing factor points to insufficient EXPLORE or a bad assumption, that's a signal for PIVOT → EXPLORE rather than PIVOT → PLAN.
+
 ## Ghost Constraint Hunting (PIVOT)
 
 Ghost constraints = past constraints baked into the current approach that no longer apply. They're the most common source of unnecessarily constrained solution spaces.

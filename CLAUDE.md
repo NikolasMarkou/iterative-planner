@@ -30,7 +30,7 @@ iterative-planner/
         ├── code-hygiene.md           # Change manifest format, revert procedures, forbidden leftovers
         ├── decision-anchoring.md     # When/how to anchor decisions in code, format, audit rules
         ├── file-formats.md           # Templates and examples for all plan directory files
-        └── planning-rigor.md         # Assumption tracking, pre-mortem, falsification signals, prediction accuracy
+        └── planning-rigor.md         # Assumption tracking, pre-mortem, falsification signals, prediction accuracy, root cause analysis
 ```
 
 ## Key Commands

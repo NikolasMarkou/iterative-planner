@@ -4,6 +4,22 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.11.0] - 2026-03-18
+
+### Changed
+- **REFLECT state restructured into 3-phase sequence** — replaced unordered bullet list with Gate-In (6 mandatory reads), Evaluate (14 checks), Gate-Out (4 mandatory writes + structured user presentation). 24 numbered steps total. Steps 1-16 are CORE, steps 17-20 are EXTENDED.
+- **REFLECT → CLOSE transition strengthened** — now requires no regressions and no simplification blockers in addition to all criteria PASS + user confirmation.
+- **Mandatory Re-reads table updated** — REFLECT row aligned with Phase 1 Gate-In: now reads `plan.md` (criteria + verification strategy + assumptions), `progress.md`, `verification.md`, `findings.md`, `checkpoints/*`, `decisions.md`.
+
+### Added
+- **Diff review check in REFLECT** (step 8) — review actual code changes for debug artifacts, commented-out code, TODO/FIXME/HACK leftovers, unintended modifications to files not in the plan. Checks code quality; verification checks correctness.
+- **Regression check in REFLECT** (step 10) — re-run previously-passing tests. Regressions recorded in Additional Checks and block CLOSE.
+- **Scope drift check in REFLECT** (step 11) — compare change manifest (state.md) against Files To Modify (plan.md). Unplanned file changes must be justified in decisions.md or reverted.
+- **Root cause analysis in REFLECT** (step 14) — 3-question technique: immediate cause, contributing factor, prevention. Required when REFLECT follows failure, skip when all criteria PASS first attempt. New section in `planning-rigor.md`, format example in `file-formats.md` decisions.md template.
+- **Iteration pattern check in REFLECT** (step 19, EXTENDED) — compare across REFLECT cycles on iteration 3+: recurring failures, growing scope, worsening predictions signal structural problems.
+- **Required rows in verification.md Additional Checks** — Regression, Scope drift, and Diff review are now required rows every REFLECT cycle. Updated `file-formats.md` documentation and example table.
+- **Verdict section expanded** — now includes regressions, scope drift, and simplification blockers fields.
+
 ## [2.10.0] - 2026-03-14
 
 ### Changed

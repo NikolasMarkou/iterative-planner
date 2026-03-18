@@ -37,7 +37,7 @@ stateDiagram-v2
 | EXPLORE | Gather context | Read-only on project. Write only to `{plan-dir}`. |
 | PLAN | Design approach | Write plan.md. NO code changes. |
 | EXECUTE | Implement step-by-step | Edit files, run commands, write code. |
-| REFLECT | Evaluate results | Read outputs, run tests. Update decisions.md. |
+| REFLECT | Evaluate results | Read outputs, run tests, review diffs. Update verification.md, decisions.md. |
 | PIVOT | Revise direction | Log pivot in decisions.md. Do NOT write plan.md yet. |
 | CLOSE | Finalize | Write summary.md. Audit decision anchors. Merge findings/decisions to consolidated files. Update LESSONS.md (≤200 lines). Compress if >500 lines. |
 
@@ -50,7 +50,7 @@ stateDiagram-v2
 | PLAN → PLAN | User rejects plan. Revise and re-present. |
 | PLAN → EXECUTE | User explicitly approves. |
 | EXECUTE → REFLECT | Execution phase ends (all steps done, failure, surprise, or leash hit). |
-| REFLECT → CLOSE | All criteria verified PASS in `verification.md`. **User confirms.** |
+| REFLECT → CLOSE | All criteria verified PASS in `verification.md`, no regressions, no simplification blockers. **User confirms.** |
 | REFLECT → PIVOT | Failure or better approach found. |
 | REFLECT → EXPLORE | Need more context before pivoting. |
 | PIVOT → PLAN | New approach formulated. Decision logged. |
@@ -74,7 +74,7 @@ These files are active working memory. Re-read during the conversation, not just
 | Before writing a fix | `decisions.md` | Don't repeat failed approaches. Check 3-strike. |
 | Before modifying `DECISION`-commented code | Referenced `decisions.md` entry | Understand why before changing |
 | Before PLAN or PIVOT | `decisions.md`, `findings.md`, `findings/*`, `plans/LESSONS.md` | Ground plan in known facts + institutional memory |
-| Before any REFLECT | `plan.md` (criteria), `progress.md`, `verification.md` | Compare against written criteria, not vibes |
+| Before any REFLECT | `plan.md` (criteria + verification strategy + assumptions), `progress.md`, `verification.md`, `findings.md`, `checkpoints/*`, `decisions.md` | Phase 1 Gate-In: full context before evaluating |
 | Every 10 tool calls | `state.md` | Reorient. Right step? Scope crept? |
 
 **>50 messages**: re-read `state.md` + `plan.md` before every response. Files are truth, not memory.
@@ -255,30 +255,51 @@ Institutional memory across plans. Unlike FINDINGS.md and DECISIONS.md which gro
 On **failed step**: skip gate. Follow Autonomy Leash (revert-first, 2 attempts max).
 
 ### REFLECT
-- Read `plan.md` (criteria + verification strategy) + `progress.md` before evaluating.
-- Read `findings.md` + relevant `findings/*` — check if discoveries during EXECUTE contradict earlier findings. Note contradictions in `decisions.md`.
-- Read `checkpoints/*` — know what rollback options exist before deciding next transition. Note available restore points in `decisions.md` if transitioning to PIVOT.
-- Cross-validate: every `[x]` in plan.md must be "Completed" in progress.md. Fix drift first.
-- **Run verification** — execute each check defined in the Verification Strategy. Read `verification.md`, then record results: criterion, method, command/action, result (PASS/FAIL), evidence (output summary or log reference). See `references/file-formats.md` for template.
-- **Run `validate-plan.mjs`** — protocol compliance check. Address any ERRORs before CLOSE. WARNs are advisory.
-- **Prediction accuracy** *(EXTENDED — skip for iteration 1)* — compare plan.md predictions against actual results: step count, file count, line delta, iteration count. Record in `verification.md` Prediction Accuracy table. Feed significant patterns into `plans/LESSONS.md` at CLOSE. See `references/planning-rigor.md`.
-- **Criteria adequacy** — before running verification, ask: do these criteria test what matters, or what was easy to test? Note gaps in `verification.md` Not Verified section.
-- **Not-verified list** — in `verification.md`, write a "Not Verified" section: what you didn't test and why (no coverage, out of scope, untestable). Absence of evidence is not evidence of absence.
-- **Devil's advocate** *(EXTENDED — skip for iteration 1)* — before routing to CLOSE: name one reason this might still be wrong despite passing verification. If you can't think of one, be more suspicious, not less. Record in `decisions.md`.
-- Read `decisions.md` — check 3-strike patterns.
-- Compare against **written criteria**, not memory. Run 6 Simplification Checks (`references/complexity-control.md`).
-- Write `decisions.md` (what happened, learned, root cause) + `progress.md` + `state.md`.
-- **Adversarial review** *(EXTENDED — iteration ≥ 2 only)* — spawn a Task subagent with `verification.md`, `plan.md` (criteria), and `decisions.md`. Its job: are criteria adequate? what wasn't tested? does evidence support CLOSE? Main agent must address each concern in `decisions.md` before routing to CLOSE.
+
+Three phases: Gate-In (gather context), Evaluate (verify + analyze), Gate-Out (decide + present).
+
+#### Phase 1: Gate-In (mandatory reads before any evaluation)
+1. Read `plan.md` — success criteria, verification strategy, assumptions, pre-mortem signals.
+2. Read `progress.md` — what was completed, what remains, what failed.
+3. Read `verification.md` — previous verification results (if iteration 2+).
+4. Read `findings.md` + relevant `findings/*` — check if EXECUTE discoveries contradict earlier findings. Note contradictions in `decisions.md`.
+5. Read `checkpoints/*` — know rollback options before deciding next transition. Note available restore points in `decisions.md` if transitioning to PIVOT.
+6. Read `decisions.md` — check 3-strike patterns, review previous REFLECT cycles (iteration 2+).
+
+All six reads are CORE. Do not evaluate until all are complete.
+
+#### Phase 2: Evaluate
+7. **Cross-validate plan vs progress** — every `[x]` in plan.md must be "Completed" in progress.md. Fix drift before proceeding.
+8. **Diff review** — review actual code changes (git diff or change manifest in state.md). Check for: debug artifacts, commented-out code, TODO/FIXME/HACK leftovers, unintended modifications to files not in the plan. This checks code quality; verification (next) checks correctness.
+9. **Run verification** — execute each check from the Verification Strategy. Read `verification.md`, then record results: criterion, method, command/action, result (PASS/FAIL), evidence (output summary or log reference). See `references/file-formats.md` for template.
+10. **Regression check** — re-run any tests that passed before this iteration. If a previously-passing test now fails, record as FAIL in Additional Checks with "regression" noted in Details. Regressions block CLOSE.
+11. **Scope drift check** — compare files actually changed (change manifest in state.md) against Files To Modify in plan.md. Unplanned file changes must be justified in `decisions.md` or reverted. Criteria can pass even when implementation has drifted.
+12. **Criteria adequacy** — before accepting PASS results, ask: do these criteria test what matters, or what was easy to test? Are there behaviors the criteria don't cover? Record gaps in `verification.md` Not Verified section.
+13. **Not-verified list** — in `verification.md`, write what you didn't test and why (no coverage, out of scope, untestable). Absence of evidence is not evidence of absence.
+14. **Root cause analysis** (when REFLECT follows failure) — in `decisions.md`, answer: (1) What was the immediate cause? (2) What allowed it? (trace back one level) (3) What would have caught it earlier? (prevention). Skip if all criteria PASS on first attempt. See `references/planning-rigor.md`.
+15. **Run 6 Simplification Checks** (`references/complexity-control.md`). Compare against **written criteria**, not memory.
+16. **Run `validate-plan.mjs`** — protocol compliance check. Address ERRORs before CLOSE. WARNs are advisory.
+17. **Prediction accuracy** *(EXTENDED — skip for iteration 1)* — compare plan.md predictions against actual results: step count, file count, line delta, iteration count. Record in `verification.md` Prediction Accuracy table. Feed significant patterns into `plans/LESSONS.md` at CLOSE. See `references/planning-rigor.md`.
+18. **Devil's advocate** *(EXTENDED — skip for iteration 1)* — before routing to CLOSE: name one reason this might still be wrong despite passing verification. If you can't think of one, be more suspicious, not less. Record in `decisions.md`.
+19. **Iteration pattern check** *(EXTENDED — iteration 3+ only)* — compare current verification.md against previous iterations: are the same criteria failing? Is scope growing? Are predictions getting worse? Patterns across iterations signal a structural problem that another iteration won't fix. Record in `decisions.md`.
+20. **Adversarial review** *(EXTENDED — iteration 2+ only)* — spawn a Task subagent with `verification.md`, `plan.md` (criteria), and `decisions.md`. Its job: are criteria adequate? what wasn't tested? does evidence support CLOSE? Main agent must address each concern in `decisions.md` before routing to CLOSE.
+
+#### Phase 3: Gate-Out (write + present)
+21. Write `verification.md` — complete Verdict section.
+22. Write `decisions.md` — what happened, what was learned, root cause (if failure). Include Simplification Checks output.
+23. Write `progress.md` — update status of all items.
+24. Write `state.md` — log evaluation summary, update transition.
 
 **Present to user before routing:**
 1. What was completed (from `progress.md`)
 2. What remains (if anything)
 3. Verification results summary (PASS/FAIL counts from `verification.md`)
-4. Recommend: close, pivot, or explore — **wait for user confirmation**
+4. Issues found: regressions, scope drift, unverified areas, simplification blockers
+5. Recommend: close, pivot, or explore — **wait for user confirmation**
 
 | Condition | → Transition |
 |-----------|--------------|
-| All criteria verified PASS in `verification.md` + **user confirms** | → CLOSE |
+| All criteria verified PASS in `verification.md`, no regressions, no simplification blockers + **user confirms** | → CLOSE |
 | Failure understood, new approach clear | → PIVOT |
 | Unknowns need investigation, or findings contradicted | → EXPLORE (update findings first) |
 

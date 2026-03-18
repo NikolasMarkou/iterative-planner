@@ -1,7 +1,7 @@
 # Iterative Planner
 
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Skill](https://img.shields.io/badge/Skill-v2.10.0-green.svg)](CHANGELOG.md)
+[![Skill](https://img.shields.io/badge/Skill-v2.11.0-green.svg)](CHANGELOG.md)
 [![Sponsored by Electi](https://img.shields.io/badge/Sponsored%20by-Electi-red.svg)](https://www.electiconsulting.com)
 
 **Complex tasks break AI agents. This skill fixes that.**
@@ -59,7 +59,7 @@ stateDiagram-v2
 | **EXPLORE** | Read, search, ask questions, map the problem space. Pull in findings and decisions from previous plans. | Read-only. All notes go to the plan directory. |
 | **PLAN** | Design the approach. Identify every artifact to create or modify. Set success criteria. | No changes yet. User must approve before execution. |
 | **EXECUTE** | Implement one step at a time. Commit after each success. | 2 fix attempts max. Revert-first on failure. Surprises → REFLECT. |
-| **REFLECT** | Compare results against written criteria. Validate findings. | Evidence-based only. Contradicted findings → back to EXPLORE. |
+| **REFLECT** | 3-phase evaluation: Gate-In (read all context), Evaluate (verify, diff review, regression check, scope drift, root cause analysis), Gate-Out (write results, present to user). | Evidence-based only. Regressions and simplification blockers prevent CLOSE. Contradicted findings → back to EXPLORE. |
 | **PIVOT** | Change direction based on what was learned. Log the decision. | Must explain what failed and why. User approves new direction. |
 | **CLOSE** | Write summary. Audit decision anchors. Merge knowledge to consolidated files. | Verify clean output -- no leftover artifacts. |
 
@@ -143,6 +143,7 @@ Each state embeds domain-agnostic thinking tools:
 | **Assumption tracking** | PLAN | Every assumption traced to a finding, linked to dependent steps. When one breaks, you know what's invalidated. |
 | **Pre-mortem & falsification** | PLAN | Assume the plan failed -- why? Extract concrete STOP IF triggers. Prevents confirmation bias. |
 | **Prediction accuracy** | REFLECT | Compare predictions against actuals. Calibrates future estimates via LESSONS.md. |
+| **Root cause analysis** | REFLECT | On failure: immediate cause, contributing factor, prevention. Structured 3-question technique. |
 | **Ghost constraint hunting** | PIVOT | Before pivoting, check if the constraint behind the failed approach is still valid. |
 | **Essential vs accidental complexity** | REFLECT | "Inherent in the problem, or did we create it?" Essential = partition. Accidental = remove. |
 
@@ -285,7 +286,7 @@ iterative-planner/
         ├── code-hygiene.md         # Change manifests, revert procedures, cleanup rules
         ├── decision-anchoring.md   # When and how to anchor decisions in code
         ├── file-formats.md         # Templates for every plan directory file
-        └── planning-rigor.md       # Assumptions, pre-mortem, falsification, prediction accuracy
+        └── planning-rigor.md       # Assumptions, pre-mortem, falsification, prediction accuracy, root cause analysis
 ```
 
 ---
