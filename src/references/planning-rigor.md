@@ -114,6 +114,8 @@ Track how well the plan predicted reality. Builds institutional memory about sys
 | Optimism on dependencies | External dependencies assumed to be reliable | Add buffer for every external dependency |
 | Complexity discount | "It's straightforward" → it wasn't | If you catch yourself saying "simple," add a risk entry |
 
+**Convergence metrics** — prediction accuracy measures plan-vs-reality *within* an iteration. For *cross-iteration* trend analysis (is the plan converging, stalling, or diverging?), see `convergence-metrics.md`. Both go in `verification.md` during REFLECT.
+
 ## Root Cause Analysis (REFLECT after failure)
 
 When REFLECT follows a failure (step failed, leash hit, surprise discovery), structured root cause analysis prevents repeating the same class of mistake.
@@ -150,6 +152,8 @@ Ghost constraints = past constraints baked into the current approach that no lon
 - Constraints inherited from analogous past projects that may not transfer
 
 Log ghost constraints found in `decisions.md` with: what the ghost was, why it no longer applies, and how removing it changes the solution space.
+
+**Momentum tracker** — if PIVOTs are oscillating (momentum < 0.3), ghost constraints may be the cause: alternating between approaches that are each blocked by the other's constraints. See `convergence-metrics.md` for the pivot direction log.
 
 ## Phase Balance Heuristic
 
