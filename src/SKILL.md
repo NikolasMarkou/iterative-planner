@@ -279,9 +279,9 @@ All six reads are CORE. Do not evaluate until all are complete.
 14. **Root cause analysis** (when REFLECT follows failure) — in `decisions.md`, answer: (1) What was the immediate cause? (2) What allowed it? (trace back one level) (3) What would have caught it earlier? (prevention). Skip if all criteria PASS on first attempt. See `references/planning-rigor.md`.
 15. **Run 6 Simplification Checks** (`references/complexity-control.md`). Compare against **written criteria**, not memory.
 16. **Run `validate-plan.mjs`** — protocol compliance check. Address ERRORs before CLOSE. WARNs are advisory.
-17. **Prediction accuracy** *(EXTENDED — skip for iteration 1)* — compare plan.md predictions against actual results: step count, file count, line delta, iteration count. Record in `verification.md` Prediction Accuracy table. Feed significant patterns into `plans/LESSONS.md` at CLOSE. See `references/planning-rigor.md`.
-18. **Devil's advocate** *(EXTENDED — skip for iteration 1)* — before routing to CLOSE: name one reason this might still be wrong despite passing verification. If you can't think of one, be more suspicious, not less. Record in `decisions.md`.
-19. **Iteration pattern check** *(EXTENDED — iteration 3+ only)* — compare current verification.md against previous iterations: are the same criteria failing? Is scope growing? Are predictions getting worse? Patterns across iterations signal a structural problem that another iteration won't fix. Record in `decisions.md`.
+17. **Prediction accuracy** *(EXTENDED — skip for iteration 1)* — compare plan.md predictions against actual results. Record in `verification.md` Prediction Accuracy table. See `references/planning-rigor.md`.
+18. **Convergence score** *(EXTENDED — iteration 2+)* — compute pass rate trend, scope stability, issue decay. Record in `verification.md` Convergence Metrics table. Stalling/diverging scores strengthen case for PIVOT or decomposition — don't wait for iteration 5. See `references/convergence-metrics.md`.
+19. **Devil's advocate** *(EXTENDED — skip for iteration 1)* — before routing to CLOSE: name one reason this might still be wrong despite passing verification. If you can't think of one, be more suspicious, not less. Record in `decisions.md`.
 20. **Adversarial review** *(EXTENDED — iteration 2+ only)* — spawn a Task subagent with `verification.md`, `plan.md` (criteria), and `decisions.md`. Its job: are criteria adequate? what wasn't tested? does evidence support CLOSE? Main agent must address each concern in `decisions.md` before routing to CLOSE.
 
 #### Phase 3: Gate-Out (write + present)
@@ -308,7 +308,8 @@ All six reads are CORE. Do not evaluate until all are complete.
 - Read `checkpoints/*` — decide keep vs revert. Default: if unsure, revert to latest checkpoint. See `references/code-hygiene.md` for full decision framework.
 - **Ghost constraint scan** *(EXTENDED — skip for iteration 1)* — before designing a new approach, ask: (1) Is the constraint that led to the failed approach still valid? (2) Are we inheriting environmental constraints that are actually preferences? (3) Did an early finding become stale? Log ghost constraints found in `decisions.md`. See `references/planning-rigor.md`.
 - If earlier findings proved wrong or incomplete → update `findings.md` + `findings/*` with corrections. Mark corrections: `[CORRECTED iter-N]` + what changed and why. Append, don't delete original text.
-- Write `decisions.md`: log pivot + mandatory Complexity Assessment.
+- **Momentum check** *(EXTENDED — 2nd PIVOT onward)* — log pivot direction, check for oscillation. Momentum < 0.3 → recommend decomposition. See `references/convergence-metrics.md`.
+- Write `decisions.md`: log pivot + mandatory Complexity Assessment (+ pivot direction log if EXTENDED).
 - Write `state.md` + `progress.md` (mark failed items, note pivot).
 - Present options to user → get approval → transition to PLAN.
 
@@ -396,3 +397,4 @@ Simple single-file changes, obvious solutions, known-root-cause bugs, or "just d
 - `references/code-hygiene.md` — change manifest, revert procedures
 - `references/decision-anchoring.md` — when/how to anchor decisions in code
 - `references/planning-rigor.md` — assumption tracking, pre-mortem, falsification signals, exploration confidence, prediction accuracy
+- `references/convergence-metrics.md` — convergence score, momentum tracker, iteration health signals
