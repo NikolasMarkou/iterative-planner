@@ -599,9 +599,13 @@ function cmdClose(opts = {}) {
     const updated = stateContent
       .replace(/^# Current State:\s*.+$/m, "# Current State: CLOSE")
       .replace(/^## Last Transition:\s*.+$/m, `## Last Transition: ${prevState} → CLOSE (${timestamp})`)
-      + `- ${prevState} → CLOSE (bootstrap close)\n`;
+      + `${stateContent.endsWith("\n") ? "" : "\n"}- ${prevState} → CLOSE (bootstrap close)\n`;
     writeFileSync(statePath, updated);
-  } catch { /* state.md update is best-effort */ }
+  } catch (err) {
+    if (!opts.silent && err.code !== "ENOENT") {
+      console.error(`WARNING: state.md update failed: ${err.message}`);
+    }
+  }
 
   // Merge per-plan findings/decisions to consolidated files before removing pointer
   try {

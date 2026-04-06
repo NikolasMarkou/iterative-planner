@@ -1,7 +1,7 @@
 # Iterative Planner
 
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Skill](https://img.shields.io/badge/Skill-v2.12.0-green.svg)](CHANGELOG.md)
+[![Skill](https://img.shields.io/badge/Skill-v2.12.1-green.svg)](CHANGELOG.md)
 [![Sponsored by Electi](https://img.shields.io/badge/Sponsored%20by-Electi-red.svg)](https://www.electiconsulting.com)
 
 Without structure, Claude plans once, hits a wall, and layers fixes on fixes until it loses track of what it already tried. Iterative Planner prevents this by forcing structured iteration: a [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skill that enforces a state machine -- **Explore, Plan, Execute, Reflect, Pivot**. The filesystem is persistent working memory. Decisions, failed approaches, and discoveries are written to disk and survive context window compression.
@@ -40,9 +40,18 @@ unzip iterative-planner-v*.zip -d ~/.claude/skills/
 Download `iterative-planner-combined.md` from [Releases](https://github.com/NikolasMarkou/iterative-planner/releases) and add it to Claude Code's Custom Instructions (Settings > Custom Instructions).
 > Note: The single-file version does not include `bootstrap.mjs`. Plan directories must be created manually. For full bootstrap support, use the zip package.
 
-**Option 3: Clone the repo**
+**Option 3: Clone and install**
 ```bash
-git clone https://github.com/NikolasMarkou/iterative-planner.git ~/.claude/skills/iterative-planner
+git clone https://github.com/NikolasMarkou/iterative-planner.git
+cd iterative-planner
+make build
+cp -r build/iterative-planner ~/.claude/skills/
+```
+
+**Sub-agents (optional):** To enable parallel agent dispatch, install agent definitions:
+```bash
+mkdir -p ~/.claude/agents
+cp src/agents/*.md ~/.claude/agents/
 ```
 
 Then give Claude a complex task, or just say: **"plan this"**

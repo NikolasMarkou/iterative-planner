@@ -89,6 +89,25 @@ function Invoke-BuildCombined {
     $content += "> referenced in the protocol require the full package. Plan directories must be`n"
     $content += "> created manually or by using the zip/tarball distribution.`n"
 
+    # Rewrite references/ cross-references to anchor links (content is inlined above)
+    $refMap = @{
+        '``references/code-hygiene.md``' = 'the Code Hygiene Reference section below'
+        '``references/complexity-control.md``' = 'the Complexity Control Reference section below'
+        '``references/convergence-metrics.md``' = 'the Convergence Metrics Reference section below'
+        '``references/decision-anchoring.md``' = 'the Decision Anchoring Reference section below'
+        '``references/file-formats.md``' = 'the File Formats Reference section below'
+        '``references/planning-rigor.md``' = 'the Planning Rigor Reference section below'
+        '``src/references/code-hygiene.md``' = 'the Code Hygiene Reference section below'
+        '``src/references/complexity-control.md``' = 'the Complexity Control Reference section below'
+        '``src/references/convergence-metrics.md``' = 'the Convergence Metrics Reference section below'
+        '``src/references/decision-anchoring.md``' = 'the Decision Anchoring Reference section below'
+        '``src/references/file-formats.md``' = 'the File Formats Reference section below'
+        '``src/references/planning-rigor.md``' = 'the Planning Rigor Reference section below'
+    }
+    foreach ($key in $refMap.Keys) {
+        $content = $content.Replace($key, $refMap[$key])
+    }
+
     Set-Content -Path $outputFile -Value $content
 
     Write-Host "Combined skill created: $outputFile" -ForegroundColor Green

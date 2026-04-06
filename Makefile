@@ -61,6 +61,19 @@ build-combined:
 	@echo "> **Note**: This combined file does not include \`bootstrap.mjs\`. Bootstrap commands" >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	@echo "> referenced in the protocol require the full package. Plan directories must be" >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	@echo "> created manually or by using the zip/tarball distribution." >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@# Rewrite references/ cross-references to anchor links (content is inlined above)
+	@sed -i 's|`references/code-hygiene\.md`|the Code Hygiene Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@sed -i 's|`references/complexity-control\.md`|the Complexity Control Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@sed -i 's|`references/convergence-metrics\.md`|the Convergence Metrics Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@sed -i 's|`references/decision-anchoring\.md`|the Decision Anchoring Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@sed -i 's|`references/file-formats\.md`|the File Formats Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@sed -i 's|`references/planning-rigor\.md`|the Planning Rigor Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@sed -i 's|`src/references/code-hygiene\.md`|the Code Hygiene Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@sed -i 's|`src/references/complexity-control\.md`|the Complexity Control Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@sed -i 's|`src/references/convergence-metrics\.md`|the Convergence Metrics Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@sed -i 's|`src/references/decision-anchoring\.md`|the Decision Anchoring Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@sed -i 's|`src/references/file-formats\.md`|the File Formats Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@sed -i 's|`src/references/planning-rigor\.md`|the Planning Rigor Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	@echo "Combined skill created: $(BUILD_DIR)/$(SKILL_NAME)-combined.md"
 
 # Package as zip for distribution

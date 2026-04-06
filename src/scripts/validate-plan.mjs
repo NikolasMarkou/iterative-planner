@@ -245,6 +245,88 @@ function checkCrossFileConsistency(planDir, issues) {
   }
 }
 
+function checkChangeManifest(planDir, issues) {
+  const state = readFile(join(planDir, "state.md"));
+  if (!state) return;
+
+  const currentState = extractField(state, /^# Current State:\s*(.+)$/m) || "";
+  if (!["EXECUTE", "REFLECT"].includes(currentState.toUpperCase())) return;
+
+  if (!state.includes("## Change Manifest")) {
+    issues.push({ severity: "WARN", check: "manifest", message: "state.md missing Change Manifest section during EXECUTE/REFLECT" });
+  }
+}
+
+function checkIterationLimits(planDir, issues) {
+  const state = readFile(join(planDir, "state.md"));
+  if (!state) return;
+
+  const iterStr = extractField(state, /^## Iteration:\s*(.+)$/m);
+  if (!iterStr) return;
+
+  const iter = parseInt(iterStr);
+  if (iter >= 6) {
+    issues.push({ severity: "ERROR", check: "iteration", message: `Iteration ${iter} exceeds hard limit (6+): must decompose into smaller tasks` });
+  } else if (iter === 5) {
+    issues.push({ severity: "WARN", check: "iteration", message: "Iteration 5: mandatory decomposition analysis required (2-3 sub-goals)" });
+  }
+}
+
+function checkProgressStructure(planDir, issues) {
+  const progress = readFile(join(planDir, "progress.md"));
+  if (!progress) {
+    issues.push({ severity: "WARN", check: "progress", message: "progress.md not found or unreadable" });
+    return;
+  }
+
+  const requiredSections = ["Completed", "In Progress", "Remaining"];
+  for (const section of requiredSections) {
+    if (!progress.includes(`## ${section}`)) {
+      issues.push({ severity: "WARN", check: "progress", message: `progress.md missing section: ## ${section}` });
+    }
+  }
+}
+
+function checkCheckpoints(planDir, issues) {
+  const state = readFile(join(planDir, "state.md"));
+  if (!state) return;
+
+  const iterStr = extractField(state, /^## Iteration:\s*(.+)$/m);
+  if (!iterStr) return;
+
+  const iter = parseInt(iterStr);
+  if (iter < 2) return;
+
+  const cpDir = join(planDir, "checkpoints");
+  if (!existsSync(cpDir)) {
+    issues.push({ severity: "WARN", check: "checkpoints", message: `No checkpoints/ directory found at iteration ${iter} (expected checkpoint before risky changes)` });
+    return;
+  }
+
+  try {
+    const cpFiles = readdirSync(cpDir).filter((f) => f.endsWith(".md"));
+    if (cpFiles.length === 0) {
+      issues.push({ severity: "WARN", check: "checkpoints", message: `checkpoints/ directory is empty at iteration ${iter}` });
+    }
+  } catch { /* best-effort */ }
+}
+
+function checkComplexityBudget(planDir, issues) {
+  const plan = readFile(join(planDir, "plan.md"));
+  if (!plan) return;
+
+  const state = readFile(join(planDir, "state.md"));
+  const currentState = extractField(state, /^# Current State:\s*(.+)$/m) || "";
+  if (!["EXECUTE", "REFLECT", "PIVOT", "CLOSE"].includes(currentState.toUpperCase())) return;
+
+  const budgetSection = extractSection(plan, "Complexity Budget");
+  if (!budgetSection) return;
+
+  if (isPlaceholder(budgetSection)) {
+    issues.push({ severity: "WARN", check: "complexity", message: "Complexity Budget section still has placeholder content during EXECUTE+" });
+  }
+}
+
 function checkConsolidatedFiles(issues) {
   const files = ["FINDINGS.md", "DECISIONS.md", "LESSONS.md"];
   for (const f of files) {
@@ -277,6 +359,11 @@ function validate(planDirName) {
   checkPlanSections(planDir, issues);
   checkFindings(planDir, issues);
   checkCrossFileConsistency(planDir, issues);
+  checkChangeManifest(planDir, issues);
+  checkIterationLimits(planDir, issues);
+  checkProgressStructure(planDir, issues);
+  checkCheckpoints(planDir, issues);
+  checkComplexityBudget(planDir, issues);
   checkConsolidatedFiles(issues);
 
   // Report
@@ -321,6 +408,11 @@ Checks:
   - Mandatory plan.md sections
   - Findings count (≥3 before PLAN)
   - Cross-file consistency (state/plan/progress/verification)
+  - Change manifest presence during EXECUTE/REFLECT
+  - Iteration limits (5 = decomposition, 6+ = hard stop)
+  - Progress.md structure (Completed/In Progress/Remaining)
+  - Checkpoint existence for iteration 2+
+  - Complexity Budget population during EXECUTE+
   - Consolidated files existence
 
 Exit codes:

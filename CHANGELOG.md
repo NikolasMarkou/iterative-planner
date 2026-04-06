@@ -4,6 +4,19 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.12.1] - 2026-04-06
+
+### Added
+- **5 new validator checks** — change manifest presence during EXECUTE/REFLECT, iteration limits (5 = decomposition warning, 6+ = hard stop error), progress.md structure validation (Completed/In Progress/Remaining sections), checkpoint existence for iteration 2+, complexity budget population during EXECUTE+.
+- **Sub-agent install instructions in README** — added agent installation steps and sub-agent section to "Get Started" guide.
+
+### Fixed
+- **README Option 3 (clone) broken install path** — `git clone` directly to `~/.claude/skills/` placed SKILL.md under `src/`, breaking skill discovery. Changed to clone + build + copy workflow.
+- **cmdClose newline bug** (`bootstrap.mjs:602`) — transition history append could join the previous line if `state.md` lacked a trailing newline. Now ensures leading newline before appending.
+- **cmdClose silent error swallowing** (`bootstrap.mjs:604`) — empty `catch {}` block now logs non-ENOENT errors as warnings instead of silently discarding them.
+- **Combined build broken cross-references** — single-file `iterative-planner-combined.md` retained ~40 `references/foo.md` paths that don't resolve in single-file mode. Build now rewrites them to inline anchor text ("the X Reference section below"). Both Makefile and build.ps1 updated.
+- **docs/ directory in limbo** — untracked design documents now excluded via `.gitignore`.
+
 ## [2.12.0] - 2026-04-06
 
 ### Added
