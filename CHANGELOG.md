@@ -4,6 +4,19 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.12.0] - 2026-04-06
+
+### Added
+- **Sub-agent architecture** — 7 specialized agent definitions in `src/agents/`: orchestrator, ip-explorer, ip-plan-writer, ip-executor, ip-verifier, ip-reviewer, ip-archivist. Optional optimization layer; monolithic skill works without them.
+- **Sub-Agent Architecture section in SKILL.md** — agent definitions table, file ownership model, dispatch rules by state, conflict prevention rules.
+- **Agent packaging in build scripts** — Makefile and build.ps1 now package `src/agents/*.md` and validate agent frontmatter (name, description, tools).
+- **Agent install instructions in CLAUDE.md** — `cp src/agents/*.md ~/.claude/agents/` added to "Updating Local Skill" section.
+
+### Fixed
+- **Agent tool permissions mismatch** — orchestrator, ip-explorer, ip-verifier, and ip-reviewer were missing Write tool needed to fulfill their documented file ownership responsibilities. Added Write to all four; removed Write from disallowedTools on explorer, verifier, and reviewer.
+- **Validator no-op dash normalization** — `validate-plan.mjs` had `.replace(/-/g, "-")` (ASCII hyphen to ASCII hyphen, a no-op). Changed to `.replace(/[–—‐]/g, "-")` to actually normalize en-dash, em-dash, and Unicode hyphen variants.
+- **File Ownership table inaccuracy** — SKILL.md listed Explorer as reader of `plans/FINDINGS.md` and `plans/INDEX.md`, but orchestrator reads these and passes context to explorers via prompts. Corrected readers to Orchestrator.
+
 ## [2.11.1] - 2026-03-18
 
 ### Fixed

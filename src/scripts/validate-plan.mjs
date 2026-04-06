@@ -126,8 +126,8 @@ function checkStateTransitions(planDir, issues) {
     const match = line.match(/^- (.+?)\s+(?:→|->)\s+(\S+)/);
     if (!match) continue;
 
-    const from = match[1].trim().replace(/-/g, "-").toUpperCase();
-    const to = match[2].trim().replace(/-/g, "-").toUpperCase();
+    const from = match[1].trim().replace(/[–—‐]/g, "-").toUpperCase();
+    const to = match[2].trim().replace(/[–—‐]/g, "-").toUpperCase();
     // Normalize RE_PLAN, RE-PLAN, REPLAN to PIVOT
     const normFrom = from.replace(/RE[_-]?PLAN/g, "PIVOT");
     const normTo = to.replace(/RE[_-]?PLAN/g, "PIVOT");

@@ -10,6 +10,7 @@ DIST_DIR := dist
 SKILL_FILE := src/SKILL.md
 REFERENCE_FILES := $(sort $(wildcard src/references/*.md))
 SCRIPT_FILES := $(filter-out %.test.mjs,$(wildcard src/scripts/*.mjs))
+AGENT_FILES := $(sort $(wildcard src/agents/*.md))
 DOC_FILES := README.md LICENSE CHANGELOG.md
 
 # Default target
@@ -29,6 +30,11 @@ build:
 	cp $(REFERENCE_FILES) $(BUILD_DIR)/$(SKILL_NAME)/references/
 	@# Copy scripts
 	cp $(SCRIPT_FILES) $(BUILD_DIR)/$(SKILL_NAME)/scripts/
+	@# Copy agent definitions (if any)
+	@if [ -n "$(AGENT_FILES)" ]; then \
+		mkdir -p $(BUILD_DIR)/$(SKILL_NAME)/agents; \
+		cp $(AGENT_FILES) $(BUILD_DIR)/$(SKILL_NAME)/agents/; \
+	fi
 	@# Copy documentation
 	cp $(DOC_FILES) $(BUILD_DIR)/$(SKILL_NAME)/ 2>/dev/null || true
 	@echo "Build complete: $(BUILD_DIR)/$(SKILL_NAME)"
@@ -118,6 +124,15 @@ validate:
 		(echo "ERROR: bootstrap.mjs does not reference LESSONS.md" && exit 1)
 	@grep -q "INDEX.md" src/scripts/bootstrap.mjs || \
 		(echo "ERROR: bootstrap.mjs does not reference INDEX.md" && exit 1)
+	@# Verify agent definitions have required frontmatter
+	@echo "Checking agent definitions..."
+	@if [ -d src/agents ]; then \
+		for agent in src/agents/*.md; do \
+			grep -q "^name:" "$$agent" || (echo "ERROR: $$agent missing 'name' in frontmatter" && exit 1); \
+			grep -q "^description:" "$$agent" || (echo "ERROR: $$agent missing 'description' in frontmatter" && exit 1); \
+			grep -q "^tools:" "$$agent" || (echo "ERROR: $$agent missing 'tools' in frontmatter" && exit 1); \
+		done; \
+	fi
 	@# Verify transition table entries appear in Mermaid diagram
 	@echo "Checking state machine consistency..."
 	@for pair in "EXPLORE.*PLAN" "PLAN.*EXPLORE" "PLAN.*PLAN" "PLAN.*EXECUTE" "EXECUTE.*REFLECT" \

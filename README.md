@@ -1,7 +1,7 @@
 # Iterative Planner
 
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Skill](https://img.shields.io/badge/Skill-v2.11.1-green.svg)](CHANGELOG.md)
+[![Skill](https://img.shields.io/badge/Skill-v2.12.0-green.svg)](CHANGELOG.md)
 [![Sponsored by Electi](https://img.shields.io/badge/Sponsored%20by-Electi-red.svg)](https://www.electiconsulting.com)
 
 Without structure, Claude plans once, hits a wall, and layers fixes on fixes until it loses track of what it already tried. Iterative Planner prevents this by forcing structured iteration: a [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skill that enforces a state machine -- **Explore, Plan, Execute, Reflect, Pivot**. The filesystem is persistent working memory. Decisions, failed approaches, and discoveries are written to disk and survive context window compression.
@@ -342,6 +342,14 @@ iterative-planner/
 +-- build.ps1                 # Windows PowerShell build
 +-- src/
     +-- SKILL.md              # Core protocol (the complete skill specification)
+    +-- agents/               # Sub-agent definitions (optional, installed to ~/.claude/agents/)
+    |   +-- orchestrator.md   # State machine owner, spawns all other agents
+    |   +-- ip-explorer.md    # Read-only codebase research (EXPLORE phase)
+    |   +-- ip-plan-writer.md # Plan generation (PLAN phase)
+    |   +-- ip-executor.md    # Code execution (EXECUTE phase)
+    |   +-- ip-verifier.md    # Verification checks (REFLECT phase)
+    |   +-- ip-reviewer.md    # Adversarial review (REFLECT phase, iteration >= 2)
+    |   +-- ip-archivist.md   # CLOSE phase housekeeping
     +-- scripts/
     |   +-- bootstrap.mjs     # Plan directory initializer (Node.js 18+)
     |   +-- bootstrap.test.mjs # Test suite (node:test, 102 tests)

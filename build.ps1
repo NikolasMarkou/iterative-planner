@@ -51,6 +51,12 @@ function Invoke-Build {
     # Copy scripts
     Get-ChildItem "src/scripts/*.mjs" -Exclude "*.test.mjs" | Copy-Item -Destination "$skillDir/scripts/"
 
+    # Copy agent definitions (if any)
+    if (Test-Path "src/agents") {
+        New-Item -ItemType Directory -Force -Path "$skillDir/agents" | Out-Null
+        Copy-Item "src/agents/*.md" "$skillDir/agents/"
+    }
+
     # Copy documentation
     @("README.md", "LICENSE", "CHANGELOG.md") | ForEach-Object {
         if (Test-Path $_) {
@@ -213,6 +219,23 @@ function Invoke-Validate {
         }
         if ($bsContent -notmatch "INDEX\.md") {
             $errors += "ERROR: bootstrap.mjs does not reference INDEX.md"
+        }
+    }
+
+    # Verify agent definitions have required frontmatter
+    if (Test-Path "src/agents") {
+        Write-Host "Checking agent definitions..."
+        Get-ChildItem "src/agents/*.md" | ForEach-Object {
+            $agentContent = Get-Content $_.FullName -Raw
+            if ($agentContent -notmatch "(?m)^name:") {
+                $errors += "ERROR: $($_.Name) missing 'name' in frontmatter"
+            }
+            if ($agentContent -notmatch "(?m)^description:") {
+                $errors += "ERROR: $($_.Name) missing 'description' in frontmatter"
+            }
+            if ($agentContent -notmatch "(?m)^tools:") {
+                $errors += "ERROR: $($_.Name) missing 'tools' in frontmatter"
+            }
         }
     }
 

@@ -21,6 +21,14 @@ iterative-planner/
 ├── build.ps1                         # Windows PowerShell build script (reads VERSION)
 └── src/
     ├── SKILL.md                      # Core protocol (state machine, rules) - the main instruction set
+    ├── agents/                       # Sub-agent definitions (installed to ~/.claude/agents/)
+    │   ├── orchestrator.md           # State machine owner, spawns all other agents
+    │   ├── ip-explorer.md            # Read-only codebase research (EXPLORE phase)
+    │   ├── ip-plan-writer.md         # Plan generation (PLAN phase)
+    │   ├── ip-executor.md            # Code execution (EXECUTE phase)
+    │   ├── ip-verifier.md            # Verification checks (REFLECT phase)
+    │   ├── ip-reviewer.md            # Adversarial review (REFLECT phase, iteration >= 2)
+    │   └── ip-archivist.md           # CLOSE phase housekeeping
     ├── scripts/
     │   ├── bootstrap.mjs             # Initializes plans/plan_YYYY-MM-DD_XXXXXXXX/ directory (Node.js 18+)
     │   ├── bootstrap.test.mjs        # Test suite (node:test, 102 tests)
@@ -68,6 +76,7 @@ Complete spec in **src/SKILL.md**. Key sections:
 - **Decision Anchoring**: src/SKILL.md "Decision Anchoring" section + `src/references/decision-anchoring.md`
 - **Planning Rigor**: src/SKILL.md PLAN/EXPLORE/REFLECT/PIVOT sections + `src/references/planning-rigor.md` (assumptions, pre-mortem, falsification signals, exploration confidence, prediction accuracy, ghost constraints, decomposition)
 - **Git Integration**: src/SKILL.md "Git Integration" section
+- **Sub-Agent Architecture**: src/SKILL.md "Sub-Agent Architecture" section (agent definitions, file ownership, dispatch rules)
 
 Do not duplicate protocol content here. Read src/SKILL.md directly.
 
@@ -76,6 +85,7 @@ Do not duplicate protocol content here. Read src/SKILL.md directly.
 ### File Modification Guidelines
 
 - **src/SKILL.md** — core protocol. Changes affect all planning behavior.
+- **src/agents/** — sub-agent definitions. Each file uses YAML frontmatter (name, description, tools, model) + Markdown system prompt. Installed to `~/.claude/agents/`.
 - **src/references/** — supplementary knowledge, read on-demand. Add new files for expanded guidance.
 - **src/scripts/bootstrap.mjs** — requires Node.js 18+. Idempotent-safe (refuses if active plan exists).
 - **VERSION** — single source of truth. `Makefile` + `build.ps1` read from it. Bump only `VERSION` + `CHANGELOG.md`.
@@ -139,6 +149,9 @@ make help                    # Show available targets
 - [ ] `plans/INDEX.md` created by bootstrap and updated on close
 - [ ] `lessons_snapshot.md` created in plan directory on close
 - [ ] `src/scripts/validate-plan.mjs` passes syntax check
+- [ ] All agent definitions in `src/agents/` have `name:`, `description:`, and `tools:` in YAML frontmatter
+- [ ] Agent definitions in src/SKILL.md "Sub-Agent Architecture" section match files in `src/agents/`
+- [ ] File Ownership Model table in src/SKILL.md matches agent tool permissions
 
 ## Updating Local Skill
 
@@ -150,6 +163,10 @@ cp src/SKILL.md ~/.claude/skills/iterative-planner/SKILL.md
 cp src/scripts/*.mjs ~/.claude/skills/iterative-planner/scripts/
 cp src/references/*.md ~/.claude/skills/iterative-planner/references/
 cp README.md LICENSE CHANGELOG.md ~/.claude/skills/iterative-planner/
+
+# Install agent definitions (optional — skill works without them)
+mkdir -p ~/.claude/agents
+cp src/agents/*.md ~/.claude/agents/
 ```
 
 Always verify with `diff -rq` after copying. Every file, every time.

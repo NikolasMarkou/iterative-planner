@@ -210,7 +210,7 @@ Institutional memory across plans. Unlike FINDINGS.md and DECISIONS.md which gro
   - **Soft constraint**: preferences, conventions, team familiarity — negotiable if trade-off is explicit.
   - **Ghost constraint**: past constraints baked into current approach that **no longer apply**. Finding and removing ghost constraints unlocks options nobody thought were available.
   Separate constraints from preferences — be honest about which is which. Can't distinguish them → keep exploring.
-- Use **Task subagents** to parallelize research. All subagent output → `{plan-dir}/findings/` files. Never rely on context-only results. **Main agent** updates `findings.md` index after subagents write — subagents don't touch the index. **Naming**: `findings/{topic-slug}.md` (kebab-case, descriptive — e.g. `auth-system.md`, `test-coverage.md`).
+- Use **Task subagents** (or `ip-explorer` agents if installed) to parallelize research. Spawn 1-3 explorer agents simultaneously, each assigned a distinct research topic. All subagent output → `{plan-dir}/findings/` files. Never rely on context-only results. **Main agent** updates `findings.md` index after subagents write — subagents don't touch the index. **Naming**: `findings/{topic-slug}.md` (kebab-case, descriptive — e.g. `auth-system.md`, `test-coverage.md`). See "Sub-Agent Architecture" section for dispatch details.
 - Use "think hard" / "ultrathink" for complex analysis.
 - REFLECT → EXPLORE loops: append to existing findings, don't overwrite. Mark corrections with `[CORRECTED iter-N]`.
 
@@ -282,7 +282,7 @@ All six reads are CORE. Do not evaluate until all are complete.
 17. **Prediction accuracy** *(EXTENDED — skip for iteration 1)* — compare plan.md predictions against actual results. Record in `verification.md` Prediction Accuracy table. See `references/planning-rigor.md`.
 18. **Convergence score** *(EXTENDED — iteration 2+)* — compute pass rate trend, scope stability, issue decay. Record in `verification.md` Convergence Metrics table. Stalling/diverging scores strengthen case for PIVOT or decomposition — don't wait for iteration 5. See `references/convergence-metrics.md`.
 19. **Devil's advocate** *(EXTENDED — skip for iteration 1)* — before routing to CLOSE: name one reason this might still be wrong despite passing verification. If you can't think of one, be more suspicious, not less. Record in `decisions.md`.
-20. **Adversarial review** *(EXTENDED — iteration 2+ only)* — spawn a Task subagent with `verification.md`, `plan.md` (criteria), and `decisions.md`. Its job: are criteria adequate? what wasn't tested? does evidence support CLOSE? Main agent must address each concern in `decisions.md` before routing to CLOSE.
+20. **Adversarial review** *(EXTENDED — iteration 2+ only)* — spawn an `ip-reviewer` agent (or Task subagent) with `verification.md`, `plan.md` (criteria), and `decisions.md`. Its job: are criteria adequate? what wasn't tested? does evidence support CLOSE? Output → `findings/review-iter-N.md`. Main agent must address each concern in `decisions.md` before routing to CLOSE. See "Sub-Agent Architecture" section for dispatch details.
 
 #### Phase 3: Gate-Out (write + present)
 21. Write `verification.md` — complete Verdict section.
@@ -385,6 +385,63 @@ Increment on PLAN → EXECUTE. Iteration 0 = EXPLORE-only (pre-plan). First real
 | EXECUTE | Report per step. Surface surprises. Ask before deviating. |
 | REFLECT | Show completed vs remaining. Present verification results. **Ask** user: close, pivot, or explore. Never auto-close. |
 | PIVOT | Reference decision log. Explain pivot. Get approval. |
+
+## Sub-Agent Architecture
+
+The iterative planner supports **optional** specialized sub-agents that parallelize work within each state. If sub-agent definitions (`agents/ip-*.md`) are installed, the orchestrator dispatches them. If not, the monolithic skill works as before — sub-agents are an optimization layer, not a requirement.
+
+**Key constraint**: Sub-agents cannot spawn other sub-agents. The orchestrator (or main agent) is the sole coordinator.
+
+### Agent Definitions
+
+| Agent | File | Role | Tools | Model |
+|-------|------|------|-------|-------|
+| Orchestrator | `agents/orchestrator.md` | State machine owner, coordinator | Agent, Read, Write, Edit, Bash, Grep, Glob | inherit |
+| Explorer | `agents/ip-explorer.md` | Read-only codebase research | Read, Write, Grep, Glob, Bash | sonnet |
+| Plan-Writer | `agents/ip-plan-writer.md` | Generates plan.md + verification.md | Read, Write, Edit, Grep, Glob | inherit |
+| Executor | `agents/ip-executor.md` | Implements one plan step | Read, Edit, Write, Bash, Grep, Glob | inherit |
+| Verifier | `agents/ip-verifier.md` | Runs verification checks | Read, Write, Bash, Grep, Glob | sonnet |
+| Reviewer | `agents/ip-reviewer.md` | Adversarial review (iteration ≥ 2) | Read, Write, Grep, Glob, Bash | opus |
+| Archivist | `agents/ip-archivist.md` | CLOSE housekeeping | Read, Write, Edit, Grep, Glob, Bash | sonnet |
+
+### File Ownership Model
+
+Each file has a clear owner. Only the owner writes. Others read.
+
+| File | Owner (Writes) | Readers |
+|------|----------------|---------|
+| `state.md` | Orchestrator | All agents |
+| `plan.md` | Plan-writer | Orchestrator, Executor, Verifier |
+| `decisions.md` | Orchestrator + Plan-writer | All agents |
+| `findings.md` (index) | Orchestrator | Plan-writer, Reviewer |
+| `findings/{topic}.md` | Explorer (one per file) | Orchestrator, Plan-writer |
+| `findings/review-iter-N.md` | Reviewer | Orchestrator |
+| `progress.md` | Orchestrator + Executor | All agents |
+| `verification.md` | Plan-writer (template) → Verifier (results) | Orchestrator, Reviewer |
+| `checkpoints/*` | Executor | Orchestrator (for PIVOT) |
+| `summary.md` | Archivist | — |
+| `plans/FINDINGS.md` | Archivist (via bootstrap) | Orchestrator, Plan-writer |
+| `plans/DECISIONS.md` | Archivist (via bootstrap) | Plan-writer |
+| `plans/LESSONS.md` | Archivist | Explorer, Plan-writer |
+| `plans/INDEX.md` | Archivist (via bootstrap) | Orchestrator |
+
+### Dispatch Rules by State
+
+**EXPLORE**: Spawn 1-3 `ip-explorer` agents in parallel, each with a distinct topic. After all complete, orchestrator reads `findings/*` files and updates `findings.md` index. Gate check: ≥3 indexed findings.
+
+**PLAN**: Spawn `ip-plan-writer` with goal + findings summary. Plan-writer reads all `findings/*`, `plans/LESSONS.md`, `plans/DECISIONS.md`. Orchestrator verifies all required sections, presents to user.
+
+**EXECUTE**: Spawn `ip-executor` per step (sequential by default). For truly independent steps, use `isolation: "worktree"` for parallel execution. Orchestrator tracks autonomy leash externally in `state.md`.
+
+**REFLECT**: Spawn `ip-verifier`(s) for parallel verification checks. If iteration ≥ 2, spawn `ip-reviewer` for adversarial review. Orchestrator merges results, presents to user.
+
+**CLOSE**: Spawn `ip-archivist` for summary.md, decision anchor audit, LESSONS.md update. Orchestrator runs `bootstrap.mjs close` after archivist completes.
+
+### Conflict Prevention
+1. No concurrent writes to the same file — orchestrator sequences agents accordingly.
+2. Explorer agents write to distinct `findings/{topic}.md` files — unique topic slugs.
+3. Verifier agents write to distinct sections of `verification.md` — or orchestrator merges outputs.
+4. Executor agents in worktree isolation avoid all file conflicts.
 
 ## When NOT to Use
 
