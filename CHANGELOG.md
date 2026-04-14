@@ -4,6 +4,12 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.12.2] - 2026-04-14
+
+### Changed
+- **Root Cause Analysis section expanded** (`src/references/planning-rigor.md`) — added fourth question "Failed defense" (barrier analysis: which test/assumption check should have caught this and why didn't it), Change Analysis prepend for regressions ("what changed since last passing state?"), explicit "multiple roots are normal" rule to prevent suspiciously clean single-cause chains, stop rule against premature closure, and "no prevention without verification" rule requiring the next REFLECT to confirm proposed defenses actually work.
+- **SKILL.md REFLECT step 14** — pointer updated to match the 4-question structure and reference the regression-specific Change Analysis and multi-root guidance.
+
 ## [2.12.1] - 2026-04-06
 
 ### Added

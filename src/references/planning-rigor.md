@@ -126,14 +126,20 @@ When REFLECT follows a failure (step failed, leash hit, surprise discovery), str
 **Root Cause Analysis**:
 1. **Immediate cause**: [What directly caused the failure?]
 2. **Contributing factor**: [What allowed the immediate cause? Trace back one level — missing test? wrong assumption? insufficient exploration?]
-3. **Prevention**: [What would have caught this earlier? Add to LESSONS.md at CLOSE if pattern is recurring.]
+3. **Failed defense**: [Which barrier should have caught this earlier — a test, assumption check, explore step, failure-mode entry, pre-mortem signal — and why didn't it? If no defense existed, that's the prevention gap.]
+4. **Prevention**: [What would have caught this earlier? Add to LESSONS.md at CLOSE if pattern is recurring.]
 ```
+
+**If the failure is a regression** (something that previously worked), add a Change Analysis question before #1: *"What changed since the last passing state?"* Candidates: recent edits in this plan, a new assumption introduced in the last iteration, a ghost constraint (see Ghost Constraint Hunting below), an external dependency that moved. Regressions almost always have a traceable delta — finding it is usually faster than reasoning forward from symptoms.
 
 **Rules**:
 - Required when REFLECT follows failure (EXECUTE → REFLECT due to failure, leash hit, or surprise). Skip when all criteria PASS on first attempt.
 - Keep each answer to 1-2 sentences. This is a forcing function for thought, not a report.
 - "Contributing factor" is where the real insight lives — the immediate cause is usually obvious.
 - If the contributing factor points to insufficient EXPLORE or a bad assumption, that's a signal for PIVOT → EXPLORE rather than PIVOT → PLAN.
+- **Multiple roots are normal.** If the causal chain feels suspiciously clean (one cause, one fix), look for a second contributing factor. A missing test *and* a wrong assumption is a more honest answer than either alone.
+- **Stop rule.** Keep asking "but why was that possible?" until further whys either leave the system boundary (out of your control) or stop yielding actionable levers. Don't stop at the first plausible cause — that's premature closure, the most common RCA failure mode.
+- **No prevention without a verification plan.** If step 4 says "add a test" or "check X earlier," the next REFLECT must confirm it actually catches the regression it was meant to catch. Otherwise the lesson is theoretical.
 
 ## Ghost Constraint Hunting (PIVOT)
 
