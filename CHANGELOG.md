@@ -4,6 +4,24 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.16.0] - 2026-05-07
+
+### Added
+- **`plans/SYSTEM.md` system atlas** — new cross-plan persistent artifact: a curated, **domain-neutral** map of *what the system being planned against actually is*, distinct from goal-driven findings. Hard cap 300 lines. Rewritten by `ip-archivist` at CLOSE (mirrors LESSONS.md mechanics). Read by `orchestrator` at start of EXPLORE and start of PLAN, by `ip-plan-writer` as a mandatory-read, and provided to `ip-explorer` as the structural prior on the target system. Schema: Identity / Components / Boundaries / Invariants / Flows / Known Patterns + optional Codebase Specialization (omitted for non-code domains). Closes the comprehension gap identified in `analyses/analysis_2026-05-07_01cbdad7/` (H3 fix-shape, posterior 0.97).
+- **`bootstrap.mjs` creates `plans/SYSTEM.md` skeleton on first `new`** — idempotent, sibling primitive to LESSONS.md/INDEX.md skeleton creation. `SYSTEM_ATLAS_SKELETON` constant in bootstrap.mjs is the single-source-of-truth lockstep partner of `references/file-formats.md ## plans/SYSTEM.md`.
+- **`validate-plan.mjs checkSystemAtlasCap`** — ERROR `[atlas-cap]` on >300 lines (prevents silent truncation by writers; the cap forces curation, not truncation), INFO `[atlas-absent]` on missing file (legacy plans created before v2.16.0), silent when file exists and is in-cap.
+- **`references/file-formats.md ## plans/SYSTEM.md` section** — canonical schema definition with usage rules: rewrite-not-append, demote-by-staleness, `[CONTRADICTED iter-N]` flag rule for EXPLORE-time atlas contradictions, hard-cap-not-truncate discipline.
+- **`ip-archivist.md` Step 5** — full procedure for rewriting plans/SYSTEM.md at CLOSE, including domain-neutrality discipline and the Codebase Specialization section's optional status.
+- **`ip-explorer.md` System-Atlas Awareness section** — explorer reads atlas as structural prior, writes system-shape findings using atlas-compatible primitive vocabulary, flags contradictions for archivist correction.
+- **`bootstrap.test.mjs`** — new test "SYSTEM.md skeleton has correct schema and is under cap" verifies header, six core domain-neutral sections, optional Codebase Specialization, line count under cap. Test count 121 → 122.
+
+### Changed
+- **`SKILL.md`** — Cross-plan context paragraph, Filesystem Structure tree, Mandatory Re-reads table, File Lifecycle Matrix (one new row), EXPLORE rules (read SYSTEM.md at start + `[CONTRADICTED iter-N]` flag rule), CLOSE description (references archivist Step 5), File Ownership Model (one new row) — all updated to wire SYSTEM.md into the existing protocol surface. **Zero existing rules changed; all additions.**
+- **`orchestrator.md`** — EXPLORE step 1 and PLAN step 1 read lists now include `plans/SYSTEM.md`.
+- **`ip-plan-writer.md`** — mandatory-reads list now includes `plans/SYSTEM.md` with rationale for consulting it during decomposition and assumption-writing.
+- **`bootstrap.mjs`** — `cmdNew` console output and `cmdResume` "Consolidated context" listing both mention plans/SYSTEM.md.
+- **`README.md` + `CLAUDE.md`** — list `plans/SYSTEM.md` among the cross-plan files.
+
 ## [2.15.0] - 2026-05-07
 
 ### Added
