@@ -143,6 +143,32 @@ Every entry must include a **Trade-off** line: "X **at the cost of** Y".
 - `PHASE` is the originating state or transition (e.g. `EXPLORE → PLAN`, `REFLECT → PIVOT`, `REFLECT`, `PIVOT`).
 - `YYYY-MM-DD` is the ISO 8601 date the entry was written.
 
+### Entry Schema by Type
+
+Required vs optional fields per entry type. Every entry, regardless of type, has the header above and a `**Trade-off**:` line ("X **at the cost of** Y").
+
+All entry types accept `Anchor-Refs` as optional. For PIVOT entries that are 2nd-onward in a sequence, also include `Pivot Direction`, `Direction History`, `Momentum` (see `convergence-metrics.md`).
+
+| Entry Type | Required Fields |
+|---|---|
+| `EXPLORE → PLAN` (initial approach) | Context, Decision, Trade-off, Reasoning |
+| `REFLECT → PIVOT` (failure pivot) | Context, What Failed, What Was Learned, Root Cause Analysis (4-part), Complexity Assessment, Decision, Trade-off, Reasoning |
+| `REFLECT` (no pivot, EXTENDED — iter 2+) | Context, Devil's Advocate Note, Decision, Trade-off, Reasoning |
+| Scope-drift justification | Context, Unplanned Files, Justification, Decision, Trade-off |
+| Falsification-signal log | Context, Signal Fired (pre-mortem item #), Observation, Decision, Trade-off |
+| Ghost-constraint discovery | Context, Constraint, Why No Longer Applies, Solution-Space Change, Decision, Trade-off |
+| 3-strike trigger | Context, "3-STRIKE TRIGGERED on [file/module]", Three Attempts, Decision, Trade-off |
+| Simplification-check failure | Context, 6 Check Answers, Blocker Found (Y/N), Decision, Trade-off |
+| Devil's-Advocate (EXTENDED) | Context, Strongest Counter-argument, Why Pursuing Anyway, Decision, Trade-off |
+
+**Anchor-Refs** (optional but **recommended whenever a `# DECISION D-NNN` anchor is placed in source**): file:line back-links from the decision entry to placed anchors. Format:
+
+```markdown
+**Anchor-Refs**: `app/middleware/auth.rb:23`, `lib/session/token_service.rb:1-15`
+```
+
+Multiple file:line refs are comma-separated; ranges use `LL-MM`. Maintained at EXECUTE-time when anchors are created or moved; verified at CLOSE during the reverse anchor audit.
+
 ```markdown
 # Decision Log
 
@@ -232,6 +258,45 @@ Updated during EXPLORE. Corrected during PIVOT when earlier findings prove wrong
 Self-contained research artifacts. Subagents write directly to `{plan-dir}/findings/` — never rely on context-only results.
 
 **Naming**: `findings/{topic-slug}.md` — kebab-case, descriptive. Examples: `auth-system.md`, `test-coverage.md`, `db-schema.md`. Prevents collisions when multiple subagents run in parallel.
+
+**Required sections** (every `findings/{topic}.md` file must contain all five):
+
+| Section | Purpose | Required content |
+|---|---|---|
+| `## Summary` | One-paragraph overview | Plain prose, 2-5 sentences |
+| `## Key Findings` | Discrete observations | Each item must include `file:line` reference |
+| `## Constraints` | Limits on solution space | Each constraint classified `HARD` / `SOFT` / `GHOST` |
+| `## Code Patterns` | Recurring shapes worth knowing | file:line for at least one occurrence per pattern |
+| `## Risks & Unknowns` | What's unclear or risky | What was not determinable; what to verify next |
+
+`HARD` = cannot be relaxed (language/runtime/external API). `SOFT` = strong convention but negotiable. `GHOST` = thought to apply but doesn't on closer inspection (document so it's not re-discovered).
+
+Example skeleton:
+
+```markdown
+# Auth System Architecture
+
+## Summary
+Three session stores (Redis/DB/in-memory) wired via a shared `SessionSerializer`. Cookie middleware and API auth both depend on it, widening blast radius for format changes.
+
+## Key Findings
+- Entry point: `app/middleware/auth.rb:23` dispatches to SessionStore
+- Format coupling: `lib/session/serializer.rb:34-89` shared by cookie + token paths
+
+## Constraints
+| Constraint | Class | Source |
+|---|---|---|
+| `rack-session` pins cookie-compat format | HARD | `Gemfile.lock:142` |
+| Auth changes behind feature flag | SOFT | `docs/conventions.md:18` |
+| "Sessions must hit Redis" — disproved | GHOST | `lib/session/redis_store.rb:12` |
+
+## Code Patterns
+- `SessionStore#find` (`lib/session/store.rb:8`) used by 4 callers
+
+## Risks & Unknowns
+- Clock skew across nodes not investigated
+- SSO re-entry into auth middleware not traced
+```
 
 Example subagent prompt:
 > Explore the authentication system. Write your findings to `{plan-dir}/findings/auth-system.md`.
@@ -345,7 +410,13 @@ Written during PLAN (initial template with criteria), updated during EXECUTE (pe
 - Recommendation: → CLOSE
 ```
 
-**Criteria Verification table** is mandatory — one row per success criterion from `plan.md`. **Result** must be PASS or FAIL. **Evidence** must be concrete (counts, output excerpts, log references) — not "looks good" or "seems to work".
+**Criteria Verification table** is mandatory — one row per success criterion from `plan.md`. **Result** must be PASS or FAIL. **Evidence** must be concrete and follow one of these accepted formats:
+
+- **(a) Test output count** — e.g. `47/47 passed, 0 failures`, `3/3 specs`
+- **(b) Exit code + stdout excerpt** — e.g. `exit 0; "Build succeeded in 12.4s"`
+- **(c) Manual review** — explicit `manual review — observed X` stating what was observed (e.g. `manual review — observed token field present in /api/auth/validate response`)
+
+**Reject** these Evidence patterns: `looks good`, `seems to work`, `LGTM`, empty cells, single-word answers (`yes`, `ok`, `done`). The validator flags these as WARN.
 
 **Additional Checks** — includes optional checks (lint, type checks, behavioral diffs, smoke tests) and the following **required** rows every REFLECT cycle:
 - **Regression**: Re-run of previously-passing tests. Result = PASS (all still pass) or FAIL (regression found). Regressions block CLOSE.
@@ -354,7 +425,12 @@ Written during PLAN (initial template with criteria), updated during EXECUTE (pe
 
 **Not Verified** is mandatory — list what you didn't test and why (no coverage, out of scope, untestable, no environment). Forces honesty about coverage gaps. Even if empty, write "None — all criteria have automated verification."
 
-**Verdict** is mandatory — count of pass/fail, blockers, and recommended transition.
+**Verdict required bullets**: every Verdict section MUST contain these 5 bullets in order:
+1. **Criteria passed (count: N/M)** — e.g. `Criteria passed: 3/3`
+2. **Regressions (yes/no — list)** — `Regressions: none` or `Regressions: yes — <list>`
+3. **Scope drift (yes/no — list)** — `Scope drift: none` or `Scope drift: yes — <list>`
+4. **Simplification blockers (yes/no — list)** — `Simplification blockers: none` or `Simplification blockers: yes — <list>`
+5. **Recommended transition (CLOSE / PIVOT / EXPLORE)** — `Recommendation: → CLOSE` (or PIVOT, or EXPLORE)
 
 Plans with no testable criteria: write "N/A — manual review only" in Method column. Still record the manual review outcome in Result + Evidence.
 

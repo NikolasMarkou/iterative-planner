@@ -1098,6 +1098,76 @@ describe("bootstrap.mjs", () => {
       assert.ok(v.includes("## Verdict"), "should have verdict section");
     });
 
+    it("verification.md Additional Checks has 3 required pre-populated rows", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Additional Checks rows test");
+      const planDir = getPointer(dir);
+      const v = readPlanFile(dir, planDir, "verification.md");
+      // Step 1 change — required rows: Regression, Scope drift, Diff review (all PENDING)
+      assert.ok(v.includes("| Regression |"), "should have Regression row");
+      assert.ok(v.includes("| Scope drift |"), "should have Scope drift row");
+      assert.ok(v.includes("| Diff review |"), "should have Diff review row");
+      // The old "Optional: lint, ..." placeholder must be gone
+      assert.ok(!v.match(/^\*Optional: lint, type checks/m), "should not contain old Optional-only placeholder");
+    });
+
+    it("verification.md Verdict has 5-bullet skeleton in order", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Verdict skeleton test");
+      const planDir = getPointer(dir);
+      const v = readPlanFile(dir, planDir, "verification.md");
+      // Step 2 — 5 required Verdict bullets
+      const verdictStart = v.indexOf("## Verdict");
+      assert.ok(verdictStart >= 0, "should have Verdict section");
+      const verdict = v.slice(verdictStart);
+      const expectedOrder = [
+        "Criteria passed:",
+        "Regressions:",
+        "Scope drift:",
+        "Simplification blockers:",
+        "Recommendation:",
+      ];
+      let lastIdx = -1;
+      for (const bullet of expectedOrder) {
+        const idx = verdict.indexOf(bullet);
+        assert.ok(idx >= 0, `Verdict should contain "${bullet}"`);
+        assert.ok(idx > lastIdx, `Verdict bullet "${bullet}" should appear after previous bullet`);
+        lastIdx = idx;
+      }
+    });
+
+    it("findings.md has Corrections section", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Corrections section test");
+      const planDir = getPointer(dir);
+      const findings = readPlanFile(dir, planDir, "findings.md");
+      // Step 1 — Corrections section
+      assert.ok(findings.includes("## Corrections"), "findings.md should have ## Corrections section");
+      assert.ok(findings.includes("[CORRECTED iter-N]"), "should mention [CORRECTED iter-N] marker convention");
+    });
+
+    it("decisions.md has schema example block", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Decisions schema example test");
+      const planDir = getPointer(dir);
+      const decisions = readPlanFile(dir, planDir, "decisions.md");
+      // Step 2 — commented schema example
+      assert.ok(decisions.includes("<!-- Schema example"), "should include HTML-comment schema example");
+      assert.ok(decisions.includes("D-001 | EXPLORE → PLAN"), "schema example should show D-001 header form");
+      assert.ok(decisions.includes("**Trade-off**:"), "schema example should show Trade-off field");
+      assert.ok(decisions.includes("**Anchor-Refs**:"), "schema example should mention Anchor-Refs field");
+    });
+
+    it("state.md has Exploration Confidence guidance for EXPLORE → PLAN", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Exploration confidence slot test");
+      const planDir = getPointer(dir);
+      const state = readPlanFile(dir, planDir, "state.md");
+      // Step 2 — Exploration Confidence slot in transition log
+      assert.ok(state.includes("Exploration Confidence"), "state.md should mention Exploration Confidence");
+      assert.ok(state.includes("confidence: scope="), "should show confidence shape: scope=");
+    });
+
     it("verification.md has convergence metrics section", () => {
       const dir = getTempDir();
       run(dir, "new", "Convergence metrics test");

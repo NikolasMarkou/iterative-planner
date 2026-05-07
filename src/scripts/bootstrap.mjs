@@ -330,6 +330,10 @@ function cmdNew(goal, force) {
 ## Last Transition: INIT → EXPLORE (${timestamp})
 ## Transition History:
 - INIT → EXPLORE (task started)
+<!-- When logging EXPLORE → PLAN, add Exploration Confidence on the line below the transition entry, e.g.:
+- EXPLORE → PLAN (gathered enough context, YYYY-MM-DDTHH:MM:SSZ)
+  - confidence: scope=deep|partial|shallow, solutions=adequate|thin, risks=clear|unclear
+See references/planning-rigor.md for definitions. -->
 `
     );
 
@@ -378,7 +382,18 @@ ${goal}
       join(planDir, "decisions.md"),
       `# Decision Log
 *Append-only. Never edit past entries.*
-${crossPlanNote}`
+${crossPlanNote}
+<!-- Schema example — DO NOT REMOVE. Real entries follow this shape.
+     See references/file-formats.md "Entry Schema by Type" for required fields per entry type.
+
+## D-001 | EXPLORE → PLAN | YYYY-MM-DD
+**Context**: <one-paragraph background — what was discovered in EXPLORE>
+**Decision**: <chosen approach in one sentence>
+**Trade-off**: <X> **at the cost of** <Y>
+**Reasoning**: <why this trade-off is acceptable; what alternatives were rejected>
+**Anchor-Refs**: \`path/to/file.ext:LL\`, \`other/file.ext:LL-MM\`  (omit if no anchors placed)
+-->
+`
     );
 
     writeFileSync(
@@ -458,7 +473,13 @@ ${crossPlanNote}
 | **Convergence score** | - | - | - |
 
 ## Verdict
-*To be completed during REFLECT.*
+*To be completed during REFLECT. All 5 bullets required, in order. See references/file-formats.md.*
+
+- Criteria passed: PENDING (N/M)
+- Regressions: PENDING
+- Scope drift: PENDING
+- Simplification blockers: PENDING
+- Recommendation: PENDING (→ CLOSE / PIVOT / EXPLORE)
 `
     );
 
