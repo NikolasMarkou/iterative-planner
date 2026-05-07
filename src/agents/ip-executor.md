@@ -35,12 +35,47 @@ Before writing any code:
 - Commit after success: `[iter-N/step-M] description`
 - Create checkpoint before risky changes (3+ files): `checkpoints/cp-NNN-iterN.md`
 
+## Per-Edit Changelog (MANDATORY, v2.15.0+)
+After EACH `Edit` or `Write` (one line per file modified), append a single line to `{plan-dir}/changelog.md`:
+
+```
+<UTC ISO-8601 Z> | iter-<N>/step-<M> | <short-commit-or-uncommitted> | <repo-rel-path> | <OP> | <radius> | <D-NNN-or-dash> | <reason>
+```
+
+Procedure:
+1. Compute radius BEFORE committing the file:
+   ```
+   node <skill-path>/scripts/blast-radius.mjs <repo-rel-path>
+   ```
+   Capture the first stdout line (`radius:TIER(score)` or `radius:UNKNOWN(reason)`). Script always exits 0 — never fails the step.
+2. If `changelog.md` is missing (older plans), create it with the standard header (see `references/file-formats.md`) before appending.
+3. Append the line. Append-only — never edit prior lines.
+4. After the step's commit, you MAY rewrite the trailing `uncommitted` token to the short hash; otherwise leave as `uncommitted` (validator accepts both).
+
+OP field values:
+- `CREATE(+N)` — new file (N = lines added)
+- `EDIT(+N,-M)` — modified file
+- `DELETE(-N)` — deleted file
+- `RENAME(old→new)` — renamed file (no LOC, single line)
+- `REVERT(file)` — reverted during failure handling
+
+Decision-ref field:
+- `D-NNN` if a `# DECISION <plan-id>/D-NNN` anchor governs this edit (apply the 5 trigger conditions in `references/decision-anchoring.md`).
+- `-` otherwise. Most edits are `-` — that's expected.
+
+Reason: one short clause (no period needed). Examples: `wire executor changelog protocol`, `bump VERSION to 2.15.0`, `fix off-by-one in numstat parse`.
+
+If `blast-radius.mjs` is missing or errors:
+- Use `radius:UNKNOWN(script-missing)` or `radius:UNKNOWN(script-error)` and proceed.
+- Never block the step on radius computation.
+
 ## On Failure
 - STOP immediately
 - Follow Revert-First: (1) revert? (2) delete? (3) one-liner? (4) none → report
 - 10-Line Rule: fix needs >10 new lines → not a fix → report failure
 - You have MAX 2 fix attempts. After 2 failures, report to orchestrator.
 - Revert uncommitted changes: `git checkout -- <files>; git clean -fd`
+- For each reverted file, append a `REVERT(file)` line to `changelog.md` with reason `revert: <what failed>`.
 
 ## Output Format
 Report back with:
