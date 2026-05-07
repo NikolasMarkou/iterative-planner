@@ -95,7 +95,7 @@ node <skill-path>/scripts/validate-plan.mjs                  # Validate active p
 `new` refuses if active plan exists — use `resume`, `close`, or `--force`.
 `new` ensures `.gitignore` includes `plans/` — prevents plan files from being committed during EXECUTE step commits.
 `close` merges per-plan findings/decisions to consolidated files, updates `state.md`, appends to `plans/INDEX.md`, snapshots `plans/LESSONS.md` to the plan directory, and removes the `.current_plan` pointer. The protocol CLOSE state (writing `summary.md`, auditing decision anchors, updating `plans/LESSONS.md`) should be completed by the agent before running `close`.
-After bootstrap → **read every file in `{plan-dir}`** (`state.md`, `plan.md`, `decisions.md`, `findings.md`, `progress.md`, `verification.md`) before doing anything else. Then begin EXPLORE. User-provided context → write to `findings.md` first.
+After bootstrap → **read every file in `{plan-dir}`** (`state.md`, `plan.md`, `decisions.md`, `findings.md`, `progress.md`, `verification.md`, `changelog.md`) before doing anything else. Then begin EXPLORE. User-provided context → write to `findings.md` first.
 
 ## Filesystem Structure
 
@@ -114,6 +114,7 @@ plans/
     ├── findings/                  # Detailed finding files (subagents write here)
     ├── progress.md                # Done vs remaining
     ├── verification.md            # Verification results per REFLECT cycle
+    ├── changelog.md               # Per-edit ledger (one line per file edit, append-only)
     ├── checkpoints/               # Snapshots before risky changes
     ├── lessons_snapshot.md        # LESSONS.md snapshot at close (auto-created)
     └── summary.md                 # Written at CLOSE
@@ -136,6 +137,7 @@ R = read only | W = update (implicit read + write) | R+W = distinct read and wri
 | findings/* | W | R | — | R | R+W | R |
 | progress.md | — | W | R+W | R+W | W | R |
 | verification.md | — | W | W | W | R | R |
+| changelog.md | — | — | W (append) | R | W (append REVERT) | R |
 | checkpoints/* | — | — | W | R | R | — |
 | summary.md | — | — | — | — | — | W |
 | plans/FINDINGS.md | R(600) | R(600) | — | — | R(600) | W(merge+compress) |
@@ -246,11 +248,13 @@ Institutional memory across plans. Unlike FINDINGS.md and DECISIONS.md which gro
 - **Surprise discovery** (behavior contradicts findings, unknown dependency, wrong assumption) → check plan.md Assumptions to identify which steps are invalidated. Note in `state.md`, finish or revert current step, transition to REFLECT. Do NOT silently update findings during EXECUTE.
 - **Falsification signal fires** (from Pre-Mortem & Falsification Signals in plan.md) → same as surprise discovery. Log which signal fired in `decisions.md`.
 - Add `# DECISION <plan-id>/D-NNN` comments (e.g. `# DECISION plan_2026-05-07_7556fb98/D-003`) where any of the 5 trigger conditions in `references/decision-anchoring.md` apply. Plan-id prefix matches the active plan directory name.
+- **Per-Edit Changelog (v2.15.0+)**: after each `Edit` or `Write`, append one pipe-delimited line per file to `{plan-dir}/changelog.md` recording timestamp, iter/step, commit (or `uncommitted`), path, op + LOC, blast-radius (`node <skill-path>/scripts/blast-radius.mjs <file>` — first stdout line), decision-ref (`D-NNN` or `-`), and a one-clause reason. Append-only. Decision-ref is optional — `-` is fine for most edits. The 5 `# DECISION` trigger conditions are unchanged. Radius script always exits 0 — never blocks the step. See `references/file-formats.md` for full format and `references/blast-radius.md` for radius scoring.
 
-#### Post-Step Gate (successful steps only — all 3 before moving on)
+#### Post-Step Gate (successful steps only — all 4 before moving on)
 1. `plan.md` — mark step `[x]`, advance marker, update complexity budget
 2. `progress.md` — move item Remaining → Completed, set next In Progress
 3. `state.md` — update step number, append to change manifest
+4. `changelog.md` — confirm one line per file edited in this step (validator WARNs on drift)
 
 On **failed step**: skip gate. Follow Autonomy Leash (revert-first, 2 attempts max).
 
@@ -265,12 +269,14 @@ Three phases: Gate-In (gather context), Evaluate (verify + analyze), Gate-Out (d
 4. Read `findings.md` + relevant `findings/*` — check if EXECUTE discoveries contradict earlier findings. Note contradictions in `decisions.md`.
 5. Read `checkpoints/*` — know rollback options before deciding next transition. Note available restore points in `decisions.md` if transitioning to PIVOT.
 6. Read `decisions.md` — check 3-strike patterns, review previous REFLECT cycles (iteration 2+).
+7. Read `changelog.md` — per-edit ledger for this iteration. Surfaces HIGH-radius edits, "tiny edit big radius" outliers, and REVERT lines.
 
-All six reads are CORE. Do not evaluate until all are complete.
+All seven reads are CORE. Do not evaluate until all are complete.
 
 #### Phase 2: Evaluate
 7. **Cross-validate plan vs progress** — every `[x]` in plan.md must be "Completed" in progress.md. Fix drift before proceeding.
 8. **Diff review** — review actual code changes (git diff or change manifest in state.md). Check for: debug artifacts, commented-out code, TODO/FIXME/HACK leftovers, unintended modifications to files not in the plan. This checks code quality; verification (next) checks correctness.
+8a. **Changelog scan (v2.15.0+)** — read `changelog.md`. List HIGH-radius edits and "tiny edit big radius" outliers (small `EDIT(+N,-M)` paired with MED/HIGH radius). Flag thin reasons. Surface concerns in the review output (or `findings/review-iter-N.md` when an `ip-reviewer` runs). Informational only — never blocks CLOSE.
 9. **Run verification** — execute each check from the Verification Strategy. Read `verification.md`, then record results: criterion, method, command/action, result (PASS/FAIL), evidence (output summary or log reference). See `references/file-formats.md` for template.
 10. **Regression check** — re-run any tests that passed before this iteration. If a previously-passing test now fails, record as FAIL in Additional Checks with "regression" noted in Details. Regressions block CLOSE.
 11. **Scope drift check** — compare files actually changed (change manifest in state.md) against Files To Modify in plan.md. Unplanned file changes must be justified in `decisions.md` or reverted. Criteria can pass even when implementation has drifted.
@@ -420,6 +426,7 @@ Each file has a clear owner. Only the owner writes. Others read.
 | `findings/review-iter-N.md` | Reviewer | Orchestrator |
 | `progress.md` | Orchestrator + Executor | All agents |
 | `verification.md` | Plan-writer (template) → Verifier (results) | Orchestrator, Reviewer |
+| `changelog.md` | Executor (append per edit) | Reviewer (REFLECT scan), Orchestrator |
 | `checkpoints/*` | Executor | Orchestrator (for PIVOT) |
 | `summary.md` | Archivist | — |
 | `plans/FINDINGS.md` | Archivist (via bootstrap) | Orchestrator, Plan-writer |
@@ -457,3 +464,4 @@ Simple single-file changes, obvious solutions, known-root-cause bugs, or "just d
 - `references/decision-anchoring.md` — when/how to anchor decisions in code
 - `references/planning-rigor.md` — assumption tracking, pre-mortem, falsification signals, exploration confidence, prediction accuracy
 - `references/convergence-metrics.md` — convergence score, momentum tracker, iteration health signals
+- `references/blast-radius.md` — per-edit blast-radius signals + scoring (used by `scripts/blast-radius.mjs`, written to `changelog.md`)
