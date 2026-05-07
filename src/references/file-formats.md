@@ -796,3 +796,97 @@ cookie fallback for legacy clients.
 - Stateless > stateful when migrating session systems
 - Dual-write only viable with short TTLs
 ```
+
+## Presentation Contracts
+
+**Canonical, single-source-of-truth definition** of the user-visible chat block the orchestrator MUST emit at each user-facing state transition. Sub-agents are invisible — only the orchestrator's chat text reaches the user. Disk artifacts (plan.md, verification.md, findings/*) are persistent memory, not user-facing channels. Every state transition that requires user input MUST be preceded by the corresponding presentation contract in the same assistant turn.
+
+Each contract specifies: **name**, **when emitted**, **required content** (numbered, ordered), **fidelity** (verbatim vs digest), **minimum sections** (the floor — must always render even when token cost is high).
+
+Agent files (`agents/orchestrator.md` and contributing sub-agent files) inline these minimum-content lists at the point of dispatch — proximate instructions are followed more reliably than indirect references. This file is the canonical definition; agent files mirror the floor.
+
+### PC-EXPLORE — Findings Digest
+
+- **When emitted**: at EXPLORE → PLAN handoff, before transitioning state.
+- **Required content** (in order):
+  1. Findings index (file → topic → key takeaway), copied from `findings.md` Index table.
+  2. Key constraints, classified as HARD / SOFT / GHOST, copied from `findings.md` Key Constraints.
+  3. Exploration confidence self-assessment: scope [shallow/adequate/deep], solutions [narrow/open/constrained], risks [blind/partial/clear].
+  4. One-paragraph synthesis: what the findings collectively imply for the plan.
+- **Fidelity**: digest. Index and constraints rendered verbatim from disk; synthesis is the orchestrator's prose.
+- **Minimum sections** (floor): items 1 and 2 (index + constraints) MUST render. Items 3-4 may be condensed but must appear.
+
+### PC-PLAN — Plan Presentation
+
+- **When emitted**: at PLAN → EXECUTE handoff, before requesting user approval.
+- **Required content** (in order):
+  1. Goal (verbatim from `plan.md` Goal section).
+  2. Problem Statement (verbatim — expected behavior, invariants, edge cases).
+  3. Files To Modify (verbatim table).
+  4. Steps (verbatim — every step, with risk/dependency annotations).
+  5. Assumptions (verbatim table).
+  6. Failure Modes (verbatim table).
+  7. Pre-Mortem & Falsification Signals (verbatim).
+  8. Success Criteria (verbatim table).
+  9. Verification Strategy (verbatim table).
+  10. Complexity Budget (verbatim).
+  11. Explicit prompt: "Approve to enter EXECUTE, or request revisions."
+- **Fidelity**: verbatim for items 1-10. Plan re-presentation after revision uses the same contract.
+- **Minimum sections** (floor — must always render even on token-cost grounds): Steps, Success Criteria, Verification Strategy, Failure Modes, Assumptions. Longer prose sections (Context, Pre-Mortem) may be condensed by reference if and only if the floor is rendered in full.
+
+### PC-EXECUTE-STEP — Per-Step Status Report
+
+- **When emitted**: after each successful EXECUTE step's Post-Step Gate, before starting the next step.
+- **Required content** (in order):
+  1. Step number and one-line description.
+  2. Files modified / created / deleted (paths only).
+  3. Commit hash + commit message.
+  4. Surprises encountered (or "none").
+  5. Next step preview (one line).
+- **Fidelity**: digest, but fields are mandatory (no field may be silently dropped).
+- **Minimum sections** (floor): all 5 fields. None are optional.
+
+### PC-EXECUTE-LEASH — Autonomy Leash Failure Block
+
+- **When emitted**: after 2 failed fix attempts on the same step (leash hit), before transitioning EXECUTE → REFLECT.
+- **Required content** (in order):
+  1. What the step was supposed to do (verbatim from `plan.md`).
+  2. What actually happened (per attempt, 2 attempts).
+  3. Root-cause guess (one paragraph).
+  4. Available checkpoints (id + git hash + reason) for rollback, copied from `checkpoints/*`.
+  5. Explicit prompt: requesting user direction (continue / pivot / rollback).
+- **Fidelity**: verbatim for items 1 and 4 (plan text and checkpoint registry); digest for items 2-3.
+- **Minimum sections** (floor): all 5 items. None may be omitted.
+
+### PC-REFLECT — REFLECT Phase-3 Gate-Out 5-Item Block
+
+- **When emitted**: after REFLECT Phase-2 evaluation, before requesting user routing decision (CLOSE / PIVOT / EXPLORE).
+- **Required content** (exactly 5 items, in order):
+  1. **What was completed** — copied from `progress.md` Completed section.
+  2. **What remains** — copied from `progress.md` Remaining + In Progress sections (or "none").
+  3. **Verification results summary** — PASS/FAIL counts plus the per-criterion table from `verification.md` Criteria Verification, rendered verbatim.
+  4. **Issues found** — regressions, scope drift, unverified areas, simplification blockers; **plus** any CRITICAL/WARNING items from `findings/review-iter-N.md` (iteration ≥ 2) folded in verbatim.
+  5. **Recommendation** — one of CLOSE / PIVOT / EXPLORE, with one-sentence justification, then explicit prompt for user confirmation.
+- **Fidelity**: verbatim for items 1-3 (progress + verification table + reviewer concerns); digest for items 4-5 commentary, but the underlying lists must be enumerated (no rolling-up into prose).
+- **Minimum sections** (floor): all 5 items. The block is defined by its 5-item structure; collapsing to fewer items violates the contract.
+
+### PC-PIVOT — Pivot Options Block
+
+- **When emitted**: at REFLECT → PIVOT routing decision, before transitioning to PLAN.
+- **Required content** (in order):
+  1. Pivot reason — what failed, what was learned (digest of `decisions.md` PIVOT entry).
+  2. Available checkpoints (id + git hash + reason), copied from `checkpoints/*`. Default-revert recommendation if uncertain.
+  3. Ghost constraints surfaced (if any) — copied from `decisions.md` Ghost Constraint Scan.
+  4. Candidate new directions — 1-3 options with one-sentence trade-off framing each ("X at the cost of Y").
+  5. Explicit prompt: which direction + keep-vs-revert decision.
+- **Fidelity**: verbatim for items 2-3 (checkpoint registry + ghost constraints); digest for items 1, 4-5.
+- **Minimum sections** (floor): all 5 items. Items 2 and 4 are non-negotiable: the user cannot make the routing decision without checkpoint visibility and concrete options.
+
+### Cross-references
+
+- `agents/orchestrator.md` — inlines the minimum-content list of each contract at the point of dispatch.
+- `agents/ip-plan-writer.md` — Output Format references PC-PLAN and PC-EXPLORE.
+- `agents/ip-verifier.md` — Relay Contract references PC-REFLECT item 3.
+- `agents/ip-reviewer.md` — Relay Contract references PC-REFLECT item 4.
+- `agents/ip-executor.md` — Output Format references PC-EXECUTE-STEP and PC-EXECUTE-LEASH.
+- `SKILL.md` — User Interaction table cell references the contract by name.
