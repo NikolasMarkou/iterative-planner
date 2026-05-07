@@ -668,6 +668,50 @@ Automatic snapshot of `plans/LESSONS.md` taken at close, saved to the plan direc
 - Created automatically by `close` in `plans/{plan-dir}/lessons_snapshot.md`
 - Read-only reference — not updated after creation
 
+## changelog.md
+
+Per-edit, append-only ledger of every file edit during EXECUTE. One line per (file, edit). Owner: `ip-executor`. Reader: `ip-reviewer` at REFLECT. Lives at `{plan-dir}/changelog.md`. Reset per plan (not consolidated cross-plan).
+
+Format: pipe-delimited single line per edit:
+
+```
+2026-05-07T10:23:45Z | iter-1/step-3 | abc1234 | src/foo.ts | EDIT(+45,-12) | radius:LOW(2) | D-007 | rename for clarity
+```
+
+| # | Field | Required | Notes |
+|---|---|---|---|
+| 1 | UTC timestamp (ISO-8601 Z, second precision) | yes | monotonically increasing |
+| 2 | `iter-N/step-M` | yes | from state.md |
+| 3 | short commit hash, or `uncommitted` | yes | the commit this edit belongs to |
+| 4 | repo-relative file path | yes | one entry per file per edit |
+| 5 | op + LOC | yes | `CREATE(+N)`, `EDIT(+N,-M)`, `DELETE(-N)`, `RENAME(old→new)`, `REVERT(file)` |
+| 6 | radius score | yes | `LOW(score)` / `MED(score)` / `HIGH(score)` / `UNKNOWN(reason)` — from `blast-radius.mjs` |
+| 7 | decision-ref | optional | `D-NNN` (resolves against active plan's `decisions.md`), or `-` if none |
+| 8 | reason | yes | one short clause |
+
+Header (written by bootstrap on plan creation, or by executor on first append if missing):
+
+```markdown
+# Changelog
+*Append-only per-edit ledger. One line per file edit. See references/blast-radius.md for radius scoring. Decision-ref is optional — `-` means no `# DECISION` anchor governs this edit.*
+```
+
+Rules:
+- **Append-only**. Never edit existing lines. Mistakes get a correction line with op `EDIT(+0,-0)` and reason `correction: <what>`.
+- **Multi-file step** → one line per file, all sharing the same iter/step/commit.
+- **Failed step revert** → append `REVERT(file)` lines for each reverted file. Do not delete the original lines.
+- **Decision-ref optional** — most edits don't have an anchored decision. Use `-` freely. The 5 `# DECISION` trigger conditions remain unchanged.
+- **Reason is mandatory** but should be terse (one clause, no period needed).
+
+Failure modes:
+- `blast-radius.mjs` missing or errors → executor writes `radius:UNKNOWN(script-missing)` or `radius:UNKNOWN(script-error)` and proceeds.
+- Plan dir lacks changelog.md (older plans) → executor creates it idempotently with the header.
+
+Validator (`validate-plan.mjs`):
+- WARN `[changelog-malformed]` on lines not matching the 8-field shape.
+- WARN `[changelog-drift]` if a commit produced files absent from changelog.
+- Never blocks CLOSE. Changelog issues are advisory only.
+
 ## summary.md
 
 Written at CLOSE.
