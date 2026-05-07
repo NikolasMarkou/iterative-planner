@@ -9,8 +9,8 @@
 // Read-only — reports issues but changes nothing.
 // Requires Node.js 18+.
 
-import { readFileSync, existsSync, readdirSync } from "fs";
-import { join } from "path";
+import { readFileSync, existsSync, readdirSync, statSync } from "fs";
+import { join, extname, relative } from "path";
 
 const cwd = process.cwd();
 const plansDir = join(cwd, "plans");
@@ -342,6 +342,491 @@ function checkConsolidatedFiles(issues) {
 }
 
 // ---------------------------------------------------------------------------
+// Decisions.md schema checks (Step 3.1 + 3.2 — added in 2.13.0)
+// ---------------------------------------------------------------------------
+
+// Parse decisions.md into entries. Each entry: { id: number, idStr: "D-NNN",
+// header: full header line, phase: PHASE token (uppercased for matching),
+// date: YYYY-MM-DD string, body: text between this header and next.
+// Skips headings inside HTML comment blocks (the schema example block).
+function parseDecisionsEntries(content) {
+  if (!content) return { entries: [], badHeaders: [] };
+  // Strip HTML comment blocks so the example schema in bootstrap.mjs (wrapped
+  // in <!-- ... -->) does not register as an entry.
+  const stripped = content.replace(/<!--[\s\S]*?-->/g, "");
+  const lines = stripped.split("\n");
+  const entries = [];
+  const badHeaders = [];
+  const headerRe = /^## D-(\d{3}) \| (.+) \| (\d{4}-\d{2}-\d{2})$/;
+  // Any "## " heading that is not the top-level "# Decision Log" header.
+  const anyH2Re = /^## (.+)$/;
+
+  let current = null;
+  let bodyStart = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const h2 = anyH2Re.exec(line);
+    if (h2) {
+      // Close previous
+      if (current) {
+        current.body = lines.slice(bodyStart, i).join("\n");
+        entries.push(current);
+        current = null;
+      }
+      const m = headerRe.exec(line);
+      if (m) {
+        current = {
+          id: parseInt(m[1], 10),
+          idStr: `D-${m[1]}`,
+          header: line,
+          phase: m[2].trim().toUpperCase(),
+          date: m[3],
+          lineNum: i + 1,
+          body: "",
+        };
+        bodyStart = i + 1;
+      } else {
+        // Non-conforming heading. Record it.
+        badHeaders.push({ line, lineNum: i + 1 });
+      }
+    }
+  }
+  if (current) {
+    current.body = lines.slice(bodyStart).join("\n");
+    entries.push(current);
+  }
+  return { entries, badHeaders };
+}
+
+function checkDecisionsSchema(planDir, issues) {
+  const path = join(planDir, "decisions.md");
+  const content = readFile(path);
+  if (!content) return;
+
+  const { entries, badHeaders } = parseDecisionsEntries(content);
+
+  // 3.1a — header format on every ## heading.
+  for (const bh of badHeaders) {
+    issues.push({
+      severity: "ERROR",
+      check: "decisions-schema",
+      message: `decisions.md:${bh.lineNum} non-conforming entry header: "${bh.line}" (expected "## D-NNN | PHASE | YYYY-MM-DD")`,
+    });
+  }
+
+  // 3.1b — sequential numbering [1, 2, 3, ...] starting from 1.
+  if (entries.length > 0) {
+    const ids = entries.map((e) => e.id);
+    for (let i = 0; i < ids.length; i++) {
+      const expected = i + 1;
+      if (ids[i] !== expected) {
+        issues.push({
+          severity: "ERROR",
+          check: "decisions-schema",
+          message: `decisions.md D-NNN sequence broken at position ${i + 1}: expected D-${String(expected).padStart(3, "0")}, got D-${String(ids[i]).padStart(3, "0")}`,
+        });
+        break;
+      }
+    }
+  }
+
+  // 3.1c — Trade-off line presence in every entry.
+  // 3.1d — Complexity Assessment block in PIVOT entries.
+  const tradeoffRe = /^\*\*Trade-off\*\*:/m;
+  for (const e of entries) {
+    if (!tradeoffRe.test(e.body)) {
+      issues.push({
+        severity: "ERROR",
+        check: "decisions-schema",
+        message: `decisions.md ${e.idStr} (line ${e.lineNum}) missing **Trade-off**: line`,
+      });
+    }
+    if (e.phase.includes("PIVOT")) {
+      if (!/\*\*Complexity Assessment\*\*/.test(e.body)) {
+        issues.push({
+          severity: "ERROR",
+          check: "decisions-schema",
+          message: `decisions.md ${e.idStr} (line ${e.lineNum}) is a PIVOT entry but missing **Complexity Assessment** block`,
+        });
+      }
+    }
+  }
+}
+
+// 3.1e — Verdict 5 required bullets, in order.
+function checkVerificationVerdict(planDir, issues) {
+  const path = join(planDir, "verification.md");
+  const content = readFile(path);
+  if (!content) return;
+  const verdict = extractSection(content, "Verdict");
+  if (!verdict) return; // section presence is not enforced here; other checks own it.
+
+  const requiredKeywords = [
+    /criteria pass(?:ed|\s+count)/i,
+    /regressions/i,
+    /scope drift/i,
+    /simplification blockers/i,
+    /recommend(?:ed|ation)/i,
+  ];
+  const labels = [
+    "Criteria passed",
+    "Regressions",
+    "Scope drift",
+    "Simplification blockers",
+    "Recommended transition",
+  ];
+
+  // Find positions of each keyword in the Verdict section.
+  let lastPos = -1;
+  let orderBroken = false;
+  const missing = [];
+  for (let i = 0; i < requiredKeywords.length; i++) {
+    const re = requiredKeywords[i];
+    const m = re.exec(verdict);
+    if (!m) {
+      missing.push(labels[i]);
+      continue;
+    }
+    if (m.index < lastPos) orderBroken = true;
+    lastPos = m.index;
+  }
+
+  if (missing.length > 0) {
+    issues.push({
+      severity: "ERROR",
+      check: "verdict",
+      message: `verification.md Verdict missing required bullet(s): ${missing.join(", ")}`,
+    });
+  } else if (orderBroken) {
+    issues.push({
+      severity: "ERROR",
+      check: "verdict",
+      message: "verification.md Verdict bullets present but not in required order (Criteria passed, Regressions, Scope drift, Simplification blockers, Recommended transition)",
+    });
+  }
+}
+
+// 3.1f — findings.md Index links resolve to existing files in findings/.
+function checkFindingsIndexLinks(planDir, issues) {
+  const path = join(planDir, "findings.md");
+  const content = readFile(path);
+  if (!content) return;
+  const indexSection = extractSection(content, "Index");
+  if (!indexSection) return;
+
+  const linkRe = /\[[^\]]+\]\(([^)]+)\)/g;
+  let m;
+  while ((m = linkRe.exec(indexSection)) !== null) {
+    const href = m[1].trim();
+    if (/^https?:\/\//.test(href)) continue;
+    if (href.startsWith("#")) continue;
+    // Resolve relative to plan dir.
+    const target = join(planDir, href);
+    if (!existsSync(target)) {
+      issues.push({
+        severity: "ERROR",
+        check: "findings-index",
+        message: `findings.md Index link does not resolve: ${href}`,
+      });
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Reverse anchor check (Step 3.1g — added in 2.13.0)
+// ---------------------------------------------------------------------------
+
+const ANCHOR_SOURCE_EXTS = new Set([
+  ".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".rb", ".go", ".rs",
+  ".c", ".h", ".cpp", ".hpp", ".java", ".kt", ".sql",
+]);
+
+const SKIP_DIR_NAMES = new Set([
+  "node_modules", ".git", "dist", "build", "plans",
+  "target", "__pycache__", ".cache", "vendor", "out",
+]);
+
+// Anchor regexes from references/decision-anchoring.md Formal Grammar.
+// Hash, slash, block, and SQL double-dash. We capture the D-NNN id and
+// optional [STALE] marker.
+const ANCHOR_PATTERNS = [
+  /(^|\s)#\s+DECISION\s+D-(\d{3})(\s+\[STALE\])?(?::|\s|$)/,
+  /(^|\s)\/\/\s+DECISION\s+D-(\d{3})(\s+\[STALE\])?(?::|\s|$)/,
+  /\/\*\s*DECISION\s+D-(\d{3})(\s+\[STALE\])?[\s\S]*?\*\//,
+  /(^|\s)--\s+DECISION\s+D-(\d{3})(\s+\[STALE\])?(?::|\s|$)/,
+];
+
+function walkSourceFiles(root, files = [], depth = 0) {
+  if (depth > 12) return files;
+  let entries;
+  try {
+    entries = readdirSync(root, { withFileTypes: true });
+  } catch {
+    return files;
+  }
+  for (const ent of entries) {
+    if (ent.name.startsWith(".") && ent.name !== ".") {
+      // skip dotdirs/dotfiles by default (covers .git, .cache, etc.)
+      if (ent.isDirectory()) continue;
+    }
+    const full = join(root, ent.name);
+    if (ent.isDirectory()) {
+      if (SKIP_DIR_NAMES.has(ent.name)) continue;
+      walkSourceFiles(full, files, depth + 1);
+    } else if (ent.isFile()) {
+      const ext = extname(ent.name);
+      if (ANCHOR_SOURCE_EXTS.has(ext)) {
+        files.push(full);
+      }
+    }
+  }
+  return files;
+}
+
+// Collect all anchor occurrences in a single source file. Returns array of
+// { file, line, id, stale }.
+function findAnchorsInFile(file, projectRoot) {
+  let text;
+  try {
+    text = readFileSync(file, "utf-8");
+  } catch {
+    return [];
+  }
+  const ext = extname(file);
+  const out = [];
+
+  // Per-line scan for hash, slash, double-dash markers.
+  const lines = text.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    let m;
+    // Hash style.
+    if ([".py", ".rb", ".sh", ".bash", ".zsh", ".yml", ".yaml", ".toml", ".r", ".pl", ".pm", ".tf"].includes(ext)) {
+      m = /(?:^|\s)#\s+DECISION\s+D-(\d{3})(\s+\[STALE\])?(?::|\s|$)/.exec(line);
+      if (m) out.push({ file, line: i + 1, id: parseInt(m[1], 10), stale: !!m[2] });
+    }
+    // Slash style.
+    if ([".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".go", ".rs", ".c", ".h", ".cpp", ".hpp", ".cc", ".java", ".swift", ".kt", ".scala", ".cs", ".php"].includes(ext)) {
+      m = /(?:^|\s)\/\/\s+DECISION\s+D-(\d{3})(\s+\[STALE\])?(?::|\s|$)/.exec(line);
+      if (m) out.push({ file, line: i + 1, id: parseInt(m[1], 10), stale: !!m[2] });
+    }
+    // SQL double-dash.
+    if (ext === ".sql") {
+      m = /(?:^|\s)--\s+DECISION\s+D-(\d{3})(\s+\[STALE\])?(?::|\s|$)/.exec(line);
+      if (m) out.push({ file, line: i + 1, id: parseInt(m[1], 10), stale: !!m[2] });
+    }
+  }
+
+  // Block comment scan (multi-line) — applies to /* */ in C-family + CSS.
+  // We extract each block and search inside.
+  const blockRe = /\/\*([\s\S]*?)\*\//g;
+  let bm;
+  while ((bm = blockRe.exec(text)) !== null) {
+    const body = bm[1];
+    const dm = /DECISION\s+D-(\d{3})(\s+\[STALE\])?/.exec(body);
+    if (dm) {
+      // Compute 1-based line number of the block opener.
+      const lineNum = text.slice(0, bm.index).split("\n").length;
+      out.push({ file, line: lineNum, id: parseInt(dm[1], 10), stale: !!dm[2] });
+    }
+  }
+
+  return out;
+}
+
+function collectKnownDecisionIds(planDir) {
+  // Active plan decisions.md (per-plan IDs) + plans/DECISIONS.md
+  // (cross-plan archive — IDs are scoped per plan section, but we accept any
+  // D-NNN that appears as a "### D-NNN" or "## D-NNN" heading there).
+  const ids = new Set();
+  const planDecisions = readFile(join(planDir, "decisions.md"));
+  if (planDecisions) {
+    const { entries } = parseDecisionsEntries(planDecisions);
+    for (const e of entries) ids.add(e.id);
+  }
+  const consolidated = readFile(join(plansDir, "DECISIONS.md"));
+  if (consolidated) {
+    const headerRe = /^#{2,3} D-(\d{3})\b/gm;
+    let m;
+    while ((m = headerRe.exec(consolidated)) !== null) {
+      ids.add(parseInt(m[1], 10));
+    }
+  }
+  return ids;
+}
+
+function checkReverseAnchors(planDir, issues, projectRoot) {
+  const knownIds = collectKnownDecisionIds(planDir);
+  let files;
+  try {
+    files = walkSourceFiles(projectRoot);
+  } catch {
+    return;
+  }
+
+  for (const file of files) {
+    const anchors = findAnchorsInFile(file, projectRoot);
+    for (const a of anchors) {
+      if (!knownIds.has(a.id)) {
+        const rel = relative(projectRoot, a.file);
+        const idStr = `D-${String(a.id).padStart(3, "0")}`;
+        // STALE orphans → WARN (per decision-anchoring.md spec); plain → ERROR.
+        const severity = a.stale ? "WARN" : "ERROR";
+        issues.push({
+          severity,
+          check: "reverse-anchor",
+          message: `${rel}:${a.line} orphan anchor ${idStr}${a.stale ? " [STALE]" : ""} (no matching entry in decisions.md or plans/DECISIONS.md)`,
+        });
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// WARN-level checks (Step 3.2)
+// ---------------------------------------------------------------------------
+
+// 3.2a — Evidence column weak content.
+function checkVerificationEvidence(planDir, issues) {
+  const content = readFile(join(planDir, "verification.md"));
+  if (!content) return;
+  const section = extractSection(content, "Criteria Verification");
+  if (!section) return;
+
+  const lines = section.split("\n");
+  const weakRe = /^(looks good|seems to work|lgtm|ok|fine|good)$/i;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line.trim().startsWith("|")) continue;
+    // Skip header + separator rows.
+    if (/^\|\s*-+\s*\|/.test(line)) continue;
+    if (/^\|\s*#\s*\|/.test(line)) continue;
+    // Split on | and trim.
+    const cells = line.split("|").map((c) => c.trim());
+    // Drop leading/trailing empty cells from outer pipes.
+    if (cells.length > 0 && cells[0] === "") cells.shift();
+    if (cells.length > 0 && cells[cells.length - 1] === "") cells.pop();
+    if (cells.length < 6) continue; // schema: # | Criterion | Method | Cmd | Result | Evidence
+    const evidence = cells[5];
+    if (!evidence || evidence === "-") {
+      issues.push({
+        severity: "WARN",
+        check: "evidence",
+        message: `verification.md Criteria row "${cells[1] || "?"}" has empty Evidence cell`,
+      });
+      continue;
+    }
+    if (weakRe.test(evidence)) {
+      issues.push({
+        severity: "WARN",
+        check: "evidence",
+        message: `verification.md Criteria row "${cells[1] || "?"}" has weak Evidence: "${evidence}"`,
+      });
+      continue;
+    }
+    // Single-word check (no whitespace and not the placeholder "-").
+    if (!/\s/.test(evidence) && evidence.length > 0 && evidence !== "-" && !/^\d+\/\d+/.test(evidence)) {
+      issues.push({
+        severity: "WARN",
+        check: "evidence",
+        message: `verification.md Criteria row "${cells[1] || "?"}" Evidence is single-word: "${evidence}"`,
+      });
+    }
+  }
+}
+
+// 3.2b — findings/{topic}.md missing required sections.
+function checkFindingsTopicSections(planDir, issues) {
+  const dir = join(planDir, "findings");
+  if (!existsSync(dir)) return;
+  let files;
+  try {
+    files = readdirSync(dir).filter((f) => f.endsWith(".md"));
+  } catch {
+    return;
+  }
+  // "Risks" any-prefix match (e.g. "Risks", "Risks & Unknowns", "Risks-Unknowns").
+  const required = [
+    { name: "Summary", re: /^##\s+Summary\b/m },
+    { name: "Key Findings", re: /^##\s+Key Findings\b/m },
+    { name: "Constraints", re: /^##\s+Constraints\b/m },
+    { name: "Code Patterns", re: /^##\s+Code Patterns\b/m },
+    { name: "Risks", re: /^##\s+Risks\b/m },
+  ];
+  for (const f of files) {
+    const text = readFile(join(dir, f));
+    if (!text) continue;
+    const missing = required.filter((r) => !r.re.test(text)).map((r) => r.name);
+    if (missing.length > 0) {
+      issues.push({
+        severity: "WARN",
+        check: "findings-topic",
+        message: `findings/${f} missing required section(s): ${missing.join(", ")}`,
+      });
+    }
+  }
+}
+
+// 3.2c — state.md transition missing Exploration Confidence on EXPLORE → PLAN.
+function checkExplorationConfidence(planDir, issues) {
+  const state = readFile(join(planDir, "state.md"));
+  if (!state) return;
+  const historyStart = state.indexOf("## Transition History:");
+  if (historyStart < 0) return;
+  const historyBlock = state.slice(historyStart);
+  const lines = historyBlock.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!/EXPLORE\s+(?:→|->)\s+PLAN/.test(line)) continue;
+    // Look at the next non-empty line; should contain "confidence:".
+    let j = i + 1;
+    while (j < lines.length && lines[j].trim() === "") j++;
+    const next = lines[j] || "";
+    if (!/confidence:/i.test(next)) {
+      issues.push({
+        severity: "WARN",
+        check: "exploration-confidence",
+        message: "state.md Transition History EXPLORE → PLAN line missing Exploration Confidence sub-line (expected 'confidence:' on next line)",
+      });
+    }
+  }
+}
+
+// 3.2d — decisions.md entries missing Anchor-Refs when corresponding code has
+// a matching anchor.
+function checkAnchorRefsCrossLink(planDir, issues, projectRoot) {
+  const content = readFile(join(planDir, "decisions.md"));
+  if (!content) return;
+  const { entries } = parseDecisionsEntries(content);
+  if (entries.length === 0) return;
+
+  // Build set of D-NNN ids that have anchors in source.
+  const anchoredIds = new Set();
+  let files;
+  try {
+    files = walkSourceFiles(projectRoot);
+  } catch {
+    return;
+  }
+  for (const f of files) {
+    const anchors = findAnchorsInFile(f, projectRoot);
+    for (const a of anchors) anchoredIds.add(a.id);
+  }
+
+  const anchorRefsRe = /\*\*Anchor-Refs\*\*:/m;
+  for (const e of entries) {
+    if (!anchoredIds.has(e.id)) continue;
+    if (!anchorRefsRe.test(e.body)) {
+      issues.push({
+        severity: "WARN",
+        check: "anchor-refs",
+        message: `decisions.md ${e.idStr} has matching code anchor but no **Anchor-Refs**: line`,
+      });
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
@@ -365,6 +850,16 @@ function validate(planDirName) {
   checkCheckpoints(planDir, issues);
   checkComplexityBudget(planDir, issues);
   checkConsolidatedFiles(issues);
+
+  // Step 3 additions (2.13.0): schema and anchor enforcement.
+  checkDecisionsSchema(planDir, issues);
+  checkVerificationVerdict(planDir, issues);
+  checkFindingsIndexLinks(planDir, issues);
+  checkReverseAnchors(planDir, issues, cwd);
+  checkVerificationEvidence(planDir, issues);
+  checkFindingsTopicSections(planDir, issues);
+  checkExplorationConfidence(planDir, issues);
+  checkAnchorRefsCrossLink(planDir, issues, cwd);
 
   // Report
   const errors = issues.filter((i) => i.severity === "ERROR");
@@ -414,6 +909,17 @@ Checks:
   - Checkpoint existence for iteration 2+
   - Complexity Budget population during EXECUTE+
   - Consolidated files existence
+  - decisions.md entry header format (## D-NNN | PHASE | YYYY-MM-DD)
+  - decisions.md D-NNN sequential numbering (no gaps, starts at D-001)
+  - decisions.md **Trade-off**: line in every entry
+  - decisions.md **Complexity Assessment** block in PIVOT entries
+  - verification.md Verdict 5 required bullets (in order)
+  - findings.md Index links resolve to existing files
+  - Reverse anchor scan (orphan # DECISION D-NNN in source)
+  - Evidence column quality (WARN on weak/empty/single-word)
+  - findings/{topic}.md required sections (WARN)
+  - state.md Exploration Confidence on EXPLORE → PLAN (WARN)
+  - decisions.md Anchor-Refs cross-link (WARN)
 
 Exit codes:
   0 = pass (no errors, warnings are OK)

@@ -21,12 +21,18 @@ Before writing any code:
 2. Read plan.md — confirm what this step should do
 3. Read progress.md — confirm what's already done
 4. Read decisions.md — check for 3-strike patterns, failed approaches
+5. Plan anchor placement: add `# DECISION D-NNN` comments where any of the 5 trigger conditions in `references/decision-anchoring.md` apply. The 5 triggers:
+   - Code implements an approach chosen **after a prior approach failed**
+   - Implementation is **non-obvious** ("why not do X instead?")
+   - A simpler-looking alternative was **deliberately rejected**
+   - Code works around a **framework/library/dependency constraint**
+   - **3-strike** forced a different approach
+   Anchor body must state what NOT to do and why, and reference the D-NNN entry in `decisions.md`. Update the entry's `**Anchor-Refs**:` line with file:line back-links.
 
 ## Execution Rules
 - ONE step at a time. Do not look ahead.
 - Commit after success: `[iter-N/step-M] description`
 - Create checkpoint before risky changes (3+ files): `checkpoints/cp-NNN-iterN.md`
-- Add `# DECISION D-NNN` comments where any of the 5 trigger conditions in `references/decision-anchoring.md` apply
 
 ## On Failure
 - STOP immediately

@@ -23,6 +23,8 @@ reasons it might still be wrong, despite passing verification.
 4. **Assumption drift**: Were any plan assumptions invalidated during execution?
 5. **Side effects**: Could the changes break something not covered by verification?
 6. **Ghost patterns**: Are there lingering artifacts from failed approaches?
+7. **Anchor quality**: Are placed `# DECISION D-NNN` anchors at the right granularity? Do they explain what NOT to do, not just what was done?
+8. **Decisions.md schema**: Does each entry follow the canonical schema in `references/file-formats.md` for its entry type? Trade-off line present? Complexity Assessment for PIVOTs?
 
 ## Output Format
 Write findings to `{plan-dir}/findings/review-iter-N.md`:

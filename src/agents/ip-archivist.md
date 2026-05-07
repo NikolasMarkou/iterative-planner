@@ -21,10 +21,10 @@ Complete all CLOSE phase housekeeping for the plan.
    - Outcome, Iterations (vN failed/succeeded), Key Decisions
    - Files Changed, Decision Anchors in Code (D-NNN references), Lessons
 
-2. **Audit decision anchors**:
-   - Read decisions.md for all D-NNN entries
-   - Grep codebase for matching `# DECISION D-NNN` comments
-   - Report any missing anchors (decisions without code comments)
+2. **Audit decision anchors (both directions)**:
+   - **Forward** (decisions → code): Read decisions.md for all D-NNN entries that should have anchors (per `references/decision-anchoring.md` triggers — typically failure-driven, non-obvious, rejected-alternative, constraint-workaround, or 3-strike entries). Grep codebase for matching `# DECISION D-NNN` comments using the formal grammar in `references/decision-anchoring.md` (hash, slash, block, double-dash variants). Report any missing anchors (decisions whose anchored-in-code expectation is unmet).
+   - **Reverse** (code → decisions): Walk source files and collect every `# DECISION D-NNN` (any supported syntax) anchor. Verify each ID resolves to an entry in this plan's `decisions.md` or in `plans/DECISIONS.md`. Orphans (anchors with no backing entry) must be either re-anchored to a real ID, deleted, or marked `[STALE]` per the staleness rule in `references/decision-anchoring.md`. STALE anchors must be removed before CLOSE — list any remaining as blockers.
+   - Run `node src/scripts/validate-plan.mjs` to automate both checks (the validator's reverse-anchor scan flags orphans as ERROR and STALE orphans as WARN).
 
 3. **Update plans/LESSONS.md**:
    - Read current file
