@@ -641,6 +641,52 @@ Usage:
 - Drop: one-off findings, detailed decision reasoning, plan-specific details
 - Created automatically by bootstrap on first `new`
 
+## plans/SYSTEM.md
+
+Cross-plan **system atlas** — a curated map of *what the system being planned against actually is*, distinct from goal-driven findings. **Rewritten** (not appended) by `ip-archivist` at CLOSE to stay ≤300 lines. Read at start of EXPLORE and start of PLAN. Schema is **domain-neutral** — works for codebases, research pipelines, ops runbooks, strategy systems. The optional `## Codebase Specialization` section is the only codebase-specific content.
+
+```markdown
+# System Atlas
+*Last refreshed: <plan-id> | <YYYY-MM-DD>*
+*Domain-neutral system map. Rewritten at CLOSE — max 300 lines. Read before PLAN/EXPLORE.*
+
+## Identity
+- What the system is (1-2 sentences). Domain (codebase / research / ops / strategy / other).
+
+## Components
+- Top-level building blocks. 5-15 entries. One line each: `name` — role.
+
+## Boundaries
+- In scope vs out of scope.
+- External dependencies (services, APIs, files).
+- Boundary inputs the planner reads but does not own (e.g. CLAUDE.md, config files).
+
+## Invariants
+- Properties that must always hold (security, data, contracts, performance budgets).
+- Each grounded in a finding-id or decision-id reference (e.g. `see plan_2026-05-07_xxxx/D-002`).
+
+## Flows
+- 3-7 named end-to-end flows: trigger → path → terminus.
+
+## Known Patterns
+- Architectural archetypes the system instantiates (e.g. "stateless HTTP API + Redis cache", "FSM-driven CLI", "compiler", "research pipeline", "agent workflow").
+
+## Codebase Specialization
+*Optional — present only when domain=codebase. Omit entirely for non-code systems.*
+- Module map: top-level directories and their purpose.
+- Key files (by frequency-of-relevance).
+- Build / test / run commands.
+```
+
+Usage:
+- Read at start of EXPLORE (orchestrator) and start of PLAN (orchestrator + ip-plan-writer). Provides the structural prior so EXPLORE doesn't re-derive system shape every plan.
+- At CLOSE: ip-archivist Step 5 — read current file, integrate this plan's system-shape findings, rewrite entire file under 300-line cap.
+- **Demote-by-staleness, not by recency**: when curating to fit the cap, drop entries that have not been referenced or implicitly reaffirmed by recent plans. Truncating most-recent entries defeats the curation contract.
+- During EXPLORE, if a finding contradicts an existing SYSTEM.md entry, mark the contradiction in `findings.md` with `[CONTRADICTED iter-N]` and surface to the archivist for correction at CLOSE (mirrors the `[CORRECTED iter-N]` rule for findings).
+- **Hard cap 300 lines** enforced by `validate-plan.mjs` ERROR `[atlas-cap]`. The cap forces curation; truncation by writers is forbidden — the validator ERROR exists to prevent silent degradation.
+- Created automatically by bootstrap on first `new` (skeleton matches the schema above).
+- Schema single-source-of-truth: this section. The bootstrap skeleton in `src/scripts/bootstrap.mjs` must match this schema exactly. If you change the schema here, update the bootstrap skeleton in lockstep.
+
 ## plans/INDEX.md
 
 Topic-to-directory mapping. Updated automatically on `close`. Survives sliding window trim — use this to locate old findings when they've been removed from consolidated files.

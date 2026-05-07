@@ -13,7 +13,7 @@ Write to disk immediately. The context window will rot. The files won't.
 
 **`{plan-dir}`** = `plans/plan_YYYY-MM-DD_XXXXXXXX/` (active plan directory under project root).
 **Discovery**: `plans/.current_plan` contains the plan directory name. One active plan at a time.
-**Cross-plan context**: `plans/FINDINGS.md` and `plans/DECISIONS.md` persist across plans (merged on close). `plans/LESSONS.md` persists across plans (updated on close, max 200 lines). `plans/INDEX.md` maps topics to plan directories (survives sliding window trim).
+**Cross-plan context**: `plans/FINDINGS.md` and `plans/DECISIONS.md` persist across plans (merged on close). `plans/LESSONS.md` persists across plans (updated on close, max 200 lines). `plans/SYSTEM.md` is the cross-plan **system atlas** — a curated, domain-neutral map of what the system being planned against actually is, rewritten at CLOSE (max 300 lines). `plans/INDEX.md` maps topics to plan directories (survives sliding window trim).
 
 ## State Machine
 
@@ -39,7 +39,7 @@ stateDiagram-v2
 | EXECUTE | Implement step-by-step | Edit files, run commands, write code. |
 | REFLECT | Evaluate results | Read outputs, run tests, review diffs. Update verification.md, decisions.md. |
 | PIVOT | Revise direction | Log pivot in decisions.md. Do NOT write plan.md yet. |
-| CLOSE | Finalize | Write summary.md. Audit decision anchors. Merge findings/decisions to consolidated files. Update LESSONS.md (≤200 lines). Compress if >500 lines. |
+| CLOSE | Finalize | Write summary.md. Audit decision anchors. Merge findings/decisions to consolidated files. Update LESSONS.md (≤200 lines). Update SYSTEM.md atlas (≤300 lines, rewrite, demote-by-staleness — see ip-archivist Step 5). Compress if >500 lines. |
 
 ### Transitions
 
@@ -73,7 +73,7 @@ These files are active working memory. Re-read during the conversation, not just
 | Before any EXECUTE step | `state.md`, `plan.md`, `progress.md` | Confirm step, manifest, fix attempts, progress sync |
 | Before writing a fix | `decisions.md` | Don't repeat failed approaches. Check 3-strike. |
 | Before modifying `DECISION`-commented code | Referenced `decisions.md` entry | Understand why before changing |
-| Before PLAN or PIVOT | `decisions.md`, `findings.md`, `findings/*`, `plans/LESSONS.md` | Ground plan in known facts + institutional memory |
+| Before PLAN or PIVOT | `decisions.md`, `findings.md`, `findings/*`, `plans/LESSONS.md`, `plans/SYSTEM.md` | Ground plan in known facts + institutional memory + system atlas |
 | Before any REFLECT | `plan.md` (criteria + verification strategy + assumptions), `progress.md`, `verification.md`, `findings.md`, `checkpoints/*`, `decisions.md` | Phase 1 Gate-In: full context before evaluating |
 | Every 10 tool calls | `state.md` | Reorient. Right step? Scope crept? |
 
@@ -105,6 +105,7 @@ plans/
 ├── FINDINGS.md                    # Consolidated findings across all plans (merged on close)
 ├── DECISIONS.md                   # Consolidated decisions across all plans (merged on close)
 ├── LESSONS.md                     # Cross-plan lessons learned (≤200 lines, rewritten on close)
+├── SYSTEM.md                      # System atlas — domain-neutral map of the target system (≤300 lines, rewritten on close)
 ├── INDEX.md                       # Topic→directory mapping (updated on close, survives trim)
 └── plan_2026-02-14_a3f1b2c9/      # {plan-dir}
     ├── state.md                   # Current state + transition log
@@ -143,6 +144,7 @@ R = read only | W = update (implicit read + write) | R+W = distinct read and wri
 | plans/FINDINGS.md | R(600) | R(600) | — | — | R(600) | W(merge+compress) |
 | plans/DECISIONS.md | R(600) | R(600) | — | — | R(600) | W(merge+compress) |
 | plans/LESSONS.md | R | R | — | — | R | W(rewrite≤200) |
+| plans/SYSTEM.md | R | R | — | — | R | W(rewrite≤300) |
 | plans/INDEX.md | R | — | — | — | — | W(append via bootstrap) |
 | lessons_snapshot.md | — | — | — | — | — | W(auto via bootstrap) |
 
@@ -200,7 +202,8 @@ Institutional memory across plans. Unlike FINDINGS.md and DECISIONS.md which gro
 ## Per-State Rules
 
 ### EXPLORE
-- Read `state.md`, `plans/FINDINGS.md` and `plans/DECISIONS.md` (limit: 600 lines), `plans/LESSONS.md`, and `plans/INDEX.md` at start of EXPLORE for cross-plan context. INDEX.md helps locate old findings that have been trimmed from consolidated files.
+- Read `state.md`, `plans/FINDINGS.md` and `plans/DECISIONS.md` (limit: 600 lines), `plans/LESSONS.md`, `plans/SYSTEM.md`, and `plans/INDEX.md` at start of EXPLORE for cross-plan context. SYSTEM.md is the structural prior — what the target system looks like, distinct from goal-driven findings. INDEX.md helps locate old findings that have been trimmed from consolidated files.
+- **System-atlas contradiction flag**: if an EXPLORE finding contradicts an existing `plans/SYSTEM.md` entry, mark the contradiction in `findings.md` with `[CONTRADICTED iter-N]` (mirrors the `[CORRECTED iter-N]` rule for findings) — the archivist will reconcile at CLOSE in Step 5.
 - Read code, grep, glob, search. One focused question at a time.
 - Flush to `findings.md` + `findings/` after every 2 reads. **Read the file first** before each write.
 - Include file paths + code path traces (e.g. `auth.rb:23` → `SessionStore#find` → `redis_store.rb:get`).
@@ -432,6 +435,7 @@ Each file has a clear owner. Only the owner writes. Others read.
 | `plans/FINDINGS.md` | Archivist (via bootstrap) | Orchestrator, Plan-writer |
 | `plans/DECISIONS.md` | Archivist (via bootstrap) | Plan-writer |
 | `plans/LESSONS.md` | Archivist | Explorer, Plan-writer |
+| `plans/SYSTEM.md` | Archivist | Orchestrator, Plan-writer, Explorer |
 | `plans/INDEX.md` | Archivist (via bootstrap) | Orchestrator |
 
 ### Dispatch Rules by State
