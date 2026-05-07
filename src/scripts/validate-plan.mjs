@@ -396,6 +396,38 @@ function checkConsolidatedFiles(issues) {
   }
 }
 
+// v2.16.0 — System atlas cap enforcement.
+// plans/SYSTEM.md is the cross-plan system atlas (domain-neutral; rewritten
+// at CLOSE by ip-archivist; see references/file-formats.md ## plans/SYSTEM.md).
+// Hard cap is 300 lines. ERROR on cap violation prevents silent truncation by
+// writers — the cap forces curation (demote-by-staleness), not truncation.
+// File-absent on legacy plans (created before v2.16.0) is INFO, not ERROR.
+const SYSTEM_ATLAS_LINE_CAP = 300;
+
+function checkSystemAtlasCap(issues) {
+  const path = join(plansDir, "SYSTEM.md");
+  if (!existsSync(path)) {
+    issues.push({ severity: "INFO", check: "atlas-absent", message: "plans/SYSTEM.md not found (created on first `bootstrap.mjs new` from v2.16.0; legacy plans may lack it)" });
+    return;
+  }
+  let content;
+  try {
+    content = readFileSync(path, "utf-8");
+  } catch {
+    return; // unreadable — silent. existence was already checked.
+  }
+  // Trailing newline produces an empty trailing element — drop it for accurate count.
+  const lines = content.split("\n");
+  const lineCount = lines[lines.length - 1] === "" ? lines.length - 1 : lines.length;
+  if (lineCount > SYSTEM_ATLAS_LINE_CAP) {
+    issues.push({
+      severity: "ERROR",
+      check: "atlas-cap",
+      message: `plans/SYSTEM.md is ${lineCount} lines (>${SYSTEM_ATLAS_LINE_CAP} cap). Curate at next CLOSE — demote-by-staleness, do NOT truncate by recency. See references/file-formats.md ## plans/SYSTEM.md.`,
+    });
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Decisions.md schema checks (Step 3.1 + 3.2 — added in 2.13.0)
 // ---------------------------------------------------------------------------
@@ -1174,6 +1206,7 @@ function validate(planDirName) {
   checkCheckpoints(planDir, issues);
   checkComplexityBudget(planDir, issues);
   checkConsolidatedFiles(issues);
+  checkSystemAtlasCap(issues);
 
   // Step 3 additions (2.13.0): schema and anchor enforcement.
   checkDecisionsSchema(planDir, issues);
@@ -1238,6 +1271,7 @@ Checks:
   - Checkpoint existence for iteration 2+
   - Complexity Budget population during EXECUTE+
   - Consolidated files existence
+  - plans/SYSTEM.md line count (ERROR [atlas-cap] on >300 lines, INFO [atlas-absent] when missing)
   - decisions.md entry header format (## D-NNN | PHASE | YYYY-MM-DD)
   - decisions.md D-NNN sequential numbering (no gaps, starts at D-001)
   - decisions.md **Trade-off**: line in every entry
