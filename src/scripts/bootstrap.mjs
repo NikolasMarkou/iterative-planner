@@ -67,6 +67,34 @@ function extractField(content, pattern) {
   return match ? match[1].trim() : null;
 }
 
+// System Atlas skeleton — schema must match references/file-formats.md ## plans/SYSTEM.md exactly.
+// If you change the schema there, update this skeleton in lockstep.
+const SYSTEM_ATLAS_SKELETON = `# System Atlas
+*Last refreshed: (none yet) | (no plan closed yet)*
+*Domain-neutral system map. Rewritten by ip-archivist at CLOSE — max 300 lines. Read before PLAN/EXPLORE.*
+
+## Identity
+*To be populated at first CLOSE. What the system is (1-2 sentences). Domain (codebase / research / ops / strategy / other).*
+
+## Components
+*5-15 top-level building blocks. One line each: \`name\` — role.*
+
+## Boundaries
+*In scope vs out of scope. External dependencies. Boundary inputs the planner reads but does not own.*
+
+## Invariants
+*Properties that must always hold (security, data, contracts, performance budgets). Each grounded in a finding-id or decision-id reference.*
+
+## Flows
+*3-7 named end-to-end flows: trigger → path → terminus.*
+
+## Known Patterns
+*Architectural archetypes the system instantiates.*
+
+## Codebase Specialization
+*Optional — present only when domain=codebase. Omit entirely for non-code systems.*
+`;
+
 function ensureConsolidatedFiles() {
   const findingsPath = join(plansDir, "FINDINGS.md");
   const decisionsPath = join(plansDir, "DECISIONS.md");
@@ -86,6 +114,10 @@ function ensureConsolidatedFiles() {
 *Cross-plan lessons. Updated and consolidated on close. Max 200 lines — rewrite, don't append forever.*
 *Read before any PLAN state. This is institutional memory.*
 `);
+  }
+  const systemPath = join(plansDir, "SYSTEM.md");
+  if (!existsSync(systemPath)) {
+    writeFileSync(systemPath, SYSTEM_ATLAS_SKELETON);
   }
   const indexPath = join(plansDir, "INDEX.md");
   if (!existsSync(indexPath)) {
@@ -526,7 +558,7 @@ ${crossPlanNote}
   console.log(`  Pointer: plans/.current_plan → ${planDirName}`);
   console.log(`  Goal: ${goal}`);
   console.log(`  State: EXPLORE (iteration 0)`);
-  console.log(`  Cross-plan context: plans/FINDINGS.md, plans/DECISIONS.md, plans/LESSONS.md`);
+  console.log(`  Cross-plan context: plans/FINDINGS.md, plans/DECISIONS.md, plans/LESSONS.md, plans/SYSTEM.md`);
   console.log(`  Next: Read code, ask questions, write findings.`);
 }
 
@@ -601,6 +633,7 @@ function cmdResume() {
   console.log(`    plans/FINDINGS.md  — cross-plan findings archive`);
   console.log(`    plans/DECISIONS.md — cross-plan decision archive`);
   console.log(`    plans/LESSONS.md   — cross-plan lessons (read before PLAN)`);
+  console.log(`    plans/SYSTEM.md    — system atlas (read before EXPLORE/PLAN)`);
 }
 
 function cmdStatus() {

@@ -151,6 +151,7 @@ describe("bootstrap.mjs", () => {
       assert.ok(existsSync(join(dir, "plans", "FINDINGS.md")), "FINDINGS.md should exist");
       assert.ok(existsSync(join(dir, "plans", "DECISIONS.md")), "DECISIONS.md should exist");
       assert.ok(existsSync(join(dir, "plans", "LESSONS.md")), "LESSONS.md should exist");
+      assert.ok(existsSync(join(dir, "plans", "SYSTEM.md")), "SYSTEM.md should exist");
     });
 
     it("LESSONS.md has correct initial content", () => {
@@ -160,6 +161,24 @@ describe("bootstrap.mjs", () => {
       assert.ok(lessons.includes("# Lessons Learned"), "should have header");
       assert.ok(lessons.includes("Max 200 lines"), "should mention 200 line limit");
       assert.ok(lessons.includes("institutional memory"), "should mention institutional memory");
+    });
+
+    it("SYSTEM.md skeleton has correct schema and is under cap", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Test goal");
+      const system = readFileSync(join(dir, "plans", "SYSTEM.md"), "utf-8");
+      assert.ok(system.includes("# System Atlas"), "should have System Atlas header");
+      assert.ok(system.includes("*Last refreshed: (none yet)"), "should have placeholder Last refreshed line");
+      assert.ok(system.includes("max 300 lines"), "should mention 300 line cap");
+      // Six core sections (domain-neutral) — must all be present.
+      for (const section of ["## Identity", "## Components", "## Boundaries", "## Invariants", "## Flows", "## Known Patterns"]) {
+        assert.ok(system.includes(section), `should have section: ${section}`);
+      }
+      // Optional codebase section is present in skeleton (becomes optional only after first archivist rewrite).
+      assert.ok(system.includes("## Codebase Specialization"), "should have optional Codebase Specialization section");
+      // Skeleton must be well under the 300-line hard cap.
+      const lineCount = system.split("\n").length;
+      assert.ok(lineCount < 100, `skeleton should be under 100 lines (got ${lineCount})`);
     });
 
     it("state.md starts in EXPLORE with iteration 0", () => {
