@@ -1105,6 +1105,55 @@ function checkAnchorRefsValidity(planDir, planDirName, issues, projectRoot) {
 // Main
 // ---------------------------------------------------------------------------
 
+// v2.15.0 — per-edit changelog (informational checks, WARN-only)
+//
+// File: {plan-dir}/changelog.md
+// Format per line: UTC | iter-N/step-M | commit | path | OP(+N,-M) | radius:TIER(score) | D-NNN-or-dash | reason
+// All issues are WARN — never block CLOSE.
+function checkChangelogFormat(planDir, issues) {
+  const path = join(planDir, "changelog.md");
+  if (!existsSync(path)) return; // Optional file — older plans may lack it.
+  const content = readFile(path);
+  if (!content) return;
+
+  const TS = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
+  const STEP = /^iter-\d+\/step-\d+$/;
+  const COMMIT = /^([0-9a-f]{7,40}|uncommitted)$/;
+  const OP = /^(CREATE\(\+\d+\)|EDIT\(\+\d+,-\d+\)|DELETE\(-\d+\)|RENAME\([^→]+→[^)]+\)|REVERT\([^)]+\))$/;
+  const RADIUS = /^radius:(LOW|MED|HIGH)\(-?\d+\)|radius:UNKNOWN\([^)]+\)$/;
+  const DREF = /^(D-\d{3}|-)$/;
+
+  const lines = content.split("\n");
+  let lineNo = 0;
+  for (const raw of lines) {
+    lineNo++;
+    const line = raw.trim();
+    if (!line) continue;
+    if (line.startsWith("#")) continue;        // header
+    if (line.startsWith("*")) continue;        // italic header note
+    if (line.startsWith("<!--")) continue;     // comment
+    // Data line: split on " | " (literal pipe-with-spaces, as documented).
+    const fields = line.split(" | ");
+    if (fields.length !== 8) {
+      issues.push({
+        severity: "WARN",
+        check: "changelog-malformed",
+        message: `changelog.md:${lineNo}: expected 8 pipe-separated fields, got ${fields.length}`,
+      });
+      continue;
+    }
+    const [ts, step, commit, _path, op, radius, dref, reason] = fields;
+    if (!TS.test(ts)) issues.push({ severity: "WARN", check: "changelog-malformed", message: `changelog.md:${lineNo}: bad timestamp "${ts}"` });
+    if (!STEP.test(step)) issues.push({ severity: "WARN", check: "changelog-malformed", message: `changelog.md:${lineNo}: bad step "${step}"` });
+    if (!COMMIT.test(commit)) issues.push({ severity: "WARN", check: "changelog-malformed", message: `changelog.md:${lineNo}: bad commit "${commit}"` });
+    if (!_path || _path.includes("|")) issues.push({ severity: "WARN", check: "changelog-malformed", message: `changelog.md:${lineNo}: bad path field` });
+    if (!OP.test(op)) issues.push({ severity: "WARN", check: "changelog-malformed", message: `changelog.md:${lineNo}: bad op "${op}"` });
+    if (!RADIUS.test(radius)) issues.push({ severity: "WARN", check: "changelog-malformed", message: `changelog.md:${lineNo}: bad radius "${radius}"` });
+    if (!DREF.test(dref)) issues.push({ severity: "WARN", check: "changelog-malformed", message: `changelog.md:${lineNo}: bad decision-ref "${dref}" (use D-NNN or -)` });
+    if (!reason || !reason.trim()) issues.push({ severity: "WARN", check: "changelog-malformed", message: `changelog.md:${lineNo}: empty reason` });
+  }
+}
+
 function validate(planDirName) {
   const planDir = join(plansDir, planDirName);
 
@@ -1138,6 +1187,8 @@ function validate(planDirName) {
   checkPlanIdPreamble(planDir, planDirName, issues);
   checkAnchorRefsRequired(planDir, planDirName, issues, cwd);
   checkAnchorRefsValidity(planDir, planDirName, issues, cwd);
+  // v2.15.0 — per-edit changelog (informational; never blocks CLOSE).
+  checkChangelogFormat(planDir, issues);
 
   // Report
   const errors = issues.filter((i) => i.severity === "ERROR");
