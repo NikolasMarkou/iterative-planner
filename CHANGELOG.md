@@ -4,6 +4,20 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.17.0] - 2026-05-07
+
+### Added
+- **Presentation Contracts** — canonical, single-source-of-truth definition of the user-visible chat block the orchestrator MUST emit at every user-facing state transition. Six contracts: **PC-EXPLORE** (Findings Digest), **PC-PLAN** (Plan Presentation), **PC-EXECUTE-STEP** (Per-Step Status Report), **PC-EXECUTE-LEASH** (Autonomy Leash Failure Block), **PC-REFLECT** (Phase-3 Gate-Out 5-Item Block), **PC-PIVOT** (Pivot Options Block). Each contract specifies name, when emitted, required content (numbered, ordered), fidelity (verbatim vs digest), and minimum sections (the floor). Defined in `references/file-formats.md` "Presentation Contracts" section. Closes the user-presentation gap where the protocol used single-verb specs ("Present", "Report", "Surface") and the orchestrator defaulted to terse summaries that dropped the items the user most needed to see.
+- **`agents/orchestrator.md` per-state User-Visible Presentation sub-blocks** — each dispatch block (EXPLORE / PLAN / EXECUTE / REFLECT / PIVOT) now opens with a "User-Visible Presentation" section inlining the contract's required content list at the point of dispatch, so the runtime LLM does not need to dereference `references/file-formats.md` to render. Critical Rule added: "NEVER substitute a terse summary for a presentation contract — emit the contract block in full per its floor".
+- **`agents/ip-plan-writer.md` `## Output Format` section** — sub-agent must return plan.md path + section anchors + one-paragraph digest. The digest is for the orchestrator's pre-render summary only; the orchestrator renders plan.md verbatim per PC-PLAN floor (Steps, Success Criteria, Verification Strategy, Failure Modes, Assumptions).
+- **`agents/ip-verifier.md` Relay Contract (PC-REFLECT item 3)** — the PASS/FAIL table is the literal payload for Item 3 of the orchestrator's PC-REFLECT 5-item Gate-Out block. Verbatim relay required.
+- **`agents/ip-reviewer.md` Relay Contract (PC-REFLECT item 4)** — `## Concerns` block (CRITICAL/WARNING entries) folds verbatim into Item 4 of PC-REFLECT. Empty concerns require explicit `(none)` sentinel; never silently omit.
+- **`agents/ip-executor.md` Output Format expansion + Relay Contract** — 5-field PC-EXECUTE-STEP payload on success (step / files / commit / surprises / next-preview); 5-field PC-EXECUTE-LEASH payload on leash hit (step intent / 2 attempts / root cause / checkpoint registry / orchestrator-owned prompt). Orchestrator pastes fields verbatim.
+- **`validate-plan.mjs checkPresentationContractLog`** — WARN-only advisory `[presentation-contract-unlogged]` flagging gated transitions PLAN→EXECUTE / REFLECT→CLOSE / PIVOT→PLAN recorded in state.md without any PC-PLAN / PC-REFLECT / PC-PIVOT reference in state.md / decisions.md / progress.md. Best-effort metadata signal — cannot inspect chat content; never blocks CLOSE. The load-bearing fix is the agent-file rewrites.
+
+### Changed
+- **`SKILL.md` User Interaction table** — replaces single-verb cells with a per-state Contract column referencing the named Presentation Contracts. PLAN section now points to PC-PLAN; REFLECT Phase-3 Gate-Out maps the 5 items to the contract; PIVOT references PC-PIVOT.
+
 ## [2.16.0] - 2026-05-07
 
 ### Added
