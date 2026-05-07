@@ -1158,6 +1158,32 @@ describe("bootstrap.mjs", () => {
       assert.ok(decisions.includes("**Anchor-Refs**:"), "schema example should mention Anchor-Refs field");
     });
 
+    it("decisions.md has *Plan: <plan-id>* preamble line", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Plan-id preamble test");
+      const planDir = getPointer(dir);
+      const decisions = readPlanFile(dir, planDir, "decisions.md");
+      // v2.14.0 — plan-id preamble for self-identification post-trim
+      assert.ok(decisions.includes(`*Plan: ${planDir}*`), `decisions.md should contain "*Plan: ${planDir}*" preamble`);
+      // Preamble must appear before the schema example block
+      const preambleIdx = decisions.indexOf(`*Plan: ${planDir}*`);
+      const schemaIdx = decisions.indexOf("<!-- Schema example");
+      assert.ok(preambleIdx >= 0 && preambleIdx < schemaIdx, "preamble must appear before schema example block");
+    });
+
+    it("decisions.md schema example references qualified anchor format", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Qualified anchor schema example test");
+      const planDir = getPointer(dir);
+      const decisions = readPlanFile(dir, planDir, "decisions.md");
+      // v2.14.0 — anchor format in schema comment must use plan-id prefix
+      const qualifiedAnchorPattern = `# DECISION ${planDir}/D-NNN`;
+      assert.ok(
+        decisions.includes(qualifiedAnchorPattern),
+        `schema example should reference qualified anchor "${qualifiedAnchorPattern}"`
+      );
+    });
+
     it("state.md has Exploration Confidence guidance for EXPLORE → PLAN", () => {
       const dir = getTempDir();
       run(dir, "new", "Exploration confidence slot test");

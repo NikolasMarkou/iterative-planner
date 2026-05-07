@@ -381,17 +381,19 @@ ${goal}
     writeFileSync(
       join(planDir, "decisions.md"),
       `# Decision Log
+*Plan: ${planDirName}*
 *Append-only. Never edit past entries.*
 ${crossPlanNote}
 <!-- Schema example — DO NOT REMOVE. Real entries follow this shape.
      See references/file-formats.md "Entry Schema by Type" for required fields per entry type.
+     In-code anchors carry the plan-id prefix: \`# DECISION ${planDirName}/D-NNN\` (see references/decision-anchoring.md).
 
 ## D-001 | EXPLORE → PLAN | YYYY-MM-DD
 **Context**: <one-paragraph background — what was discovered in EXPLORE>
 **Decision**: <chosen approach in one sentence>
 **Trade-off**: <X> **at the cost of** <Y>
 **Reasoning**: <why this trade-off is acceptable; what alternatives were rejected>
-**Anchor-Refs**: \`path/to/file.ext:LL\`, \`other/file.ext:LL-MM\`  (omit if no anchors placed)
+**Anchor-Refs**: \`path/to/file.ext:LL\`, \`other/file.ext:LL-MM\`  (required when a matching \`# DECISION ${planDirName}/D-NNN\` anchor exists in source)
 -->
 `
     );
