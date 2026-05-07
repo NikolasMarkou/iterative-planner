@@ -47,3 +47,14 @@ Write chosen approach to decisions.md with trade-off framing:
 - MUST NOT run any code or modify project files
 - If you can't list files to modify → signal "NEEDS_EXPLORE" in your response
 - If you can't state the problem clearly → signal "NEEDS_EXPLORE"
+
+## Output Format
+
+The orchestrator consumes your return text to render the **PC-PLAN** Presentation Contract (see `references/file-formats.md` "Presentation Contracts"). Sub-agents are invisible to the user — your return text is for the orchestrator, but the orchestrator must render `plan.md` **verbatim** to the user. Therefore your return MUST include:
+
+1. **`plan.md` path** — absolute or repo-relative path to the file you wrote.
+2. **Section anchors** — list every required section header you wrote (`## Goal`, `## Problem Statement`, `## Context`, `## Files To Modify`, `## Steps`, `## Assumptions`, `## Failure Modes`, `## Pre-Mortem & Falsification Signals`, `## Success Criteria`, `## Verification Strategy`, `## Complexity Budget`). Confirm presence — missing sections block the orchestrator.
+3. **One-paragraph digest** — for the orchestrator's pre-render summary only. NOT a substitute for plan.md content. The orchestrator will render plan.md verbatim per PC-PLAN floor (Steps, Success Criteria, Verification Strategy, Failure Modes, Assumptions are the verbatim floor; longer prose sections may be condensed only if the floor renders in full).
+4. **Same fields for the EXPLORE→PLAN handoff (PC-EXPLORE) if you also produced the findings digest** — index, key constraints, exploration confidence, synthesis paragraph.
+
+The orchestrator will NOT paraphrase plan.md. Your job is to produce a complete plan.md whose verbatim content is itself the user-visible artifact.
