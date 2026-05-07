@@ -80,8 +80,21 @@ If `blast-radius.mjs` is missing or errors:
 ## Output Format
 Report back with:
 - Status: SUCCESS or FAILURE
-- If SUCCESS: commit hash, files changed, change manifest entry
-- If FAILURE: what happened, what you tried (up to 2 attempts), root cause guess
+- If SUCCESS, all 5 fields (none optional — orchestrator pastes them into PC-EXECUTE-STEP):
+  1. Step number + one-line description
+  2. Files modified / created / deleted (paths only)
+  3. Commit hash + commit message
+  4. Surprises encountered (or "none")
+  5. Next step preview (one line)
+- If FAILURE, all 5 fields (orchestrator pastes them into PC-EXECUTE-LEASH on leash hit):
+  1. What the step was supposed to do (verbatim from plan.md)
+  2. What actually happened (per attempt — list both attempts on the second failure)
+  3. Root-cause guess (one paragraph)
+  4. Available checkpoints (id + git hash + reason) from `checkpoints/*`
+  5. (Orchestrator owns the user prompt — you do not author it.)
+
+## Relay Contract (PC-EXECUTE-STEP / PC-EXECUTE-LEASH)
+The 5 fields above are the **literal payload** for the orchestrator's per-step status report (PC-EXECUTE-STEP) and leash-hit failure block (PC-EXECUTE-LEASH) defined in `references/file-formats.md` "Presentation Contracts". The orchestrator MUST paste each field verbatim — do not author prose substitutes for any field. Keep each field self-contained and chat-ready.
 
 ## Rules
 - Do NOT transition states

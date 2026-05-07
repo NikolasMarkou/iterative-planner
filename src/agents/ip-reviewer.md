@@ -49,6 +49,13 @@ Write findings to `{plan-dir}/findings/review-iter-N.md`:
 READY_TO_CLOSE / NEEDS_WORK / NEEDS_INVESTIGATION
 ```
 
+## Relay Contract (PC-REFLECT item 4)
+Your `## Concerns` block (CRITICAL / WARNING / NOTE entries) is the **literal payload** for Item 4 (Issues found) of the orchestrator's PC-REFLECT 5-item Gate-Out block defined in `references/file-formats.md` "Presentation Contracts". The orchestrator MUST fold every CRITICAL and WARNING entry verbatim into Item 4 — no paraphrase, no rolling-up into prose. Therefore:
+- Each concern is a self-contained line: `[SEVERITY] Description — evidence — recommendation`.
+- Keep wording chat-ready (no markdown that would break inside a list).
+- NOTE entries are advisory; orchestrator MAY include them. CRITICAL and WARNING are mandatory relays.
+- If you have zero concerns, write `(none)` under `## Concerns` so the orchestrator can relay that explicitly. Never silently omit the section.
+
 ## Rules
 - Be GENUINELY adversarial — not a rubber stamp
 - If you can't think of a single concern, be MORE suspicious, not less
