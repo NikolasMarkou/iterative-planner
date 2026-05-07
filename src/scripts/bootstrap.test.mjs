@@ -1657,6 +1657,187 @@ describe("bootstrap.mjs", () => {
       const r = runValidate(dir);
       assert.ok(r.stdout.includes("placeholder values"), "should warn when convergence metrics are still placeholders at iteration 2+");
     });
+
+    // ---------------------------------------------------------------------
+    // v2.14.0 plan-qualified DECISION anchors
+    // ---------------------------------------------------------------------
+
+    /** Set the INIT timestamp in state.md (controls pre-/post-cutover gating). */
+    function setInitTimestamp(dir, planDir, isoTs) {
+      const statePath = join(dir, "plans", planDir, "state.md");
+      const state = readFileSync(statePath, "utf-8");
+      const updated = state.replace(
+        /## Last Transition: INIT → EXPLORE \([^)]+\)/,
+        `## Last Transition: INIT → EXPLORE (${isoTs})`
+      );
+      writeFileSync(statePath, updated);
+    }
+
+    /** Write a minimal valid decisions.md with one D-001 entry, with or without preamble. */
+    function writeDecisionsWithEntry(dir, planDir, { withPreamble = true, withAnchorRefs = false } = {}) {
+      const refs = withAnchorRefs ? "**Anchor-Refs**: `src/sample.py:3`\n" : "";
+      const preamble = withPreamble ? `*Plan: ${planDir}*\n` : "";
+      writeFileSync(
+        join(dir, "plans", planDir, "decisions.md"),
+        `# Decision Log\n${preamble}*Append-only.*\n\n## D-001 | EXPLORE → PLAN | 2026-05-07\n**Context**: test\n**Decision**: do it\n**Trade-off**: speed **at the cost of** thoroughness\n**Reasoning**: testing\n${refs}`
+      );
+    }
+
+    it("qualified anchor matching active plan resolves silently", () => {
+      const dir = getTempDir();
+      run(dir, "new", "qualified silent");
+      const planDir = getPointer(dir);
+      writeDecisionsWithEntry(dir, planDir);
+      writeFileSync(join(dir, "src.py"), `# DECISION ${planDir}/D-001: rationale\nx = 1\n`);
+      const r = runValidate(dir);
+      assert.ok(!r.stdout.includes("anchor-orphan"), "qualified anchor matching active plan should not be orphan");
+      assert.ok(!r.stdout.includes("anchor-unqualified"), "qualified anchor should not trigger unqualified WARN");
+      assert.ok(!r.stdout.includes("anchor-unknown-plan"), "active plan should be known");
+    });
+
+    it("bare D-NNN anchor emits WARN [anchor-unqualified] (resolution still works)", () => {
+      const dir = getTempDir();
+      run(dir, "new", "bare anchor migration");
+      const planDir = getPointer(dir);
+      writeDecisionsWithEntry(dir, planDir);
+      writeFileSync(join(dir, "src.py"), `# DECISION D-001: bare legacy form\nx = 1\n`);
+      const r = runValidate(dir);
+      assert.ok(r.stdout.includes("anchor-unqualified"), "bare anchor should WARN [anchor-unqualified]");
+      // Severity must be WARN not ERROR (migration nudge)
+      const lines = r.stdout.split("\n").filter((l) => l.includes("anchor-unqualified"));
+      assert.ok(lines.every((l) => l.trim().startsWith("WARN")), "anchor-unqualified must be WARN");
+      assert.ok(!r.stdout.includes("anchor-orphan"), "bare anchor with matching D-001 should still resolve");
+    });
+
+    it("qualified anchor naming unknown plan emits ERROR [anchor-unknown-plan]", () => {
+      const dir = getTempDir();
+      run(dir, "new", "unknown plan");
+      const planDir = getPointer(dir);
+      writeDecisionsWithEntry(dir, planDir);
+      writeFileSync(
+        join(dir, "src.py"),
+        `# DECISION plan_2099-12-31_deadbeef/D-001: from a plan that doesn't exist\nx = 1\n`
+      );
+      const r = runValidate(dir);
+      assert.ok(r.stdout.includes("anchor-unknown-plan"), "should ERROR on unknown plan name");
+      assert.equal(r.exitCode, 1, "unknown plan must exit non-zero");
+    });
+
+    it("qualified anchor with known plan but unknown id emits ERROR [anchor-orphan]", () => {
+      const dir = getTempDir();
+      run(dir, "new", "orphan id");
+      const planDir = getPointer(dir);
+      writeDecisionsWithEntry(dir, planDir); // only D-001 exists
+      writeFileSync(join(dir, "src.py"), `# DECISION ${planDir}/D-007: id never declared\nx = 1\n`);
+      const r = runValidate(dir);
+      assert.ok(r.stdout.includes("anchor-orphan"), "should ERROR [anchor-orphan] for unknown id");
+      assert.equal(r.exitCode, 1, "orphan must exit non-zero");
+    });
+
+    it("qualified anchor with [STALE] downgrades orphan to WARN", () => {
+      const dir = getTempDir();
+      run(dir, "new", "stale orphan");
+      const planDir = getPointer(dir);
+      writeDecisionsWithEntry(dir, planDir);
+      writeFileSync(
+        join(dir, "src.py"),
+        `# DECISION ${planDir}/D-099 [STALE]: known orphan, marked stale\nx = 1\n`
+      );
+      const r = runValidate(dir);
+      assert.ok(r.stdout.includes("anchor-orphan"), "should still flag orphan");
+      const orphanLines = r.stdout.split("\n").filter((l) => l.includes("anchor-orphan"));
+      assert.ok(orphanLines.every((l) => l.trim().startsWith("WARN")), "STALE orphan must be WARN not ERROR");
+      assert.equal(r.exitCode, 0, "STALE-only orphans should not fail validation");
+    });
+
+    it("missing plan-id preamble: ERROR for post-cutover INIT", () => {
+      const dir = getTempDir();
+      run(dir, "new", "preamble strict");
+      const planDir = getPointer(dir);
+      setInitTimestamp(dir, planDir, "2099-01-01T00:00:00Z"); // post-cutover
+      writeDecisionsWithEntry(dir, planDir, { withPreamble: false });
+      const r = runValidate(dir);
+      assert.ok(r.stdout.includes("ERROR [preamble-missing]"), "post-cutover INIT should yield ERROR for missing preamble");
+      assert.equal(r.exitCode, 1);
+    });
+
+    it("missing plan-id preamble: WARN for pre-cutover INIT", () => {
+      const dir = getTempDir();
+      run(dir, "new", "preamble lenient");
+      const planDir = getPointer(dir);
+      setInitTimestamp(dir, planDir, "2025-01-01T00:00:00Z"); // pre-cutover
+      writeDecisionsWithEntry(dir, planDir, { withPreamble: false });
+      const r = runValidate(dir);
+      assert.ok(r.stdout.includes("WARN  [preamble-missing]"), "pre-cutover INIT should yield WARN for missing preamble");
+      assert.ok(!r.stdout.includes("ERROR [preamble-missing]"), "pre-cutover must NOT be ERROR");
+    });
+
+    it("preamble plan-id mismatch is always ERROR", () => {
+      const dir = getTempDir();
+      run(dir, "new", "preamble mismatch");
+      const planDir = getPointer(dir);
+      setInitTimestamp(dir, planDir, "2025-01-01T00:00:00Z"); // pre-cutover (still ERROR for mismatch)
+      writeFileSync(
+        join(dir, "plans", planDir, "decisions.md"),
+        `# Decision Log\n*Plan: plan_2099-12-31_cafef00d*\n*Append-only.*\n\n## D-001 | EXPLORE → PLAN | 2025-01-01\n**Context**: x\n**Decision**: y\n**Trade-off**: a **at the cost of** b\n**Reasoning**: r\n`
+      );
+      const r = runValidate(dir);
+      assert.ok(r.stdout.includes("preamble-mismatch"), "mismatched preamble plan-id must be flagged");
+      assert.equal(r.exitCode, 1, "mismatch is always ERROR");
+    });
+
+    it("Anchor-Refs missing with matching anchor: ERROR for post-cutover", () => {
+      const dir = getTempDir();
+      run(dir, "new", "anchor-refs strict");
+      const planDir = getPointer(dir);
+      setInitTimestamp(dir, planDir, "2099-01-01T00:00:00Z"); // post-cutover
+      writeDecisionsWithEntry(dir, planDir, { withAnchorRefs: false });
+      writeFileSync(join(dir, "src.py"), `# DECISION ${planDir}/D-001: anchor exists, no Anchor-Refs\nx = 1\n`);
+      const r = runValidate(dir);
+      assert.ok(r.stdout.includes("ERROR [anchor-refs-missing]"), "post-cutover must ERROR on missing Anchor-Refs");
+      assert.equal(r.exitCode, 1);
+    });
+
+    it("Anchor-Refs missing with matching anchor: WARN for pre-cutover", () => {
+      const dir = getTempDir();
+      run(dir, "new", "anchor-refs lenient");
+      const planDir = getPointer(dir);
+      setInitTimestamp(dir, planDir, "2025-01-01T00:00:00Z"); // pre-cutover
+      writeDecisionsWithEntry(dir, planDir, { withAnchorRefs: false, withPreamble: false });
+      writeFileSync(join(dir, "src.py"), `# DECISION ${planDir}/D-001: anchor present, no Anchor-Refs\nx = 1\n`);
+      const r = runValidate(dir);
+      assert.ok(r.stdout.includes("WARN  [anchor-refs]"), "pre-cutover should WARN on missing Anchor-Refs");
+      assert.ok(!r.stdout.includes("ERROR [anchor-refs-missing]"), "pre-cutover must NOT be ERROR");
+    });
+
+    it("Anchor-Refs validity: WARN if referenced file missing", () => {
+      const dir = getTempDir();
+      run(dir, "new", "anchor-refs file missing");
+      const planDir = getPointer(dir);
+      writeFileSync(
+        join(dir, "plans", planDir, "decisions.md"),
+        `# Decision Log\n*Plan: ${planDir}*\n*Append-only.*\n\n## D-001 | EXPLORE → PLAN | 2026-05-07\n**Context**: x\n**Decision**: y\n**Trade-off**: a **at the cost of** b\n**Reasoning**: r\n**Anchor-Refs**: \`src/nonexistent.py:42\`\n`
+      );
+      const r = runValidate(dir);
+      assert.ok(r.stdout.includes("anchor-refs-stale"), "missing file in Anchor-Refs should yield WARN [anchor-refs-stale]");
+    });
+
+    it("two-plan disambiguation: D-001 in plan A and plan B do not collide", () => {
+      // Pre-Mortem Scenario B regression check.
+      const dir = getTempDir();
+      run(dir, "new", "plan A");
+      const planA = getPointer(dir);
+      writeDecisionsWithEntry(dir, planA);
+      run(dir, "close");
+      run(dir, "new", "plan B");
+      const planB = getPointer(dir);
+      writeDecisionsWithEntry(dir, planB);
+      // Anchor in source references plan A's D-001 explicitly. Plan B is active.
+      writeFileSync(join(dir, "src.py"), `# DECISION ${planA}/D-001: from plan A\nx = 1\n`);
+      const r = runValidate(dir);
+      assert.ok(!r.stdout.includes("anchor-orphan"), "qualified anchor for plan A must resolve via plan A's per-plan decisions.md");
+      assert.ok(!r.stdout.includes("anchor-unknown-plan"), "plan A is a known plan dir");
+    });
   });
 
   describe("INDEX.md topic extraction", () => {

@@ -17,6 +17,61 @@ const plansDir = join(cwd, "plans");
 const pointerFile = join(plansDir, ".current_plan");
 
 // ---------------------------------------------------------------------------
+// v2.14.0 — Plan-qualified DECISION anchors
+// ---------------------------------------------------------------------------
+// In-code anchors of the form `# DECISION plan_YYYY-MM-DD_XXXXXXXX/D-NNN`
+// carry the originating plan's directory name as a prefix. This makes anchors
+// globally unambiguous and resolvable even after plans/DECISIONS.md sliding-
+// window trim drops the originating plan section.
+//
+// Pre-v2.14.0 bare `D-NNN` anchors are accepted (WARN [anchor-unqualified]) as
+// a migration nudge. New plans (state.md INIT timestamp ≥ ANCHOR_REFS_REQUIRED_SINCE)
+// are held to the strict requirement: matching Anchor-Refs in decisions.md +
+// preamble line in decisions.md/summary.md.
+
+// Cutover for strict enforcement. Plans whose state.md INIT timestamp is on or
+// after this instant are subject to ERROR (rather than WARN) for missing
+// Anchor-Refs and missing plan-id preamble.
+//
+// Set to 09:00:00Z on v2.14.0 release day, after the v2.13.0 closing plan
+// (plan_2026-05-07_9560e49b INIT at 08:07Z) and before the v2.14.0 plan
+// (plan_2026-05-07_7556fb98 INIT at 09:17Z). Pre-cutover closed plans remain
+// WARN-only on missing schema fields they couldn't have known about.
+const ANCHOR_REFS_REQUIRED_SINCE = "2026-05-07T09:00:00Z";
+
+// Plan-id format: `plan_YYYY-MM-DD_<hex>` (from bootstrap.mjs randomBytes(4).hex
+// — 8 hex chars; we permit any positive-length lowercase-hex tail for forward
+// compatibility).
+const PLAN_ID_PATTERN = "plan_\\d{4}-\\d{2}-\\d{2}_[0-9a-f]+";
+const PLAN_ID_RE = new RegExp(`^${PLAN_ID_PATTERN}$`);
+
+// Read the INIT timestamp from state.md. Looks for any line matching
+// `INIT (→|->) EXPLORE (TS)` where TS parses as an ISO date — checks the
+// "Last Transition" line first, then falls back to scanning Transition
+// History (the INIT entry persists there after the plan moves on).
+// Returns Date | null. Malformed/missing → null (treat as pre-cutover, lenient).
+function parseInitTimestamp(planDir) {
+  const state = readFile(join(planDir, "state.md"));
+  if (!state) return null;
+  const re = /INIT\s*(?:→|->)\s*EXPLORE\s*\(([^)]+)\)/g;
+  let m;
+  while ((m = re.exec(state)) !== null) {
+    const raw = m[1].trim();
+    const d = new Date(raw);
+    if (!isNaN(d.getTime())) return d;
+  }
+  return null;
+}
+
+// Returns true if INIT timestamp is on or after the v2.14.0 cutover.
+// Null/malformed → false (pre-cutover, lenient WARN-not-ERROR).
+function isPostCutover(planDir) {
+  const ts = parseInitTimestamp(planDir);
+  if (ts === null) return false;
+  return ts.getTime() >= new Date(ANCHOR_REFS_REQUIRED_SINCE).getTime();
+}
+
+// ---------------------------------------------------------------------------
 // Valid state transitions (from SKILL.md)
 // ---------------------------------------------------------------------------
 
@@ -349,8 +404,34 @@ function checkConsolidatedFiles(issues) {
 // header: full header line, phase: PHASE token (uppercased for matching),
 // date: YYYY-MM-DD string, body: text between this header and next.
 // Skips headings inside HTML comment blocks (the schema example block).
+//
+// Returns { entries, badHeaders, preamblePlanId, preambleLine }:
+//   preamblePlanId — value of the *Plan: <plan-id>* preamble line if present, else null
+//   preambleLine — 1-based line number of the preamble (for diagnostics), or null
 function parseDecisionsEntries(content) {
-  if (!content) return { entries: [], badHeaders: [] };
+  if (!content) return { entries: [], badHeaders: [], preamblePlanId: null, preambleLine: null };
+
+  // Extract preamble before stripping comments (preamble lives outside comments).
+  // Look in the first 10 non-blank lines for `*Plan: <plan-id>*`.
+  let preamblePlanId = null;
+  let preambleLine = null;
+  {
+    const rawLines = content.split("\n");
+    const preambleRe = new RegExp(`^\\*Plan:\\s*(${PLAN_ID_PATTERN})\\*\\s*$`);
+    let nonBlankSeen = 0;
+    for (let i = 0; i < rawLines.length && nonBlankSeen < 10; i++) {
+      const t = rawLines[i].trim();
+      if (t === "") continue;
+      nonBlankSeen += 1;
+      const pm = preambleRe.exec(t);
+      if (pm) {
+        preamblePlanId = pm[1];
+        preambleLine = i + 1;
+        break;
+      }
+    }
+  }
+
   // Strip HTML comment blocks so the example schema in bootstrap.mjs (wrapped
   // in <!-- ... -->) does not register as an entry.
   const stripped = content.replace(/<!--[\s\S]*?-->/g, "");
@@ -395,7 +476,7 @@ function parseDecisionsEntries(content) {
     current.body = lines.slice(bodyStart).join("\n");
     entries.push(current);
   }
-  return { entries, badHeaders };
+  return { entries, badHeaders, preamblePlanId, preambleLine };
 }
 
 function checkDecisionsSchema(planDir, issues) {
@@ -547,13 +628,16 @@ const SKIP_DIR_NAMES = new Set([
 ]);
 
 // Anchor regexes from references/decision-anchoring.md Formal Grammar.
-// Hash, slash, block, and SQL double-dash. We capture the D-NNN id and
-// optional [STALE] marker.
+// Hash, slash, block, and SQL double-dash. Each captures:
+//   group 1 — optional plan-id prefix (qualified anchors, v2.14.0+)
+//   group 2 — D-NNN three-digit id
+//   group 3 — optional " [STALE]" marker
+// Plan-id prefix is captured non-greedily as PLAN_ID_PATTERN followed by "/".
 const ANCHOR_PATTERNS = [
-  /(^|\s)#\s+DECISION\s+D-(\d{3})(\s+\[STALE\])?(?::|\s|$)/,
-  /(^|\s)\/\/\s+DECISION\s+D-(\d{3})(\s+\[STALE\])?(?::|\s|$)/,
-  /\/\*\s*DECISION\s+D-(\d{3})(\s+\[STALE\])?[\s\S]*?\*\//,
-  /(^|\s)--\s+DECISION\s+D-(\d{3})(\s+\[STALE\])?(?::|\s|$)/,
+  new RegExp(`(?:^|\\s)#\\s+DECISION\\s+(?:(${PLAN_ID_PATTERN})\\/)?D-(\\d{3})(\\s+\\[STALE\\])?(?::|\\s|$)`),
+  new RegExp(`(?:^|\\s)\\/\\/\\s+DECISION\\s+(?:(${PLAN_ID_PATTERN})\\/)?D-(\\d{3})(\\s+\\[STALE\\])?(?::|\\s|$)`),
+  new RegExp(`\\/\\*\\s*DECISION\\s+(?:(${PLAN_ID_PATTERN})\\/)?D-(\\d{3})(\\s+\\[STALE\\])?[\\s\\S]*?\\*\\/`),
+  new RegExp(`(?:^|\\s)--\\s+DECISION\\s+(?:(${PLAN_ID_PATTERN})\\/)?D-(\\d{3})(\\s+\\[STALE\\])?(?::|\\s|$)`),
 ];
 
 function walkSourceFiles(root, files = [], depth = 0) {
@@ -584,7 +668,11 @@ function walkSourceFiles(root, files = [], depth = 0) {
 }
 
 // Collect all anchor occurrences in a single source file. Returns array of
-// { file, line, id, stale }.
+// { file, line, planName, id, qualified, stale }:
+//   planName — string plan-id prefix if anchor is qualified, else null
+//   id       — D-NNN integer (just the three-digit number)
+//   qualified — true iff planName is non-null
+//   stale    — true iff anchor carries the [STALE] marker
 function findAnchorsInFile(file, projectRoot) {
   let text;
   try {
@@ -595,6 +683,23 @@ function findAnchorsInFile(file, projectRoot) {
   const ext = extname(file);
   const out = [];
 
+  // Build per-style regexes once. Capture groups: 1=planName(opt), 2=id, 3=stale(opt).
+  const hashRe = new RegExp(`(?:^|\\s)#\\s+DECISION\\s+(?:(${PLAN_ID_PATTERN})\\/)?D-(\\d{3})(\\s+\\[STALE\\])?(?::|\\s|$)`);
+  const slashRe = new RegExp(`(?:^|\\s)\\/\\/\\s+DECISION\\s+(?:(${PLAN_ID_PATTERN})\\/)?D-(\\d{3})(\\s+\\[STALE\\])?(?::|\\s|$)`);
+  const sqlRe = new RegExp(`(?:^|\\s)--\\s+DECISION\\s+(?:(${PLAN_ID_PATTERN})\\/)?D-(\\d{3})(\\s+\\[STALE\\])?(?::|\\s|$)`);
+  const blockInnerRe = new RegExp(`DECISION\\s+(?:(${PLAN_ID_PATTERN})\\/)?D-(\\d{3})(\\s+\\[STALE\\])?`);
+
+  function pushMatch(m, lineNum) {
+    out.push({
+      file,
+      line: lineNum,
+      planName: m[1] || null,
+      id: parseInt(m[2], 10),
+      qualified: !!m[1],
+      stale: !!m[3],
+    });
+  }
+
   // Per-line scan for hash, slash, double-dash markers.
   const lines = text.split("\n");
   for (let i = 0; i < lines.length; i++) {
@@ -602,61 +707,102 @@ function findAnchorsInFile(file, projectRoot) {
     let m;
     // Hash style.
     if ([".py", ".rb", ".sh", ".bash", ".zsh", ".yml", ".yaml", ".toml", ".r", ".pl", ".pm", ".tf"].includes(ext)) {
-      m = /(?:^|\s)#\s+DECISION\s+D-(\d{3})(\s+\[STALE\])?(?::|\s|$)/.exec(line);
-      if (m) out.push({ file, line: i + 1, id: parseInt(m[1], 10), stale: !!m[2] });
+      m = hashRe.exec(line);
+      if (m) pushMatch(m, i + 1);
     }
     // Slash style.
     if ([".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".go", ".rs", ".c", ".h", ".cpp", ".hpp", ".cc", ".java", ".swift", ".kt", ".scala", ".cs", ".php"].includes(ext)) {
-      m = /(?:^|\s)\/\/\s+DECISION\s+D-(\d{3})(\s+\[STALE\])?(?::|\s|$)/.exec(line);
-      if (m) out.push({ file, line: i + 1, id: parseInt(m[1], 10), stale: !!m[2] });
+      m = slashRe.exec(line);
+      if (m) pushMatch(m, i + 1);
     }
     // SQL double-dash.
     if (ext === ".sql") {
-      m = /(?:^|\s)--\s+DECISION\s+D-(\d{3})(\s+\[STALE\])?(?::|\s|$)/.exec(line);
-      if (m) out.push({ file, line: i + 1, id: parseInt(m[1], 10), stale: !!m[2] });
+      m = sqlRe.exec(line);
+      if (m) pushMatch(m, i + 1);
     }
   }
 
   // Block comment scan (multi-line) — applies to /* */ in C-family + CSS.
-  // We extract each block and search inside.
   const blockRe = /\/\*([\s\S]*?)\*\//g;
   let bm;
   while ((bm = blockRe.exec(text)) !== null) {
     const body = bm[1];
-    const dm = /DECISION\s+D-(\d{3})(\s+\[STALE\])?/.exec(body);
+    const dm = blockInnerRe.exec(body);
     if (dm) {
-      // Compute 1-based line number of the block opener.
       const lineNum = text.slice(0, bm.index).split("\n").length;
-      out.push({ file, line: lineNum, id: parseInt(dm[1], 10), stale: !!dm[2] });
+      pushMatch(dm, lineNum);
     }
   }
 
   return out;
 }
 
-function collectKnownDecisionIds(planDir) {
-  // Active plan decisions.md (per-plan IDs) + plans/DECISIONS.md
-  // (cross-plan archive — IDs are scoped per plan section, but we accept any
-  // D-NNN that appears as a "### D-NNN" or "## D-NNN" heading there).
-  const ids = new Set();
+// Collect known decision IDs grouped by plan. Returns Map<planName, Set<id>>.
+// The active plan is keyed by `activePlanName`. Cross-plan archive is parsed
+// section-aware: each `## <plan-id>` heading begins a section; `### D-NNN`
+// entries within belong to that plan.
+function collectKnownDecisionIdsByPlan(planDir, activePlanName) {
+  const map = new Map();
+
+  function add(planName, id) {
+    if (!planName) return;
+    if (!map.has(planName)) map.set(planName, new Set());
+    map.get(planName).add(id);
+  }
+
+  // Active plan's per-plan decisions.md.
   const planDecisions = readFile(join(planDir, "decisions.md"));
   if (planDecisions) {
     const { entries } = parseDecisionsEntries(planDecisions);
-    for (const e of entries) ids.add(e.id);
+    for (const e of entries) add(activePlanName, e.id);
   }
+
+  // Walk every per-plan decisions.md (covers archived plans whose sections
+  // have been trimmed from plans/DECISIONS.md).
+  try {
+    const entries = readdirSync(plansDir, { withFileTypes: true });
+    for (const ent of entries) {
+      if (!ent.isDirectory()) continue;
+      if (!PLAN_ID_RE.test(ent.name)) continue;
+      if (ent.name === activePlanName) continue; // already loaded above
+      const txt = readFile(join(plansDir, ent.name, "decisions.md"));
+      if (!txt) continue;
+      const { entries: pe } = parseDecisionsEntries(txt);
+      for (const e of pe) add(ent.name, e.id);
+    }
+  } catch { /* plans/ may not be scannable */ }
+
+  // Consolidated plans/DECISIONS.md, section-aware: track current `## <plan-id>`
+  // wrapper, attribute every nested `### D-NNN` (or `## D-NNN` if not nested)
+  // to that plan. Matches v2.13.0 sliding-window content shape.
   const consolidated = readFile(join(plansDir, "DECISIONS.md"));
   if (consolidated) {
-    const headerRe = /^#{2,3} D-(\d{3})\b/gm;
-    let m;
-    while ((m = headerRe.exec(consolidated)) !== null) {
-      ids.add(parseInt(m[1], 10));
+    const lines = consolidated.split("\n");
+    let currentPlan = null;
+    const planSectionRe = new RegExp(`^##\\s+(${PLAN_ID_PATTERN})\\s*$`);
+    const dashEntryRe = /^#{2,3}\s+D-(\d{3})\b/;
+    for (const line of lines) {
+      const ps = planSectionRe.exec(line);
+      if (ps) { currentPlan = ps[1]; continue; }
+      const de = dashEntryRe.exec(line);
+      if (de && currentPlan) add(currentPlan, parseInt(de[1], 10));
     }
   }
-  return ids;
+
+  return map;
 }
 
-function checkReverseAnchors(planDir, issues, projectRoot) {
-  const knownIds = collectKnownDecisionIds(planDir);
+// Backward-compat shim: flat Set<number> view of all known IDs across all plans.
+// Used only by checks that don't need plan-scoping (none after v2.14.0).
+function collectKnownDecisionIds(planDir, activePlanName) {
+  const flat = new Set();
+  const byPlan = collectKnownDecisionIdsByPlan(planDir, activePlanName);
+  for (const set of byPlan.values()) for (const id of set) flat.add(id);
+  return flat;
+}
+
+function checkReverseAnchors(planDir, planDirName, issues, projectRoot) {
+  const knownByPlan = collectKnownDecisionIdsByPlan(planDir, planDirName);
   let files;
   try {
     files = walkSourceFiles(projectRoot);
@@ -667,19 +813,82 @@ function checkReverseAnchors(planDir, issues, projectRoot) {
   for (const file of files) {
     const anchors = findAnchorsInFile(file, projectRoot);
     for (const a of anchors) {
-      if (!knownIds.has(a.id)) {
-        const rel = relative(projectRoot, a.file);
-        const idStr = `D-${String(a.id).padStart(3, "0")}`;
-        // STALE orphans → WARN (per decision-anchoring.md spec); plain → ERROR.
-        const severity = a.stale ? "WARN" : "ERROR";
+      const rel = relative(projectRoot, a.file);
+      const idStr = `D-${String(a.id).padStart(3, "0")}`;
+      const staleSuffix = a.stale ? " [STALE]" : "";
+      const severityForOrphan = a.stale ? "WARN" : "ERROR";
+
+      if (a.qualified) {
+        // Qualified anchor: must resolve in the named plan's set.
+        const set = knownByPlan.get(a.planName);
+        const fullId = `${a.planName}/${idStr}`;
+        if (!set) {
+          issues.push({
+            severity: severityForOrphan,
+            check: "anchor-unknown-plan",
+            message: `${rel}:${a.line} anchor references unknown plan ${a.planName} (${fullId}${staleSuffix}); no per-plan decisions.md and no matching section in plans/DECISIONS.md`,
+          });
+        } else if (!set.has(a.id)) {
+          issues.push({
+            severity: severityForOrphan,
+            check: "anchor-orphan",
+            message: `${rel}:${a.line} orphan anchor ${fullId}${staleSuffix} (plan exists but no ${idStr} entry in its decisions.md)`,
+          });
+        }
+      } else {
+        // Bare anchor (legacy form). Always WARN to nudge migration; then
+        // attempt resolution against active plan only (existing behavior).
         issues.push({
-          severity,
-          check: "reverse-anchor",
-          message: `${rel}:${a.line} orphan anchor ${idStr}${a.stale ? " [STALE]" : ""} (no matching entry in decisions.md or plans/DECISIONS.md)`,
+          severity: "WARN",
+          check: "anchor-unqualified",
+          message: `${rel}:${a.line} bare anchor ${idStr}${staleSuffix} lacks plan-id prefix (expected \`${planDirName || "<plan-id>"}/${idStr}\`); see references/decision-anchoring.md`,
         });
+        const activeSet = planDirName ? knownByPlan.get(planDirName) : null;
+        if (!activeSet || !activeSet.has(a.id)) {
+          issues.push({
+            severity: severityForOrphan,
+            check: "anchor-orphan",
+            message: `${rel}:${a.line} orphan anchor ${idStr}${staleSuffix} (no matching entry in active plan's decisions.md)`,
+          });
+        }
       }
     }
   }
+}
+
+// v2.14.0 — plan-id preamble in decisions.md and summary.md.
+// `*Plan: <plan-id>*` MUST appear within the first 10 non-blank lines.
+// Strict (ERROR) for plans whose INIT timestamp ≥ ANCHOR_REFS_REQUIRED_SINCE;
+// lenient (WARN) for legacy plans.
+function checkPlanIdPreamble(planDir, planDirName, issues) {
+  const strict = isPostCutover(planDir);
+  const sev = strict ? "ERROR" : "WARN";
+
+  function checkOne(filename) {
+    const path = join(planDir, filename);
+    const content = readFile(path);
+    if (!content) return; // file may not exist (summary.md only at CLOSE)
+
+    const { preamblePlanId } = parseDecisionsEntries(content);
+    if (!preamblePlanId) {
+      issues.push({
+        severity: sev,
+        check: "preamble-missing",
+        message: `plan-id preamble line "*Plan: ${planDirName}*" not found in ${filename} (must appear within first 10 non-blank lines)`,
+      });
+      return;
+    }
+    if (planDirName && preamblePlanId !== planDirName) {
+      issues.push({
+        severity: "ERROR",
+        check: "preamble-mismatch",
+        message: `${filename} preamble plan-id "${preamblePlanId}" does not match plan directory name "${planDirName}"`,
+      });
+    }
+  }
+
+  checkOne("decisions.md");
+  checkOne("summary.md");
 }
 
 // ---------------------------------------------------------------------------
@@ -792,15 +1001,18 @@ function checkExplorationConfidence(planDir, issues) {
   }
 }
 
-// 3.2d — decisions.md entries missing Anchor-Refs when corresponding code has
-// a matching anchor.
-function checkAnchorRefsCrossLink(planDir, issues, projectRoot) {
+// 3.2d / v2.14.0 — decisions.md entries missing Anchor-Refs when corresponding
+// code has a matching anchor for THIS PLAN. Strict (ERROR) post-cutover,
+// lenient (WARN) for pre-v2.14.0 plans.
+function checkAnchorRefsRequired(planDir, planDirName, issues, projectRoot) {
   const content = readFile(join(planDir, "decisions.md"));
   if (!content) return;
   const { entries } = parseDecisionsEntries(content);
   if (entries.length === 0) return;
 
-  // Build set of D-NNN ids that have anchors in source.
+  // Build set of D-NNN ids that have anchors in source ATTRIBUTABLE to this
+  // plan. Qualified anchors must match planDirName; bare anchors fall through
+  // to the active plan as the implicit owner (legacy compat).
   const anchoredIds = new Set();
   let files;
   try {
@@ -810,18 +1022,81 @@ function checkAnchorRefsCrossLink(planDir, issues, projectRoot) {
   }
   for (const f of files) {
     const anchors = findAnchorsInFile(f, projectRoot);
-    for (const a of anchors) anchoredIds.add(a.id);
+    for (const a of anchors) {
+      if (a.qualified) {
+        if (a.planName === planDirName) anchoredIds.add(a.id);
+      } else {
+        // Bare anchor: implicitly belongs to active plan.
+        if (planDirName) anchoredIds.add(a.id);
+      }
+    }
   }
+
+  const strict = isPostCutover(planDir);
+  const sev = strict ? "ERROR" : "WARN";
+  const checkName = strict ? "anchor-refs-missing" : "anchor-refs";
 
   const anchorRefsRe = /\*\*Anchor-Refs\*\*:/m;
   for (const e of entries) {
     if (!anchoredIds.has(e.id)) continue;
     if (!anchorRefsRe.test(e.body)) {
       issues.push({
-        severity: "WARN",
-        check: "anchor-refs",
+        severity: sev,
+        check: checkName,
         message: `decisions.md ${e.idStr} has matching code anchor but no **Anchor-Refs**: line`,
       });
+    }
+  }
+}
+
+// v2.14.0 — verify each `**Anchor-Refs**: \`path:line\`...` reference resolves:
+// the file exists at projectRoot AND contains some DECISION anchor with this
+// entry's id (qualified for this plan, or bare). WARN-only — line numbers
+// drift, so we don't enforce exact line match.
+function checkAnchorRefsValidity(planDir, planDirName, issues, projectRoot) {
+  const content = readFile(join(planDir, "decisions.md"));
+  if (!content) return;
+  const { entries } = parseDecisionsEntries(content);
+  if (entries.length === 0) return;
+
+  const refLineRe = /^\*\*Anchor-Refs\*\*:\s*(.+)$/m;
+  const refItemRe = /`([^`]+)`/g;
+
+  for (const e of entries) {
+    const ml = refLineRe.exec(e.body);
+    if (!ml) continue;
+    const refsLine = ml[1];
+    const refs = [];
+    let im;
+    while ((im = refItemRe.exec(refsLine)) !== null) refs.push(im[1].trim());
+
+    for (const ref of refs) {
+      const colonIdx = ref.lastIndexOf(":");
+      if (colonIdx < 1) continue; // malformed; skip silently
+      const filePart = ref.slice(0, colonIdx);
+      const target = join(projectRoot, filePart);
+      if (!existsSync(target)) {
+        issues.push({
+          severity: "WARN",
+          check: "anchor-refs-stale",
+          message: `decisions.md ${e.idStr} **Anchor-Refs** points to missing file: ${ref}`,
+        });
+        continue;
+      }
+      // Verify some matching anchor exists for this id in the file.
+      const anchors = findAnchorsInFile(target, projectRoot);
+      const found = anchors.some((a) => {
+        if (a.id !== e.id) return false;
+        if (a.qualified && a.planName !== planDirName) return false;
+        return true;
+      });
+      if (!found) {
+        issues.push({
+          severity: "WARN",
+          check: "anchor-refs-stale",
+          message: `decisions.md ${e.idStr} **Anchor-Refs** ${ref} but no matching DECISION anchor found in the file`,
+        });
+      }
     }
   }
 }
@@ -855,11 +1130,14 @@ function validate(planDirName) {
   checkDecisionsSchema(planDir, issues);
   checkVerificationVerdict(planDir, issues);
   checkFindingsIndexLinks(planDir, issues);
-  checkReverseAnchors(planDir, issues, cwd);
+  checkReverseAnchors(planDir, planDirName, issues, cwd);
   checkVerificationEvidence(planDir, issues);
   checkFindingsTopicSections(planDir, issues);
   checkExplorationConfidence(planDir, issues);
-  checkAnchorRefsCrossLink(planDir, issues, cwd);
+  // v2.14.0 — plan-qualified anchors, plan-id preamble, gated Anchor-Refs.
+  checkPlanIdPreamble(planDir, planDirName, issues);
+  checkAnchorRefsRequired(planDir, planDirName, issues, cwd);
+  checkAnchorRefsValidity(planDir, planDirName, issues, cwd);
 
   // Report
   const errors = issues.filter((i) => i.severity === "ERROR");
@@ -915,11 +1193,16 @@ Checks:
   - decisions.md **Complexity Assessment** block in PIVOT entries
   - verification.md Verdict 5 required bullets (in order)
   - findings.md Index links resolve to existing files
-  - Reverse anchor scan (orphan # DECISION D-NNN in source)
+  - Reverse anchor scan (orphan # DECISION <plan-id>/D-NNN in source)
+  - Bare D-NNN anchor → WARN [anchor-unqualified] (v2.14.0 migration nudge)
+  - Qualified anchor with unknown plan → ERROR [anchor-unknown-plan]
   - Evidence column quality (WARN on weak/empty/single-word)
   - findings/{topic}.md required sections (WARN)
   - state.md Exploration Confidence on EXPLORE → PLAN (WARN)
-  - decisions.md Anchor-Refs cross-link (WARN)
+  - decisions.md / summary.md plan-id preamble (ERROR post-v2.14.0, WARN otherwise)
+  - decisions.md Anchor-Refs required when matching anchor exists in source
+    (ERROR post-v2.14.0, WARN otherwise; gated by state.md INIT timestamp)
+  - decisions.md Anchor-Refs validity (WARN if file missing or anchor not found)
 
 Exit codes:
   0 = pass (no errors, warnings are OK)
