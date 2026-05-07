@@ -4,6 +4,26 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.14.0] - 2026-05-07
+
+### Changed
+- **In-code DECISION anchors are now plan-qualified** (`src/references/decision-anchoring.md`, `src/SKILL.md`, `src/scripts/validate-plan.mjs`, agent prompts) — canonical anchor form is `# DECISION <plan-id>/D-NNN` (e.g. `# DECISION plan_2026-05-07_7556fb98/D-003`). The plan-id prefix is the active plan's directory name and makes anchors globally unambiguous and resolvable after `plans/DECISIONS.md` sliding-window trim drops the originating plan section. Closes the L-007 / Theme 4 orphan gap explicitly deferred from v2.13.0. Formal Grammar table extends 5 regex rows with optional plan-id prefix capture matching `plan_\d{4}-\d{2}-\d{2}_[0-9a-f]+`. Bare `D-NNN` anchors remain accepted with WARN [anchor-unqualified] as a migration nudge.
+- **summary.md Decision Anchors registry section name reconciled** to `## Decision Anchors Registry` across `decision-anchoring.md`, `file-formats.md`, and `ip-archivist.md` (matches v2.13.0 actual usage in plan_2026-05-07_9560e49b).
+- **Anchor-Refs field in decisions.md schema promoted from optional-but-recommended to required-when-matching-anchor-exists-in-source** (`src/references/file-formats.md`) — gated by `state.md` INIT timestamp. Plans with INIT >= 2026-05-07T09:00:00Z get strict ERROR [anchor-refs-missing]; pre-cutover plans keep WARN-only enforcement.
+
+### Added
+- **`*Plan: <plan-id>*` preamble line in decisions.md and summary.md** (`src/scripts/bootstrap.mjs` decisions.md template + `src/agents/ip-archivist.md` summary.md instruction) — appears as second line directly after the H1. Lets the per-plan file self-identify after `plans/DECISIONS.md` sliding-window trim drops the wrapping `## <plan-id>` section. Validator: ERROR [preamble-missing] post-cutover, WARN otherwise; ERROR [preamble-mismatch] always when preamble plan-id does not match directory name.
+- **Validator anchor subsystem rewritten for plan-qualified IDs** (`src/scripts/validate-plan.mjs`):
+  - `findAnchorsInFile` returns `{file, line, planName, id, qualified, stale}` — captures the optional plan-id prefix in all 4 anchor regexes (hash / slash / SQL / block).
+  - `collectKnownDecisionIdsByPlan` returns `Map<planName, Set<id>>`. Walks every `plans/<plan-id>/decisions.md` (covers archived plans whose sections have been trimmed from the consolidated file) and parses `plans/DECISIONS.md` section-aware (`## <plan-id>` wrapper attributes nested `### D-NNN` to that plan).
+  - New `checkReverseAnchors` routes by anchor qualification: qualified+unknown-plan → ERROR [anchor-unknown-plan]; qualified+orphan-id → ERROR [anchor-orphan]; bare → WARN [anchor-unqualified] always + same orphan logic against active plan; STALE downgrades orphan severity to WARN.
+  - New `checkPlanIdPreamble` enforces the `*Plan: <plan-id>*` preamble in decisions.md and summary.md.
+  - New `checkAnchorRefsRequired` (replaces `checkAnchorRefsCrossLink`) gates Anchor-Refs enforcement by state.md INIT timestamp.
+  - New `checkAnchorRefsValidity` emits WARN [anchor-refs-stale] when a `**Anchor-Refs**` reference points to a missing file or a file containing no matching DECISION anchor for the entry's id.
+- **bootstrap.mjs decisions.md template emits the preamble** automatically and references the qualified anchor form `# DECISION <plan-id>/D-NNN` in the schema-example comment so agents see the canonical form on first read.
+- **bootstrap.test.mjs +14 tests** — preamble present and ordered before schema example; qualified anchor in schema example; qualified anchor matching active plan resolves silently; bare D-NNN → WARN [anchor-unqualified] (resolution still works); qualified unknown-plan → ERROR; qualified orphan-id → ERROR; STALE qualified orphan → WARN; preamble missing post-cutover → ERROR; preamble missing pre-cutover → WARN; preamble plan-id mismatch → ERROR; Anchor-Refs missing post-cutover → ERROR; Anchor-Refs missing pre-cutover → WARN; Anchor-Refs validity → WARN [anchor-refs-stale]; two-plan disambiguation regression (D-001 in plan A vs plan B do not collide).
+- **Agent prompts updated** — `ip-executor.md` Pre-Step Checklist requires plan-qualified anchors and adds explicit Anchor-Refs back-link item with cutover-aware ERROR/WARN note; `ip-archivist.md` audit description rewritten for qualified-aware validator output and Decision Anchors Registry naming.
+
 ## [2.13.0] - 2026-05-07
 
 ### Changed

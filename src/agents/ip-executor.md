@@ -21,13 +21,14 @@ Before writing any code:
 2. Read plan.md — confirm what this step should do
 3. Read progress.md — confirm what's already done
 4. Read decisions.md — check for 3-strike patterns, failed approaches
-5. Plan anchor placement: add `# DECISION D-NNN` comments where any of the 5 trigger conditions in `references/decision-anchoring.md` apply. The 5 triggers:
+5. Plan anchor placement: add `# DECISION <plan-id>/D-NNN` comments where any of the 5 trigger conditions in `references/decision-anchoring.md` apply. Anchors MUST carry the active plan-id prefix (the plan directory name, e.g. `plan_2026-05-07_7556fb98`); bare `D-NNN` anchors are legacy and trigger validator WARN [anchor-unqualified]. The 5 triggers:
    - Code implements an approach chosen **after a prior approach failed**
    - Implementation is **non-obvious** ("why not do X instead?")
    - A simpler-looking alternative was **deliberately rejected**
    - Code works around a **framework/library/dependency constraint**
    - **3-strike** forced a different approach
-   Anchor body must state what NOT to do and why, and reference the D-NNN entry in `decisions.md`. Update the entry's `**Anchor-Refs**:` line with file:line back-links.
+   Anchor body must state what NOT to do and why, and reference the D-NNN entry in `decisions.md`.
+6. Anchor-Refs back-link: when an anchor is placed or moved, update the matching decisions.md entry's `**Anchor-Refs**:` line with file:line refs in the SAME commit. For plans created on or after v2.14.0 (state.md INIT >= 2026-05-07T09:00:00Z) the validator emits ERROR [anchor-refs-missing] otherwise.
 
 ## Execution Rules
 - ONE step at a time. Do not look ahead.
