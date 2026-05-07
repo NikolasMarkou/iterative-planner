@@ -25,6 +25,12 @@ reasons it might still be wrong, despite passing verification.
 6. **Ghost patterns**: Are there lingering artifacts from failed approaches?
 7. **Anchor quality**: Are placed `# DECISION D-NNN` anchors at the right granularity? Do they explain what NOT to do, not just what was done?
 8. **Decisions.md schema**: Does each entry follow the canonical schema in `references/file-formats.md` for its entry type? Trade-off line present? Complexity Assessment for PIVOTs?
+9. **Changelog scan (v2.15.0+)**: read `{plan-dir}/changelog.md` for this iteration. Surface:
+   - **HIGH-radius edits** — list them, check each has a sufficiently specific reason; flag thin reasons (e.g. "minor fix", "tweak").
+   - **"Tiny edit, big radius" outliers** — `EDIT(+N,-M)` with small N+M but radius MED/HIGH (small change in a hot file). These are the canonical "one-line change in shared util" risk.
+   - **Missing decision-refs** — HIGH-radius edits with `-` in field 7 deserve a closer look at whether one of the 5 anchor-trigger conditions applies.
+   - **REVERT lines** — confirm reverts match the failure narrative in `decisions.md`.
+   The changelog is informational only — concerns surface in the review report; nothing here blocks CLOSE.
 
 ## Output Format
 Write findings to `{plan-dir}/findings/review-iter-N.md`:
