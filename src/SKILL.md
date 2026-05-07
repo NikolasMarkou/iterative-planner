@@ -238,7 +238,7 @@ Institutional memory across plans. Unlike FINDINGS.md and DECISIONS.md which gro
 - Read then write `state.md` + `progress.md`.
 - List **every file** to modify/create. Can't list them → go back to EXPLORE.
 - Only recommended approach in plan. Alternatives → `decisions.md`.
-- Wait for explicit user approval.
+- Wait for explicit user approval. Before requesting approval, emit **PC-PLAN** (Plan Presentation contract — see `references/file-formats.md` "Presentation Contracts"): the orchestrator renders `plan.md` verbatim per the floor (Steps, Success Criteria, Verification Strategy, Failure Modes, Assumptions). Same contract on re-presentation after revisions.
 
 ### EXECUTE
 - **Pre-Step Checklist** in `state.md`: reset all boxes `[ ]`, then check each `[x]` as completed before starting the step. This is the file-based enforcement of Mandatory Re-reads.
@@ -299,11 +299,11 @@ All seven reads are CORE. Do not evaluate until all are complete.
 23. Write `progress.md` — update status of all items.
 24. Write `state.md` — log evaluation summary, update transition.
 
-**Present to user before routing:**
-1. What was completed (from `progress.md`)
-2. What remains (if anything)
-3. Verification results summary (PASS/FAIL counts from `verification.md`)
-4. Issues found: regressions, scope drift, unverified areas, simplification blockers
+**Present to user before routing — PC-REFLECT contract** (see `references/file-formats.md` "Presentation Contracts"). Emit a 5-item block (exactly 5 — collapsing violates the contract):
+1. What was completed (verbatim from `progress.md`)
+2. What remains (verbatim from `progress.md`, or "none")
+3. Verification results summary — PASS/FAIL counts plus the per-criterion table from `verification.md` rendered **verbatim** (the verifier's table is the literal payload, do not paraphrase)
+4. Issues found: regressions, scope drift, unverified areas, simplification blockers; **plus** any CRITICAL/WARNING items from `findings/review-iter-N.md` (iteration ≥ 2) folded in verbatim
 5. Recommend: close, pivot, or explore — **wait for user confirmation**
 
 | Condition | → Transition |
@@ -320,7 +320,7 @@ All seven reads are CORE. Do not evaluate until all are complete.
 - **Momentum check** *(EXTENDED — 2nd PIVOT onward)* — log pivot direction, check for oscillation. Momentum < 0.3 → recommend decomposition. See `references/convergence-metrics.md`.
 - Write `decisions.md`: log pivot + mandatory Complexity Assessment (+ pivot direction log if EXTENDED).
 - Write `state.md` + `progress.md` (mark failed items, note pivot).
-- Present options to user → get approval → transition to PLAN.
+- Present options to user → get approval → transition to PLAN. Emit **PC-PIVOT** (Pivot Options contract — see `references/file-formats.md` "Presentation Contracts"): pivot reason, available checkpoints (verbatim from `checkpoints/*`), ghost constraints surfaced, 1-3 candidate directions framed "X at the cost of Y", and an explicit prompt for direction + keep-vs-revert decision.
 
 ## Complexity Control (CRITICAL)
 
@@ -389,13 +389,15 @@ Increment on PLAN → EXECUTE. Iteration 0 = EXPLORE-only (pre-plan). First real
 
 ## User Interaction
 
-| State | Behavior |
-|-------|----------|
-| EXPLORE | Ask focused questions, one at a time. Present findings. |
-| PLAN | Present plan. Wait for approval. Re-present if modified. |
-| EXECUTE | Report per step. Surface surprises. Ask before deviating. |
-| REFLECT | Show completed vs remaining. Present verification results. **Ask** user: close, pivot, or explore. Never auto-close. |
-| PIVOT | Reference decision log. Explain pivot. Get approval. |
+Sub-agents are invisible to the user — only the orchestrator's chat text reaches them. Every state transition that requires user input MUST be preceded by the corresponding **Presentation Contract** in the same assistant turn. Canonical definitions: `references/file-formats.md` "Presentation Contracts" section. The orchestrator inlines each contract's required content list at the point of dispatch in `agents/orchestrator.md`.
+
+| State | Contract | Behavior |
+|-------|----------|----------|
+| EXPLORE | **PC-EXPLORE** (Findings Digest) | Ask focused questions, one at a time. At handoff, emit findings index + key constraints (HARD/SOFT/GHOST) verbatim, plus exploration confidence and a synthesis paragraph. |
+| PLAN | **PC-PLAN** (Plan Presentation) | Render `plan.md` verbatim. Floor (always render): Steps, Success Criteria, Verification Strategy, Failure Modes, Assumptions. Wait for approval. Re-present same contract if modified. |
+| EXECUTE | **PC-EXECUTE-STEP** (Per-Step Status) / **PC-EXECUTE-LEASH** (Leash Failure) | After each successful step: 5 fields (step + files + commit + surprises + next-preview). On leash hit: 5 fields (step intent + 2 attempts + root-cause guess + checkpoint registry + prompt). |
+| REFLECT | **PC-REFLECT** (Phase-3 Gate-Out 5-Item Block) | Exactly 5 items: completed / remaining / verification table verbatim / issues + reviewer concerns / recommendation + prompt. **Ask** user: close, pivot, or explore. Never auto-close. |
+| PIVOT | **PC-PIVOT** (Pivot Options) | Pivot reason + checkpoint registry (verbatim) + ghost constraints + 1-3 candidate directions ("X at the cost of Y") + explicit prompt for direction and keep-vs-revert. |
 
 ## Sub-Agent Architecture
 
