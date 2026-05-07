@@ -58,7 +58,7 @@ node <skill-path>/scripts/bootstrap.mjs close                # Close active plan
 node <skill-path>/scripts/bootstrap.mjs list                 # Show all plan directories
 ```
 
-`new` creates plan directory with all files + writes `plans/.current_plan` pointer. Creates `plans/FINDINGS.md`, `plans/DECISIONS.md`, `plans/LESSONS.md`, and `plans/INDEX.md` if they don't exist. Idempotent-safe: refuses if active plan exists.
+`new` creates plan directory with all files + writes `plans/.current_plan` pointer. Creates `plans/FINDINGS.md`, `plans/DECISIONS.md`, `plans/LESSONS.md`, `plans/SYSTEM.md` (system atlas, max 300 lines, rewritten by ip-archivist at CLOSE), and `plans/INDEX.md` if they don't exist. Idempotent-safe: refuses if active plan exists.
 
 ### Activation Triggers
 

@@ -109,6 +109,7 @@ plans/
 +-- FINDINGS.md                 # Consolidated findings across all plans (newest first)
 +-- DECISIONS.md                # Consolidated decisions across all plans (newest first)
 +-- LESSONS.md                  # Cross-plan institutional memory (max 200 lines)
++-- SYSTEM.md                   # System atlas — domain-neutral system map (max 300 lines, rewritten on close)
 +-- INDEX.md                    # Topic-to-directory mapping (survives sliding window trim)
 +-- plan_2026-02-14_a3f1b2c9/
     +-- state.md                # Current state, step, iteration
