@@ -245,7 +245,7 @@ Institutional memory across plans. Unlike FINDINGS.md and DECISIONS.md which gro
 - **Irreversible operations** (DB migrations, external API calls, service config, non-tracked file deletion): mark step `[IRREVERSIBLE]` in `plan.md` during PLAN. Full procedure: `references/code-hygiene.md`.
 - **Surprise discovery** (behavior contradicts findings, unknown dependency, wrong assumption) → check plan.md Assumptions to identify which steps are invalidated. Note in `state.md`, finish or revert current step, transition to REFLECT. Do NOT silently update findings during EXECUTE.
 - **Falsification signal fires** (from Pre-Mortem & Falsification Signals in plan.md) → same as surprise discovery. Log which signal fired in `decisions.md`.
-- Add `# DECISION D-NNN` comments where any of the 5 trigger conditions in `references/decision-anchoring.md` apply.
+- Add `# DECISION <plan-id>/D-NNN` comments (e.g. `# DECISION plan_2026-05-07_7556fb98/D-003`) where any of the 5 trigger conditions in `references/decision-anchoring.md` apply. Plan-id prefix matches the active plan directory name.
 
 #### Post-Step Gate (successful steps only — all 3 before moving on)
 1. `plan.md` — mark step `[x]`, advance marker, update complexity budget
@@ -344,8 +344,10 @@ Codebase must be known-good before any PLAN. See `references/code-hygiene.md`.
 
 ## Decision Anchoring (CRITICAL)
 
-Code from failed iterations carries invisible context. Anchor `# DECISION D-NNN`
+Code from failed iterations carries invisible context. Anchor `# DECISION <plan-id>/D-NNN`
 at point of impact — state what NOT to do and why. Audit at CLOSE.
+The plan-id prefix (e.g. `plan_2026-05-07_7556fb98`) makes the anchor globally
+unambiguous and resolvable after `plans/DECISIONS.md` sliding-window trim.
 See `references/decision-anchoring.md`.
 
 ## Iteration Limits

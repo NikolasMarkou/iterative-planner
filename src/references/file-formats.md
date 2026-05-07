@@ -138,6 +138,8 @@ approaches v1 (in-place migration) and v2 (dual-write) were abandoned.
 Append-only. **Never edit or delete past entries.**
 Every entry must include a **Trade-off** line: "X **at the cost of** Y".
 
+**Plan-id preamble** *(required for plans created on or after v2.14.0)*: the second line of the file, immediately following the `# Decision Log` H1, MUST be `*Plan: <plan-id>*` where `<plan-id>` is the plan directory name (e.g. `plan_2026-05-07_7556fb98`). The preamble lets the file self-identify after `plans/DECISIONS.md` sliding-window trim drops the wrapping `## <plan-id>` section. Bootstrap emits this line automatically. Validator: ERROR `[preamble-missing]` for plans whose `state.md` INIT timestamp is on or after the v2.14.0 release cutoff; WARN otherwise.
+
 **Entry header rule**: every entry begins with `## D-NNN | PHASE | YYYY-MM-DD` where:
 - `D-NNN` is sequential per plan starting at D-001 (D-001, D-002, ..., no gaps). Each plan directory has its own counter.
 - `PHASE` is the originating state or transition (e.g. `EXPLORE → PLAN`, `REFLECT → PIVOT`, `REFLECT`, `PIVOT`).
@@ -161,16 +163,17 @@ All entry types accept `Anchor-Refs` as optional. For PIVOT entries that are 2nd
 | Simplification-check failure | Context, 6 Check Answers, Blocker Found (Y/N), Decision, Trade-off |
 | Devil's-Advocate (EXTENDED) | Context, Strongest Counter-argument, Why Pursuing Anyway, Decision, Trade-off |
 
-**Anchor-Refs** (optional but **recommended whenever a `# DECISION D-NNN` anchor is placed in source**): file:line back-links from the decision entry to placed anchors. Format:
+**Anchor-Refs** *(required whenever a matching `# DECISION <plan-id>/D-NNN` anchor exists in source — for plans created on or after v2.14.0; recommended otherwise)*: file:line back-links from the decision entry to placed anchors. Format:
 
 ```markdown
 **Anchor-Refs**: `app/middleware/auth.rb:23`, `lib/session/token_service.rb:1-15`
 ```
 
-Multiple file:line refs are comma-separated; ranges use `LL-MM`. Maintained at EXECUTE-time when anchors are created or moved; verified at CLOSE during the reverse anchor audit.
+Multiple file:line refs are comma-separated; ranges use `LL-MM`. Maintained at EXECUTE-time when anchors are created or moved; verified at CLOSE during the reverse anchor audit. Validator: ERROR `[anchor-refs-missing]` for post-v2.14.0 plans whose decisions.md entry has a matching source anchor but no `**Anchor-Refs**:` line; WARN otherwise. Pre-v2.14.0 entries (legacy) keep WARN-only enforcement.
 
 ```markdown
 # Decision Log
+*Plan: plan_2026-01-15_a3f1b2c9*
 
 ## D-001 | EXPLORE → PLAN | 2025-01-15
 **Context**: Auth system uses 3 different session stores (Redis, DB, in-memory)
@@ -213,7 +216,10 @@ Multiple file:line refs are comma-separated; ranges use `LL-MM`. Maintained at E
 **Decision**: Switch to approach C (token-based with cookie fallback)
 **Trade-off**: Stateless validation and zero storage growth **at the cost of** maintaining two auth paths during migration
 **Reasoning**: Tokens are stateless, eliminates Redis growth problem entirely
+**Anchor-Refs**: `app/middleware/auth.rb:23`, `lib/session/token_service.rb:1-15`
 ```
+
+When this entry's anchor is later read in source it appears as `# DECISION plan_2026-01-15_a3f1b2c9/D-003: ...` (the plan-id prefix matches the preamble line above).
 
 Complexity Assessment mandatory for all PIVOT entries.
 
@@ -668,6 +674,7 @@ Written at CLOSE.
 
 ```markdown
 # Summary: Auth Session Migration
+*Plan: plan_2026-01-15_a3f1b2c9*
 
 ## Outcome
 Successfully migrated from cookie-based sessions to JWT tokens with
@@ -689,10 +696,10 @@ cookie fallback for legacy clients.
 - config/initializers/session.rb (modified)
 - test/integration/token_auth_test.rb (new)
 
-## Decision Anchors in Code
-- `app/middleware/auth.rb:23` — D-003 (token-based over cookie migration), D-005 (direct Redis call)
-- `lib/session/token_service.rb:1` — D-003 (stateless tokens over dual-write)
-- `lib/session/token_service.rb:15` — D-002, D-003 (stateless over dual-write)
+## Decision Anchors Registry
+- `app/middleware/auth.rb:23` — `plan_2026-01-15_a3f1b2c9/D-003` (token-based over cookie migration), `plan_2026-01-15_a3f1b2c9/D-005` (direct Redis call)
+- `lib/session/token_service.rb:1` — `plan_2026-01-15_a3f1b2c9/D-003` (stateless tokens over dual-write)
+- `lib/session/token_service.rb:15` — `plan_2026-01-15_a3f1b2c9/D-002`, `plan_2026-01-15_a3f1b2c9/D-003` (stateless over dual-write)
 
 ## Lessons
 - Check format coupling before assuming storage changes are isolated
