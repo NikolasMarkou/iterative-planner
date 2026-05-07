@@ -136,9 +136,13 @@ describe("bootstrap.mjs", () => {
 
       // All expected files exist
       const base = join(dir, "plans", planDir);
-      for (const f of ["state.md", "plan.md", "decisions.md", "findings.md", "progress.md", "verification.md"]) {
+      for (const f of ["state.md", "plan.md", "decisions.md", "findings.md", "progress.md", "verification.md", "changelog.md"]) {
         assert.ok(existsSync(join(base, f)), `${f} should exist`);
       }
+      const changelog = readFileSync(join(base, "changelog.md"), "utf-8");
+      assert.ok(changelog.includes("# Changelog"), "changelog should have header");
+      assert.ok(changelog.includes("Append-only per-edit ledger"), "changelog should describe purpose");
+      assert.ok(changelog.includes("references/blast-radius.md"), "changelog should reference blast-radius doc");
       // Subdirectories
       assert.ok(existsSync(join(base, "checkpoints")), "checkpoints/ should exist");
       assert.ok(existsSync(join(base, "findings")), "findings/ should exist");
