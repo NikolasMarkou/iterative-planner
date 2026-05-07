@@ -1186,6 +1186,52 @@ function checkChangelogFormat(planDir, issues) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// v2.17.0 — Presentation Contract advisory
+// ---------------------------------------------------------------------------
+// Best-effort signal: when state.md records a user-facing transition
+// (PLAN→EXECUTE, REFLECT→CLOSE, PIVOT→PLAN), check whether a Presentation
+// Contract was named anywhere in state.md / decisions.md / progress.md.
+// This cannot inspect chat content — only metadata signals. WARN, never ERROR.
+//
+// Contracts: PC-EXPLORE, PC-PLAN, PC-EXECUTE-STEP, PC-EXECUTE-LEASH,
+//            PC-REFLECT, PC-PIVOT (defined in references/file-formats.md).
+//
+// Rule: for each gated transition observed in Transition History, the same
+// state.md (or decisions.md / progress.md) should contain at least one
+// reference to the contract that governs the transition. Absence is a WARN.
+function checkPresentationContractLog(planDir, issues) {
+  const state = readFile(join(planDir, "state.md"));
+  if (!state) return;
+  const decisions = readFile(join(planDir, "decisions.md")) || "";
+  const progress = readFile(join(planDir, "progress.md")) || "";
+  const corpus = state + "\n" + decisions + "\n" + progress;
+
+  // Gated transitions and their expected contract names. Multiple contracts
+  // possible per transition — match any.
+  const gates = [
+    { from: "PLAN", to: "EXECUTE", contracts: ["PC-PLAN"] },
+    { from: "REFLECT", to: "CLOSE", contracts: ["PC-REFLECT"] },
+    { from: "PIVOT", to: "PLAN", contracts: ["PC-PIVOT"] },
+  ];
+
+  for (const g of gates) {
+    // Detect transition occurrence — match either "FROM → TO" or "FROM -> TO" forms,
+    // anywhere in state.md (Transition History line or Last Transition).
+    const re = new RegExp(`${g.from}\\s*(?:→|->)\\s*${g.to}`);
+    if (!re.test(state)) continue;
+    // Check whether any of the expected contract names appears in corpus.
+    const found = g.contracts.some((c) => corpus.includes(c));
+    if (!found) {
+      issues.push({
+        severity: "WARN",
+        check: "presentation-contract-unlogged",
+        message: `${g.from}→${g.to} transition recorded in state.md but no ${g.contracts.join("/")} reference found in state.md/decisions.md/progress.md (best-effort signal — verify the contract was emitted to the user).`,
+      });
+    }
+  }
+}
+
 function validate(planDirName) {
   const planDir = join(plansDir, planDirName);
 
@@ -1222,6 +1268,8 @@ function validate(planDirName) {
   checkAnchorRefsValidity(planDir, planDirName, issues, cwd);
   // v2.15.0 — per-edit changelog (informational; never blocks CLOSE).
   checkChangelogFormat(planDir, issues);
+  // v2.17.0 — Presentation Contract advisory (best-effort, WARN-only).
+  checkPresentationContractLog(planDir, issues);
 
   // Report
   const errors = issues.filter((i) => i.severity === "ERROR");
@@ -1288,6 +1336,10 @@ Checks:
   - decisions.md Anchor-Refs required when matching anchor exists in source
     (ERROR post-v2.14.0, WARN otherwise; gated by state.md INIT timestamp)
   - decisions.md Anchor-Refs validity (WARN if file missing or anchor not found)
+  - Presentation Contract advisory (WARN [presentation-contract-unlogged] when
+    a gated transition PLAN→EXECUTE / REFLECT→CLOSE / PIVOT→PLAN is recorded
+    in state.md without any PC-PLAN / PC-REFLECT / PC-PIVOT reference in
+    state.md / decisions.md / progress.md — best-effort signal)
 
 Exit codes:
   0 = pass (no errors, warnings are OK)
