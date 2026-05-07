@@ -50,6 +50,8 @@ Update on every state transition.
 Living plan. **Rewritten** each iteration (old plans preserved via `decisions.md`).
 Only recommended approach. Rejected alternatives → `decisions.md`.
 
+**Goal** is mandatory — single sentence (or short paragraph) stating the outcome the plan exists to produce. Created by bootstrap from the `new "goal"` argument; refined during PLAN.
+**Context** is mandatory — short pointer paragraph linking to relevant findings, prior decisions, and abandoned approaches (e.g. "See findings.md for X. See decisions.md for why approach v1 was abandoned."). Keeps the plan body focused on the chosen approach rather than re-explaining background.
 **Problem Statement** is mandatory — expected behavior, invariants, edge cases. Can't write it clearly → go back to EXPLORE.
 **Failure Modes** table is mandatory when plan touches external dependencies or integration points. "None identified" if genuinely none (proves you checked).
 
@@ -136,6 +138,11 @@ approaches v1 (in-place migration) and v2 (dual-write) were abandoned.
 Append-only. **Never edit or delete past entries.**
 Every entry must include a **Trade-off** line: "X **at the cost of** Y".
 
+**Entry header rule**: every entry begins with `## D-NNN | PHASE | YYYY-MM-DD` where:
+- `D-NNN` is sequential per plan starting at D-001 (D-001, D-002, ..., no gaps). Each plan directory has its own counter.
+- `PHASE` is the originating state or transition (e.g. `EXPLORE → PLAN`, `REFLECT → PIVOT`, `REFLECT`, `PIVOT`).
+- `YYYY-MM-DD` is the ISO 8601 date the entry was written.
+
 ```markdown
 # Decision Log
 
@@ -149,7 +156,11 @@ Every entry must include a **Trade-off** line: "X **at the cost of** Y".
 **Context**: Approach A fails — Redis session format is coupled to cookie serializer
 **What Failed**: Cannot deserialize existing sessions with new token format
 **What Was Learned**: Session format tied to entire serialization pipeline in `lib/session/serializer.rb`
-**Root Cause**: Tight coupling between cookie format and session store
+**Root Cause Analysis**:
+1. **Immediate cause**: Redis session format uses MessagePack tied to the cookie serializer
+2. **Contributing factor**: EXPLORE didn't trace serialization path beyond storage layer
+3. **Failed defense**: No assumption check on storage/format independence; Failure Modes table didn't include serializer coupling
+4. **Prevention**: Always trace format coupling through full pipeline, not just storage endpoints
 **Complexity Assessment**:
 - Lines added in failed attempt: 34
 - New abstractions added: 1 (SessionAdapter — now deleted)
@@ -163,7 +174,11 @@ Every entry must include a **Trade-off** line: "X **at the cost of** Y".
 **Context**: Approach B works but dual-write doubles Redis memory usage
 **What Failed**: Memory spike in staging from 2GB to 4.1GB
 **What Was Learned**: Session TTLs are 30 days, so dual-write accumulates fast
-**Root Cause**: Dual-write inherently doubles storage for TTL duration
+**Root Cause Analysis**:
+1. **Immediate cause**: Dual-write inherently doubles storage for TTL duration
+2. **Contributing factor**: PLAN didn't model storage growth as a function of TTL × write rate
+3. **Failed defense**: Failure Modes covered Redis availability but not capacity; no staging memory budget check
+4. **Prevention**: For any dual-write strategy, project storage cost = retention × write rate before committing
 **Complexity Assessment**:
 - Lines added in failed attempt: 89
 - New abstractions added: 2 (DualWriter, MigrationTracker)

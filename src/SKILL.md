@@ -245,7 +245,7 @@ Institutional memory across plans. Unlike FINDINGS.md and DECISIONS.md which gro
 - **Irreversible operations** (DB migrations, external API calls, service config, non-tracked file deletion): mark step `[IRREVERSIBLE]` in `plan.md` during PLAN. Full procedure: `references/code-hygiene.md`.
 - **Surprise discovery** (behavior contradicts findings, unknown dependency, wrong assumption) → check plan.md Assumptions to identify which steps are invalidated. Note in `state.md`, finish or revert current step, transition to REFLECT. Do NOT silently update findings during EXECUTE.
 - **Falsification signal fires** (from Pre-Mortem & Falsification Signals in plan.md) → same as surprise discovery. Log which signal fired in `decisions.md`.
-- Add `# DECISION D-NNN` comments where needed (`references/decision-anchoring.md`).
+- Add `# DECISION D-NNN` comments where any of the 5 trigger conditions in `references/decision-anchoring.md` apply.
 
 #### Post-Step Gate (successful steps only — all 3 before moving on)
 1. `plan.md` — mark step `[x]`, advance marker, update complexity budget

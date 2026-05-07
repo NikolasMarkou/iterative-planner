@@ -26,7 +26,7 @@ Before writing any code:
 - ONE step at a time. Do not look ahead.
 - Commit after success: `[iter-N/step-M] description`
 - Create checkpoint before risky changes (3+ files): `checkpoints/cp-NNN-iterN.md`
-- Add `# DECISION D-NNN` comments where non-obvious choices are made
+- Add `# DECISION D-NNN` comments where any of the 5 trigger conditions in `references/decision-anchoring.md` apply
 
 ## On Failure
 - STOP immediately

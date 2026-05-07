@@ -391,6 +391,9 @@ ${crossPlanNote}
 
 ## Key Constraints
 *To be populated during EXPLORE.*
+
+## Corrections
+*Append [CORRECTED iter-N] entries here when earlier findings prove wrong. Reference the original finding file and what changed.*
 `
     );
 
@@ -424,7 +427,13 @@ ${crossPlanNote}
 | 1 | *To be populated during PLAN* | - | - | PENDING | - |
 
 ## Additional Checks
-*Optional: lint, type checks, behavioral diffs, smoke tests.*
+*Required rows below are pre-populated every REFLECT cycle. Append optional rows (lint, type checks, behavioral diffs, smoke tests) as needed.*
+
+| Check | Command/Action | Result | Details |
+|-------|----------------|--------|---------|
+| Regression | *To be populated during REFLECT (re-run previously-passing tests)* | PENDING | - |
+| Scope drift | *To be populated during REFLECT (compare state.md manifest vs plan.md Files To Modify)* | PENDING | - |
+| Diff review | *To be populated during REFLECT (review git diff for debug artifacts, TODOs, commented-out code)* | PENDING | - |
 
 ## Not Verified
 | What | Why |

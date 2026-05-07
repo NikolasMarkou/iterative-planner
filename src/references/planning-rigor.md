@@ -120,6 +120,8 @@ Track how well the plan predicted reality. Builds institutional memory about sys
 
 When REFLECT follows a failure (step failed, leash hit, surprise discovery), structured root cause analysis prevents repeating the same class of mistake.
 
+> **Canonical schema location**: `references/file-formats.md` (decisions.md section) is the single source of truth for the Root Cause Analysis block format used in `decisions.md` entries. The format below is the same 4-part block — keep them in sync.
+
 **In `decisions.md`** — as part of the REFLECT entry:
 
 ```markdown
