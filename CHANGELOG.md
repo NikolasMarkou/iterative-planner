@@ -4,6 +4,22 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.15.0] - 2026-05-07
+
+### Added
+- **Per-edit changelog ledger** (`{plan-dir}/changelog.md`) — append-only, one pipe-delimited line per file edit recording timestamp, iter/step, commit, path, op + LOC delta, blast-radius tier, optional decision-ref (`D-NNN` or `-`), and one-clause reason. Surfaces "tiny edit, big radius" outliers that plan-level Failure Modes miss. Owned by `ip-executor` (writes), read by `ip-reviewer` at REFLECT (informational only — never blocks CLOSE).
+- **`scripts/blast-radius.mjs` deterministic per-file scorer** — six heuristic signals (LOC churn, reverse-dep count, shared-path flag, public-API touch, test-coverage delta, iteration history) → tier `LOW(score)` / `MED(score)` / `HIGH(score)` / `UNKNOWN(reason)`. Pure Node.js 18+, no AST, no LLM, no external deps. Always exits 0; graceful degradation when git is unavailable, file is binary, or file is untracked.
+- **`references/blast-radius.md`** — tiers, signal definitions, scoring formula, CLI output spec, known limitations (dynamic dispatch, DI containers, generated code).
+- **`references/file-formats.md` `## changelog.md` section** — full format spec (8 fields, regex shapes, op vocabulary, append-only rules, validator WARN behavior).
+- **`bootstrap.mjs` writes empty `changelog.md`** with header on plan creation. Test coverage in `bootstrap.test.mjs` asserts the file exists with expected header text.
+- **`validate-plan.mjs` `checkChangelogFormat`** — WARN-level checks: 8-field structure, ISO-8601 timestamp, `iter-N/step-M` step, commit-or-`uncommitted`, op shape, radius shape, `D-NNN`-or-`-` decision-ref, non-empty reason. Issues are advisory only; CLOSE is never blocked on changelog format.
+
+### Changed
+- **`ip-executor.md`** — new MANDATORY "Per-Edit Changelog" section detailing post-edit append protocol with blast-radius script invocation and graceful fallbacks; on-failure step instructs `REVERT(file)` lines per reverted file.
+- **`ip-reviewer.md`** — review checklist item 9: scan changelog for HIGH-radius edits, "tiny edit big radius" outliers, missing decision-refs on HIGH edits, and REVERT line consistency with `decisions.md` failure narrative.
+- **`SKILL.md`** — Filesystem Structure tree, File Lifecycle Matrix, EXECUTE rules, Post-Step Gate (now 4 items), REFLECT Phase 1 Gate-In (now seven CORE reads), REFLECT Phase 2 step 8a, File Ownership Model, References list — all updated for changelog.md.
+- **`references/code-hygiene.md`** — On Failed Step now requires appending `REVERT(file)` lines to `changelog.md`.
+
 ## [2.14.0] - 2026-05-07
 
 ### Changed

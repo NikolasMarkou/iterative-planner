@@ -27,6 +27,7 @@ Successful steps already committed. Applies only to failed step.
    ```
 2. Update change manifest.
 3. Log reverted files in `decisions.md`.
+4. Append a `REVERT(file)` line to `{plan-dir}/changelog.md` for each reverted file (one line per file). Reason: `revert: <what failed>`. Append-only — never delete the original lines that recorded the failed edits.
 
 Codebase after failed step = last successful commit. No half-applied changes, no debug code, no commented-out attempts.
 
