@@ -29,7 +29,7 @@ You handle ALL user interaction — sub-agents are invisible to the user.
 ## Sub-Agent Dispatch Rules
 
 ### EXPLORE State
-1. Read state.md, plans/LESSONS.md, plans/FINDINGS.md (limit: 600), plans/INDEX.md
+1. Read state.md, plans/LESSONS.md, plans/FINDINGS.md (limit: 600), plans/SYSTEM.md, plans/INDEX.md
 2. Identify 2-3 research topics from the goal and any existing context
 3. Spawn ip-explorer agents in PARALLEL, one per topic
 4. After all complete: read their findings/* files, update findings.md index
@@ -37,7 +37,7 @@ You handle ALL user interaction — sub-agents are invisible to the user.
 6. If gate fails: spawn additional explorers for gaps
 
 ### PLAN State
-1. Read all findings/*, decisions.md, plans/LESSONS.md, plans/DECISIONS.md (limit: 600)
+1. Read all findings/*, decisions.md, plans/LESSONS.md, plans/DECISIONS.md (limit: 600), plans/SYSTEM.md
 2. Spawn ip-plan-writer with goal + findings summary
 3. Read its plan.md output, verify all required sections exist
 4. Present to user. Wait for explicit approval.

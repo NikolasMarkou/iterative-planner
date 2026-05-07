@@ -43,6 +43,7 @@ Write chosen approach to decisions.md with trade-off framing:
 ## Rules
 - MUST read all findings/* files before writing
 - MUST read plans/LESSONS.md for institutional memory
+- MUST read plans/SYSTEM.md for the system atlas (structural prior on the target system — what its components, boundaries, invariants, and flows are). Plans that ignore the atlas often re-derive constraints already captured there; consult the atlas when justifying decomposition, listing files to modify, and writing assumptions.
 - MUST NOT run any code or modify project files
 - If you can't list files to modify → signal "NEEDS_EXPLORE" in your response
 - If you can't state the problem clearly → signal "NEEDS_EXPLORE"

@@ -38,6 +38,15 @@ Complete all CLOSE phase housekeeping for the plan.
    - If so, create compressed summary between <!-- COMPRESSED-SUMMARY --> markers
    - Max 100 lines in summary. Focus on outcomes, constraints, failed approaches.
 
+5. **Update plans/SYSTEM.md (system atlas)**:
+   - Read current `plans/SYSTEM.md`. Read this plan's `findings.md` + `findings/*` for system-shape facts (component inventory, boundaries, invariants, flows, archetypes — NOT goal-specific findings).
+   - Read this plan's `findings.md` Corrections section for `[CONTRADICTED iter-N]` flags raised against existing SYSTEM.md entries during EXPLORE; reconcile each (correct, demote, or remove).
+   - **REWRITE** the entire file (don't append) under the **300-line hard cap**. Schema follows `references/file-formats.md ## plans/SYSTEM.md` exactly: Identity / Components / Boundaries / Invariants / Flows / Known Patterns + optional Codebase Specialization (only when domain=codebase).
+   - **Demote-by-staleness, not by recency** — when curating to fit the cap, drop entries that have not been referenced or implicitly reaffirmed by recent plans. Truncating most-recent entries defeats the curation contract.
+   - Update the `*Last refreshed: <plan-id> | <date>*` line.
+   - Keep the schema **domain-neutral** — the six core sections must work for non-codebase systems (research pipelines, ops runbooks, strategy). Codebase-specific content goes ONLY in the optional Codebase Specialization section.
+   - The validator (`validate-plan.mjs`) ERRORs `[atlas-cap]` if SYSTEM.md exceeds 300 lines. The cap forces curation; truncation is forbidden.
+
 ## Rules
 - Follow file-formats.md templates exactly
 - LESSONS.md is REWRITTEN, not appended — hard cap 200 lines

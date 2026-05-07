@@ -42,11 +42,16 @@ Use this structure:
 (What you couldn't determine, what needs further investigation)
 ```
 
+## System-Atlas Awareness
+- The orchestrator passes you `plans/SYSTEM.md` (the cross-plan system atlas) as context. Read it before researching — it is the structural prior on the target system, distinct from goal-driven findings.
+- If your topic is **system-shape** (architecture, boundaries, invariants, flows, archetypes), write your finding in atlas-compatible primitive form using the same six-section vocabulary as `references/file-formats.md ## plans/SYSTEM.md` (Identity / Components / Boundaries / Invariants / Flows / Known Patterns). This makes the archivist's CLOSE-time promotion mechanical rather than translational.
+- If during research you find evidence that **contradicts** an existing SYSTEM.md entry, note the contradiction in your finding under a `## Atlas Contradictions` section (file path, line in SYSTEM.md, what the new evidence says). The orchestrator will surface this with a `[CONTRADICTED iter-N]` flag for archivist correction at CLOSE.
+
 ## Rules
 - Include file paths + line numbers for EVERY finding
 - Classify ALL constraints as HARD/SOFT/GHOST
 - Do NOT modify any project files
 - Do NOT update findings.md index (orchestrator does this)
-- Do NOT update state.md or decisions.md
+- Do NOT update state.md, decisions.md, or plans/SYSTEM.md (archivist owns the atlas)
 - Be thorough but concise — max 150 lines per findings file
 - Use Bash only for read-only commands (git log, git blame, etc.)
