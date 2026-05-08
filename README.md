@@ -140,7 +140,7 @@ Each state embeds domain-agnostic thinking tools:
 | Framework | State | What it does |
 |-----------|-------|-------------|
 | **Constraint classification** | EXPLORE | Tag every constraint as *hard*, *soft*, or *ghost* (no longer applies). Ghost constraints unlock options nobody thought existed. |
-| **Divergent ideation** | EXPLORE → PLAN gate | Generate ≥3 candidate approaches with trade-offs in `ideation.md` before converging. Rejected candidates feed RE-PLAN's ghost-constraint scan and can be reactivated when their rejection constraint turns out to be ghost. |
+| **Divergent ideation** | EXPLORE → PLAN gate | Generate ≥3 candidate approaches with trade-offs in `ideation.md` before converging. When a constraint's classification (hard/soft/ghost) would flip a candidate's viability and is uncertain, **ask the user before generating** — don't guess. Rejected candidates feed RE-PLAN's ghost-constraint scan and can be reactivated when their rejection constraint turns out to be ghost. |
 | **Exploration confidence** | EXPLORE → PLAN | Self-assess scope and risk visibility; solutions are materialized in `ideation.md`. "Shallow"/"blind" = keep exploring. |
 | **Problem decomposition** | PLAN | Understand the whole, find natural boundaries, minimize dependencies, start with the riskiest part. |
 | **Assumption tracking** | PLAN | Every assumption traced to a finding, linked to dependent steps. When one breaks, you know what's invalidated. |
