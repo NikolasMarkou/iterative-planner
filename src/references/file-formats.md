@@ -239,6 +239,61 @@ authenticate! → SessionStore#find (line 45) → RedisStore#get (line 12) → R
 - Upgrading rack-session requires Rails 7.1+ (currently on 7.0.4)
 ```
 
+## ideation.md
+
+Written at end of EXPLORE, before transition to PLAN. Materializes the Solutions Exploration Confidence dimension as a written artifact: candidate approaches, the chosen one, and one-line rationales for the rejected ones. Read during PLAN gate check and RE-PLAN ghost-constraint scan.
+
+**Required**: ≥3 candidates with full fields, OR 1 candidate plus a populated Single-Path Escape Hatch section. Plus a Selection. Validator enforces this when state ≥ PLAN.
+
+```markdown
+# Ideation
+*Candidate approaches considered before locking the plan. Written at end of EXPLORE.*
+
+## Candidates
+
+### C-1 | Stateless tokens with cookie fallback
+- **Sketch**: Issue JWTs on login. Validate stateless on every request. Keep cookie path for legacy clients during migration.
+- **Hard-constraint check**: Satisfies Redis-availability invariant (findings/auth-system.md). Compatible with rack-session pin (findings/dependencies.md).
+- **Trade-off**: Stateless validation and zero storage growth **at the cost of** maintaining two auth paths during migration.
+- **Top risk**: Cookie fallback path picks up undocumented SSO coupling (findings/auth-system.md L67).
+
+### C-2 | Dual-write with gradual cutover
+- **Sketch**: Write sessions to both old and new stores. Read from new, fall back to old. Cut over once all sessions rotate.
+- **Hard-constraint check**: Satisfies zero-downtime invariant. Violates implicit "no storage spike" preference (30-day TTLs double Redis).
+- **Trade-off**: Safe rollback **at the cost of** doubled Redis memory for the TTL window.
+- **Top risk**: Memory budget breached before TTL window closes.
+
+### C-3 | In-place format migration
+- **Sketch**: Rewrite the serializer to emit the new format. Backfill on read.
+- **Hard-constraint check**: Violates SessionSerializer-shared-with-API constraint (findings/auth-system.md L34).
+- **Trade-off**: Single code path **at the cost of** changing API auth simultaneously.
+- **Top risk**: Coupled changes to API auth surface; blast radius unknown.
+
+## Selection
+- **Picked**: C-1
+- **Criteria**: Smallest blast radius; eliminates storage growth; compatible with rack-session pin without Rails upgrade.
+- **Confidence**: medium — SSO coupling on fallback path is the open risk; bounded by step-3 scope.
+
+## Rejected
+- **C-2**: 30-day TTLs make dual-write storage cost prohibitive — confirmed by past plan D-002, D-003 (see plans/DECISIONS.md).
+- **C-3**: SessionSerializer is shared with API auth (findings/auth-system.md) — too wide a blast radius for this iteration.
+
+## Single-Path Escape Hatch (use only if applicable)
+*Use this section only when no design alternatives exist (e.g., mechanical rename, deterministic migration). Otherwise leave the heading absent or write "N/A".*
+
+- **Why no alternatives**: <e.g., "Mechanical rename of `getCwd` → `getCurrentWorkingDirectory` across 15 files; no design surface.">
+- **Falsification**: <one observable trigger that would invalidate the single-path assumption — e.g., "Any caller depends on the old name as a string identifier.">
+```
+
+**Rules**:
+- **Candidate count**: ≥3 with full fields OR 1 + Single-Path Escape Hatch. Two candidates means you stopped one short — keep going or invoke the escape hatch.
+- **Hard-constraint check** must reference findings (file path or `findings/<topic>.md`) — not vibes.
+- **Trade-off** must use the "X **at the cost of** Y" form (same as decisions.md).
+- **Selection criteria** explain *why this won*, not just *what it is*. The chosen candidate becomes D-001 in `decisions.md` during PLAN.
+- **Rejected one-liners** are short on purpose — they feed RE-PLAN's ghost-constraint scan. If the constraint that rejected C-X turns out to be a ghost, RE-PLAN can resurrect it.
+- **Reactivation marker**: if RE-PLAN promotes a rejected candidate, add `[REACTIVATED iter-N]` next to its Rejected entry and write a new Selection (don't rewrite the original — append).
+- **Not consolidated**: ideation.md stays plan-local. It is not merged into `plans/FINDINGS.md` or `plans/DECISIONS.md` on close.
+
 ## progress.md
 
 Flat checklist. Updated in: PLAN (populate Remaining), EXECUTE (move items), REFLECT (mark failed/blocked), RE-PLAN (annotate pivot).

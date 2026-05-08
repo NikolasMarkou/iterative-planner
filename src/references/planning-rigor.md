@@ -2,6 +2,20 @@
 
 Techniques for stronger plans: surface assumptions, anticipate failure, and calibrate confidence. Domain-agnostic — applies to code, research, strategy, operations, and any structured problem-solving.
 
+## Ideation Discipline
+
+Divergence before convergence. The most common failure mode in EXPLORE → PLAN is "first idea wins by default" — the first viable approach gets locked in without a second one ever being articulated, and any trade-offs are invisible because there's nothing to trade against.
+
+The **Ideation Gate** (last action of EXPLORE; see SKILL.md EXPLORE section) materializes the Solutions dimension as a written artifact in `ideation.md`. Required: ≥3 candidates with trade-offs, OR 1 candidate plus a populated Single-Path Escape Hatch. Plus a Selection. Validated by `validate-plan.mjs` whenever state ≥ PLAN.
+
+**Why three, not two.** Two candidates degenerates into "the obvious choice and a strawman." A third candidate forces genuine search — what if you couldn't pick either of the first two? The third option is where ghost constraints get exposed.
+
+**Why a written artifact.** The Solutions Exploration Confidence dimension (below) used to be a self-assessment in the transition log. Self-assessments are vibes. `ideation.md` is evidence: a future RE-PLAN can read it, see what was rejected and why, and resurrect a candidate if its rejection constraint turns out to be a ghost.
+
+**Failure mode it prevents**: locking the foundational approach on iter-1 unexamined, then layering fixes on top of it for 4 iterations until the Nuclear Option triggers.
+
+**Single-Path Escape Hatch**: not every task has design alternatives. Mechanical renames, deterministic migrations, idempotent backfills — these are genuinely single-path. The escape hatch lets you skip the 3-candidate requirement, but you must state *why* there are no alternatives and *one falsification trigger* that would invalidate the single-path assumption (e.g., "any caller depends on the old name as a string identifier"). The trigger is checked during EXECUTE — if it fires, you've discovered the design surface you missed.
+
 ## Assumption Tracking
 
 Plans depend on assumptions discovered during EXPLORE. Make them explicit so when one breaks, you know which steps are invalidated.
@@ -70,17 +84,17 @@ Before transitioning to PLAN, self-assess in the EXPLORE → PLAN transition log
 | Dimension | Levels |
 |-----------|--------|
 | **Problem scope** | shallow (key mechanics unclear) / adequate (can state problem, constraints, edge cases) / deep (traced causal chains, know internal dynamics) |
-| **Solution space** | narrow (one obvious approach) / open (multiple approaches identified) / constrained (few options, hard limits) |
+| **Solution space** | Materialized in `ideation.md` (see Ideation Discipline above and SKILL.md EXPLORE Ideation Gate). "Adequate" = ≥3 candidates with documented trade-offs, OR 1 candidate + populated Single-Path Escape Hatch, AND a Selection. |
 | **Risk visibility** | blind (unknown unknowns) / partial (some risks identified) / clear (risks mapped, unknowns located) |
 
-**Gate**: All three must be at least "adequate" to transition. Any "shallow" or "blind" → keep exploring. This is a mental check recorded in the transition log, not a separate file section.
+**Gate**: Problem scope and Risk visibility must be at least "adequate"; Solution space is enforced by the Ideation Gate (validated by `validate-plan.mjs`). Any "shallow" or "blind" on the other two → keep exploring. Record scope and risk levels in the transition log; ideation.md is the artifact for solutions.
 
 **Calibration cues by dimension**:
 
 | Dimension | "Adequate" feels like... | "Shallow/Blind" feels like... |
 |-----------|-------------------------|-------------------------------|
 | Scope | You can explain the problem to someone unfamiliar and answer their follow-ups | You'd struggle to explain why the problem exists or what constraints matter |
-| Solutions | You can name at least two viable approaches and articulate trade-offs | You have one idea and haven't considered alternatives |
+| Solutions | `ideation.md` has ≥3 candidates with trade-offs (or 1 + escape hatch) and a Selection — written, not just imagined | You have one idea, haven't written candidates down, or stopped at two candidates ("the real one and a strawman") |
 | Risks | You can list what could go wrong and where uncertainty clusters | You feel confident but can't name specific risks — that's the danger signal |
 
 ## Prediction Accuracy
@@ -123,6 +137,7 @@ Ghost constraints = past constraints baked into the current approach that no lon
 1. **Is the constraint that led to the failed approach still valid?** Example: "We assumed we couldn't change the vendor because of a contract — but the contract was renegotiated last quarter."
 2. **Are we inheriting environmental constraints that are actually preferences?** Example: "Everyone uses tool X, so we assumed we must use tool X — but the actual requirement is 'reliable data processing,' not a specific tool."
 3. **Did an early finding become a ghost?** Re-check findings from early EXPLORE against current understanding. Early findings are most likely to become stale.
+4. **Re-read `ideation.md` Rejected list.** Each one-line rejection cites a constraint. If any of those constraints are now ghosts, the rejected candidate may be viable. Mark the entry `[REACTIVATED iter-N]` in `ideation.md` and append a new Selection — don't rewrite the original rationale.
 
 **Ghost constraint indicators**:
 - "We've always done it this way" without a traceable reason

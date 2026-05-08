@@ -46,7 +46,7 @@ stateDiagram-v2
 
 | From → To | Trigger |
 |-----------|---------|
-| EXPLORE → PLAN | Sufficient context. ≥3 indexed findings in `findings.md`. |
+| EXPLORE → PLAN | Sufficient context. ≥3 indexed findings in `findings.md`. **Ideation Gate**: `ideation.md` has ≥3 candidates with trade-offs (or 1 + Single-Path Escape Hatch) AND a Selection. |
 | PLAN → EXPLORE | Can't state problem, can't list files, or insufficient findings. |
 | PLAN → PLAN | User rejects plan. Revise and re-present. |
 | PLAN → EXECUTE | User explicitly approves. |
@@ -74,7 +74,7 @@ These files are active working memory. Re-read during the conversation, not just
 | Before any EXECUTE step | `state.md`, `plan.md`, `progress.md` | Confirm step, manifest, fix attempts, progress sync |
 | Before writing a fix | `decisions.md` | Don't repeat failed approaches. Check 3-strike. |
 | Before modifying `DECISION`-commented code | Referenced `decisions.md` entry | Understand why before changing |
-| Before PLAN or RE-PLAN | `decisions.md`, `findings.md`, `findings/*`, `plans/LESSONS.md` | Ground plan in known facts + institutional memory |
+| Before PLAN or RE-PLAN | `decisions.md`, `findings.md`, `findings/*`, `ideation.md`, `plans/LESSONS.md` | Ground plan in known facts + institutional memory; don't reinvent rejected candidates |
 | Before any REFLECT | `plan.md` (criteria), `progress.md`, `verification.md` | Compare against written criteria, not vibes |
 | Every 10 tool calls | `state.md` | Reorient. Right step? Scope crept? |
 
@@ -113,6 +113,7 @@ plans/
     ├── decisions.md               # Append-only decision/pivot log
     ├── findings.md                # Summary + index of findings
     ├── findings/                  # Detailed finding files (subagents write here)
+    ├── ideation.md                # Candidate approaches + selection (written end of EXPLORE)
     ├── progress.md                # Done vs remaining
     ├── verification.md            # Verification results per REFLECT cycle
     ├── checkpoints/               # Snapshots before risky changes
@@ -135,6 +136,7 @@ R = read only | W = update (implicit read + write) | R+W = distinct read and wri
 | decisions.md | — | R+W | R | R+W | R+W | R |
 | findings.md | W | R | — | R | R+W | R |
 | findings/* | W | R | — | R | R+W | R |
+| ideation.md | W | R | — | — | R+W | R |
 | progress.md | — | W | R+W | R+W | W | R |
 | verification.md | — | W | W | W | R | R |
 | checkpoints/* | — | — | W | R | R | — |
@@ -211,12 +213,20 @@ Institutional memory across plans. Unlike FINDINGS.md and DECISIONS.md which gro
   - **Soft constraint**: preferences, conventions, team familiarity — negotiable if trade-off is explicit.
   - **Ghost constraint**: past constraints baked into current approach that **no longer apply**. Finding and removing ghost constraints unlocks options nobody thought were available.
   Separate constraints from preferences — be honest about which is which. Can't distinguish them → keep exploring.
+- **Ideation Gate** *(CORE — applies to iter-1)* — last action of EXPLORE before the transition log. Materializes the Solutions Exploration Confidence dimension as a written artifact. Read then write `ideation.md` per `references/file-formats.md`:
+  - **≥3 candidate approaches** (`### C-1`, `### C-2`, `### C-3`, …), each with: Sketch (2-3 sentences), Hard-constraint check (refs `findings.md`/`findings/*`), Trade-off in **"X at the cost of Y"** form, Top risk.
+  - **Selection** — picked candidate, criteria used, confidence (high/medium/low + one-line reason).
+  - **Rejected** — one-line rationale per non-picked candidate. These feed RE-PLAN's ghost-constraint scan; if a rejection constraint turns out to be ghost, the rejected candidate can be reactivated.
+  - **Single-Path Escape Hatch** — if the task genuinely has no design alternatives (mechanical rename, deterministic migration), list 1 candidate and populate the escape hatch with: why no alternatives, one falsification trigger that would invalidate the single-path assumption. Two candidates is not enough — either generate a third or invoke the escape hatch.
+  - **Surface to user**: present the candidate set + selection before the EXPLORE → PLAN transition. The user can redirect to a rejected candidate or push for more options.
+  - Picked candidate becomes the seed for **D-001** in `decisions.md` during PLAN (the chosen approach + Trade-off, with rejected candidates referenced).
+  - Validator (`validate-plan.mjs`) ERRORs at PLAN/EXECUTE/REFLECT/RE-PLAN if ideation.md is missing, lacks ≥3 candidates (without escape hatch), or has no Selection.
 - Use **Task subagents** to parallelize research. All subagent output → `{plan-dir}/findings/` files. Never rely on context-only results. **Main agent** updates `findings.md` index after subagents write — subagents don't touch the index. **Naming**: `findings/{topic-slug}.md` (kebab-case, descriptive — e.g. `auth-system.md`, `test-coverage.md`).
 - Use "think hard" / "ultrathink" for complex analysis.
 - REFLECT → EXPLORE loops: append to existing findings, don't overwrite. Mark corrections with `[CORRECTED iter-N]`.
 
 ### PLAN
-- **Gate check**: read `state.md`, `plan.md`, `findings.md`, `findings/*`, `decisions.md`, `progress.md`, `verification.md`, `plans/FINDINGS.md` (limit: 600), `plans/DECISIONS.md` (limit: 600), `plans/LESSONS.md` before writing anything. If not read → read now. No exceptions. If `findings.md` has <3 indexed findings → go back to EXPLORE.
+- **Gate check**: read `state.md`, `plan.md`, `findings.md`, `findings/*`, `ideation.md`, `decisions.md`, `progress.md`, `verification.md`, `plans/FINDINGS.md` (limit: 600), `plans/DECISIONS.md` (limit: 600), `plans/LESSONS.md` before writing anything. If not read → read now. No exceptions. If `findings.md` has <3 indexed findings → go back to EXPLORE. If `ideation.md` lacks a Selection or has <3 candidates (and no Single-Path Escape Hatch) → go back to EXPLORE Ideation Gate.
 - **Problem Statement first** — before designing steps, write in `plan.md`: (1) what behavior is expected, (2) invariants — what must always be true, (3) edge cases at boundaries. Can't state the problem clearly → go back to EXPLORE.
 - Write `plan.md`: problem statement, steps (with risk/dependency annotations), assumptions, failure modes, pre-mortem & falsification signals, success criteria, verification strategy, complexity budget.
 - **Decomposition** — when breaking the goal into steps:
@@ -229,7 +239,7 @@ Institutional memory across plans. Unlike FINDINGS.md and DECISIONS.md which gro
 - **Assumptions** — bullet list in plan.md: what you assume, which finding grounds it, which steps depend on it. On surprise discovery during EXECUTE → check this list first. See `references/planning-rigor.md`.
 - **Failure Mode Analysis** — for each external dependency or integration point in the plan, answer: what if slow? returns garbage? is down? What's the blast radius? Write to plan.md `Failure Modes` section. No dependencies → write "None identified" (proves you checked).
 - **Pre-Mortem & Falsification Signals** — assume the plan failed. 2-3 scenarios with concrete STOP IF triggers. If a trigger fires during EXECUTE → stop and REFLECT. Covers approach validity (distinct from Failure Modes which cover dependencies, and Autonomy Leash which covers step failure). See `references/planning-rigor.md`.
-- Write `decisions.md`: log chosen approach + why (mandatory even for first plan). **Trade-off rule** — phrase every decision as **"X at the cost of Y"**. Never recommend without stating what it costs.
+- Write `decisions.md`: log chosen approach + why (mandatory even for first plan). The first PLAN entry (D-001) carries forward the picked candidate from `ideation.md` Selection — same Trade-off, with a brief reference to the rejected candidates. **Trade-off rule** — phrase every decision as **"X at the cost of Y"**. Never recommend without stating what it costs.
 - Read then write `verification.md` with initial template (criteria table populated from success criteria, methods from verification strategy, results pending).
 - Read then write `state.md` + `progress.md`.
 - List **every file** to modify/create. Can't list them → go back to EXPLORE.
@@ -284,9 +294,9 @@ On **failed step**: skip gate. Follow Autonomy Leash (revert-first, 2 attempts m
 | Unknowns need investigation, or findings contradicted | → EXPLORE (update findings first) |
 
 ### RE-PLAN
-- Read `decisions.md`, `findings.md`, relevant `findings/*`, `plans/LESSONS.md`.
+- Read `decisions.md`, `findings.md`, relevant `findings/*`, `ideation.md`, `plans/LESSONS.md`.
 - Read `checkpoints/*` — decide keep vs revert. Default: if unsure, revert to latest checkpoint. See `references/code-hygiene.md` for full decision framework.
-- **Ghost constraint scan** *(EXTENDED — skip for iteration 1)* — before designing a new approach, ask: (1) Is the constraint that led to the failed approach still valid? (2) Are we inheriting environmental constraints that are actually preferences? (3) Did an early finding become stale? Log ghost constraints found in `decisions.md`. See `references/planning-rigor.md`.
+- **Ghost constraint scan** *(EXTENDED — skip for iteration 1)* — before designing a new approach, ask: (1) Is the constraint that led to the failed approach still valid? (2) Are we inheriting environmental constraints that are actually preferences? (3) Did an early finding become stale? (4) Re-read `ideation.md` Rejected list — was a viable candidate rejected against a constraint that turned out to be ghost? If so, mark the entry `[REACTIVATED iter-N]` in `ideation.md` and append a new Selection rationale (don't rewrite the original). Log ghost constraints found in `decisions.md`. See `references/planning-rigor.md`.
 - If earlier findings proved wrong or incomplete → update `findings.md` + `findings/*` with corrections. Mark corrections: `[CORRECTED iter-N]` + what changed and why. Append, don't delete original text.
 - Write `decisions.md`: log pivot + mandatory Complexity Assessment.
 - Write `state.md` + `progress.md` (mark failed items, note pivot).

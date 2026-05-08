@@ -390,6 +390,34 @@ ${crossPlanNote}
     );
 
     writeFileSync(
+      join(planDir, "ideation.md"),
+      `# Ideation
+*Candidate approaches considered before locking the plan. Written at end of EXPLORE — before transition to PLAN.*
+
+## Candidates
+*To be populated at end of EXPLORE. Required: ≥3 candidates with full fields, OR 1 candidate plus a populated Single-Path Escape Hatch section below.*
+
+*Each candidate format:*
+*### C-N | <short name>*
+*- **Sketch**: <2-3 sentences>*
+*- **Hard-constraint check**: <which constraints from findings.md it satisfies / violates>*
+*- **Trade-off**: <X> at the cost of <Y>*
+*- **Top risk**: <one sentence>*
+
+## Selection
+*To be populated at end of EXPLORE. Picked candidate, criteria used, confidence.*
+
+## Rejected
+*One-line rejection reason per non-picked candidate. These feed RE-PLAN's ghost-constraint scan.*
+
+## Single-Path Escape Hatch (use only if applicable)
+*Use only when no design alternatives exist (mechanical rename, deterministic migration). Otherwise leave empty or write "N/A".*
+- **Why no alternatives**: -
+- **Falsification**: -
+`
+    );
+
+    writeFileSync(
       join(planDir, "progress.md"),
       `# Progress
 

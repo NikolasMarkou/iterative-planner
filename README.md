@@ -1,7 +1,7 @@
 # Iterative Planner
 
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Skill](https://img.shields.io/badge/Skill-v2.9.0-green.svg)](CHANGELOG.md)
+[![Skill](https://img.shields.io/badge/Skill-v2.10.0-green.svg)](CHANGELOG.md)
 [![Sponsored by Electi](https://img.shields.io/badge/Sponsored%20by-Electi-red.svg)](https://www.electiconsulting.com)
 
 **Complex tasks break AI agents. This skill fixes that.**
@@ -85,6 +85,7 @@ plans/
     ├── decisions.md            # Append-only log of every decision and pivot
     ├── findings.md             # Index of discoveries (corrected when wrong)
     ├── findings/               # Detailed research files
+    ├── ideation.md             # Candidate approaches + selection (EXPLORE → PLAN gate)
     ├── progress.md             # Done vs remaining
     ├── verification.md         # Verification results per REFLECT cycle
     ├── checkpoints/            # Snapshots before risky changes
@@ -139,7 +140,8 @@ Each state embeds domain-agnostic thinking tools:
 | Framework | State | What it does |
 |-----------|-------|-------------|
 | **Constraint classification** | EXPLORE | Tag every constraint as *hard*, *soft*, or *ghost* (no longer applies). Ghost constraints unlock options nobody thought existed. |
-| **Exploration confidence** | EXPLORE → PLAN | Self-assess scope, solution space, risk visibility. "Shallow" on any = keep exploring. |
+| **Divergent ideation** | EXPLORE → PLAN gate | Generate ≥3 candidate approaches with trade-offs in `ideation.md` before converging. Rejected candidates feed RE-PLAN's ghost-constraint scan and can be reactivated when their rejection constraint turns out to be ghost. |
+| **Exploration confidence** | EXPLORE → PLAN | Self-assess scope and risk visibility; solutions are materialized in `ideation.md`. "Shallow"/"blind" = keep exploring. |
 | **Problem decomposition** | PLAN | Understand the whole, find natural boundaries, minimize dependencies, start with the riskiest part. |
 | **Assumption tracking** | PLAN | Every assumption traced to a finding, linked to dependent steps. When one breaks, you know what's invalidated. |
 | **Pre-mortem & falsification** | PLAN | Assume the plan failed -- why? Extract concrete STOP IF triggers. Prevents confirmation bias. |

@@ -4,6 +4,24 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.10.0] - 2026-05-08
+
+### Added
+- **Ideation Gate at EXPLORE → PLAN** — new CORE sub-step at the end of EXPLORE materializes the Solutions Exploration Confidence dimension as a written artifact (`ideation.md`) instead of a self-assessment. Required: ≥3 candidate approaches with hard-constraint check, "X at the cost of Y" trade-off, and top risk; plus a Selection (picked candidate, criteria, confidence); plus one-line rejection rationales. Single-Path Escape Hatch covers genuinely single-path tasks (mechanical renames, deterministic migrations) — 1 candidate is permitted if "why no alternatives" + a falsification trigger are populated.
+- **`ideation.md` artifact** — new per-plan file. Created by `bootstrap.mjs new` with a stub template. Read during PLAN gate check and RE-PLAN ghost-constraint scan. Not merged into consolidated `plans/FINDINGS.md` or `plans/DECISIONS.md` on close — stays plan-local.
+- **`validate-plan.mjs` ideation check** — new check enforces the gate when state ≥ PLAN: `ideation.md` exists, has a `## Candidates` section with ≥3 `### C-N` headings (or a populated Single-Path Escape Hatch), and a non-placeholder `## Selection`. ERRORs on miss; no-op during EXPLORE.
+- **`ideation.md` row in File Lifecycle Matrix** — W in EXPLORE, R in PLAN, R+W in RE-PLAN (for `[REACTIVATED iter-N]` markers when a rejected candidate becomes viable after a ghost constraint is found).
+- **Ideation Discipline section in `planning-rigor.md`** — motivates divergence-before-convergence; explains why three candidates (not two), why a written artifact, and how the escape hatch prevents friction on single-path tasks.
+- **12 new tests** in `bootstrap.test.mjs` — bootstrap creates ideation.md, validator no-op in EXPLORE, ERROR on missing/missing-Candidates/few-candidates/empty-Selection at PLAN, passes with 3 candidates, passes with escape hatch, close succeeds, ideation not merged on close. 109 tests total (was 97).
+
+### Changed
+- **EXPLORE → PLAN transition rule** in SKILL.md now requires the Ideation Gate in addition to the ≥3 findings minimum.
+- **PLAN gate check** now reads `ideation.md` alongside the other plan files. Insufficient candidates or missing Selection → back to EXPLORE.
+- **PLAN decisions.md D-001** is now the carried-forward Selection from `ideation.md` (same Trade-off, with rejected candidates referenced).
+- **RE-PLAN ghost-constraint scan** now includes a 4th question: re-read `ideation.md` Rejected list for candidates rejected against constraints that became ghosts.
+- **Solutions Exploration Confidence dimension** in `planning-rigor.md` demoted to point at `ideation.md` — the dimension is now materialized as a written artifact rather than a self-assessment.
+- **Mandatory Re-reads** table now includes `ideation.md` in the "Before PLAN or RE-PLAN" row.
+
 ## [2.9.0] - 2026-03-06
 
 ### Fixed

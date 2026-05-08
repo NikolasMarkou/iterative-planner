@@ -23,7 +23,7 @@ iterative-planner/
     ├── SKILL.md                      # Core protocol (state machine, rules) - the main instruction set
     ├── scripts/
     │   ├── bootstrap.mjs             # Initializes plans/plan_YYYY-MM-DD_XXXXXXXX/ directory (Node.js 18+)
-    │   ├── bootstrap.test.mjs        # Test suite (node:test, 97 tests)
+    │   ├── bootstrap.test.mjs        # Test suite (node:test, 109 tests)
     │   └── validate-plan.mjs         # Protocol compliance validator (Node.js 18+)
     └── references/                   # Knowledge base documents
         ├── complexity-control.md     # Anti-complexity protocol (revert-first, 3-strike, nuclear option)
@@ -65,7 +65,8 @@ Complete spec in **src/SKILL.md**. Key sections:
 - **Complexity Control**: src/SKILL.md "Complexity Control" section + `src/references/complexity-control.md` (6 Simplification Checks including essential vs accidental complexity)
 - **Code Hygiene**: src/SKILL.md "Code Hygiene" section + `src/references/code-hygiene.md`
 - **Decision Anchoring**: src/SKILL.md "Decision Anchoring" section + `src/references/decision-anchoring.md`
-- **Planning Rigor**: src/SKILL.md PLAN/EXPLORE/REFLECT/RE-PLAN sections + `src/references/planning-rigor.md` (assumptions, pre-mortem, falsification signals, exploration confidence, prediction accuracy, ghost constraints, decomposition)
+- **Planning Rigor**: src/SKILL.md PLAN/EXPLORE/REFLECT/RE-PLAN sections + `src/references/planning-rigor.md` (ideation discipline, assumptions, pre-mortem, falsification signals, exploration confidence, prediction accuracy, ghost constraints, decomposition)
+- **Ideation Gate**: src/SKILL.md EXPLORE Ideation Gate sub-step + `src/references/file-formats.md` (`ideation.md` template) + `src/references/planning-rigor.md` Ideation Discipline section
 - **Git Integration**: src/SKILL.md "Git Integration" section
 
 Do not duplicate protocol content here. Read src/SKILL.md directly.
@@ -138,6 +139,7 @@ make help                    # Show available targets
 - [ ] `plans/INDEX.md` created by bootstrap and updated on close
 - [ ] `lessons_snapshot.md` created in plan directory on close
 - [ ] `src/scripts/validate-plan.mjs` passes syntax check
+- [ ] `ideation.md` referenced in SKILL.md (EXPLORE Ideation Gate, PLAN gate check, RE-PLAN ghost-constraint scan, File Lifecycle Matrix, Filesystem Structure tree, Mandatory Re-reads), templated in `src/references/file-formats.md`, created by `bootstrap.mjs`, and enforced by `validate-plan.mjs` at state ≥ PLAN
 
 ## Updating Local Skill
 

@@ -186,6 +186,60 @@ function checkFindings(planDir, issues) {
   }
 }
 
+function checkIdeation(planDir, issues) {
+  const state = readFile(join(planDir, "state.md"));
+  const currentState = (extractField(state, /^# Current State:\s*(.+)$/m) || "").toUpperCase();
+  // Only enforce when state has advanced past EXPLORE — the gate fires at EXPLORE → PLAN.
+  // Skip on CLOSE: closed plans created before this protocol version may legitimately lack ideation.md.
+  const enforce = ["PLAN", "EXECUTE", "REFLECT", "RE-PLAN"].includes(currentState);
+  if (!enforce) return;
+
+  const ideationPath = join(planDir, "ideation.md");
+  if (!existsSync(ideationPath)) {
+    issues.push({ severity: "ERROR", check: "ideation", message: "ideation.md missing — required by EXPLORE → PLAN gate (run EXPLORE Ideation step before transitioning)" });
+    return;
+  }
+
+  const ideation = readFile(ideationPath);
+  if (!ideation) return;
+
+  const candidatesSection = extractSection(ideation, "Candidates");
+  const selectionSection = extractSection(ideation, "Selection");
+  const escapeSection = extractSection(ideation, "Single-Path Escape Hatch (use only if applicable)");
+
+  if (candidatesSection === null) {
+    issues.push({ severity: "ERROR", check: "ideation", message: "ideation.md missing ## Candidates section" });
+  }
+  if (selectionSection === null) {
+    issues.push({ severity: "ERROR", check: "ideation", message: "ideation.md missing ## Selection section" });
+  } else if (isPlaceholder(selectionSection)) {
+    issues.push({ severity: "ERROR", check: "ideation", message: "ideation.md ## Selection section is empty/placeholder — pick a candidate before transitioning to PLAN" });
+  }
+
+  // Count ### C-N candidate headings inside the Candidates section
+  let candidateCount = 0;
+  if (candidatesSection) {
+    const matches = candidatesSection.match(/^### C-\d+/gm);
+    candidateCount = matches ? matches.length : 0;
+  }
+
+  // Determine if escape hatch is genuinely populated (not the bootstrap placeholder)
+  const escapeHatchPopulated = !!(
+    escapeSection &&
+    !isPlaceholder(escapeSection) &&
+    /-\s*\*\*Why no alternatives\*\*:\s*[^\s-]/.test(escapeSection) &&
+    !/^N\/A$/im.test(escapeSection.trim())
+  );
+
+  if (candidateCount < 3 && !escapeHatchPopulated) {
+    issues.push({
+      severity: "ERROR",
+      check: "ideation",
+      message: `ideation.md has ${candidateCount} candidate(s) — minimum 3 required, OR populate Single-Path Escape Hatch with a "Why no alternatives" rationale`,
+    });
+  }
+}
+
 function checkCrossFileConsistency(planDir, issues) {
   const state = readFile(join(planDir, "state.md"));
   const plan = readFile(join(planDir, "plan.md"));
@@ -256,6 +310,7 @@ function validate(planDirName) {
   checkStateTransitions(planDir, issues);
   checkPlanSections(planDir, issues);
   checkFindings(planDir, issues);
+  checkIdeation(planDir, issues);
   checkCrossFileConsistency(planDir, issues);
   checkConsolidatedFiles(issues);
 
@@ -300,6 +355,7 @@ Checks:
   - State transition validity
   - Mandatory plan.md sections
   - Findings count (≥3 before PLAN)
+  - Ideation gate (≥3 candidates or escape hatch + Selection, when state ≥ PLAN)
   - Cross-file consistency (state/plan/progress/verification)
   - Consolidated files existence
 

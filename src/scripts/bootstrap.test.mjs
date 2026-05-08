@@ -136,7 +136,7 @@ describe("bootstrap.mjs", () => {
 
       // All expected files exist
       const base = join(dir, "plans", planDir);
-      for (const f of ["state.md", "plan.md", "decisions.md", "findings.md", "progress.md", "verification.md"]) {
+      for (const f of ["state.md", "plan.md", "decisions.md", "findings.md", "ideation.md", "progress.md", "verification.md"]) {
         assert.ok(existsSync(join(base, f)), `${f} should exist`);
       }
       // Subdirectories
@@ -1393,6 +1393,11 @@ describe("bootstrap.mjs", () => {
       const dir = getTempDir();
       run(dir, "new", "section test");
       const planDir = getPointer(dir);
+      // Populate ideation.md so the ideation gate doesn't ERROR — we want to isolate plan.md placeholder warnings
+      writeFileSync(
+        join(dir, "plans", planDir, "ideation.md"),
+        "# Ideation\n\n## Candidates\n\n### C-1 | A\n- **Sketch**: a\n\n### C-2 | B\n- **Sketch**: b\n\n### C-3 | C\n- **Sketch**: c\n\n## Selection\n- **Picked**: C-1\n"
+      );
       // Set state to EXECUTE
       const statePath = join(dir, "plans", planDir, "state.md");
       const state = readFileSync(statePath, "utf-8");
@@ -1561,6 +1566,160 @@ describe("bootstrap.mjs", () => {
       const dir = getTempDir();
       const r = run(dir, "new", "test");
       assert.ok(r.stdout.includes("LESSONS.md"), "new output should mention LESSONS.md");
+    });
+  });
+
+  describe("ideation.md", () => {
+    const VALIDATE = resolve(import.meta.dirname, "validate-plan.mjs");
+
+    function runValidate(cwd, ...args) {
+      try {
+        const result = execFileSync("node", [VALIDATE, ...args], {
+          cwd,
+          encoding: "utf-8",
+          timeout: 15000,
+          stdio: ["pipe", "pipe", "pipe"],
+        });
+        return { stdout: result, stderr: "", exitCode: 0 };
+      } catch (err) {
+        return { stdout: err.stdout || "", stderr: err.stderr || "", exitCode: err.status ?? 1 };
+      }
+    }
+
+    function setState(cwd, planDir, newState) {
+      const statePath = join(cwd, "plans", planDir, "state.md");
+      const state = readFileSync(statePath, "utf-8");
+      writeFileSync(statePath, state.replace(/# Current State: \w+/, `# Current State: ${newState}`));
+    }
+
+    it("bootstrap creates ideation.md with expected sections", () => {
+      const dir = getTempDir();
+      run(dir, "new", "ideation create test");
+      const planDir = getPointer(dir);
+      const ideation = readPlanFile(dir, planDir, "ideation.md");
+      assert.ok(ideation.includes("# Ideation"), "should have H1");
+      assert.ok(ideation.includes("## Candidates"), "should have Candidates section");
+      assert.ok(ideation.includes("## Selection"), "should have Selection section");
+      assert.ok(ideation.includes("## Rejected"), "should have Rejected section");
+      assert.ok(ideation.includes("Single-Path Escape Hatch"), "should have escape hatch section");
+    });
+
+    it("validator does not enforce ideation in EXPLORE", () => {
+      const dir = getTempDir();
+      run(dir, "new", "explore-only test");
+      // State stays EXPLORE; ideation.md is the bootstrap stub
+      const r = runValidate(dir);
+      assert.ok(!r.stdout.includes("ideation"), "should not flag ideation in EXPLORE");
+      assert.equal(r.exitCode, 0);
+    });
+
+    it("validator ERRORs at PLAN when ideation.md missing", () => {
+      const dir = getTempDir();
+      run(dir, "new", "missing ideation test");
+      const planDir = getPointer(dir);
+      // Remove ideation.md and bump state to PLAN
+      rmSync(join(dir, "plans", planDir, "ideation.md"));
+      setState(dir, planDir, "PLAN");
+      const r = runValidate(dir);
+      assert.equal(r.exitCode, 1, "should fail when ideation.md is missing at PLAN");
+      assert.ok(r.stdout.includes("ideation.md missing"), "should report missing ideation");
+    });
+
+    it("validator ERRORs at PLAN when Candidates section is missing", () => {
+      const dir = getTempDir();
+      run(dir, "new", "no candidates test");
+      const planDir = getPointer(dir);
+      writeFileSync(
+        join(dir, "plans", planDir, "ideation.md"),
+        "# Ideation\n\n## Selection\nC-1\n"
+      );
+      setState(dir, planDir, "PLAN");
+      const r = runValidate(dir);
+      assert.equal(r.exitCode, 1);
+      assert.ok(r.stdout.includes("Candidates"), "should report missing Candidates section");
+    });
+
+    it("validator ERRORs at PLAN when fewer than 3 candidates and no escape hatch", () => {
+      const dir = getTempDir();
+      run(dir, "new", "few candidates test");
+      const planDir = getPointer(dir);
+      writeFileSync(
+        join(dir, "plans", planDir, "ideation.md"),
+        "# Ideation\n\n## Candidates\n\n### C-1 | Approach A\n- **Sketch**: a\n\n### C-2 | Approach B\n- **Sketch**: b\n\n## Selection\n- **Picked**: C-1\n"
+      );
+      setState(dir, planDir, "PLAN");
+      const r = runValidate(dir);
+      assert.equal(r.exitCode, 1);
+      assert.ok(r.stdout.includes("2 candidate"), "should report only 2 candidates");
+    });
+
+    it("validator passes at PLAN with 3 candidates and a Selection", () => {
+      const dir = getTempDir();
+      run(dir, "new", "three candidates test");
+      const planDir = getPointer(dir);
+      writeFileSync(
+        join(dir, "plans", planDir, "ideation.md"),
+        "# Ideation\n\n## Candidates\n\n### C-1 | Approach A\n- **Sketch**: a\n\n### C-2 | Approach B\n- **Sketch**: b\n\n### C-3 | Approach C\n- **Sketch**: c\n\n## Selection\n- **Picked**: C-1\n- **Criteria**: simplest\n- **Confidence**: medium\n"
+      );
+      // Add 3 findings so the findings gate is satisfied too
+      writeFileSync(
+        join(dir, "plans", planDir, "findings.md"),
+        "# Findings\n\n## Index\n- A\n- B\n- C\n\n## Key Constraints\n- none\n"
+      );
+      setState(dir, planDir, "PLAN");
+      const r = runValidate(dir);
+      assert.ok(!r.stdout.includes("ideation"), `should not flag ideation: ${r.stdout}`);
+    });
+
+    it("validator passes at PLAN with 1 candidate and populated escape hatch", () => {
+      const dir = getTempDir();
+      run(dir, "new", "escape hatch test");
+      const planDir = getPointer(dir);
+      writeFileSync(
+        join(dir, "plans", planDir, "ideation.md"),
+        "# Ideation\n\n## Candidates\n\n### C-1 | Mechanical rename\n- **Sketch**: rename across files\n\n## Selection\n- **Picked**: C-1\n- **Confidence**: high\n\n## Single-Path Escape Hatch (use only if applicable)\n- **Why no alternatives**: Mechanical rename across 15 files; no design surface.\n- **Falsification**: Any caller treats the old name as a string identifier.\n"
+      );
+      writeFileSync(
+        join(dir, "plans", planDir, "findings.md"),
+        "# Findings\n\n## Index\n- A\n- B\n- C\n\n## Key Constraints\n- none\n"
+      );
+      setState(dir, planDir, "PLAN");
+      const r = runValidate(dir);
+      assert.ok(!r.stdout.includes("ideation"), `should not flag ideation when escape hatch is populated: ${r.stdout}`);
+    });
+
+    it("validator ERRORs when Selection section is empty/placeholder", () => {
+      const dir = getTempDir();
+      run(dir, "new", "empty selection test");
+      const planDir = getPointer(dir);
+      // Bootstrap stub has placeholder text in Selection
+      setState(dir, planDir, "PLAN");
+      const r = runValidate(dir);
+      assert.equal(r.exitCode, 1);
+      assert.ok(r.stdout.includes("Selection"), "should report Selection issue");
+    });
+
+    it("close does not error when ideation.md is present", () => {
+      const dir = getTempDir();
+      run(dir, "new", "close ideation test");
+      const r = run(dir, "close");
+      assert.equal(r.exitCode, 0, "close should succeed with ideation.md present");
+    });
+
+    it("ideation.md is NOT merged into consolidated files on close", () => {
+      const dir = getTempDir();
+      run(dir, "new", "no merge test");
+      const planDir = getPointer(dir);
+      writeFileSync(
+        join(dir, "plans", planDir, "ideation.md"),
+        "# Ideation\n\n## Candidates\n\n### C-1 | Distinctive ideation marker XYZZY\n- **Sketch**: a\n\n## Selection\n- **Picked**: C-1\n"
+      );
+      run(dir, "close");
+      // Consolidated FINDINGS.md and DECISIONS.md should not contain the ideation content
+      const findings = readFileSync(join(dir, "plans", "FINDINGS.md"), "utf-8");
+      const decisions = readFileSync(join(dir, "plans", "DECISIONS.md"), "utf-8");
+      assert.ok(!findings.includes("XYZZY"), "ideation should not be merged into FINDINGS.md");
+      assert.ok(!decisions.includes("XYZZY"), "ideation should not be merged into DECISIONS.md");
     });
   });
 });
