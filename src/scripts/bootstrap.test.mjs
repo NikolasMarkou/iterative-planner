@@ -1688,6 +1688,53 @@ describe("bootstrap.mjs", () => {
       assert.ok(!r.stdout.includes("ideation"), `should not flag ideation when escape hatch is populated: ${r.stdout}`);
     });
 
+    it("validator ERRORs at PLAN when ideation.md is empty", () => {
+      const dir = getTempDir();
+      run(dir, "new", "empty ideation test");
+      const planDir = getPointer(dir);
+      writeFileSync(join(dir, "plans", planDir, "ideation.md"), "");
+      setState(dir, planDir, "PLAN");
+      const r = runValidate(dir);
+      assert.equal(r.exitCode, 1, "empty ideation.md must not silently pass");
+      assert.ok(r.stdout.includes("empty or unreadable"), "should report empty/unreadable ideation");
+    });
+
+    it("validator ERRORs at PLAN when escape hatch has only Why, no Falsification", () => {
+      const dir = getTempDir();
+      run(dir, "new", "partial escape test");
+      const planDir = getPointer(dir);
+      writeFileSync(
+        join(dir, "plans", planDir, "ideation.md"),
+        "# Ideation\n\n## Candidates\n\n### C-1 | Mechanical rename\n- **Sketch**: rename across files\n\n## Selection\n- **Picked**: C-1\n\n## Single-Path Escape Hatch (use only if applicable)\n- **Why no alternatives**: Mechanical rename across 15 files; no design surface.\n- **Falsification**: -\n"
+      );
+      writeFileSync(
+        join(dir, "plans", planDir, "findings.md"),
+        "# Findings\n\n## Index\n- A\n- B\n- C\n\n## Key Constraints\n- none\n"
+      );
+      setState(dir, planDir, "PLAN");
+      const r = runValidate(dir);
+      assert.equal(r.exitCode, 1, "escape hatch without Falsification must not pass");
+      assert.ok(r.stdout.includes("Falsification"), `should report missing Falsification: ${r.stdout}`);
+    });
+
+    it("validator ERRORs at PLAN when escape hatch has only Falsification, no Why", () => {
+      const dir = getTempDir();
+      run(dir, "new", "partial escape test 2");
+      const planDir = getPointer(dir);
+      writeFileSync(
+        join(dir, "plans", planDir, "ideation.md"),
+        "# Ideation\n\n## Candidates\n\n### C-1 | Mechanical rename\n- **Sketch**: rename across files\n\n## Selection\n- **Picked**: C-1\n\n## Single-Path Escape Hatch (use only if applicable)\n- **Why no alternatives**: -\n- **Falsification**: Caller treats the old name as a string identifier.\n"
+      );
+      writeFileSync(
+        join(dir, "plans", planDir, "findings.md"),
+        "# Findings\n\n## Index\n- A\n- B\n- C\n\n## Key Constraints\n- none\n"
+      );
+      setState(dir, planDir, "PLAN");
+      const r = runValidate(dir);
+      assert.equal(r.exitCode, 1, "escape hatch without Why no alternatives must not pass");
+      assert.ok(r.stdout.includes("Why no alternatives"), `should report missing Why no alternatives: ${r.stdout}`);
+    });
+
     it("validator ERRORs when Selection section is empty/placeholder", () => {
       const dir = getTempDir();
       run(dir, "new", "empty selection test");

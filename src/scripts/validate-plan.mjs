@@ -201,7 +201,10 @@ function checkIdeation(planDir, issues) {
   }
 
   const ideation = readFile(ideationPath);
-  if (!ideation) return;
+  if (!ideation) {
+    issues.push({ severity: "ERROR", check: "ideation", message: "ideation.md is empty or unreadable — run EXPLORE Ideation step before transitioning" });
+    return;
+  }
 
   const candidatesSection = extractSection(ideation, "Candidates");
   const selectionSection = extractSection(ideation, "Selection");
@@ -223,20 +226,40 @@ function checkIdeation(planDir, issues) {
     candidateCount = matches ? matches.length : 0;
   }
 
-  // Determine if escape hatch is genuinely populated (not the bootstrap placeholder)
+  // Escape hatch is "populated" only when BOTH "Why no alternatives" and "Falsification" have non-placeholder content.
+  // The protocol requires both: a single-path claim without a falsification trigger has no STOP signal during EXECUTE.
+  const whyPopulated = escapeSection
+    ? /-\s*\*\*Why no alternatives\*\*:\s*\S(?!\s*$)/m.test(escapeSection)
+      && !/-\s*\*\*Why no alternatives\*\*:\s*-\s*$/m.test(escapeSection)
+    : false;
+  const falsificationPopulated = escapeSection
+    ? /-\s*\*\*Falsification\*\*:\s*\S(?!\s*$)/m.test(escapeSection)
+      && !/-\s*\*\*Falsification\*\*:\s*-\s*$/m.test(escapeSection)
+    : false;
   const escapeHatchPopulated = !!(
     escapeSection &&
     !isPlaceholder(escapeSection) &&
-    /-\s*\*\*Why no alternatives\*\*:\s*[^\s-]/.test(escapeSection) &&
-    !/^N\/A$/im.test(escapeSection.trim())
+    !/^N\/A$/im.test(escapeSection.trim()) &&
+    whyPopulated &&
+    falsificationPopulated
   );
 
   if (candidateCount < 3 && !escapeHatchPopulated) {
-    issues.push({
-      severity: "ERROR",
-      check: "ideation",
-      message: `ideation.md has ${candidateCount} candidate(s) — minimum 3 required, OR populate Single-Path Escape Hatch with a "Why no alternatives" rationale`,
-    });
+    if (escapeSection && (whyPopulated || falsificationPopulated) && !(whyPopulated && falsificationPopulated)) {
+      // Partial escape hatch — give a precise message instead of the generic count error
+      const missing = whyPopulated ? "Falsification" : "Why no alternatives";
+      issues.push({
+        severity: "ERROR",
+        check: "ideation",
+        message: `ideation.md Single-Path Escape Hatch is missing "${missing}" — both "Why no alternatives" and "Falsification" must be populated`,
+      });
+    } else {
+      issues.push({
+        severity: "ERROR",
+        check: "ideation",
+        message: `ideation.md has ${candidateCount} candidate(s) — minimum 3 required, OR populate Single-Path Escape Hatch with both "Why no alternatives" and "Falsification" populated`,
+      });
+    }
   }
 }
 
