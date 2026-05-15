@@ -235,6 +235,41 @@ Complexity Assessment mandatory for all PIVOT entries.
 4. **Prevention**: Always trace format coupling through full pipeline, not just storage endpoints
 ```
 
+### Intra-plan compression
+
+Mirrors the cross-plan `<!-- COMPRESSED-SUMMARY -->` pattern (see `SKILL.md` "Consolidated File Management"). Cross-plan files use a 4-plan sliding window to stay bounded; intra-plan `decisions.md` has no such window, so a threshold-triggered compression runs mid-plan.
+
+- **Trigger**: file >300 lines, evaluated at PLAN gate-in. Orchestrator dispatch is wired in step 10 of plan_2026-05-15_71ab18dd (see `agents/orchestrator.md` PLAN State Dispatch).
+- **Implementation**: `maybeCompressDecisions(planDir, { threshold, dryRun })` exported from `src/scripts/bootstrap.mjs`. Mechanical layer only — parses raw `## D-NNN` entries and emits a lookup-table block. Never invents content.
+- **Insertion position**: after the leading schema-example HTML comment block (if present) and the `*Plan: <plan-id>*` preamble, BEFORE the first `## D-NNN` entry. When an existing block is found, it is REPLACED in-place (never summarize a summary — failsafe mirrors the cross-plan rule).
+- **Append-only safety**: raw `## D-NNN` entries below the block are NEVER touched. Compression only writes the metadata block above them.
+- **Idempotency**: `<!-- entries-at-compress: N -->` records the entry count at last compression. Re-running with no new entries (`parsed.entries.length === entriesAtCompress`) is a no-op.
+- **Block cap**: 100 lines between markers (mirrors the cross-plan convention from `SKILL.md` "Consolidated File Management").
+- **Preserve-verbatim rules**: `## D-NNN` headers, `**Anchor-Refs**:` lines, `*Plan: <plan-id>*` preamble, and the schema-example HTML comment block all survive unchanged because they live OUTSIDE the marker block (the compressor never edits them).
+
+**Format** — emitted between the preamble and the first raw `## D-NNN` entry:
+
+```markdown
+<!-- COMPRESSED-SUMMARY -->
+<!-- entries-at-compress: 12 -->
+## Summary (compressed)
+*Auto-compressed from 347 lines (12 entries). Raw entries preserved below.*
+
+### Decision lookup
+- **D-001** | EXPLORE → PLAN | 2026-05-07 — Chose approach X.  (anchors: src/foo.rb:42)
+- **D-002** | EXECUTE | 2026-05-08 — Fixed Y by Z.  (anchors: none)
+...
+
+### Things NOT to do (from PIVOT entries)
+- D-004: approach A failed; do not revisit until B changes.
+
+### Anchored decisions
+- D-001 → src/foo.rb:42
+<!-- /COMPRESSED-SUMMARY -->
+```
+
+No-op return reasons (no file write): `missing`, `empty`, `under-threshold`, `no-preamble`, `too-few-entries`, `no-new-entries`. Compression returns `{ compressed, beforeLines, afterLines, reason }`.
+
 ## findings.md
 
 Updated during EXPLORE. Corrected during PIVOT when earlier findings prove wrong. Always include **file paths with line numbers** and **code path traces**.
@@ -757,6 +792,46 @@ Validator (`validate-plan.mjs`):
 - WARN `[changelog-malformed]` on lines not matching the 8-field shape.
 - WARN `[changelog-drift]` if a commit produced files absent from changelog.
 - Never blocks CLOSE. Changelog issues are advisory only.
+
+### Intra-plan compression
+
+Same marker lineage as `decisions.md` compression (see `SKILL.md` "Consolidated File Management"), but structurally different — chronology MUST be preserved, so the summary lives INLINE at each elided group's original position rather than in a single top-of-file block. The top-of-file `<!-- COMPRESSED-SUMMARY -->` block is metadata only (counts, not content).
+
+- **Trigger**: file >200 lines, evaluated at PLAN gate-in (lower threshold than decisions.md — changelog grows faster per step).
+- **Implementation**: `maybeCompressChangelog(planDir, { threshold, dryRun })` exported from `src/scripts/bootstrap.mjs`.
+- **Elidable rules** (a line is elidable if and only if ALL three hold):
+  - radius tier ∈ {`LOW`, `MED`} per `references/blast-radius.md`
+  - op field does NOT start with `REVERT(`
+  - decision-ref field is `-` (no anchor)
+- **Preserve-verbatim rules** (always survive compression):
+  - tier `HIGH` or `UNKNOWN` (unknown is preserve-by-default — safer)
+  - op starting with `REVERT(` (e.g. `REVERT(src/foo.js)`)
+  - decision-ref field other than `-` (any `D-NNN` ref)
+  - previously-elided inline summary lines (`- (compressed: …)` — idempotent re-compression)
+  - the 4-line file header
+- **Group threshold**: only runs of **5+ consecutive elidable lines** collapse. Smaller groups stay verbatim — eliding 2-3 lines is not worth the round-trip cost.
+- **Idempotency**: `<!-- entries-at-compress: N -->` records the entry count at last compression. The N value counts BOTH live well-formed entry lines AND the entry-equivalents recorded in surviving inline summaries (each `- (compressed: K …)` contributes K). Without this dual count, a second pass after the first would see fewer "entries" and diverge.
+
+**Format** — two pieces emitted in a single pass:
+
+(a) Top-of-file metadata block, inserted immediately after the 4-line file header:
+
+```markdown
+<!-- COMPRESSED-SUMMARY -->
+<!-- entries-at-compress: 187 -->
+<!-- elided-groups: 3, elided-lines: 42 -->
+<!-- /COMPRESSED-SUMMARY -->
+```
+
+(b) One inline summary line replacing each consecutive elidable group, AT the group's original chronological position:
+
+```
+- (compressed: 14 low-decision-impact edits, iter-1/step-3..iter-1/step-7, files: 4)
+```
+
+The `iter-X/step-Y..iter-X/step-Z` range collapses to a single `iter-X/step-Y` when start equals end. `files: N` counts distinct paths across the elided group.
+
+No-op return reasons: `missing`, `empty`, `under-threshold`, `no-elidable-groups`, `no-new-entries`. Compression returns `{ compressed, beforeLines, afterLines, elidedCount, reason }`.
 
 ## summary.md
 
