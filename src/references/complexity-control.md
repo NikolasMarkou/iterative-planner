@@ -4,15 +4,16 @@ Default response to failure = simplify, not add.
 
 ## The Complexity Ratchet — Recognize It
 
-Signs:
-- Wrapping a function in another function to "handle" an issue
-- Adding try/catch to suppress a symptom
-- Creating adapter/bridge/shim between things you just wrote
-- Adding config toggle between old and new behavior
-- Writing code to work around code from 3 steps ago
-- Fix for step N breaks step N-2
-- Adding types/interfaces to satisfy compiler after your change
-- Plan steps are growing instead of shrinking
+| Signal | Pattern |
+|---|---|
+| Wrapper cascade | fn wrapping broken fn to "handle" issue |
+| Symptom suppression | try/catch hiding error |
+| Adapter insertion | bridge/shim between things you just wrote |
+| Toggle proliferation | config flag switching old/new |
+| Circular fix | code working around code from 3 steps ago |
+| Cross-step breakage | fix for step N breaks step N-2 |
+| Compiler appeasement | types/interfaces added to satisfy compiler |
+| Step count growing | plan steps increase instead of shrink |
 
 ## Complexity Budget
 
@@ -27,19 +28,16 @@ Track in `plan.md`:
 
 Any limit hit → STOP → REFLECT. Ask: "Root cause or symptom?"
 
-## Revert-First Policy
-
-Something breaks during EXECUTE:
+## Revert-First Policy (EXECUTE failure)
 
 1. STOP. No new code.
-2. REVERT? → revert. Verify clean: no debug code/imports/TODOs.
-3. DELETE? → delete.
-4. ONE-LINE fix? → do it.
-5. None → STOP → REFLECT.
+2. Can revert? → revert + verify clean (no debug code/imports/TODOs).
+3. Can delete? → delete.
+4. Fix ≤10 lines? → apply.
+5. None ⇒ STOP → REFLECT.
 
-**10-Line Rule**: fix needs >10 new lines → not a fix → REFLECT.
-
-**Autonomy limit**: 2 fix attempts per step (revert/delete/one-liner only). Both fail → STOP. Wait for user. See Autonomy Leash in SKILL.md.
+`|new_lines| > 10 ⇒ not a fix ⇒ REFLECT` (10-Line Rule).
+Autonomy: 2 fix attempts/step (revert/delete/one-liner only). Both fail ⇒ STOP. See Autonomy Leash in SKILL.md.
 
 ## Simplification Checks (REFLECT)
 
@@ -67,15 +65,12 @@ If any check reveals a blocker → document in `decisions.md` → must address b
 
 ## 3-Strike Rule
 
-Same area needs fixes 3× across iterations:
-
-1. STOP executing.
-2. → REFLECT.
-3. Log: "3-STRIKE TRIGGERED on [file/module]" in `decisions.md`.
-4. Do NOT attempt fix #4.
-5. Revert to checkpoint covering the struck area. If no matching checkpoint → revert uncommitted, then decide in PIVOT.
-6. → PIVOT: "fundamentally different approach for [file/module]."
-7. Consider: is this code even necessary?
+Same area fixed 3× across iterations ⇒
+1. STOP → REFLECT. Log `3-STRIKE TRIGGERED on [file/module]` in `decisions.md`.
+2. Do NOT attempt fix #4.
+3. Revert to checkpoint covering struck area (or revert uncommitted if none → decide in PIVOT).
+4. → PIVOT: "fundamentally different approach for [file/module]."
+5. Consider: is this code even necessary?
 
 ## Forbidden Fix Patterns
 

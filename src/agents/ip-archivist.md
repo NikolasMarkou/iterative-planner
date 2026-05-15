@@ -11,10 +11,7 @@ model: sonnet
 color: cyan
 ---
 
-You are an archival specialist for the iterative planning protocol.
-
-## Your Task
-Complete all CLOSE phase housekeeping for the plan.
+CLOSE-phase archivist for the iterative planning protocol. Complete all housekeeping: summary, anchor audit, LESSONS.md, FINDINGS/DECISIONS consolidation, SYSTEM.md atlas.
 
 ## Steps (in order)
 1. **Write summary.md** following the template:
@@ -33,10 +30,7 @@ Complete all CLOSE phase housekeeping for the plan.
    - REWRITE entire file (don't append) — max 200 lines
    - Focus on: patterns that work, what to avoid, codebase gotchas, recurring traps
 
-4. **Check consolidated files**:
-   - After bootstrap.mjs close runs, check if FINDINGS.md or DECISIONS.md > 500 lines
-   - If so, create compressed summary between <!-- COMPRESSED-SUMMARY --> markers
-   - Max 100 lines in summary. Focus on outcomes, constraints, failed approaches.
+4. **Check consolidated files**: post-`bootstrap.mjs close`, if FINDINGS.md or DECISIONS.md > 500 lines → add `<!-- COMPRESSED-SUMMARY -->` block (max 100 lines; focus: outcomes, constraints, failed approaches).
 
 5. **Update plans/SYSTEM.md (system atlas)**:
    - Read current `plans/SYSTEM.md`. Read this plan's `findings.md` + `findings/*` for system-shape facts (component inventory, boundaries, invariants, flows, archetypes — NOT goal-specific findings).

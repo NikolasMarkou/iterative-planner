@@ -50,12 +50,12 @@ The validator accepts bare anchors but emits `WARN [anchor-unqualified]` to nudg
 
 ## Rules
 
-- **One comment block per decision, at point of impact.** Not scattered across files.
-- **Reference the qualified decision ID** (`plan_X/D-NNN`). Full story lives in that plan's `decisions.md`.
-- **State what NOT to do** and why. Prevent regression, not explain implementation.
-- **Strip anchors for reverted code.** Anchors only live on surviving code.
-- **Don't anchor trivial choices.** Only when real decision history exists.
-- **Plan-id is the active plan's directory name** at the time the anchor is placed (e.g. `plan_2026-05-07_7556fb98`). It does not change if the anchor is later moved within the same codebase.
+- One comment block per decision, at point of impact.
+- Reference qualified decision ID (`plan_X/D-NNN`). Full story in that plan's `decisions.md`.
+- State what NOT to do and why (prevent regression, not explain implementation).
+- Strip anchors for reverted code.
+- Don't anchor trivial choices.
+- Plan-id = active plan's directory name at anchor placement time (e.g. `plan_2026-05-07_7556fb98`); does not change if anchor is moved.
 
 ## Formal Grammar
 
@@ -107,17 +107,19 @@ When code is reverted but the anchor cannot be removed in the same pass (e.g. du
 
 ## Expiration Handling
 
-Anchors are permanent in code; their backing decision context lives in per-plan `decisions.md` (kept in `plans/<plan-id>/`) and `plans/DECISIONS.md` (sliding-window trimmed to 4 plans).
+Anchors are permanent in code; backing context lives in per-plan `decisions.md` + consolidated `plans/DECISIONS.md` (sliding-window trimmed to 4 plans). Plan-qualified anchors close the historical orphan gap.
 
-**Plan-qualified anchors** close the historical orphan gap: even after `plans/DECISIONS.md` rotates an old plan out, the anchor names the originating plan directory directly. Resolvers (validator, humans) consult:
+Resolver order:
 
-1. The plan's per-plan `plans/<plan-id>/decisions.md` (always the source of truth, never trimmed).
-2. The consolidated `plans/DECISIONS.md` `## <plan-id>` section if still within the sliding window.
-3. The plan's `summary.md` `## Decision Anchors Registry` (forward-only mitigation for critical-path anchors).
+| # | Source | Note |
+|---|---|---|
+| 1 | `plans/<plan-id>/decisions.md` | source of truth, never trimmed |
+| 2 | `plans/DECISIONS.md ## <plan-id>` | if within sliding window |
+| 3 | `summary.md ## Decision Anchors Registry` | forward-only mitigation for critical-path anchors |
 
-If the plan directory itself has been deleted from the project (rare — plan dirs are gitignored and ephemeral), the anchor remains a permanent breadcrumb pointing at the absent plan-id; the registry copy in `summary.md` is the last resort.
+If the plan directory is deleted (rare), anchor remains a breadcrumb; registry copy in `summary.md` is the last resort.
 
-**Migration note**: bare `D-NNN` anchors (pre-v2.14.0) lack the prefix. Validator emits `WARN [anchor-unqualified]` and resolves them against the active plan's `decisions.md` only. New anchors should always be qualified.
+**Migration**: bare `D-NNN` anchors (pre-v2.14.0) lack prefix → validator `WARN [anchor-unqualified]`, resolved against active plan's `decisions.md`. New anchors MUST be qualified.
 
 ## Audit at CLOSE
 

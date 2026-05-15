@@ -13,7 +13,7 @@ Write to disk immediately. The context window will rot. The files won't.
 
 **`{plan-dir}`** = `plans/plan_YYYY-MM-DD_XXXXXXXX/` (active plan directory under project root).
 **Discovery**: `plans/.current_plan` contains the plan directory name. One active plan at a time.
-**Cross-plan context**: `plans/FINDINGS.md` and `plans/DECISIONS.md` persist across plans (merged on close). `plans/LESSONS.md` persists across plans (updated on close, max 200 lines). `plans/SYSTEM.md` is the cross-plan **system atlas** — a curated, domain-neutral map of what the system being planned against actually is, rewritten at CLOSE (max 300 lines). `plans/INDEX.md` maps topics to plan directories (survives sliding window trim).
+**Cross-plan context**: `plans/FINDINGS.md`, `plans/DECISIONS.md` (merged on close), `plans/LESSONS.md` (rewritten on close), `plans/SYSTEM.md` (system atlas — domain-neutral map of the target system, rewritten on close), `plans/INDEX.md` (topic→directory map, survives sliding-window trim). Caps + R/W rules: File Lifecycle Matrix.
 
 ## State Machine
 
@@ -39,7 +39,7 @@ stateDiagram-v2
 | EXECUTE | Implement step-by-step | Edit files, run commands, write code. |
 | REFLECT | Evaluate results | Read outputs, run tests, review diffs. Update verification.md, decisions.md. |
 | PIVOT | Revise direction | Log pivot in decisions.md. Do NOT write plan.md yet. |
-| CLOSE | Finalize | Write summary.md. Audit decision anchors. Merge findings/decisions to consolidated files. Update LESSONS.md (≤200 lines). Update SYSTEM.md atlas (≤300 lines, rewrite, demote-by-staleness — see ip-archivist Step 5). Compress if >500 lines. |
+| CLOSE | Finalize | Write summary.md. Audit decision anchors. Merge findings/decisions. Rewrite LESSONS.md + SYSTEM.md atlas (demote-by-staleness — see ip-archivist Step 5). Compress consolidated files if needed. Caps: Lifecycle Matrix. |
 
 ### Transitions
 
@@ -62,7 +62,7 @@ At CLOSE → audit decision anchors (`references/decision-anchoring.md`). Merge 
 
 ### Protocol Tiers
 
-Checks marked *(EXTENDED)* in the per-state rules may be skipped for iteration 1 single-pass plans. All other checks are **CORE** — always enforced. EXTENDED checks add value for multi-iteration plans where anchoring bias, ghost constraints, and prediction drift are real risks.
+Check tiers: **CORE** (always enforced) | **EXTENDED** (iter ≥ 2 only; marked *(EXTENDED)* in rules below). EXTENDED checks address anchoring bias, ghost constraints, prediction drift.
 
 ### Mandatory Re-reads (CRITICAL)
 
@@ -77,7 +77,7 @@ These files are active working memory. Re-read during the conversation, not just
 | Before any REFLECT | `plan.md` (criteria + verification strategy + assumptions), `progress.md`, `verification.md`, `findings.md`, `checkpoints/*`, `decisions.md`, `changelog.md` | Phase 1 Gate-In: full context before evaluating |
 | Every 10 tool calls | `state.md` | Reorient. Right step? Scope crept? |
 
-**>50 messages**: re-read `state.md` + `plan.md` before every response. Files are truth, not memory.
+`|messages| > 50` → re-read `state.md` + `plan.md` before every response. Files are truth, not memory.
 
 ## Bootstrapping
 
@@ -188,17 +188,13 @@ R = read only | W = update (implicit read + write) | R+W = distinct read and wri
 
 ## Lessons Learned (`plans/LESSONS.md`)
 
-Institutional memory across plans. Unlike FINDINGS.md and DECISIONS.md which grow via append+merge, LESSONS.md is **rewritten** to stay ≤200 lines.
+Institutional memory across plans. Unlike FINDINGS.md / DECISIONS.md (append+merge), LESSONS.md is **rewritten** every CLOSE; cap in Lifecycle Matrix.
 
-**When to update**: At CLOSE, before running `bootstrap.mjs close`. Read the current file, integrate significant lessons from the plan, and rewrite the entire file — consolidating, deduplicating, and pruning stale entries.
-
-**When to read**: Before PLAN, before PIVOT, and at start of EXPLORE. This is the first thing to check for institutional memory — what patterns work, what doesn't, what to avoid.
-
-**Rules**:
-- **Hard cap: 200 lines.** If an update would exceed 200 lines, consolidate aggressively — merge related lessons, drop low-value entries, tighten wording.
-- **Rewrite, don't append.** Each update produces a complete, self-contained file. No "added on date X" markers.
-- **Focus on**: recurring patterns, failed approaches and why, successful strategies, codebase-specific gotchas, constraints that surprised you.
-- **Drop**: one-off findings (those belong in FINDINGS.md), detailed decision reasoning (that's in DECISIONS.md), anything plan-specific that won't help future plans.
+- **Read**: EXPLORE start, before PLAN, before PIVOT.
+- **Update** (CLOSE, before `bootstrap.mjs close`): read current, integrate significant lessons, rewrite. If update would exceed cap → consolidate aggressively (merge related, drop low-value, tighten).
+- **Rewrite, don't append.** No "added on date X" markers.
+- **Keep**: recurring patterns, failed approaches + why, successful strategies, codebase gotchas, surprising constraints.
+- **Drop**: one-off findings (→ FINDINGS.md), decision reasoning (→ DECISIONS.md), plan-specific detail.
 - Created automatically by bootstrap on first `new`.
 
 ## Per-State Rules
@@ -228,7 +224,7 @@ Institutional memory across plans. Unlike FINDINGS.md and DECISIONS.md which gro
 - REFLECT → EXPLORE loops: append to existing findings, don't overwrite. Mark corrections with `[CORRECTED iter-N]`.
 
 ### PLAN
-- **Gate check**: read `state.md`, `plan.md`, `findings.md`, `findings/*`, `decisions.md`, `progress.md`, `verification.md`, `plans/FINDINGS.md` (limit: 600), `plans/DECISIONS.md` (limit: 600), `plans/LESSONS.md` before writing anything. If not read → read now. No exceptions. If `findings.md` has <3 indexed findings → go back to EXPLORE.
+- **Gate check**: apply Mandatory Re-reads table (PLAN row). If not read → read now. No exceptions. If `findings.md` has <3 indexed findings → go back to EXPLORE.
 - **Problem Statement first** — before designing steps, write in `plan.md`: (1) what behavior is expected, (2) invariants — what must always be true, (3) edge cases at boundaries. Can't state the problem clearly → go back to EXPLORE.
 - Write `plan.md`: problem statement, steps (with risk/dependency annotations), assumptions, failure modes, pre-mortem & falsification signals, success criteria, verification strategy, complexity budget.
 - **Decomposition** — when breaking the goal into steps:
@@ -350,7 +346,7 @@ When a step fails during EXECUTE:
 4. Present: what step should do, what happened, 2 attempts, root cause guess, available checkpoints for rollback.
 5. Transition → REFLECT. Log leash hit in `state.md`. Wait for user.
 
-Track attempts in `state.md`. Resets on: user direction, new step, or PIVOT.
+Attempt counter in `state.md`. Resets on: user direction | new step | PIVOT.
 **No exceptions.** Unguided fix chains derail projects.
 
 ## Code Hygiene (CRITICAL)
@@ -369,9 +365,9 @@ See `references/decision-anchoring.md`.
 
 ## Iteration Limits
 
-Increment on PLAN → EXECUTE. Iteration 0 = EXPLORE-only (pre-plan). First real = iteration 1.
-- **Iteration 5**: mandatory decomposition analysis in `decisions.md` — identify 2-3 independent sub-goals that could each be a separate plan, with dependencies between them. See `references/planning-rigor.md`.
-- **Iteration 6+**: hard STOP. Present decomposition analysis to user. Break into smaller tasks.
+`iter` counter: increments on PLAN → EXECUTE. `iter=0` = EXPLORE-only (pre-plan).
+- `iter = 5`: mandatory decomposition analysis in `decisions.md` (2-3 independent sub-goals + deps). See `references/planning-rigor.md`.
+- `iter ≥ 6`: hard STOP. Present decomposition to user. Break into smaller tasks.
 
 ## Recovery from Context Loss
 

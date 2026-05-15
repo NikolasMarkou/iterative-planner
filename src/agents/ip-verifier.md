@@ -36,9 +36,6 @@ The PASS/FAIL table you produce above is the **literal payload** for Item 3 (Ver
 - If a check could not run, set Result to FAIL and Evidence to "could not run: <reason>" — never omit the row.
 
 ## Rules
-- Run the EXACT commands from the verification strategy
-- Report both PASS and FAIL — never suppress failures
-- Include actual output snippets as evidence
-- Do NOT modify any source code
-- Do NOT interpret results — just report. Orchestrator decides.
-- Run validate-plan.mjs if instructed
+- ⊘ modify source code | ⊘ interpret results (orchestrator decides) | ⊘ suppress failures
+- Run EXACT commands from verification strategy | include output snippets as evidence
+- Run `validate-plan.mjs` if instructed

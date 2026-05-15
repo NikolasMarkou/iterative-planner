@@ -425,10 +425,10 @@ Written during PLAN (initial template with criteria), updated during EXECUTE (pe
 
 **Reject** these Evidence patterns: `looks good`, `seems to work`, `LGTM`, empty cells, single-word answers (`yes`, `ok`, `done`). The validator flags these as WARN.
 
-**Additional Checks** — includes optional checks (lint, type checks, behavioral diffs, smoke tests) and the following **required** rows every REFLECT cycle:
-- **Regression**: Re-run of previously-passing tests. Result = PASS (all still pass) or FAIL (regression found). Regressions block CLOSE.
-- **Scope drift**: Comparison of change manifest (state.md) against Files To Modify (plan.md). Result = CLEAN (no unplanned changes) or DRIFT (unplanned files changed — justify in decisions.md or revert).
-- **Diff review**: Manual review of code changes for debug artifacts, commented-out code, TODO/FIXME/HACK leftovers. Result = CLEAN or ISSUES (list them).
+**Additional Checks** — optional (lint, type checks, behavioral diffs, smoke tests) plus required rows every REFLECT:
+- **Regression**: re-run previously-passing tests. PASS or FAIL (blocks CLOSE).
+- **Scope drift**: change manifest (state.md) vs Files To Modify (plan.md). CLEAN or DRIFT (justify in decisions.md or revert).
+- **Diff review**: debug artifacts, commented-out code, TODO/FIXME/HACK leftovers. CLEAN or ISSUES (list).
 
 **Not Verified** is mandatory — list what you didn't test and why (no coverage, out of scope, untestable, no environment). Forces honesty about coverage gaps. Even if empty, write "None — all criteria have automated verification."
 
@@ -680,13 +680,12 @@ Cross-plan **system atlas** — a curated map of *what the system being planned 
 ```
 
 Usage:
-- Read at start of EXPLORE (orchestrator) and start of PLAN (orchestrator + ip-plan-writer). Provides the structural prior so EXPLORE doesn't re-derive system shape every plan.
-- At CLOSE: ip-archivist Step 5 — read current file, integrate this plan's system-shape findings, rewrite entire file under 300-line cap.
-- **Demote-by-staleness, not by recency**: when curating to fit the cap, drop entries that have not been referenced or implicitly reaffirmed by recent plans. Truncating most-recent entries defeats the curation contract.
-- During EXPLORE, if a finding contradicts an existing SYSTEM.md entry, mark the contradiction in `findings.md` with `[CONTRADICTED iter-N]` and surface to the archivist for correction at CLOSE (mirrors the `[CORRECTED iter-N]` rule for findings).
-- **Hard cap 300 lines** enforced by `validate-plan.mjs` ERROR `[atlas-cap]`. The cap forces curation; truncation by writers is forbidden — the validator ERROR exists to prevent silent degradation.
-- Created automatically by bootstrap on first `new` (skeleton matches the schema above).
-- Schema single-source-of-truth: this section. The bootstrap skeleton in `src/scripts/bootstrap.mjs` must match this schema exactly. If you change the schema here, update the bootstrap skeleton in lockstep.
+- Read: EXPLORE start + PLAN start (orchestrator + ip-plan-writer). Structural prior — avoids re-deriving system shape every plan.
+- CLOSE: ip-archivist Step 5 rewrites under 300-line cap. **Demote-by-staleness, not by recency** — drop entries not referenced or reaffirmed by recent plans. Truncating most-recent defeats curation.
+- Contradictions: EXPLORE finding contradicts SYSTEM.md entry → mark in `findings.md` with `[CONTRADICTED iter-N]` → archivist corrects at CLOSE (mirrors `[CORRECTED iter-N]`).
+- Hard cap 300 lines enforced by `validate-plan.mjs` ERROR `[atlas-cap]`. Truncation by writers forbidden.
+- Created by bootstrap on first `new` (skeleton matches schema above).
+- Schema single-source: this section. Bootstrap skeleton in `src/scripts/bootstrap.mjs` must match exactly — update in lockstep.
 
 ## plans/INDEX.md
 

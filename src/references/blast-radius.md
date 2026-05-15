@@ -15,7 +15,7 @@ A small change in a shared module can ripple to dozens of callers. A large chang
 | `HIGH(N)` | ≥6 | Wide reach (shared module, public API, many reverse deps); reviewer must surface it |
 | `UNKNOWN(reason)` | — | Could not score (no git, binary file, script unavailable). Inform-only. |
 
-The numeric score is the sum of signal weights below. Tier is for triage; the score lets reviewers compare two HIGH edits.
+`Score = Σ(signal weights)`. Tier = triage label; score = comparison within tier.
 
 ## Signals
 
@@ -66,14 +66,16 @@ Failure modes (all exit 0; informational):
 
 These limitations are documented but not patched. Radius is **informative**, not authoritative.
 
-## When to read radius
+## Usage
 
-- **Reviewer at REFLECT** (iter ≥ 2): scan changelog for HIGH and "tiny+broad" outliers (LOW LOC + HIGH overall = small fix in a hot file). Surface in `findings/review-iter-N.md`.
-- **Executor mid-step**: not used to gate. May log in commit message footer.
-- **CLOSE summary**: optional — if any HIGH edits, list them in `summary.md` for posterity.
+| Actor | When | Action |
+|---|---|---|
+| Reviewer (iter ≥ 2) | REFLECT | Scan changelog for HIGH + tiny-LOC/HIGH-score outliers → surface in `findings/review-iter-N.md` |
+| Executor | mid-step | Informational only; may log in commit footer. Never gates. |
+| CLOSE | optional | List HIGH edits in `summary.md` |
 
 ## Anti-patterns
 
-- Treating radius as a hard rule. It's a heuristic. Tier hopping every iteration is fine.
-- Tuning thresholds to game the score. The point is surfacing outliers, not optimizing a number.
-- Computing radius for plan-level decisions. That's what Failure Modes already does.
+- Treating tier as a hard gate — radius is informational.
+- Tuning thresholds — the point is outlier surfacing, not score optimization.
+- Plan-level decisions from radius — that's Failure Modes' job.
