@@ -247,12 +247,35 @@ function stripHeader(content) {
   return firstH2 >= 0 ? content.slice(firstH2) : "";
 }
 
-function stripCrossPlanNote(content) {
-  // Match both old format ("...and plans/DECISIONS.md") and new format ("...plans/DECISIONS.md, and plans/LESSONS.md").
-  // [^*\n] (rather than [^*]) keeps the match strictly single-line so a malformed
-  // note that accidentally drops the closing asterisk cannot eat the entire
-  // following file body.
-  return content.replace(/\n?\*Cross-plan context: see plans\/FINDINGS\.md[^*\n]*\*\n?/g, "\n");
+export function stripCrossPlanNote(content) {
+  // DECISION plan_2026-05-15_9ae230f7/D-008 — OBS-008. Pre-fix: a global
+  // regex replace stripped the boilerplate note wherever it appeared. If a
+  // finding's prose quoted the line (e.g. while documenting the protocol's
+  // own template), that quoted line was silently elided at merge.
+  // Fix: only strip when the note sits in the file's PREAMBLE — within the
+  // first 10 lines AND on a line by itself. Content body that quotes the
+  // boilerplate is preserved verbatim.
+  const lines = content.split("\n");
+  const NOTE = /^\*Cross-plan context: see plans\/FINDINGS\.md[^*\n]*\*$/;
+  const PREAMBLE_LINE_CAP = 10;
+  const cap = Math.min(lines.length, PREAMBLE_LINE_CAP);
+  for (let i = 0; i < cap; i++) {
+    if (NOTE.test(lines[i])) {
+      // Also consume an immediately-adjacent blank line so we don't leave
+      // a double-blank seam where the note was.
+      const before = lines[i - 1];
+      const after = lines[i + 1];
+      const dropBlankBefore = before !== undefined && before.trim() === "";
+      const dropBlankAfter = after !== undefined && after.trim() === "";
+      const start = dropBlankBefore ? i - 1 : i;
+      const end = dropBlankAfter ? i + 1 : i;
+      lines.splice(start, end - start + 1);
+      // Only strip the FIRST preamble occurrence; later quoted occurrences
+      // belong to content body.
+      break;
+    }
+  }
+  return lines.join("\n");
 }
 
 const CONSOLIDATED_COMPRESS_THRESHOLD = 500;

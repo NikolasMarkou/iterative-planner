@@ -2709,6 +2709,42 @@ describe("bootstrap.mjs", () => {
       }
     });
 
+  });
+
+  // OBS-008 / D-008 — stripCrossPlanNote must only strip the boilerplate in
+  // the preamble (first 10 lines), not body content that happens to quote it.
+  describe("D-008: stripCrossPlanNote anchored regex (OBS-008)", () => {
+    it("preamble note on line 2 is stripped (with its blank-line padding)", async () => {
+      const mod = await import(`file://${BOOTSTRAP}`);
+      const { stripCrossPlanNote } = mod;
+      const content = "# Findings\n*Cross-plan context: see plans/FINDINGS.md, plans/DECISIONS.md, and plans/LESSONS.md*\n## Index\nreal content";
+      const result = stripCrossPlanNote(content);
+      assert.ok(!result.includes("*Cross-plan context:"), `preamble note must be stripped, got: ${JSON.stringify(result)}`);
+      assert.ok(result.includes("real content"), "body content must survive");
+    });
+
+    it("body quote of boilerplate is PRESERVED (not stripped)", async () => {
+      const mod = await import(`file://${BOOTSTRAP}`);
+      const { stripCrossPlanNote } = mod;
+      const content = "# Findings\n## Index\nThe boilerplate is *Cross-plan context: see plans/FINDINGS.md, (etc)*\nmore content";
+      const result = stripCrossPlanNote(content);
+      assert.ok(result.includes("boilerplate is"), `body quote must be preserved, got: ${JSON.stringify(result)}`);
+      assert.ok(result.includes("Cross-plan context"), "body text must be untouched");
+    });
+
+    it("preamble stripped AND body quote preserved when both exist", async () => {
+      const mod = await import(`file://${BOOTSTRAP}`);
+      const { stripCrossPlanNote } = mod;
+      const content = "# Findings\n*Cross-plan context: see plans/FINDINGS.md, plans/DECISIONS.md*\n## Body\n*Cross-plan context: see plans/FINDINGS.md (referenced in F-001)*\nmore";
+      const result = stripCrossPlanNote(content);
+      // Preamble note (line 2) should be gone; body note (line 4) should remain.
+      const matches = (result.match(/\*Cross-plan context:/g) || []).length;
+      assert.equal(matches, 1, `exactly one occurrence (body) should remain, got ${matches}:\n${result}`);
+      assert.ok(result.includes("referenced in F-001"), "body quote text must be preserved");
+    });
+  });
+
+  describe("D-004 stale lock reclaim (continued)", () => {
     it("stale lock (PID 999999, not alive) is reclaimed silently", () => {
       const dir = getTempDir();
       mkdirSync(join(dir, "plans"), { recursive: true });
