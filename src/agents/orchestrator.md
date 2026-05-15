@@ -72,14 +72,20 @@ At PLAN → EXECUTE handoff, BEFORE requesting user approval, emit a chat block 
 Floor (always render verbatim, even on token-cost grounds): Steps, Success Criteria, Verification Strategy, Failure Modes, Assumptions. Context and Pre-Mortem may be condensed by reference only if the floor renders in full. Same contract on re-presentation after revision.
 
 **Dispatch**
-0. **Compression gate** (v2.18.0+): Before reading decisions.md / changelog.md for PLAN work and before spawning ip-plan-writer, invoke the intra-plan compression helpers exported from `bootstrap.mjs` (see `references/file-formats.md` § Intra-plan compression for the full spec, and decisions.md D-003 for the `isEntryPoint` dual-mode pattern that makes dynamic import safe):
+0. **Compression gate** (v2.18.0+, instrumented v2.18.2+): Before reading decisions.md / changelog.md for PLAN work and before spawning ip-plan-writer, invoke the intra-plan compression helpers exported from `bootstrap.mjs` (see `references/file-formats.md` § Intra-plan compression for the full spec, and decisions.md D-003 for the `isEntryPoint` dual-mode pattern that makes dynamic import safe).
+
+   **DECISION plan_2026-05-15_9ae230f7/D-007** (anchor logged textually per L-007 since `.md` is outside `ANCHOR_SOURCE_EXTS`; recorded in `summary.md` Decision Anchors Registry at CLOSE): the dispatch CAPTURES STDOUT JSON and appends a `- Compression: …` line to `{plan-dir}/state.md` Transition History. Pre-v2.18.2 the dispatch was failure-silent (no `.catch()`, no exit-code check, helpers return `{reason: "missing"}` on bad paths) — successes AND errors were invisible. Now both are observable.
+
    ```bash
-   node -e "import('<skill-path>/scripts/bootstrap.mjs').then(m => Promise.all([m.maybeCompressDecisions('<plan-dir>'), m.maybeCompressChangelog('<plan-dir>')]))"
+   COMPRESS_OUT=$(node -e "import('<skill-path>/scripts/bootstrap.mjs').then(m => Promise.all([m.maybeCompressDecisions('<plan-dir>'), m.maybeCompressChangelog('<plan-dir>')])).then(r => console.log(JSON.stringify({decisions: r[0], changelog: r[1]}))).catch(e => console.log(JSON.stringify({error: e.message})))")
+   # Append observability line to state.md Transition History before PLAN proceeds.
+   # Example output line: '- Compression: {decisions: under-threshold, changelog: compressed (218→127, elided=2)}'
    ```
+
    - Both helpers are idempotent — calling them on a small file is a no-op.
    - Thresholds: `decisions.md` > 300 lines, `changelog.md` > 200 lines (defaults; tunable via opts).
-   - Failure-tolerant: if compression throws for any reason (corrupted file, unexpected schema, missing module), log the error and CONTINUE — never block PLAN on a compression failure. Raw entries remain readable below the marker even if the summary block is malformed.
-   - First PLAN of a new plan: files are empty, both helpers no-op silently.
+   - Failure-tolerant: if compression throws for any reason (corrupted file, unexpected schema, missing module), the `.catch` emits `{error: <msg>}` and CONTINUES — never block PLAN on a compression failure. Raw entries remain readable below the marker even if the summary block is malformed. The error string lands in the state.md observability line.
+   - First PLAN of a new plan: files are empty, both helpers no-op silently (visible as `{decisions: missing, changelog: missing}` in the log line — not an error).
 1. Read all findings/*, decisions.md, plans/LESSONS.md, plans/DECISIONS.md (limit: 600), plans/SYSTEM.md
 2. Spawn ip-plan-writer with goal + findings summary
 3. Read its plan.md output (path + section anchors returned by sub-agent), verify all required sections exist
