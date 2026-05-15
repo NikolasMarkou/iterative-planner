@@ -1928,6 +1928,100 @@ describe("bootstrap.mjs", () => {
     });
   });
 
+  describe("v2.17.4 fixes", () => {
+    it("cmdClose inserts transition entry under '## Transition History:' even with trailing sections", () => {
+      const dir = getTempDir();
+      run(dir, "new", "transition anchor test");
+      const planDir = getPointer(dir);
+      // Append a trailing section after Transition History
+      const statePath = join(dir, "plans", planDir, "state.md");
+      const original = readFileSync(statePath, "utf-8");
+      writeFileSync(statePath, original + "\n## Agent Scratchpad\n- noise\n");
+      run(dir, "close");
+      const closed = readFileSync(statePath, "utf-8");
+      const historyIdx = closed.indexOf("## Transition History:");
+      const scratchIdx = closed.indexOf("## Agent Scratchpad");
+      const closeLineIdx = closed.indexOf("EXPLORE → CLOSE (bootstrap close)");
+      assert.ok(historyIdx >= 0, "Transition History section still present");
+      assert.ok(closeLineIdx >= 0, "CLOSE transition line written");
+      assert.ok(scratchIdx >= 0, "Agent Scratchpad section preserved");
+      assert.ok(closeLineIdx > historyIdx && closeLineIdx < scratchIdx,
+        `CLOSE line must land between '## Transition History:' (${historyIdx}) and the trailing section (${scratchIdx}), got ${closeLineIdx}`);
+    });
+
+    it("trimConsolidatedWindow counts a section beginning at byte 0 (no preceding newline)", () => {
+      const dir = getTempDir();
+      // Build a pathological consolidated file where the FIRST plan section
+      // sits at byte 0 with no `# Consolidated Findings` H1 boilerplate.
+      // Without the B11 fix, the leading `\n## plan_` regex misses byte-0
+      // and the file is never trimmed below 5 sections. With the fix the
+      // sliding window correctly trims to 4.
+      mkdirSync(join(dir, "plans"), { recursive: true });
+      // Consolidated files are newest-first by protocol invariant. Section
+      // ordered top-down is plan_05 (newest) → plan_01 (oldest). First
+      // section sits at byte 0 (no H1 header) to exercise the B11 fix.
+      const synthetic = [
+        "## plan_2026-01-05_eeeeeeee\n### Index\n- E\n",
+        "## plan_2026-01-04_dddddddd\n### Index\n- D\n",
+        "## plan_2026-01-03_cccccccc\n### Index\n- C\n",
+        "## plan_2026-01-02_bbbbbbbb\n### Index\n- B\n",
+        "## plan_2026-01-01_aaaaaaaa\n### Index\n- A\n",
+      ].join("\n");
+      writeFileSync(join(dir, "plans", "FINDINGS.md"), synthetic);
+      // Create a new plan, close it — close path calls trimConsolidatedWindow
+      // unconditionally. Use a plan with no findings.md content so the merge
+      // step is a no-op and we can observe trim isolation.
+      run(dir, "new", "trim-only test");
+      const planDir = getPointer(dir);
+      // Empty findings.md so prependToConsolidated is a no-op
+      writeFileSync(join(dir, "plans", planDir, "findings.md"), "# Findings\n");
+      run(dir, "close");
+      const merged = readFileSync(join(dir, "plans", "FINDINGS.md"), "utf-8");
+      const sectionMatches = merged.match(/(^|\n)## plan_/g) || [];
+      assert.equal(sectionMatches.length, 4,
+        `expected exactly 4 plan sections after trim, got ${sectionMatches.length}; content=${JSON.stringify(merged.slice(0, 200))}`);
+      // Oldest section (plan_01) at the BOTTOM of the file is trimmed;
+      // the newest section (plan_05) at byte 0 is retained.
+      assert.ok(!merged.includes("plan_2026-01-01_aaaaaaaa"),
+        "oldest section (bottom of file) must be trimmed by sliding window");
+      assert.ok(merged.includes("plan_2026-01-05_eeeeeeee"),
+        "newest section (at byte 0) must be retained");
+    });
+
+    it("appendToIndex skips leading blank lines in Goal", () => {
+      const dir = getTempDir();
+      run(dir, "new", "ignored placeholder");
+      const planDir = getPointer(dir);
+      // Rewrite plan.md so the Goal section starts with a blank line.
+      const planPath = join(dir, "plans", planDir, "plan.md");
+      writeFileSync(
+        planPath,
+        "# Plan v0\n\n## Goal\n\nActual goal after blank line\n\n## Problem Statement\n*todo*\n"
+      );
+      run(dir, "close");
+      const index = readFileSync(join(dir, "plans", "INDEX.md"), "utf-8");
+      assert.ok(index.includes("Actual goal after blank line"),
+        "Goal column must skip leading blank lines, not emit empty cell");
+    });
+
+    it("appendToIndex filters non-link brackets in Index section", () => {
+      const dir = getTempDir();
+      run(dir, "new", "topic link filter");
+      const planDir = getPointer(dir);
+      // Index with mixed link-form topics AND bare-bracket annotations.
+      writeFileSync(
+        join(dir, "plans", planDir, "findings.md"),
+        "# Findings\n\n## Index\n- [Auth](findings/auth.md) — real topic\n- [CORRECTED iter-1] not a topic\n- [TODO] also not a topic\n- [DB](findings/db.md) — real topic\n"
+      );
+      run(dir, "close");
+      const index = readFileSync(join(dir, "plans", "INDEX.md"), "utf-8");
+      assert.ok(index.includes("auth"), "real topic 'auth' retained");
+      assert.ok(index.includes("db"), "real topic 'db' retained");
+      assert.ok(!/corrected iter-1/i.test(index), "[CORRECTED iter-1] must not appear as topic");
+      assert.ok(!/\btodo\b/i.test(index), "[TODO] must not appear as topic");
+    });
+  });
+
   describe("LESSONS.md", () => {
     it("LESSONS.md is not overwritten on second new", () => {
       const dir = getTempDir();
