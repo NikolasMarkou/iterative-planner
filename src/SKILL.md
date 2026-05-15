@@ -79,6 +79,8 @@ These files are active working memory. Re-read during the conversation, not just
 
 `|messages| > 50` → re-read `state.md` + `plan.md` before every response. Files are truth, not memory.
 
+When `decisions.md` or `changelog.md` contain a `<!-- COMPRESSED-SUMMARY -->` block, the block is your fast-path for D-NNN lookup / changelog overview — the raw entries below the block remain authoritative.
+
 ## Bootstrapping
 
 ```bash
@@ -133,12 +135,12 @@ R = read only | W = update (implicit read + write) | R+W = distinct read and wri
 |------|---------|------|---------|---------|---------|-------|
 | state.md | W | W | R+W | W | W | W |
 | plan.md | — | W | R+W | R | R | R |
-| decisions.md | — | R+W | R | R+W | R+W | R |
+| decisions.md | — | R+W* | R | R+W | R+W | R |
 | findings.md | W | R | — | R | R+W | R |
 | findings/* | W | R | — | R | R+W | R |
 | progress.md | — | W | R+W | R+W | W | R |
 | verification.md | — | W | W | W | R | R |
-| changelog.md | — | — | W (append) | R | W (append REVERT) | R |
+| changelog.md | — | W* | W (append) | R | W (append REVERT) | R |
 | checkpoints/* | — | — | W | R | R | — |
 | summary.md | — | — | — | — | — | W |
 | plans/FINDINGS.md | R(600) | R(600) | — | — | R(600) | W(merge+compress) |
@@ -149,6 +151,8 @@ R = read only | W = update (implicit read + write) | R+W = distinct read and wri
 | lessons_snapshot.md | — | — | — | — | — | W(auto via bootstrap) |
 
 `R?` = read on demand only, not as part of the eager cross-plan read set. See EXPLORE rules below for the triggers that warrant an INDEX.md read.
+
+`*` Intra-plan compression may insert a `<!-- COMPRESSED-SUMMARY -->` block at PLAN gate-in (decisions.md >300 lines, changelog.md >200 lines). Raw entries preserved verbatim; the W operation is bounded — only the metadata block is written. See `references/file-formats.md` § Intra-plan compression.
 
 ## Consolidated File Management
 
@@ -185,6 +189,8 @@ R = read only | W = update (implicit read + write) | R+W = distinct read and wri
 - Focus on: outcomes, active constraints, things NOT to do (failed approaches), anchored decisions.
 - Drop: iteration details, timestamps, verbose reasoning — those survive in full content below.
 - **Failsafe**: when writing the summary, SKIP everything between `<!-- COMPRESSED-SUMMARY -->` and `<!-- /COMPRESSED-SUMMARY -->` markers. Only summarize the actual plan sections (`## plan_*`). This prevents summaries of summaries.
+
+**Intra-plan compression** (v2.18.0+): per-plan `{plan-dir}/decisions.md` and `{plan-dir}/changelog.md` have their own compression triggered at PLAN gate-in (different thresholds, different shapes). See `references/file-formats.md` § Intra-plan compression (under each file's section).
 
 ## Lessons Learned (`plans/LESSONS.md`)
 
@@ -225,6 +231,7 @@ Institutional memory across plans. Unlike FINDINGS.md / DECISIONS.md (append+mer
 
 ### PLAN
 - **Gate check**: apply Mandatory Re-reads table (PLAN row). If not read → read now. No exceptions. If `findings.md` has <3 indexed findings → go back to EXPLORE.
+- **Compression gate** — if `{plan-dir}/decisions.md` >300 lines or `{plan-dir}/changelog.md` >200 lines, run `maybeCompressDecisions` / `maybeCompressChangelog` (exported from `src/scripts/bootstrap.mjs`) before any other PLAN work. Append-only safe: raw entries are preserved verbatim; a metadata block is inserted at top (decisions) or inline summary lines replace LOW-radius/`-`-decision-ref groups (changelog). Re-compression is idempotent. See `references/file-formats.md` § Intra-plan compression for full spec. Orchestrator dispatch wires this at step-0.5 of PLAN (orchestrator.md update lands in step 10 of v2.18.0).
 - **Problem Statement first** — before designing steps, write in `plan.md`: (1) what behavior is expected, (2) invariants — what must always be true, (3) edge cases at boundaries. Can't state the problem clearly → go back to EXPLORE.
 - Write `plan.md`: problem statement, steps (with risk/dependency annotations), assumptions, failure modes, pre-mortem & falsification signals, success criteria, verification strategy, complexity budget.
 - **Decomposition** — when breaking the goal into steps:
@@ -348,6 +355,8 @@ When a step fails during EXECUTE:
 
 Attempt counter in `state.md`. Resets on: user direction | new step | PIVOT.
 **No exceptions.** Unguided fix chains derail projects.
+
+**Pre-step gate** (v2.18.0+): `node <skill-path>/scripts/validate-plan.mjs --pre-step` runs in the orchestrator before each ip-executor spawn. Exit code 2 with `GATE:FAIL [leash-cap]` mechanically halts EXECUTE when 2 fix attempts are recorded — converting the leash from advisory to enforced. See `agents/orchestrator.md` EXECUTE dispatch for the integration point.
 
 ## Code Hygiene (CRITICAL)
 
