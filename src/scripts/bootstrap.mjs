@@ -557,6 +557,283 @@ export function maybeCompressDecisions(planDir, opts = {}) {
   return { compressed: true, beforeLines, afterLines: afterLinesCount, reason: "compressed" };
 }
 
+// ===========================================================================
+// changelog.md intra-plan compression (v2.18.0+)
+//
+// Append-only chronological ledger of per-file edits. Format (8 pipe-delimited
+// fields):
+//   UTC | iter-N/step-M | commit | path | OP(+N,-M) | radius:TIER(score) | D-NNN-or-dash | reason
+//
+// Strategy: preserve verbatim any line that is "load-bearing" (HIGH/UNKNOWN
+// radius, REVERT op, or non-`-` decision-ref). Group consecutive elidable
+// lines (LOW/MED radius, non-REVERT op, `-` decision-ref) and replace each
+// group of >=5 with a single inline summary line that stays AT THE GROUP'S
+// CHRONOLOGICAL POSITION (different from decisions.md which has a single
+// top-of-file summary block). A small top-of-file metadata block records
+// idempotency state (entries-at-compress count + elided group totals).
+//
+// Re-compression: the top-of-file metadata block is REPLACED on each pass;
+// inline `- (compressed: ...)` summary lines from prior passes are themselves
+// treated as preserve-verbatim (already-elided records survive).
+//
+// Tier extraction uses the scoring spec from references/blast-radius.md:
+// tiers are LOW, MED, HIGH, UNKNOWN. Anything else is treated as UNKNOWN and
+// preserved verbatim (safer-by-default).
+
+const CHANGELOG_COMPRESS_THRESHOLD = 200;
+const CHANGELOG_HEADER_LINES = 4;
+const CHANGELOG_MIN_ELIDE_GROUP = 5;
+const CHANGELOG_COMPRESSED_INLINE_RE = /^- \(compressed: \d+ low-decision-impact edits/;
+
+/**
+ * Classify a changelog entry line into one of:
+ *   { kind: "entry", elidable: bool, iterStep: string, path: string }  (parseable line)
+ *   { kind: "inline-summary" }                                          (previous compression summary)
+ *   { kind: "non-entry" }                                               (blank/malformed/header)
+ *
+ * Field indices (1-based per format docstring; 0-based in array after split):
+ *   0: UTC timestamp
+ *   1: iter-N/step-M
+ *   2: commit hash (or "uncommitted")
+ *   3: path
+ *   4: OP(+N,-M) | NEW | REVERT(file)
+ *   5: radius:TIER(score)
+ *   6: D-NNN-or-dash
+ *   7: reason
+ */
+function classifyChangelogLine(line) {
+  if (CHANGELOG_COMPRESSED_INLINE_RE.test(line)) {
+    return { kind: "inline-summary" };
+  }
+  if (!line.trim()) return { kind: "non-entry" };
+  // Need at least 7 pipe separators for a well-formed entry (8 fields).
+  const sepCount = (line.match(/\|/g) || []).length;
+  if (sepCount < 7) return { kind: "non-entry" };
+
+  const fields = line.split(" | ").map((f) => f.trim());
+  if (fields.length < 8) return { kind: "non-entry" };
+
+  const opField = fields[4];
+  const radiusField = fields[5];
+  const decisionRef = fields[6];
+
+  const tierMatch = radiusField.match(/^radius:(LOW|MED|HIGH|UNKNOWN)/);
+  const tier = tierMatch ? tierMatch[1] : "UNKNOWN";
+
+  const isRevert = /^REVERT\(/.test(opField);
+  const isAnchored = decisionRef !== "-" && decisionRef !== "";
+
+  // Elidable: LOW or MED tier AND not REVERT AND decision-ref is `-`
+  const elidable = (tier === "LOW" || tier === "MED") && !isRevert && !isAnchored;
+
+  return {
+    kind: "entry",
+    elidable,
+    iterStep: fields[1],
+    path: fields[3],
+    tier,
+    isRevert,
+    isAnchored
+  };
+}
+
+/**
+ * Parse changelog.md into { lines, header, body, metadataBlock, entryCount }.
+ *   header        — first CHANGELOG_HEADER_LINES lines (preserved verbatim)
+ *   body          — lines after header, including any existing metadata block
+ *                   and any inline summary lines (treated as preserve-verbatim
+ *                   on re-compression).
+ *   metadataBlock — { startLine, endLine, entriesAtCompress } | null
+ *                   Line indices are absolute (0-based, full file).
+ *   entryCount    — number of well-formed entry lines (kind=entry) in body,
+ *                   used for idempotency check.
+ */
+function parseChangelogFile(content) {
+  const lines = content.split("\n");
+  const header = lines.slice(0, CHANGELOG_HEADER_LINES);
+
+  // Locate existing top-of-file metadata block (lives AFTER header).
+  let metadataBlock = null;
+  for (let i = CHANGELOG_HEADER_LINES; i < lines.length; i++) {
+    if (lines[i].includes(COMPRESSED_SUMMARY_OPEN)) {
+      const startLine = i;
+      let endLine = -1;
+      let entriesAtCompress = null;
+      for (let j = i; j < lines.length; j++) {
+        const m = lines[j].match(ENTRIES_AT_COMPRESS_RE);
+        if (m) entriesAtCompress = Number(m[1]);
+        if (lines[j].includes(COMPRESSED_SUMMARY_CLOSE)) {
+          endLine = j;
+          break;
+        }
+      }
+      if (endLine >= 0) metadataBlock = { startLine, endLine, entriesAtCompress };
+      break;
+    }
+    // Only scan a few lines beyond header before giving up.
+    if (i > CHANGELOG_HEADER_LINES + 8) break;
+  }
+
+  // entryCount counts BOTH live entry lines AND the entry-equivalents
+  // recorded in surviving inline summary lines (`- (compressed: N ...)`),
+  // so the idempotency comparison `entriesAtCompress === entryCount` holds
+  // across passes that have already elided most entries.
+  let entryCount = 0;
+  const bodyStart = CHANGELOG_HEADER_LINES;
+  for (let i = bodyStart; i < lines.length; i++) {
+    // Skip lines inside the metadata block (they are not entries).
+    if (metadataBlock && i >= metadataBlock.startLine && i <= metadataBlock.endLine) continue;
+    const cls = classifyChangelogLine(lines[i]);
+    if (cls.kind === "entry") entryCount++;
+    else if (cls.kind === "inline-summary") {
+      const m = lines[i].match(/^- \(compressed: (\d+) low-decision-impact edits/);
+      if (m) entryCount += Number(m[1]);
+    }
+  }
+
+  return { lines, header, bodyStart, metadataBlock, entryCount };
+}
+
+/**
+ * Compress {planDir}/changelog.md if line count exceeds threshold.
+ *
+ * Behavior: chronology-preserving inline elision. Consecutive groups of >=5
+ * elidable lines (LOW/MED tier, non-REVERT, `-` decision-ref) are replaced
+ * with a single inline summary `- (compressed: N low-decision-impact edits, ...)`
+ * at the group's position. A top-of-file metadata block records totals for
+ * idempotency.
+ *
+ * No-op conditions (compressed=false):
+ *   - "missing"          file does not exist / unreadable
+ *   - "empty"            file has no content
+ *   - "under-threshold"  line count <= threshold
+ *   - "no-elidable-groups"  no group of >=5 consecutive elidable lines exists
+ *   - "no-new-entries"   prior metadata block records same entry count
+ *
+ * Options:
+ *   threshold (default 200) — line count above which compression triggers.
+ *   dryRun   (default false) — compute metrics but do not write.
+ *
+ * Returns { compressed, beforeLines, afterLines, elidedCount, reason }.
+ *   elidedCount = number of inline summary lines INSERTED this pass
+ *                 (existing prior summary lines are preserved but not counted).
+ */
+export function maybeCompressChangelog(planDir, opts = {}) {
+  const { threshold = CHANGELOG_COMPRESS_THRESHOLD, dryRun = false } = opts;
+  const filePath = join(planDir, "changelog.md");
+
+  let content;
+  try { content = readFileSync(filePath, "utf-8"); }
+  catch { return { compressed: false, beforeLines: 0, afterLines: 0, elidedCount: 0, reason: "missing" }; }
+
+  if (!content.trim()) {
+    return { compressed: false, beforeLines: 0, afterLines: 0, elidedCount: 0, reason: "empty" };
+  }
+
+  // Preserve trailing-newline character semantics.
+  const hadTrailingNewline = content.endsWith("\n");
+  const beforeLines = content.split("\n").length;
+
+  if (beforeLines <= threshold) {
+    return { compressed: false, beforeLines, afterLines: beforeLines, elidedCount: 0, reason: "under-threshold" };
+  }
+
+  const parsed = parseChangelogFile(content);
+
+  // Idempotency: if a metadata block exists and entry count is unchanged
+  // since last compression, no-op. (Existing inline summary lines from
+  // prior compression do not count as entries — see classifyChangelogLine.)
+  if (parsed.metadataBlock && parsed.metadataBlock.entriesAtCompress === parsed.entryCount) {
+    return { compressed: false, beforeLines, afterLines: beforeLines, elidedCount: 0, reason: "no-new-entries" };
+  }
+
+  // Walk body lines, drop the OLD metadata block (will be regenerated),
+  // collect each line's classification, and identify elidable groups.
+  // We rebuild the body as a list of either {keep: line} or {elide: classification}.
+  const bodyLines = [];
+  for (let i = parsed.bodyStart; i < parsed.lines.length; i++) {
+    if (parsed.metadataBlock && i >= parsed.metadataBlock.startLine && i <= parsed.metadataBlock.endLine) continue;
+    bodyLines.push(parsed.lines[i]);
+  }
+  // Strip leading blank lines that may have surrounded the old metadata block.
+  while (bodyLines.length > 0 && bodyLines[0].trim() === "") bodyLines.shift();
+
+  // Classify each body line. Identify contiguous runs of elidable entry lines.
+  const classified = bodyLines.map((ln) => ({ line: ln, cls: classifyChangelogLine(ln) }));
+
+  // Find runs: index ranges [start, end) of consecutive elidable entries.
+  const runs = [];
+  let runStart = -1;
+  for (let i = 0; i <= classified.length; i++) {
+    const isElidable = i < classified.length && classified[i].cls.kind === "entry" && classified[i].cls.elidable;
+    if (isElidable && runStart < 0) {
+      runStart = i;
+    } else if (!isElidable && runStart >= 0) {
+      runs.push({ start: runStart, end: i });
+      runStart = -1;
+    }
+  }
+
+  // Filter runs to only those meeting the minimum group size.
+  const elideRuns = runs.filter((r) => (r.end - r.start) >= CHANGELOG_MIN_ELIDE_GROUP);
+
+  if (elideRuns.length === 0) {
+    return { compressed: false, beforeLines, afterLines: beforeLines, elidedCount: 0, reason: "no-elidable-groups" };
+  }
+
+  // Rebuild body, replacing each elided run with a single inline summary line.
+  const newBody = [];
+  let cursor = 0;
+  let totalElidedLines = 0;
+  for (const run of elideRuns) {
+    // Emit untouched lines up to this run.
+    for (; cursor < run.start; cursor++) newBody.push(classified[cursor].line);
+    // Build summary for this run.
+    const groupLines = classified.slice(run.start, run.end);
+    const count = groupLines.length;
+    totalElidedLines += count;
+    const firstIter = groupLines[0].cls.iterStep;
+    const lastIter = groupLines[count - 1].cls.iterStep;
+    const iterRange = firstIter === lastIter ? firstIter : `${firstIter}..${lastIter}`;
+    const distinctFiles = new Set(groupLines.map((g) => g.cls.path)).size;
+    newBody.push(`- (compressed: ${count} low-decision-impact edits, ${iterRange}, files: ${distinctFiles})`);
+    cursor = run.end;
+  }
+  // Tail.
+  for (; cursor < classified.length; cursor++) newBody.push(classified[cursor].line);
+
+  // Build new metadata block (sits between header and body).
+  const metadataBlock = [
+    COMPRESSED_SUMMARY_OPEN,
+    `<!-- entries-at-compress: ${parsed.entryCount} -->`,
+    `<!-- elided-groups: ${elideRuns.length}, elided-lines: ${totalElidedLines} -->`,
+    COMPRESSED_SUMMARY_CLOSE
+  ];
+
+  const newLines = [...parsed.header, ...metadataBlock, ...newBody];
+  let newContent = newLines.join("\n");
+  // Preserve original trailing-newline semantics. split("\n").join("\n") of a
+  // string ending in "\n" yields a trailing "" element joined as "\n" already,
+  // so check explicitly.
+  if (hadTrailingNewline && !newContent.endsWith("\n")) newContent += "\n";
+  if (!hadTrailingNewline && newContent.endsWith("\n")) newContent = newContent.slice(0, -1);
+
+  const afterLinesCount = newContent.split("\n").length;
+
+  if (!dryRun) {
+    writeFileSync(filePath + ".tmp", newContent);
+    renameSync(filePath + ".tmp", filePath);
+  }
+
+  return {
+    compressed: true,
+    beforeLines,
+    afterLines: afterLinesCount,
+    elidedCount: elideRuns.length,
+    reason: "compressed"
+  };
+}
+
 function appendToIndex(planDirName) {
   const indexPath = join(plansDir, "INDEX.md");
   ensureConsolidatedFiles(); // creates INDEX.md if missing

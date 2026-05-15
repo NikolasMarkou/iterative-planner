@@ -2299,4 +2299,267 @@ describe("bootstrap.mjs", () => {
       assert.equal(r.reason, "too-few-entries");
     });
   });
+
+  // =========================================================================
+  // maybeCompressChangelog (v2.18.0+ intra-plan compression — changelog.md)
+  // =========================================================================
+  describe("maybeCompressChangelog", () => {
+    const CHANGELOG_HEADER = [
+      "# Changelog",
+      "*Append-only per-edit ledger. One line per file edit. Owner: ip-executor (writes). Reader: ip-reviewer at REFLECT.*",
+      "*Format: `UTC | iter-N/step-M | commit | path | OP(+N,-M) | radius:TIER(score) | D-NNN-or-dash | reason`*",
+      "*See references/blast-radius.md for radius scoring. Decision-ref optional — `-` means no `# DECISION` anchor governs this edit.*"
+    ];
+
+    /** Write a changelog.md with the standard 4-line header + the given body lines. */
+    function writeChangelog(planDir, bodyLines) {
+      mkdirSync(planDir, { recursive: true });
+      const content = [...CHANGELOG_HEADER, ...bodyLines].join("\n") + "\n";
+      writeFileSync(join(planDir, "changelog.md"), content);
+    }
+
+    function readChangelog(planDir) {
+      return readFileSync(join(planDir, "changelog.md"), "utf-8");
+    }
+
+    /**
+     * Build an elidable entry line (LOW radius, `-` decision-ref, non-REVERT).
+     * Defaults are tuned to be elidable; override tier/op/decisionRef per case.
+     */
+    function entryLine({
+      ts = "2026-05-15T12:00:00Z",
+      iterStep = "iter-1/step-3",
+      commit = "abc1234",
+      path = "src/foo.mjs",
+      op = "EDIT(+5,-2)",
+      tier = "LOW",
+      score = 0,
+      decisionRef = "-",
+      reason = "tweak"
+    } = {}) {
+      return `${ts} | ${iterStep} | ${commit} | ${path} | ${op} | radius:${tier}(${score}) | ${decisionRef} | ${reason}`;
+    }
+
+    async function loadHelper() {
+      const mod = await import(`file://${BOOTSTRAP}`);
+      return mod.maybeCompressChangelog;
+    }
+
+    function padFiller(n) {
+      // Generates n harmless filler lines that are not classified as entries
+      // (no pipe separators) so we can exceed the line threshold without
+      // affecting elide-group detection.
+      const out = [];
+      for (let i = 0; i < n; i++) out.push(`<!-- pad ${i} -->`);
+      return out;
+    }
+
+    it("Test 1: under threshold (50 lines) returns under-threshold", async () => {
+      const maybeCompressChangelog = await loadHelper();
+      const dir = getTempDir();
+      const planDir = join(dir, "plans", "plan_x");
+      const body = [];
+      for (let i = 0; i < 40; i++) body.push(entryLine({ iterStep: `iter-1/step-${i}` }));
+      writeChangelog(planDir, body);
+      const before = readChangelog(planDir);
+      const r = maybeCompressChangelog(planDir);
+      assert.equal(r.compressed, false);
+      assert.equal(r.reason, "under-threshold");
+      assert.equal(readChangelog(planDir), before, "file untouched");
+    });
+
+    it("Test 2: over threshold with 0 elidable lines returns no-elidable-groups", async () => {
+      const maybeCompressChangelog = await loadHelper();
+      const dir = getTempDir();
+      const planDir = join(dir, "plans", "plan_x");
+      // 250 entry lines, all HIGH or D-NNN-anchored (preserve-verbatim).
+      const body = [];
+      for (let i = 0; i < 125; i++) body.push(entryLine({ iterStep: `iter-1/step-${i}`, tier: "HIGH", score: 7 }));
+      for (let i = 0; i < 125; i++) body.push(entryLine({ iterStep: `iter-2/step-${i}`, decisionRef: "D-001" }));
+      writeChangelog(planDir, body);
+      const before = readChangelog(planDir);
+      const r = maybeCompressChangelog(planDir);
+      assert.equal(r.compressed, false);
+      assert.equal(r.reason, "no-elidable-groups");
+      assert.equal(readChangelog(planDir), before, "file untouched");
+    });
+
+    it("Test 3: over threshold with one 12-line elidable group → compressed=true, elidedCount=1", async () => {
+      const maybeCompressChangelog = await loadHelper();
+      const dir = getTempDir();
+      const planDir = join(dir, "plans", "plan_x");
+      const body = [];
+      // Pad to push line count over threshold without creating elidable runs
+      body.push(...padFiller(220));
+      // 12 elidable lines as a single contiguous group
+      for (let i = 0; i < 12; i++) body.push(entryLine({ iterStep: `iter-1/step-${i + 3}` }));
+      writeChangelog(planDir, body);
+
+      const r = maybeCompressChangelog(planDir);
+      assert.equal(r.compressed, true, `got ${JSON.stringify(r)}`);
+      assert.equal(r.elidedCount, 1);
+      const after = readChangelog(planDir);
+      // Exactly one inline summary line referencing 12 edits.
+      const summaryMatches = (after.match(/^- \(compressed: 12 low-decision-impact edits/gm) || []);
+      assert.equal(summaryMatches.length, 1, "exactly one inline summary line");
+      // None of the original 12 elided lines remain.
+      assert.ok(!after.includes("iter-1/step-3 | abc1234 | src/foo.mjs | EDIT"), "original elided lines gone");
+      // Header preserved verbatim.
+      assert.ok(after.startsWith(CHANGELOG_HEADER[0] + "\n"), "header line 1 preserved");
+      assert.ok(after.includes(CHANGELOG_HEADER[3]), "header line 4 preserved");
+      // Top-of-file metadata block present.
+      assert.ok(after.includes("<!-- COMPRESSED-SUMMARY -->"), "open marker");
+      assert.ok(after.includes("<!-- /COMPRESSED-SUMMARY -->"), "close marker");
+      assert.ok(after.includes("<!-- entries-at-compress: 12 -->"), "entry count metadata");
+      assert.ok(after.includes("<!-- elided-groups: 1, elided-lines: 12 -->"), "group/line totals");
+    });
+
+    it("Test 4: two non-adjacent elidable groups separated by HIGH line → both elided", async () => {
+      const maybeCompressChangelog = await loadHelper();
+      const dir = getTempDir();
+      const planDir = join(dir, "plans", "plan_x");
+      const body = [];
+      body.push(...padFiller(210));
+      // Group A: 6 elidable lines
+      for (let i = 0; i < 6; i++) body.push(entryLine({ iterStep: `iter-1/step-A${i}`, path: `src/a${i}.mjs` }));
+      // Sentinel HIGH line in between
+      body.push(entryLine({ iterStep: "iter-1/step-mid", path: "src/mid.mjs", tier: "HIGH", score: 8, reason: "load-bearing" }));
+      // Group B: 7 elidable lines
+      for (let i = 0; i < 7; i++) body.push(entryLine({ iterStep: `iter-1/step-B${i}`, path: `src/b${i}.mjs` }));
+      writeChangelog(planDir, body);
+
+      const r = maybeCompressChangelog(planDir);
+      assert.equal(r.compressed, true);
+      assert.equal(r.elidedCount, 2, "both groups elided independently");
+      const after = readChangelog(planDir);
+      // HIGH line preserved verbatim in original position
+      assert.ok(after.includes("src/mid.mjs"), "HIGH sentinel survives");
+      assert.ok(after.includes("radius:HIGH(8)"), "tier preserved");
+      // Two inline summary lines
+      const summaries = after.match(/^- \(compressed:/gm) || [];
+      assert.equal(summaries.length, 2, "two inline summaries");
+      // Order: group A summary appears BEFORE HIGH line; group B summary appears AFTER.
+      const aSummaryIdx = after.indexOf("- (compressed: 6 low-decision-impact edits");
+      const highIdx = after.indexOf("src/mid.mjs");
+      const bSummaryIdx = after.indexOf("- (compressed: 7 low-decision-impact edits");
+      assert.ok(aSummaryIdx > 0 && highIdx > aSummaryIdx && bSummaryIdx > highIdx,
+        `chronological order: A-summary(${aSummaryIdx}) < HIGH(${highIdx}) < B-summary(${bSummaryIdx})`);
+    });
+
+    it("Test 5: idempotency — second call returns no-new-entries", async () => {
+      const maybeCompressChangelog = await loadHelper();
+      const dir = getTempDir();
+      const planDir = join(dir, "plans", "plan_x");
+      const body = [];
+      body.push(...padFiller(210));
+      for (let i = 0; i < 10; i++) body.push(entryLine({ iterStep: `iter-1/step-${i}` }));
+      writeChangelog(planDir, body);
+      const r1 = maybeCompressChangelog(planDir);
+      assert.equal(r1.compressed, true);
+      const afterFirst = readChangelog(planDir);
+      const r2 = maybeCompressChangelog(planDir);
+      assert.equal(r2.compressed, false);
+      assert.equal(r2.reason, "no-new-entries");
+      assert.equal(readChangelog(planDir), afterFirst, "file untouched by second pass");
+    });
+
+    it("Test 6: re-compression with 20 new LOW lines appended → metadata block replaced, new group elided, prior inline summary preserved", async () => {
+      const maybeCompressChangelog = await loadHelper();
+      const dir = getTempDir();
+      const planDir = join(dir, "plans", "plan_x");
+      const body = [];
+      body.push(...padFiller(210));
+      for (let i = 0; i < 8; i++) body.push(entryLine({ iterStep: `iter-1/step-${i}` }));
+      writeChangelog(planDir, body);
+      maybeCompressChangelog(planDir);
+      // Confirm initial inline summary exists
+      let after1 = readChangelog(planDir);
+      assert.ok(after1.includes("- (compressed: 8 low-decision-impact edits"), "first-pass summary present");
+
+      // Append 20 new LOW elidable lines
+      const newLines = [];
+      for (let i = 0; i < 20; i++) newLines.push(entryLine({ iterStep: `iter-2/step-${i}`, path: `src/new${i}.mjs` }));
+      const appended = after1 + newLines.join("\n") + "\n";
+      writeFileSync(join(planDir, "changelog.md"), appended);
+
+      const r = maybeCompressChangelog(planDir);
+      assert.equal(r.compressed, true, `got ${JSON.stringify(r)}`);
+      const after2 = readChangelog(planDir);
+
+      // Exactly one metadata block (open marker count = 1)
+      const openMarkers = (after2.match(/<!-- COMPRESSED-SUMMARY -->/g) || []);
+      assert.equal(openMarkers.length, 1, "metadata block replaced, not duplicated");
+      // Prior inline summary preserved (already-elided record survives)
+      assert.ok(after2.includes("- (compressed: 8 low-decision-impact edits"),
+        "first-pass inline summary preserved verbatim");
+      // New 20-line group elided
+      assert.ok(after2.includes("- (compressed: 20 low-decision-impact edits"),
+        "new group elided this pass");
+      // entries-at-compress counts BOTH live entries AND entry-equivalents
+      // from surviving inline summaries (8 from first pass + 20 new = 28).
+      // This is what makes idempotency work across re-compression passes.
+      assert.ok(after2.includes("<!-- entries-at-compress: 28 -->"),
+        "entry count is 28 (8 prior-summary equiv + 20 new)");
+      // None of the 20 new raw lines survive
+      assert.ok(!after2.includes("src/new0.mjs"), "first new entry elided");
+      assert.ok(!after2.includes("src/new19.mjs"), "last new entry elided");
+    });
+
+    it("Test 7: preserve-verbatim rules — HIGH, REVERT, D-NNN ref all survive", async () => {
+      const maybeCompressChangelog = await loadHelper();
+      const dir = getTempDir();
+      const planDir = join(dir, "plans", "plan_x");
+      const body = [];
+      body.push(...padFiller(200));
+      // 3 elidable, then sentinel HIGH, then 3 elidable, then REVERT, then 3 elidable, then D-NNN-anchored, then 6 elidable (only this run >=5)
+      for (let i = 0; i < 3; i++) body.push(entryLine({ iterStep: `iter-1/step-pre${i}` }));
+      body.push(entryLine({ iterStep: "iter-1/step-H", path: "src/high.mjs", tier: "HIGH", score: 9, reason: "core-rewrite" }));
+      for (let i = 0; i < 3; i++) body.push(entryLine({ iterStep: `iter-1/step-mid${i}` }));
+      body.push(entryLine({ iterStep: "iter-1/step-R", path: "src/foo.mjs", op: "REVERT(src/foo.mjs)", reason: "revert botched edit" }));
+      for (let i = 0; i < 3; i++) body.push(entryLine({ iterStep: `iter-1/step-mid2-${i}` }));
+      body.push(entryLine({ iterStep: "iter-1/step-A", path: "src/anchored.mjs", decisionRef: "D-007", reason: "anchored impl" }));
+      // 6-line elidable run (only run >=5, so it WILL be elided)
+      for (let i = 0; i < 6; i++) body.push(entryLine({ iterStep: `iter-1/step-tail${i}` }));
+      writeChangelog(planDir, body);
+
+      const r = maybeCompressChangelog(planDir);
+      assert.equal(r.compressed, true, `got ${JSON.stringify(r)}`);
+      const after = readChangelog(planDir);
+      // Preserve-verbatim survivors
+      assert.ok(after.includes("src/high.mjs"), "HIGH line survives");
+      assert.ok(after.includes("radius:HIGH(9)"), "HIGH tier preserved");
+      assert.ok(after.includes("REVERT(src/foo.mjs)"), "REVERT op survives");
+      assert.ok(after.includes("revert botched edit"), "REVERT line reason intact");
+      assert.ok(after.includes("D-007"), "anchored line survives");
+      assert.ok(after.includes("src/anchored.mjs"), "anchored line path intact");
+      // The two 3-line groups did NOT meet the min-group threshold, so they
+      // are preserved verbatim too.
+      assert.ok(after.includes("iter-1/step-pre0"), "3-line group below threshold preserved");
+      assert.ok(after.includes("iter-1/step-mid2-2"), "3-line group below threshold preserved");
+      // Tail 6-line group IS elided (one inline summary).
+      const summaries = after.match(/^- \(compressed: 6 low-decision-impact edits/gm) || [];
+      assert.equal(summaries.length, 1, "exactly the 6-line tail group elided");
+      // The raw entry line for tail0 is gone (the substring may still appear
+      // inside the inline summary's iter-range citation; we check for the
+      // entry's path+op signature instead).
+      assert.ok(!/iter-1\/step-tail0 \| abc1234 \| src\/foo\.mjs \| EDIT/.test(after),
+        "raw tail entry line gone");
+    });
+
+    it("Test 8: dryRun returns metrics without writing", async () => {
+      const maybeCompressChangelog = await loadHelper();
+      const dir = getTempDir();
+      const planDir = join(dir, "plans", "plan_x");
+      const body = [];
+      body.push(...padFiller(210));
+      for (let i = 0; i < 10; i++) body.push(entryLine({ iterStep: `iter-1/step-${i}` }));
+      writeChangelog(planDir, body);
+      const before = readChangelog(planDir);
+      const r = maybeCompressChangelog(planDir, { dryRun: true });
+      assert.equal(r.compressed, true);
+      assert.equal(r.elidedCount, 1);
+      assert.ok(r.afterLines < r.beforeLines, "metrics reflect compression");
+      assert.equal(readChangelog(planDir), before, "dryRun did not write");
+    });
+  });
 });
