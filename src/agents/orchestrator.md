@@ -72,6 +72,14 @@ At PLAN → EXECUTE handoff, BEFORE requesting user approval, emit a chat block 
 Floor (always render verbatim, even on token-cost grounds): Steps, Success Criteria, Verification Strategy, Failure Modes, Assumptions. Context and Pre-Mortem may be condensed by reference only if the floor renders in full. Same contract on re-presentation after revision.
 
 **Dispatch**
+0. **Compression gate** (v2.18.0+): Before reading decisions.md / changelog.md for PLAN work and before spawning ip-plan-writer, invoke the intra-plan compression helpers exported from `bootstrap.mjs` (see `references/file-formats.md` § Intra-plan compression for the full spec, and decisions.md D-003 for the `isEntryPoint` dual-mode pattern that makes dynamic import safe):
+   ```bash
+   node -e "import('<skill-path>/scripts/bootstrap.mjs').then(m => Promise.all([m.maybeCompressDecisions('<plan-dir>'), m.maybeCompressChangelog('<plan-dir>')]))"
+   ```
+   - Both helpers are idempotent — calling them on a small file is a no-op.
+   - Thresholds: `decisions.md` > 300 lines, `changelog.md` > 200 lines (defaults; tunable via opts).
+   - Failure-tolerant: if compression throws for any reason (corrupted file, unexpected schema, missing module), log the error and CONTINUE — never block PLAN on a compression failure. Raw entries remain readable below the marker even if the summary block is malformed.
+   - First PLAN of a new plan: files are empty, both helpers no-op silently.
 1. Read all findings/*, decisions.md, plans/LESSONS.md, plans/DECISIONS.md (limit: 600), plans/SYSTEM.md
 2. Spawn ip-plan-writer with goal + findings summary
 3. Read its plan.md output (path + section anchors returned by sub-agent), verify all required sections exist
@@ -98,8 +106,21 @@ After 2 failed fix attempts on the same step, BEFORE transitioning to REFLECT, e
 5. Explicit prompt for user direction (continue / pivot / rollback).
 Floor: all 5 items. None may be omitted.
 
+<!-- DECISION plan_2026-05-15_71ab18dd/D-004: pre-step gate is HARD via exit code 2 — do NOT downgrade to advisory/grep-stdout. Reserved exit code keeps shell-script orchestrators robust and bypasses the full validator pipeline for <50ms latency. See plans/plan_2026-05-15_71ab18dd/decisions.md D-004. -->
+
 **Dispatch**
 1. Read plan.md, identify next step
+1.5. **Pre-step gate** (v2.18.0+): Run `node <skill-path>/scripts/validate-plan.mjs --pre-step`. Contract per decisions.md D-004 and `references/file-formats.md` § Presentation Contracts.
+   - **Exit 0** (`GATE:PASS`): proceed to spawn ip-executor.
+   - **Exit 2** (`GATE:FAIL [slug] ...`): HALT EXECUTE. Do NOT spawn ip-executor. Actions, in order:
+     1. Parse the slug from stdout (`leash-cap` / `wrong-state` / `iteration-cap` / `no-plan`).
+     2. Append a line to `{plan-dir}/state.md` under `## Fix Attempts (resets per plan step)`:
+        `- Step N: LEASH HIT via pre-step gate. Slug: <slug>. Stdout: <verbatim>.`
+        (Where N is the current step number from `## Current Plan Step:`.)
+     3. Present to user per the **PC-EXECUTE-LEASH** contract above (5-item block): the step intent verbatim from plan.md, the attempts log, the available checkpoints registry verbatim from `checkpoints/*`, a root-cause guess, and the explicit prompt asking whether to PIVOT, REFLECT, or revert.
+     4. Transition state to REFLECT.
+   - **Exit 1**: not expected from `--pre-step` mode today (reserved for future expansion). If encountered, treat as a transient error: retry once; on second exit-1, escalate as if it were exit 2 with synthesized slug `gate-error`.
+   - Latency budget: <50ms per call. If the call hangs >5s, abort the subprocess and escalate to the user (do not silently skip — that would re-introduce the advisory-leash gap D-004 closes).
 2. Spawn ip-executor with step details + relevant context file paths
 3. Read result:
    - SUCCESS: run Post-Step Gate (update plan.md, progress.md, state.md, changelog.md), then emit PC-EXECUTE-STEP
