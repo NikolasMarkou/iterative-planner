@@ -1448,6 +1448,60 @@ function validate(planDirName) {
 }
 
 // ---------------------------------------------------------------------------
+// Pre-step gate (--pre-step mode)
+// ---------------------------------------------------------------------------
+
+// DECISION plan_2026-05-15_71ab18dd/D-004 — Pre-step Autonomy Leash gate.
+// Lightweight HARD gate the orchestrator MUST run before every ip-executor
+// spawn (between "identify next step" and "Spawn ip-executor"). Exits 2 on
+// any HARD FAIL — exit code 2 is reserved EXCLUSIVELY for this mode, so
+// orchestrator shell scripts can distinguish a leash trip from legacy
+// validator errors (exit 1) without grepping stdout.
+//
+// DO NOT:
+//   - widen the check set to walk source files (anchor scan, findings index,
+//     extractField on plan.md, checkpoint validation): the gate must run in
+//     <50ms per executor spawn. Only state.md is opened.
+//   - emit WARN/exit 1 from this path: every check is binary PASS/FAIL.
+//     Exit 1 is reserved for future expansion.
+//   - re-use exit code 1 for HARD FAIL: that conflates leash trips with
+//     malformed-plan errors from the full validator. See decisions.md D-004.
+//   - print more than one line: stdout = single "GATE:*" token line.
+function runPreStepGate(planDir) {
+  const statePath = join(planDir, "state.md");
+  const state = readFile(statePath);
+  if (!state) {
+    console.log("GATE:FAIL [no-plan]");
+    process.exit(2);
+  }
+
+  const currentState = (extractField(state, /^# Current State:\s*(.+)$/m) || "").trim();
+  if (currentState.toUpperCase() !== "EXECUTE") {
+    console.log(`GATE:FAIL [wrong-state] expected=EXECUTE actual=${currentState || "<missing>"}`);
+    process.exit(2);
+  }
+
+  const section = extractSection(state, "Fix Attempts");
+  // Reconciled regex (step 1): documented `- Step N, attempt M` + legacy `- Attempt M`.
+  const attemptRe = /^-\s+(Step\s+\d+,\s+attempt\s+\d+|Attempt\s+\d+)/i;
+  const attempts = section ? section.split("\n").filter((l) => attemptRe.test(l)).length : 0;
+  if (attempts >= 2) {
+    console.log(`GATE:FAIL [leash-cap] attempts=${attempts} cap=2`);
+    process.exit(2);
+  }
+
+  const iterStr = extractField(state, /^## Iteration:\s*(.+)$/m);
+  const iter = iterStr ? parseInt(iterStr, 10) : 0;
+  if (Number.isFinite(iter) && iter >= 6) {
+    console.log(`GATE:FAIL [iteration-cap] iteration=${iter} hard-cap=6`);
+    process.exit(2);
+  }
+
+  console.log("GATE:PASS");
+  process.exit(0);
+}
+
+// ---------------------------------------------------------------------------
 // CLI Dispatch
 // ---------------------------------------------------------------------------
 
@@ -1455,9 +1509,21 @@ const args = process.argv.slice(2);
 
 if (args.includes("--help") || args.includes("-h")) {
   console.log(`Usage: node validate-plan.mjs [plan-dir-name]
+       node validate-plan.mjs --pre-step [plan-dir-name]
 
 Validates protocol compliance of an iterative-planner plan directory.
 If no plan directory is specified, validates the active plan.
+
+--pre-step mode:
+  Lightweight HARD gate intended to be invoked by the orchestrator before
+  each ip-executor spawn (between "identify next step" and "Spawn ip-executor").
+  Opens only state.md (no anchor walk, no findings scan) for sub-50ms latency.
+  Checks (short-circuit on first FAIL, in order):
+    1. plan dir + state.md readable      → GATE:FAIL [no-plan]
+    2. Current State = EXECUTE           → GATE:FAIL [wrong-state]
+    3. Fix Attempts < 2                  → GATE:FAIL [leash-cap]
+    4. Iteration < 6                     → GATE:FAIL [iteration-cap]
+  Output: single line on stdout — GATE:PASS or GATE:FAIL [slug] [...details].
 
 Checks:
   - State transition validity
@@ -1496,9 +1562,36 @@ Checks:
     state.md / decisions.md / progress.md — best-effort signal)
 
 Exit codes:
-  0 = pass (no errors, warnings are OK)
-  1 = fail (errors found)`);
+  0 = pass (no errors, warnings are OK; or GATE:PASS in --pre-step mode)
+  1 = fail (errors found in full validator)
+  2 = GATE:FAIL — reserved EXCLUSIVELY for --pre-step HARD FAIL
+      (leash-cap, wrong-state, iteration-cap, no-plan). Orchestrators MUST
+      halt the EXECUTE spawn pipeline on exit 2.`);
   process.exit(0);
+}
+
+// --pre-step branch — bypass the full validator entirely.
+if (args.includes("--pre-step")) {
+  // Resolve plan dir: positional non-flag arg wins; else .current_plan pointer.
+  const positional = args.find((a) => !a.startsWith("--") && a !== "-h" && a !== "-h");
+  let preStepDir;
+  if (positional) {
+    // Accept absolute path, relative path, or bare plan-dir name (resolved under plans/).
+    if (positional.includes("/") || positional.startsWith(".")) {
+      preStepDir = positional;
+    } else {
+      preStepDir = join(plansDir, positional);
+    }
+  } else {
+    try {
+      const pointed = readFileSync(pointerFile, "utf-8").trim();
+      preStepDir = join(plansDir, pointed);
+    } catch {
+      console.log("GATE:FAIL [no-plan]");
+      process.exit(2);
+    }
+  }
+  runPreStepGate(preStepDir);
 }
 
 let planDirName;
