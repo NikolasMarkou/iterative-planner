@@ -16,6 +16,10 @@ Maintain in `state.md` during EXECUTE:
 Update after every file create/modify/delete. `[x]` = committed, `[ ]` = uncommitted.
 Reset on iteration increment (PLAN → EXECUTE). Prior iteration's commits need no tracking.
 
+## Revert procedures — manifest-touching reverts
+
+v2.18.0+: when a revert traverses a commit that touched a package manifest, the bare `git checkout` is NOT a complete revert — a strict-fidelity reinstall is required to reconcile install state with the restored lockfile. The detailed steps are appended to each revert procedure below.
+
 ## On Failed Step (→ REFLECT)
 
 Successful steps already committed. Applies only to failed step.
@@ -28,6 +32,12 @@ Successful steps already committed. Applies only to failed step.
 2. Update change manifest.
 3. Log reverted files in `decisions.md`.
 4. Append a `REVERT(file)` line to `{plan-dir}/changelog.md` for each reverted file (one line per file). Reason: `revert: <what failed>`. Append-only — never delete the original lines that recorded the failed edits.
+5. **Post-git restore** (when reverting through a step that touched a manifest):
+   - If `{plan-dir}/checkpoints/cp-NNN-iterN.lockfiles/` exists OR the reverted commit modified a tracked lockfile (`package-lock.json`, `Cargo.lock`, `poetry.lock`, `Gemfile.lock`, `go.sum`, `composer.lock`, `pnpm-lock.yaml`, `yarn.lock`, `uv.lock`):
+     1. If snapshot directory exists, `cp checkpoints/cp-NNN-iterN.lockfiles/* .` to overwrite (only needed for `.gitignore`d lockfiles — git checkout already restores tracked ones).
+     2. Run the ecosystem's strict-fidelity install: `npm ci` / `cargo build` / `poetry install --sync` / `bundle install` / `go mod download` / `composer install`.
+     3. Verify `node_modules/` / `target/` / `.venv/` / `vendor/` matches the lockfile state. The revert is NOT complete until this finishes successfully.
+   - If the reverted commits did NOT touch a manifest, skip — `git checkout` is sufficient.
 
 Codebase after failed step = last successful commit. No half-applied changes, no debug code, no commented-out attempts.
 
@@ -43,6 +53,12 @@ Read `checkpoints/*` first — know your rollback options. Decide explicitly:
    Log: "Reverted all changes from iteration N. Starting from checkpoint cp-NNN."
 3. **Default when unsure**: revert to latest checkpoint. Safer than debugging stale state from a different approach.
 4. **No partial work.** Known-good before PLAN = tests pass, no uncommitted changes, no dead code.
+5. **Post-git restore** (when reverting through a step that touched a manifest — applies only when keep-vs-revert decides REVERT):
+   - If `{plan-dir}/checkpoints/cp-NNN-iterN.lockfiles/` exists OR the reverted commit modified a tracked lockfile (`package-lock.json`, `Cargo.lock`, `poetry.lock`, `Gemfile.lock`, `go.sum`, `composer.lock`, `pnpm-lock.yaml`, `yarn.lock`, `uv.lock`):
+     1. If snapshot directory exists, `cp checkpoints/cp-NNN-iterN.lockfiles/* .` to overwrite (only needed for `.gitignore`d lockfiles — git checkout already restores tracked ones).
+     2. Run the ecosystem's strict-fidelity install: `npm ci` / `cargo build` / `poetry install --sync` / `bundle install` / `go mod download` / `composer install`.
+     3. Verify `node_modules/` / `target/` / `.venv/` / `vendor/` matches the lockfile state. The revert is NOT complete until this finishes successfully.
+   - If the reverted commits did NOT touch a manifest, skip — `git checkout` is sufficient.
 
 ## Nuclear Option (Full Revert)
 
@@ -52,6 +68,13 @@ git checkout <cp-000-commit> -- .  # revert to initial checkpoint
 ```
 
 Log: "NUCLEAR REVERT to initial state. All N iterations reverted. Stashed for recovery."
+
+**Post-git restore** (when reverting through a step that touched a manifest):
+- If `{plan-dir}/checkpoints/cp-NNN-iterN.lockfiles/` exists OR the reverted commit modified a tracked lockfile (`package-lock.json`, `Cargo.lock`, `poetry.lock`, `Gemfile.lock`, `go.sum`, `composer.lock`, `pnpm-lock.yaml`, `yarn.lock`, `uv.lock`):
+  1. If snapshot directory exists, `cp checkpoints/cp-NNN-iterN.lockfiles/* .` to overwrite (only needed for `.gitignore`d lockfiles — git checkout already restores tracked ones).
+  2. Run the ecosystem's strict-fidelity install: `npm ci` / `cargo build` / `poetry install --sync` / `bundle install` / `go mod download` / `composer install`.
+  3. Verify `node_modules/` / `target/` / `.venv/` / `vendor/` matches the lockfile state. The revert is NOT complete until this finishes successfully.
+- If the reverted commits did NOT touch a manifest, skip — `git checkout` is sufficient.
 
 ## Irreversible Operations
 
