@@ -16,7 +16,7 @@
 // Requires Node.js 18+. No external dependencies.
 
 import { existsSync, readFileSync, statSync, readdirSync } from "fs";
-import { execSync } from "child_process";
+import { spawnSync } from "child_process";
 import { join, extname, basename, dirname, relative, resolve, sep } from "path";
 
 const args = process.argv.slice(2);
@@ -37,16 +37,29 @@ const repoRel = relative(cwd, filePath);
 // Helpers
 // -----------------------------------------------------------------------------
 
-function tryExec(cmd, opts = {}) {
+// DECISION plan_2026-05-15_9ae230f7/D-003 — spawnSync(cmd, args[], …) instead of
+// execSync(cmd-string). Pre-fix: every callsite interpolated `repoRel` (and
+// `pat`) into a double-quoted shell command string, allowing `$()` / backtick
+// expansion when the filename contained those. Live probe (FN-004) created
+// /tmp/FN_PWNED from a filename `bad$(touch /tmp/FN_PWNED).js`. Post-fix:
+// argv elements never touch the shell. shell:false is the spawnSync default.
+function tryExecArgs(cmd, args, opts = {}) {
   try {
-    return execSync(cmd, { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"], timeout: 1500, ...opts }).trim();
+    const r = spawnSync(cmd, args, {
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 1500,
+      ...opts,
+    });
+    if (r.error || r.status !== 0) return null;
+    return (r.stdout ?? "").trim();
   } catch {
     return null;
   }
 }
 
 function isGitRepo() {
-  return tryExec("git rev-parse --is-inside-work-tree") === "true";
+  return tryExecArgs("git", ["rev-parse", "--is-inside-work-tree"]) === "true";
 }
 
 function isBinary(p) {
@@ -67,7 +80,9 @@ function isBinary(p) {
 
 function locChurn() {
   // Try staged + unstaged together against HEAD; fall back to working-tree only.
-  const numstat = tryExec(`git diff HEAD --numstat -- "${repoRel}"`) ?? tryExec(`git diff --numstat -- "${repoRel}"`);
+  const numstat =
+    tryExecArgs("git", ["diff", "HEAD", "--numstat", "--", repoRel]) ??
+    tryExecArgs("git", ["diff", "--numstat", "--", repoRel]);
   if (numstat == null) return { score: 0, added: 0, removed: 0 };
   const line = numstat.split("\n").find((l) => l.trim().length > 0);
   if (!line) return { score: 0, added: 0, removed: 0 };
@@ -94,13 +109,14 @@ function reverseDeps() {
   const base = basename(repoRel, ext);
   if (!base) return { score: 0, count: 0 };
   // Build a heuristic pattern matching common import idioms.
-  // Quote the basename to avoid shell glob; use grep -F-style escape via fixed strings inside extended regex.
+  // Pattern goes into git grep / grep as an argv element — never shell-interpreted.
   const escaped = base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const pat = `(from ['\"][^'\"]*${escaped}['\"]|require\\(['\"][^'\"]*${escaped}['\"]\\)|import [^;]*${escaped}|use [a-zA-Z0-9_:]*${escaped}|include [\"<][^\">]*${escaped})`;
   // Use git grep when in repo (faster, respects .gitignore); fall back to grep -r.
   let out =
-    tryExec(`git grep -E -l --untracked --no-color "${pat}" -- ":(top,exclude)${repoRel}" ":(top,exclude)plans/" 2>/dev/null`) ??
-    tryExec(`grep -E -r -l --include="*.${ext.slice(1) || "*"}" "${pat}" . 2>/dev/null`);
+    tryExecArgs("git", ["grep", "-E", "-l", "--untracked", "--no-color", pat,
+                        "--", `:(top,exclude)${repoRel}`, ":(top,exclude)plans/"]) ??
+    tryExecArgs("grep", ["-E", "-r", "-l", `--include=*.${ext.slice(1) || "*"}`, pat, "."]);
   if (out == null) return { score: 0, count: 0 };
   const lines = out.split("\n").filter((l) => l.trim().length > 0 && l !== repoRel);
   const count = lines.length;
@@ -139,7 +155,9 @@ const CODE_EXTS = new Set([
 
 function publicApiTouch() {
   if (!CODE_EXTS.has(extname(repoRel))) return { score: 0, hits: 0 };
-  const diff = tryExec(`git diff HEAD -- "${repoRel}"`) ?? tryExec(`git diff -- "${repoRel}"`);
+  const diff =
+    tryExecArgs("git", ["diff", "HEAD", "--", repoRel]) ??
+    tryExecArgs("git", ["diff", "--", repoRel]);
   if (!diff) return { score: 0, hits: 0 };
   const adds = diff.split("\n").filter((l) => l.startsWith("+") && !l.startsWith("+++"));
   let hits = 0;
@@ -160,7 +178,9 @@ function testDelta() {
   const ext = extname(repoRel);
   const base = basename(repoRel, ext);
   if (!base) return { score: 0, hit: false };
-  const changed = tryExec("git diff HEAD --name-only") ?? tryExec("git diff --name-only");
+  const changed =
+    tryExecArgs("git", ["diff", "HEAD", "--name-only"]) ??
+    tryExecArgs("git", ["diff", "--name-only"]);
   if (!changed) return { score: 0, hit: false };
   const escaped = base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   for (const f of changed.split("\n")) {
@@ -226,7 +246,7 @@ if (!isGitRepo()) emitUnknown("no-git");
 if (!existsSync(filePath)) {
   // File may have been deleted as part of edit; still try to score from diff.
   // If git diff returns nothing, give up.
-  const d = tryExec(`git diff HEAD --numstat -- "${repoRel}"`);
+  const d = tryExecArgs("git", ["diff", "HEAD", "--numstat", "--", repoRel]);
   if (!d) emitUnknown("not-tracked");
 }
 if (existsSync(filePath) && statSync(filePath).isDirectory()) emitUnknown("is-directory");
