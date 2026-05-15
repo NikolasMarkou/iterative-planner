@@ -259,6 +259,304 @@ function mergeToConsolidated(planDirName) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Intra-plan compression (v2.18.0+): decisions.md
+// ---------------------------------------------------------------------------
+//
+// Mirrors the cross-plan `<!-- COMPRESSED-SUMMARY -->` pattern (see SKILL.md
+// "Mandatory Re-reads" + `checkConsolidatedSize`/`prependToConsolidated`
+// above). Intra-plan files have NO sliding window, so compression must run
+// mid-plan, owned by the orchestrator at PLAN gate-in. This helper is the
+// mechanical layer: parse raw `## D-NNN` entries, emit a lookup-table block,
+// insert it between the preamble and the first entry. Raw entries below
+// remain UNTOUCHED — the append-only invariant is preserved as a safety net.
+//
+// Re-compression: when an existing block is found, it is REPLACED — we always
+// summarize raw entries (never re-summarize a prior summary). The
+// `entries-at-compress: N` marker comment inside the block lets us no-op when
+// no new D-NNN entries have been appended since last compression.
+
+const DECISIONS_COMPRESS_THRESHOLD = 300;
+const COMPRESSED_SUMMARY_MAX_LINES = 100;
+const ENTRIES_AT_COMPRESS_RE = /<!-- entries-at-compress:\s*(\d+)\s*-->/;
+
+/**
+ * Parse decisions.md into structured entries. Returns:
+ *   { preambleEnd: number, entries: Array<{
+ *       id, phase, date, headerLine, body, decisionLine,
+ *       anchorRefs, isPivot, startLine, endLine
+ *     }>,
+ *     existingBlock: { startLine, endLine, entriesAtCompress } | null,
+ *     hasPreamble: boolean
+ *   }
+ *
+ * preambleEnd is the line index (0-based, exclusive) where the compressed
+ * block should be inserted. It points at the first `## D-NNN` line OR the
+ * line of an existing `<!-- COMPRESSED-SUMMARY -->` block, whichever comes
+ * first — so callers replace the existing block in-place.
+ */
+function parseDecisionsFile(content) {
+  const lines = content.split("\n");
+  let preambleEnd = lines.length;
+  let firstEntryLine = -1;
+  let existingBlockStart = -1;
+  let existingBlockEnd = -1;
+  let entriesAtCompress = null;
+  let hasPreamble = false;
+
+  // Locate *Plan: …* preamble (required)
+  for (let i = 0; i < lines.length; i++) {
+    if (/^\*Plan:\s*/.test(lines[i])) { hasPreamble = true; break; }
+  }
+
+  // Locate existing compressed block (if any) — first occurrence wins
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].includes(COMPRESSED_SUMMARY_OPEN)) {
+      existingBlockStart = i;
+      for (let j = i; j < lines.length; j++) {
+        const m = lines[j].match(ENTRIES_AT_COMPRESS_RE);
+        if (m) entriesAtCompress = Number(m[1]);
+        if (lines[j].includes(COMPRESSED_SUMMARY_CLOSE)) {
+          existingBlockEnd = j;
+          break;
+        }
+      }
+      break;
+    }
+  }
+
+  // Locate first real `## D-NNN` header (NOT inside the schema HTML comment
+  // block, NOT inside an existing compressed block).
+  let inHtmlComment = false;
+  let inCompressedBlock = false;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    // Track HTML comment open/close. Comments are single-line OR span multiple
+    // lines (`<!--` … `-->`). The decisions.md schema example is a multi-line
+    // comment we must skip.
+    if (!inHtmlComment && line.includes("<!--") && !line.includes("-->")) {
+      // Open without close on the same line — multi-line comment begins
+      // (but ignore the COMPRESSED-SUMMARY markers themselves)
+      if (!line.includes(COMPRESSED_SUMMARY_OPEN)) inHtmlComment = true;
+    } else if (inHtmlComment && line.includes("-->")) {
+      inHtmlComment = false;
+      continue;
+    }
+    if (line.includes(COMPRESSED_SUMMARY_OPEN)) inCompressedBlock = true;
+    if (line.includes(COMPRESSED_SUMMARY_CLOSE)) { inCompressedBlock = false; continue; }
+    if (inHtmlComment || inCompressedBlock) continue;
+    if (/^## D-\d+\s*\|/.test(line)) {
+      firstEntryLine = i;
+      break;
+    }
+  }
+
+  // Parse all real D-NNN entries (skip the schema example inside HTML comment).
+  const entries = [];
+  inHtmlComment = false;
+  inCompressedBlock = false;
+  let current = null;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const prevInHtmlComment = inHtmlComment;
+    if (!inHtmlComment && line.includes("<!--") && !line.includes("-->")) {
+      if (!line.includes(COMPRESSED_SUMMARY_OPEN)) inHtmlComment = true;
+    } else if (inHtmlComment && line.includes("-->")) {
+      inHtmlComment = false;
+      continue;
+    }
+    if (line.includes(COMPRESSED_SUMMARY_OPEN)) inCompressedBlock = true;
+    if (line.includes(COMPRESSED_SUMMARY_CLOSE)) { inCompressedBlock = false; continue; }
+    if (prevInHtmlComment || inHtmlComment || inCompressedBlock) continue;
+
+    const headerMatch = line.match(/^## (D-\d+)\s*\|\s*([^|]+?)\s*\|\s*(\S+)\s*$/);
+    if (headerMatch) {
+      if (current) { current.endLine = i - 1; entries.push(current); }
+      current = {
+        id: headerMatch[1],
+        phase: headerMatch[2].trim(),
+        date: headerMatch[3].trim(),
+        headerLine: line,
+        body: [],
+        decisionLine: "",
+        anchorRefs: "",
+        isPivot: /\bPIVOT\b/.test(headerMatch[2]),
+        startLine: i,
+        endLine: -1
+      };
+    } else if (current) {
+      current.body.push(line);
+    }
+  }
+  if (current) { current.endLine = lines.length - 1; entries.push(current); }
+
+  // Extract Decision + Anchor-Refs from each entry's body.
+  // **Decision**: may span multiple lines until next **Field**: or blank line.
+  for (const e of entries) {
+    let i = 0;
+    while (i < e.body.length) {
+      const ln = e.body[i];
+      const dm = ln.match(/^\*\*Decision\*\*:\s*(.*)$/);
+      if (dm) {
+        const parts = [dm[1]];
+        for (let j = i + 1; j < e.body.length; j++) {
+          const nxt = e.body[j];
+          if (/^\*\*[A-Z][^*]*\*\*:/.test(nxt)) break;
+          if (nxt.trim() === "") break;
+          parts.push(nxt.trim());
+        }
+        e.decisionLine = parts.join(" ").trim();
+      }
+      const am = ln.match(/^\*\*Anchor-Refs\*\*:\s*(.*)$/);
+      if (am) e.anchorRefs = am[1].trim();
+      i++;
+    }
+  }
+
+  preambleEnd = existingBlockStart >= 0 ? existingBlockStart
+              : firstEntryLine >= 0 ? firstEntryLine
+              : lines.length;
+
+  return {
+    lines,
+    preambleEnd,
+    firstEntryLine,
+    entries,
+    existingBlock: existingBlockStart >= 0
+      ? { startLine: existingBlockStart, endLine: existingBlockEnd, entriesAtCompress }
+      : null,
+    hasPreamble
+  };
+}
+
+function buildDecisionsSummaryBlock(entries, beforeLines) {
+  const lookup = entries.map((e) => {
+    const decision = e.decisionLine || "(no Decision line)";
+    const anchors = e.anchorRefs && !/^\(none/i.test(e.anchorRefs) ? e.anchorRefs : "none";
+    return `- **${e.id}** | ${e.phase} | ${e.date} — ${decision}  (anchors: ${anchors})`;
+  });
+
+  const pivotNotes = entries
+    .filter((e) => e.isPivot)
+    .map((e) => `- ${e.id}: ${e.decisionLine || "(no Decision line)"}`);
+  const pivotBlock = pivotNotes.length > 0
+    ? pivotNotes.join("\n")
+    : "*(none — no PIVOT entries yet)*";
+
+  const anchored = entries
+    .filter((e) => e.anchorRefs && !/^\(none/i.test(e.anchorRefs))
+    .map((e) => `- ${e.id} → ${e.anchorRefs}`);
+  const anchoredBlock = anchored.length > 0
+    ? anchored.join("\n")
+    : "*(none — no entries carry Anchor-Refs yet)*";
+
+  const block = [
+    COMPRESSED_SUMMARY_OPEN,
+    `<!-- entries-at-compress: ${entries.length} -->`,
+    "## Summary (compressed)",
+    `*Auto-compressed from ${beforeLines} lines (${entries.length} entries). Raw entries preserved below.*`,
+    "",
+    "### Decision lookup",
+    ...lookup,
+    "",
+    "### Things NOT to do (from PIVOT entries)",
+    pivotBlock,
+    "",
+    "### Anchored decisions",
+    anchoredBlock,
+    "",
+    COMPRESSED_SUMMARY_CLOSE
+  ];
+
+  // Cap block content at 100 lines between markers (mirrors cross-plan convention).
+  // Markers themselves are not counted in the 100.
+  const open = block[0];
+  const close = block[block.length - 1];
+  let body = block.slice(1, -1);
+  if (body.length > COMPRESSED_SUMMARY_MAX_LINES) {
+    body = body.slice(0, COMPRESSED_SUMMARY_MAX_LINES - 1);
+    body.push(`*(summary truncated to ${COMPRESSED_SUMMARY_MAX_LINES} lines — see raw entries below)*`);
+  }
+  return [open, ...body, close];
+}
+
+/**
+ * Compress {planDir}/decisions.md if line count exceeds threshold.
+ * Append-only safe: inserts/replaces a `<!-- COMPRESSED-SUMMARY -->` block
+ * between the preamble and the first `## D-NNN` entry. Never edits raw entries.
+ *
+ * Options:
+ *   threshold (default 300) — line count above which compression triggers.
+ *   dryRun   (default false) — compute metrics but do not write.
+ *
+ * Returns { compressed, beforeLines, afterLines, reason }.
+ *   reason ∈ { "missing", "empty", "under-threshold", "too-few-entries",
+ *              "no-new-entries", "no-preamble", "compressed" }.
+ */
+export function maybeCompressDecisions(planDir, opts = {}) {
+  const { threshold = DECISIONS_COMPRESS_THRESHOLD, dryRun = false } = opts;
+  const filePath = join(planDir, "decisions.md");
+
+  let content;
+  try { content = readFileSync(filePath, "utf-8"); }
+  catch { return { compressed: false, beforeLines: 0, afterLines: 0, reason: "missing" }; }
+
+  if (!content.trim()) {
+    return { compressed: false, beforeLines: 0, afterLines: 0, reason: "empty" };
+  }
+
+  const beforeLines = content.split("\n").length;
+
+  if (beforeLines <= threshold) {
+    return { compressed: false, beforeLines, afterLines: beforeLines, reason: "under-threshold" };
+  }
+
+  const parsed = parseDecisionsFile(content);
+
+  if (!parsed.hasPreamble) {
+    return { compressed: false, beforeLines, afterLines: beforeLines, reason: "no-preamble" };
+  }
+
+  if (parsed.entries.length < 2) {
+    return { compressed: false, beforeLines, afterLines: beforeLines, reason: "too-few-entries" };
+  }
+
+  // Idempotency: if a compressed block exists and entry count is unchanged
+  // since last compression, no-op.
+  if (parsed.existingBlock && parsed.existingBlock.entriesAtCompress === parsed.entries.length) {
+    return { compressed: false, beforeLines, afterLines: beforeLines, reason: "no-new-entries" };
+  }
+
+  const block = buildDecisionsSummaryBlock(parsed.entries, beforeLines);
+
+  // Splice: replace [preambleEnd, existingBlockEnd] with block, or insert
+  // block at preambleEnd if no prior block.
+  let newLines;
+  if (parsed.existingBlock) {
+    const before = parsed.lines.slice(0, parsed.existingBlock.startLine);
+    const after = parsed.lines.slice(parsed.existingBlock.endLine + 1);
+    // Drop leading blank line in `after` to avoid runaway blank growth.
+    while (after.length > 0 && after[0].trim() === "") after.shift();
+    newLines = [...before, ...block, "", ...after];
+  } else {
+    const before = parsed.lines.slice(0, parsed.preambleEnd);
+    const after = parsed.lines.slice(parsed.preambleEnd);
+    // Ensure a blank line separates preamble from block, and block from first entry.
+    while (before.length > 0 && before[before.length - 1].trim() === "") before.pop();
+    newLines = [...before, "", ...block, "", ...after];
+  }
+
+  const newContent = newLines.join("\n");
+  const afterLinesCount = newContent.split("\n").length;
+
+  if (!dryRun) {
+    writeFileSync(filePath + ".tmp", newContent);
+    renameSync(filePath + ".tmp", filePath);
+  }
+
+  return { compressed: true, beforeLines, afterLines: afterLinesCount, reason: "compressed" };
+}
+
 function appendToIndex(planDirName) {
   const indexPath = join(plansDir, "INDEX.md");
   ensureConsolidatedFiles(); // creates INDEX.md if missing
@@ -807,37 +1105,59 @@ Backward-compatible:
 // ---------------------------------------------------------------------------
 // Dispatch
 // ---------------------------------------------------------------------------
+// Only run the CLI when this file is the process entry point. Required so
+// that test files (and future library consumers) can `import` the module —
+// e.g. to call `maybeCompressDecisions` — without triggering the no-args
+// usage path which calls `process.exit(0)` and kills the host process.
+// `import.meta.url` is a `file://` URL; `process.argv[1]` is a filesystem
+// path. Compare via fileURLToPath. Guard introduced in v2.18.0/step-2.
 
-const args = process.argv.slice(2);
-const subcommands = new Set(["new", "resume", "status", "close", "list", "help"]);
+import { fileURLToPath } from "url";
 
-if (args.length === 0) {
-  printUsage();
-  process.exit(0);
+function runCli() {
+  const args = process.argv.slice(2);
+  const subcommands = new Set(["new", "resume", "status", "close", "list", "help"]);
+
+  if (args.length === 0) {
+    printUsage();
+    process.exit(0);
+  }
+
+  const cmd = args[0];
+
+  if (!subcommands.has(cmd)) {
+    if (cmd.startsWith("-")) {
+      console.error(`ERROR: Unknown flag "${cmd}". Use "help" for usage.`);
+      process.exit(1);
+    }
+    // Backward compat: treat args as goal for `new`
+    cmdNew(args.join(" ") || "No goal specified", false);
+  } else if (cmd === "new") {
+    const force = args.includes("--force");
+    const goalArgs = args.slice(1).filter((a) => a !== "--force");
+    const goal = goalArgs.join(" ") || "No goal specified";
+    cmdNew(goal, force);
+  } else if (cmd === "resume") {
+    cmdResume();
+  } else if (cmd === "status") {
+    cmdStatus();
+  } else if (cmd === "close") {
+    cmdClose();
+  } else if (cmd === "list") {
+    cmdList();
+  } else if (cmd === "help") {
+    printUsage();
+  }
 }
 
-const cmd = args[0];
-
-if (!subcommands.has(cmd)) {
-  if (cmd.startsWith("-")) {
-    console.error(`ERROR: Unknown flag "${cmd}". Use "help" for usage.`);
-    process.exit(1);
+const isEntryPoint = (() => {
+  try {
+    return process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+  } catch {
+    return false;
   }
-  // Backward compat: treat args as goal for `new`
-  cmdNew(args.join(" ") || "No goal specified", false);
-} else if (cmd === "new") {
-  const force = args.includes("--force");
-  const goalArgs = args.slice(1).filter((a) => a !== "--force");
-  const goal = goalArgs.join(" ") || "No goal specified";
-  cmdNew(goal, force);
-} else if (cmd === "resume") {
-  cmdResume();
-} else if (cmd === "status") {
-  cmdStatus();
-} else if (cmd === "close") {
-  cmdClose();
-} else if (cmd === "list") {
-  cmdList();
-} else if (cmd === "help") {
-  printUsage();
+})();
+
+if (isEntryPoint) {
+  runCli();
 }

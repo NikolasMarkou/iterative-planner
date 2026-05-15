@@ -2047,4 +2047,256 @@ describe("bootstrap.mjs", () => {
       assert.ok(r.stdout.includes("LESSONS.md"), "new output should mention LESSONS.md");
     });
   });
+
+  // =========================================================================
+  // maybeCompressDecisions (v2.18.0+ intra-plan compression)
+  // =========================================================================
+  describe("maybeCompressDecisions", () => {
+    // Build a synthetic decisions.md body with the given entries.
+    // Each entry is { id, phase, date, body }. Body is multi-line (already
+    // includes **Decision**: etc).
+    function buildDecisionsMd(entries, padLines = 0) {
+      const head = [
+        "# Decision Log",
+        "*Plan: plan_2099-01-01_deadbeef*",
+        "*Append-only. Never edit past entries.*",
+        "",
+        "*Cross-plan context: see plans/FINDINGS.md, plans/DECISIONS.md, and plans/LESSONS.md*",
+        "",
+        "<!-- Schema example — DO NOT REMOVE. Real entries follow this shape.",
+        "## D-001 | EXPLORE → PLAN | YYYY-MM-DD",
+        "**Decision**: <chosen approach in one sentence>",
+        "-->",
+        ""
+      ];
+      const body = [];
+      for (const e of entries) {
+        body.push(`## ${e.id} | ${e.phase} | ${e.date}`);
+        body.push(e.body);
+        body.push("");
+      }
+      const pad = [];
+      for (let i = 0; i < padLines; i++) pad.push(`<!-- pad line ${i} -->`);
+      return [...head, ...body, ...pad].join("\n");
+    }
+
+    function makeEntry(idNum, opts = {}) {
+      const id = `D-${String(idNum).padStart(3, "0")}`;
+      const phase = opts.phase || "EXPLORE → PLAN";
+      const date = opts.date || "2026-05-15";
+      const decision = opts.decision || `Decision text for ${id}.`;
+      const anchorRefs = opts.anchorRefs || "(none yet)";
+      const body = [
+        `**Context**: Some context for ${id}.`,
+        `**Decision**: ${decision}`,
+        `**Trade-off**: X **at the cost of** Y.`,
+        `**Reasoning**: Because reasons.`,
+        `**Anchor-Refs**: ${anchorRefs}`
+      ].join("\n");
+      return { id, phase, date, body };
+    }
+
+    // Dynamic import of bootstrap.mjs to access exported helper.
+    async function loadHelper() {
+      const mod = await import(`file://${BOOTSTRAP}`);
+      return mod.maybeCompressDecisions;
+    }
+
+    function writeDecisionsFile(planDir, content) {
+      mkdirSync(planDir, { recursive: true });
+      writeFileSync(join(planDir, "decisions.md"), content);
+    }
+
+    it("Test 1: file >300 lines with 5 entries gets compressed", async () => {
+      const maybeCompressDecisions = await loadHelper();
+      const dir = getTempDir();
+      const planDir = join(dir, "plans", "plan_2099-01-01_deadbeef");
+      // 5 entries, padded so total > 300 lines
+      const entries = [1, 2, 3, 4, 5].map((n) => makeEntry(n));
+      const content = buildDecisionsMd(entries, /* pad */ 320);
+      writeDecisionsFile(planDir, content);
+
+      const before = readFileSync(join(planDir, "decisions.md"), "utf-8");
+      assert.ok(before.split("\n").length > 300, "fixture must exceed 300 lines");
+
+      const result = maybeCompressDecisions(planDir);
+      assert.equal(result.compressed, true, `expected compressed=true, got ${JSON.stringify(result)}`);
+      assert.equal(result.reason, "compressed");
+
+      const after = readFileSync(join(planDir, "decisions.md"), "utf-8");
+      // Exactly one COMPRESSED-SUMMARY block
+      const openCount = (after.match(/<!-- COMPRESSED-SUMMARY -->/g) || []).length;
+      assert.equal(openCount, 1, "should have exactly one open marker");
+      assert.ok(after.includes("<!-- /COMPRESSED-SUMMARY -->"), "should have close marker");
+      // All 5 D-NNN headers present verbatim
+      for (let n = 1; n <= 5; n++) {
+        const id = `D-${String(n).padStart(3, "0")}`;
+        assert.ok(new RegExp(`^## ${id} \\|`, "m").test(after), `${id} header preserved`);
+      }
+      // Preamble survived
+      assert.ok(after.includes("*Plan: plan_2099-01-01_deadbeef*"), "preamble preserved");
+      // Schema HTML comment survived
+      assert.ok(after.includes("<!-- Schema example"), "schema comment preserved");
+      // Block sits BEFORE first REAL ## D-NNN entry (skipping the schema
+      // comment which contains `## D-001 | EXPLORE → PLAN | YYYY-MM-DD`).
+      const blockIdx = after.indexOf("<!-- COMPRESSED-SUMMARY -->");
+      const schemaCloseIdx = after.indexOf("-->", after.indexOf("<!-- Schema example"));
+      const firstEntryIdx = after.indexOf("## D-001 | EXPLORE → PLAN | 2026-05-15", schemaCloseIdx);
+      assert.ok(firstEntryIdx > 0, "real D-001 entry must exist after schema comment");
+      assert.ok(blockIdx < firstEntryIdx, `block (${blockIdx}) must precede first real entry (${firstEntryIdx})`);
+    });
+
+    it("Test 2: file under threshold returns under-threshold", async () => {
+      const maybeCompressDecisions = await loadHelper();
+      const dir = getTempDir();
+      const planDir = join(dir, "plans", "plan_2099-01-01_deadbeef");
+      const entries = [1, 2, 3].map((n) => makeEntry(n));
+      const content = buildDecisionsMd(entries, /* pad */ 5);
+      writeDecisionsFile(planDir, content);
+      assert.ok(content.split("\n").length <= 300, "fixture must be under 300 lines");
+
+      const result = maybeCompressDecisions(planDir);
+      assert.equal(result.compressed, false);
+      assert.equal(result.reason, "under-threshold");
+      // File untouched
+      const after = readFileSync(join(planDir, "decisions.md"), "utf-8");
+      assert.equal(after, content, "file must be untouched");
+    });
+
+    it("Test 3: already-compressed file with no new entries is idempotent", async () => {
+      const maybeCompressDecisions = await loadHelper();
+      const dir = getTempDir();
+      const planDir = join(dir, "plans", "plan_2099-01-01_deadbeef");
+      const entries = [1, 2, 3, 4, 5].map((n) => makeEntry(n));
+      const content = buildDecisionsMd(entries, 320);
+      writeDecisionsFile(planDir, content);
+      // First compression
+      const r1 = maybeCompressDecisions(planDir);
+      assert.equal(r1.compressed, true, "first run should compress");
+      const afterFirst = readFileSync(join(planDir, "decisions.md"), "utf-8");
+
+      // Second compression — no entries added
+      const r2 = maybeCompressDecisions(planDir);
+      assert.equal(r2.compressed, false);
+      assert.equal(r2.reason, "no-new-entries");
+      const afterSecond = readFileSync(join(planDir, "decisions.md"), "utf-8");
+      assert.equal(afterSecond, afterFirst, "file must be untouched by second run");
+    });
+
+    it("Test 4: existing block + new entries → block REPLACED", async () => {
+      const maybeCompressDecisions = await loadHelper();
+      const dir = getTempDir();
+      const planDir = join(dir, "plans", "plan_2099-01-01_deadbeef");
+      const entries = [1, 2, 3, 4, 5].map((n) => makeEntry(n));
+      const content = buildDecisionsMd(entries, 320);
+      writeDecisionsFile(planDir, content);
+      maybeCompressDecisions(planDir); // first pass
+
+      // Append 2 new entries to the file
+      const newEntries = [makeEntry(6), makeEntry(7)];
+      let updated = readFileSync(join(planDir, "decisions.md"), "utf-8");
+      for (const e of newEntries) {
+        updated += `\n## ${e.id} | ${e.phase} | ${e.date}\n${e.body}\n`;
+      }
+      writeFileSync(join(planDir, "decisions.md"), updated);
+
+      const r = maybeCompressDecisions(planDir);
+      assert.equal(r.compressed, true, "should re-compress on new entries");
+      const after = readFileSync(join(planDir, "decisions.md"), "utf-8");
+      // Exactly ONE block remains
+      const openCount = (after.match(/<!-- COMPRESSED-SUMMARY -->/g) || []).length;
+      assert.equal(openCount, 1, "should have exactly one block (replaced)");
+      // New entries-at-compress count = 7
+      assert.ok(after.includes("<!-- entries-at-compress: 7 -->"), "block reflects 7 entries");
+      // Lookup includes D-006 and D-007
+      assert.ok(after.includes("**D-006**"), "D-006 in lookup");
+      assert.ok(after.includes("**D-007**"), "D-007 in lookup");
+      // Raw entries D-001..D-007 all present
+      for (let n = 1; n <= 7; n++) {
+        const id = `D-${String(n).padStart(3, "0")}`;
+        assert.ok(new RegExp(`^## ${id} \\|`, "m").test(after), `${id} header preserved`);
+      }
+    });
+
+    it("Test 5: PIVOT entry appears under 'Things NOT to do'", async () => {
+      const maybeCompressDecisions = await loadHelper();
+      const dir = getTempDir();
+      const planDir = join(dir, "plans", "plan_2099-01-01_deadbeef");
+      const entries = [
+        makeEntry(1),
+        makeEntry(2, { phase: "REFLECT → PIVOT", decision: "Pivot away from approach X to approach Y." }),
+        makeEntry(3),
+        makeEntry(4),
+        makeEntry(5)
+      ];
+      const content = buildDecisionsMd(entries, 320);
+      writeDecisionsFile(planDir, content);
+      const r = maybeCompressDecisions(planDir);
+      assert.equal(r.compressed, true);
+      const after = readFileSync(join(planDir, "decisions.md"), "utf-8");
+      assert.ok(after.includes("### Things NOT to do"), "section header present");
+      // Pivot entry referenced
+      const pivotSectionIdx = after.indexOf("### Things NOT to do");
+      const anchoredSectionIdx = after.indexOf("### Anchored decisions");
+      const pivotSection = after.slice(pivotSectionIdx, anchoredSectionIdx);
+      assert.ok(pivotSection.includes("D-002"), "PIVOT entry D-002 listed");
+      assert.ok(pivotSection.includes("Pivot away from approach X"), "Decision text included");
+    });
+
+    it("Test 6: anchored entry appears under 'Anchored decisions'", async () => {
+      const maybeCompressDecisions = await loadHelper();
+      const dir = getTempDir();
+      const planDir = join(dir, "plans", "plan_2099-01-01_deadbeef");
+      const entries = [
+        makeEntry(1),
+        makeEntry(2, { anchorRefs: "`src/foo.mjs:42`, `src/bar.mjs:100-110`" }),
+        makeEntry(3),
+        makeEntry(4),
+        makeEntry(5)
+      ];
+      const content = buildDecisionsMd(entries, 320);
+      writeDecisionsFile(planDir, content);
+      const r = maybeCompressDecisions(planDir);
+      assert.equal(r.compressed, true);
+      const after = readFileSync(join(planDir, "decisions.md"), "utf-8");
+      const anchoredIdx = after.indexOf("### Anchored decisions");
+      const closeIdx = after.indexOf("<!-- /COMPRESSED-SUMMARY -->");
+      const anchoredSection = after.slice(anchoredIdx, closeIdx);
+      assert.ok(anchoredSection.includes("D-002"), "D-002 listed under anchored");
+      assert.ok(anchoredSection.includes("src/foo.mjs:42"), "anchor ref preserved verbatim");
+    });
+
+    it("dryRun returns metrics without writing", async () => {
+      const maybeCompressDecisions = await loadHelper();
+      const dir = getTempDir();
+      const planDir = join(dir, "plans", "plan_2099-01-01_deadbeef");
+      const entries = [1, 2, 3, 4, 5].map((n) => makeEntry(n));
+      const content = buildDecisionsMd(entries, 320);
+      writeDecisionsFile(planDir, content);
+      const r = maybeCompressDecisions(planDir, { dryRun: true });
+      assert.equal(r.compressed, true);
+      const after = readFileSync(join(planDir, "decisions.md"), "utf-8");
+      assert.equal(after, content, "dryRun must not write");
+    });
+
+    it("missing file returns reason=missing", async () => {
+      const maybeCompressDecisions = await loadHelper();
+      const dir = getTempDir();
+      const planDir = join(dir, "plans", "plan_does_not_exist");
+      const r = maybeCompressDecisions(planDir);
+      assert.equal(r.compressed, false);
+      assert.equal(r.reason, "missing");
+    });
+
+    it("file with <2 entries returns too-few-entries even if over threshold", async () => {
+      const maybeCompressDecisions = await loadHelper();
+      const dir = getTempDir();
+      const planDir = join(dir, "plans", "plan_2099-01-01_deadbeef");
+      const content = buildDecisionsMd([makeEntry(1)], 400);
+      writeDecisionsFile(planDir, content);
+      const r = maybeCompressDecisions(planDir);
+      assert.equal(r.compressed, false);
+      assert.equal(r.reason, "too-few-entries");
+    });
+  });
 });
