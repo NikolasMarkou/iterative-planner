@@ -4,6 +4,26 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.18.0] - 2026-05-15
+
+### Added
+- **Intra-plan compression for `{plan-dir}/decisions.md` (>300 lines) and `{plan-dir}/changelog.md` (>200 lines).** New exports from `src/scripts/bootstrap.mjs`: `maybeCompressDecisions`, `maybeCompressChangelog`. Append-only safe — raw entries preserved verbatim below the marker; `<!-- COMPRESSED-SUMMARY -->` block inserted after the `*Plan: <plan-id>*` preamble (decisions) or inline summary lines replace LOW-radius `-`-decision-ref groups (changelog, min group size 5). Idempotent across re-compression passes via `entries-at-compress` metadata. See `references/file-formats.md` § Intra-plan compression.
+- **Checkpoint lockfile snapshot procedure.** Sibling `{plan-dir}/checkpoints/cp-NNN-iterN.lockfiles/` directory holds copies of manifest-touching steps' lockfiles. New `## Lockfiles snapshotted:` section in the checkpoint template; `## Rollback:` extended with a `npm ci`-style strict-fidelity reinstall step (cargo / poetry / bundle equivalents documented). Security-gated: never snapshots `.env` or `.gitignore`d files. Sibling-directory convention is backward-compatible with `checkCheckpoints()` flat `.md` scan.
+- **`validate-plan.mjs --pre-step` mode** — mechanical Autonomy Leash enforcement. Exit code **2** (mode-exclusive) on hard fail. Output contract: `GATE:PASS` or `GATE:FAIL [slug] [...details]` where slug ∈ `{no-plan, wrong-state, leash-cap, iteration-cap}`. Wired into orchestrator EXECUTE dispatch (step 1.5) before every `ip-executor` spawn; halts on exit 2. Skips anchor walk + findings scan for sub-50ms latency.
+- **New test file `src/scripts/validate-plan.test.mjs`** — 16 cases covering `checkLeashCount` regex reconciliation (8) and `--pre-step` gate semantics (8).
+
+### Changed
+- **Orchestrator EXECUTE dispatch** now invokes `node <skill-path>/scripts/validate-plan.mjs --pre-step` before every `ip-executor` spawn; halts on exit 2, writes `- Step N: LEASH HIT.` to state.md Fix Attempts, and transitions to REFLECT via PC-EXECUTE-LEASH.
+- **Orchestrator PLAN dispatch** now invokes `maybeCompressDecisions` + `maybeCompressChangelog` at gate-in (parallel dynamic-import; idempotent; failure-tolerant).
+- **`src/agents/ip-executor.md`** documents the lockfile snapshot procedure for manifest-touching steps (`package.json`, `Cargo.toml`, `pyproject.toml`, `Gemfile`).
+- **`src/references/code-hygiene.md`** revert procedures (Failed step / PIVOT revert / Nuclear option) now include a `Post-git restore` reinstall step for manifest-touching reverts.
+- **`src/SKILL.md`** documents intra-plan compression triggers + pre-step gate forward-reference across Mandatory Re-reads, PLAN per-state rules, File Lifecycle Matrix, Autonomy Leash, and Consolidated File Management sections.
+- **`src/scripts/bootstrap.mjs` CLI dispatch** gated behind `isEntryPoint` (`fileURLToPath(import.meta.url) === process.argv[1]`) so the module can be safely imported by tests. CLI behavior preserved (D-003).
+
+### Fixed
+- **`checkLeashCount` in `src/scripts/validate-plan.mjs`** now matches the documented `- Step N, attempt M` Fix Attempts format (`src/references/file-formats.md`). Regex was previously `/^-\s+Attempt\s+\d+/i`; now matches both documented and legacy `- Attempt N` styles via alternation.
+- **`extractSection` in `src/scripts/validate-plan.mjs`** now accepts headings with a trailing parenthetical comment (e.g. `## Fix Attempts (resets per plan step)`). The previous strict-trailing-whitespace anchor silently caused `checkLeashCount` to no-op on every real plan; the leash check has effectively never run in production until v2.18.0 (D-002).
+
 ## [2.17.4] - 2026-05-15
 
 ### Fixed
