@@ -31,9 +31,11 @@ iterative-planner/
     │   └── ip-archivist.md           # CLOSE phase housekeeping
     ├── scripts/
     │   ├── bootstrap.mjs             # Initializes plans/plan_YYYY-MM-DD_XXXXXXXX/ directory (Node.js 18+)
-    │   ├── bootstrap.test.mjs        # Test suite (node:test, 102 tests)
-    │   └── validate-plan.mjs         # Protocol compliance validator (Node.js 18+)
+    │   ├── bootstrap.test.mjs        # Test suite (node:test)
+    │   ├── validate-plan.mjs         # Protocol compliance validator (Node.js 18+)
+    │   └── blast-radius.mjs          # Per-edit blast-radius scorer (used by ip-executor; Node.js 18+)
     └── references/                   # Knowledge base documents
+        ├── blast-radius.md           # Per-edit blast-radius signals + scoring spec
         ├── code-hygiene.md           # Change manifest format, revert procedures, forbidden leftovers
         ├── complexity-control.md     # Anti-complexity protocol (revert-first, 3-strike, nuclear option)
         ├── convergence-metrics.md    # Convergence score, momentum tracker, iteration health signals
