@@ -162,6 +162,29 @@ function extractSection(content, heading) {
 // Checks
 // ---------------------------------------------------------------------------
 
+// F5 — canonical phase normalization shared by checkStateTransitions and
+// checkDecisionsSchema. Maps `Re-Plan` / `RE_PLAN` / `REPLAN` (any case) to
+// `PIVOT`. Before this helper, the two checks used different normalization:
+// transition history normalized REPLAN→PIVOT, but checkDecisionsSchema used
+// raw `phase.includes("PIVOT")` substring which (a) missed REPLAN-as-phase
+// and (b) false-positive-matched any phase containing the substring (e.g.
+// `PIVOT-RECOVERY`).
+function normalizePhase(s) {
+  if (!s) return "";
+  return s.replace(/[–—‐]/g, "-").replace(/RE[_-]?PLAN/gi, "PIVOT").toUpperCase();
+}
+
+// Returns true iff the normalized phase represents a real PIVOT transition.
+// Accepts bare `PIVOT`, an arrow-form ending in `→ PIVOT`/`-> PIVOT`, or a
+// PIVOT side; rejects substring false-positives like `PIVOT-RECOVERY`.
+function isPivotPhase(s) {
+  const n = normalizePhase(s);
+  if (n === "PIVOT") return true;
+  if (/(?:→|->)\s*PIVOT$/.test(n)) return true;
+  // Two-sided "X → PIVOT" — already handled by endsWith above.
+  return false;
+}
+
 function checkStateTransitions(planDir, issues) {
   const state = readFile(join(planDir, "state.md"));
   if (!state) {
@@ -189,11 +212,9 @@ function checkStateTransitions(planDir, issues) {
     const match = line.match(/^- (.+?)\s+(?:→|->)\s+(\S+)/);
     if (!match) continue;
 
-    const from = match[1].trim().replace(/[–—‐]/g, "-").toUpperCase();
-    const to = match[2].trim().replace(/[–—‐]/g, "-").toUpperCase();
-    // Normalize RE_PLAN, RE-PLAN, REPLAN to PIVOT
-    const normFrom = from.replace(/RE[_-]?PLAN/g, "PIVOT");
-    const normTo = to.replace(/RE[_-]?PLAN/g, "PIVOT");
+    // F5 — use shared normalizePhase helper (same transform used by checkDecisionsSchema)
+    const normFrom = normalizePhase(match[1]);
+    const normTo = normalizePhase(match[2]);
     const key = `${normFrom}→${normTo}`;
 
     if (!VALID_TRANSITIONS.has(key)) {
@@ -698,7 +719,11 @@ function checkDecisionsSchema(planDir, issues) {
         message: `decisions.md ${e.idStr} (line ${e.lineNum}) missing **Trade-off**: line`,
       });
     }
-    if (e.phase.includes("PIVOT")) {
+    // F5 — strict PIVOT detection via shared helper. Previously raw
+    // `phase.includes("PIVOT")` false-positive-matched `PIVOT-RECOVERY` and
+    // false-negative-missed `REPLAN` (which transition-history normalization
+    // already maps to PIVOT). Both checks now share normalizePhase/isPivotPhase.
+    if (isPivotPhase(e.phase)) {
       if (!/\*\*Complexity Assessment\*\*/.test(e.body)) {
         issues.push({
           severity: "ERROR",

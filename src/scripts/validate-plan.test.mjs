@@ -461,6 +461,46 @@ describe("validate-plan.mjs --pre-step gate", () => {
     assert.ok(r.stdout.trim().startsWith("GATE:FAIL [leash-cap]"), `expected GATE:FAIL [leash-cap], got:\n${r.stdout}`);
   });
 
+  // F5 — REPLAN normalized to PIVOT in decisions-schema (Complexity Assessment required).
+  it("(l) F5: ## D-NNN | REPLAN | ... without Complexity Assessment → ERROR [decisions-schema]", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd, { state: "EXECUTE", iteration: 1 });
+    writeFileSync(join(planDir, "decisions.md"),
+`# Decision Log
+*Plan: plan_2026-05-15_aaaabbbb*
+
+## D-001 | REFLECT → REPLAN | 2026-05-15
+**Context**: ctx
+**Decision**: change approach
+**Trade-off**: a at the cost of b
+**Reasoning**: r
+**Anchor-Refs**: (none yet)
+`);
+    const r = run(cwd);
+    const schemaErrs = r.stdout.split("\n").filter((l) => /ERROR \[decisions-schema\].*Complexity Assessment/.test(l));
+    assert.ok(schemaErrs.length >= 1, `expected ERROR for missing Complexity Assessment on REPLAN, got:\n${r.stdout}`);
+  });
+
+  // F5 — substring false-positive: PIVOT-RECOVERY is NOT a real PIVOT.
+  it("(m) F5: ## D-NNN | PIVOT-RECOVERY | ... without Complexity Assessment → NO ERROR [decisions-schema] Complexity Assessment", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd, { state: "EXECUTE", iteration: 1 });
+    writeFileSync(join(planDir, "decisions.md"),
+`# Decision Log
+*Plan: plan_2026-05-15_aaaabbbb*
+
+## D-001 | PIVOT-RECOVERY | 2026-05-15
+**Context**: ctx
+**Decision**: recover from earlier pivot
+**Trade-off**: a at the cost of b
+**Reasoning**: r
+**Anchor-Refs**: (none yet)
+`);
+    const r = run(cwd);
+    const wrongErr = r.stdout.split("\n").filter((l) => /ERROR \[decisions-schema\].*Complexity Assessment/.test(l));
+    assert.equal(wrongErr.length, 0, `PIVOT-RECOVERY must not trip Complexity Assessment requirement, got:\n${r.stdout}`);
+  });
+
   // F3 — pipe in changelog reason must not corrupt validation.
   it("(k) F3: changelog reason containing ` | ` is absorbed; no [changelog-malformed] WARN", () => {
     const cwd = getTempDir();
