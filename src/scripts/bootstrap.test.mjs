@@ -1926,6 +1926,29 @@ describe("bootstrap.mjs", () => {
       assert.ok(!index.includes("corrected iter-2"), "should not extract [CORRECTED] annotations as topics");
       assert.ok(index.includes("auth system"), "should extract topics from Index section");
     });
+
+    // F4 — pipes in topic labels must be escaped, mirroring the goal-column escape.
+    it("F4: pipe in topic label is escaped (`\\|`), table row keeps 5 cells", () => {
+      const dir = getTempDir();
+      run(dir, "new", "pipe-topic test");
+      const planDir = getPointer(dir);
+      writeFileSync(
+        join(dir, "plans", planDir, "findings.md"),
+        "# Findings\n\n## Index\n- [auth | session](findings/auth.md) — combined topic\n- [db schema](findings/db.md) — db\n- [api routes](findings/api.md) — api\n"
+      );
+      run(dir, "close");
+      const index = readFileSync(join(dir, "plans", "INDEX.md"), "utf-8");
+      // The row for our plan must contain the escaped form, not a raw |.
+      const rowLine = index.split("\n").find((l) => l.includes(planDir));
+      assert.ok(rowLine, "INDEX.md row for plan must exist");
+      assert.ok(rowLine.includes("auth \\| session"), `expected escaped pipe in topic, row was: ${rowLine}`);
+      // Row should contain exactly 5 pipes that delimit cells (or 6 boundary pipes).
+      // Equivalently: subtract escaped \| occurrences, then count |.
+      const escaped = (rowLine.match(/\\\|/g) || []).length;
+      const allPipes = (rowLine.match(/\|/g) || []).length;
+      const delimiterPipes = allPipes - escaped;
+      assert.equal(delimiterPipes, 5, `expected 5 delimiter pipes (4 internal + leading/trailing as 4+1?), got ${delimiterPipes} in: ${rowLine}`);
+    });
   });
 
   describe("v2.17.4 fixes", () => {

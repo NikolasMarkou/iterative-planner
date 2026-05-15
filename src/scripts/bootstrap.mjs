@@ -924,7 +924,11 @@ function appendToIndex(planDirName) {
   }
 
   const safeGoal = goalOneLine.replace(/\|/g, "\\|");
-  const row = `| ${planDirName} | ${date} | ${safeGoal} | ${topics} |\n`;
+  // F4 — escape pipes in topics column too (was missing; goal was already escaped).
+  // A finding link like `[auth | session](findings/auth.md)` would otherwise inject
+  // an extra `|` into the INDEX.md row and break table cell alignment.
+  const safeTopics = topics.replace(/\|/g, "\\|");
+  const row = `| ${planDirName} | ${date} | ${safeGoal} | ${safeTopics} |\n`;
   const updated = existing.trimEnd() + "\n" + row;
   writeFileSync(indexPath + ".tmp", updated);
   renameSync(indexPath + ".tmp", indexPath);
