@@ -4,6 +4,31 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.17.4] - 2026-05-15
+
+### Fixed
+- **`validate-plan.mjs` RADIUS regex grouping** — `^radius:(LOW|MED|HIGH)\(-?\d+\)|radius:UNKNOWN\([^)]+\)$` lacked an outer group, so the `^` anchored only `LOW/MED/HIGH` and the `$` only `UNKNOWN`. Lines like `radius:LOW(2)trailing` and `garbage radius:UNKNOWN(x)` slipped through `checkChangelogFormat`. Now grouped: `^(radius:(LOW|MED|HIGH)\(-?\d+\)|radius:UNKNOWN\([^)]+\))$`.
+- **`validate-plan.mjs` block-comment DECISION anchor scan** — `findAnchorsInFile` ran `blockInnerRe.exec(body)` once per block, so a `/* … DECISION D-001 … DECISION D-002 … */` reported only `D-001`. Now loops over every match in the block using a `/g`-flagged clone, with per-anchor line numbers computed from the file-relative offset.
+- **`validate-plan.mjs` CRLF normalization in `readFile`** — silently broke every state-gated check on Windows-saved plan files. `currentState.toUpperCase()` returned `"EXECUTE\r"` and never matched `"EXECUTE"`. Now `\r\n` → `\n` at point of read.
+- **`bootstrap.mjs trimConsolidatedWindow`** — `/\n## plan_/g` missed a section starting at byte 0 (pathological consolidated file with no H1 boilerplate). The miss made the sliding window count one section short and skip trimming when exactly `MAX_CONSOLIDATED_PLANS` headed-by-newline sections existed alongside one byte-0 section. Now also checks `/^## plan_/` and records position 0.
+- **`bootstrap.mjs appendToIndex` Goal column** — `goal.split("\n")[0]` produced an empty INDEX.md cell when the Goal section started with a blank line. Now strips leading blank lines before taking the first content line.
+- **`bootstrap.mjs appendToIndex` Topics column** — `\[([^\]]+)\]` extracted any bracketed text from the findings.md Index, so annotations like `[CORRECTED iter-2]`, `[TODO]`, `[WIP]` leaked into INDEX.md as fake topics. Now matches only Markdown link form `[label](target)`.
+- **`bootstrap.mjs cmdClose` state.md transition append** — the new `- prevState → CLOSE (bootstrap close)` line was concatenated at EOF, so it landed in the wrong section when an agent had added trailing sections after `## Transition History:`. Now inserted at the end of the Transition History section explicitly, with a legacy EOF fallback when the section heading is absent.
+
+### Documentation
+- **`references/file-formats.md` Root Cause Analysis** — canonical block was 3 parts (Immediate, Contributing, Prevention), contradicting its own D-002 example (4 parts including Failed defense) and `references/planning-rigor.md` (4 parts). Now 4 parts in all three places. `planning-rigor.md` already designated `file-formats.md` as the SoT; the SoT no longer contradicts itself.
+- **`references/convergence-metrics.md`** — total `convergence_score` range corrected `-3 to +3` → `-2 to +3` (scope_stability is clamped 0..1 and cannot push the floor below -2). Documents the `files_planned == 0` degenerate case to prevent NaN propagation.
+- **`references/decision-anchoring.md` `[STALE]` policy** — internal contradiction (L103 "blockers" vs L106 "MAY downgrade to WARN") resolved in favor of WARN, matching the validator's actual `severityForOrphan` behavior. The agent now explicitly owns disposition at CLOSE (remove / preserve with rationale / convert).
+- **`references/blast-radius.md`** — Public-API regex documents Go's `func\s+[A-Z]`; output format example updated to match the impl's verbose breakdown (signal counts in parens); UNKNOWN reasons list completed (`is-directory`, `no-file-arg`); `--json` flag noted.
+- **`SKILL.md` Mandatory Re-reads table** — REFLECT row adds `changelog.md` (was missing since v2.15.0 introduced the per-edit ledger, which the Phase-1 Gate-In step list already required).
+- **`README.md`** — stale "8-plan sliding window" reference updated to "4-plan" (window shrunk in v2.17.3).
+
+### Added
+- **4 new tests in `bootstrap.test.mjs`** — coverage for cmdClose Transition History anchor (B7), trimConsolidatedWindow byte-0 leading section (B11), appendToIndex Goal leading-blank handling, and appendToIndex Topics link-only filter. Test count 126 → 130.
+
+### Notes
+- Driven by the epistemic-deconstructor review of v2.17.3 (analyses/analysis_2026-05-15_5edfc9e7/) and the corresponding fix-plan in plans/plan_2026-05-15_9ec9850b/. Two review claims were verified as false positives during EXPLORE and skipped: (1) decisions-schema H2 false-positive — the validator correctly forbids non-`## D-NNN` H2s in decisions.md; (2) Windows path split in `checkAnchorRefsValidity` — `lastIndexOf(":")` is correct for `path:line` regardless of Windows drive letters.
+
 ## [2.17.3] - 2026-05-15
 
 ### Added
