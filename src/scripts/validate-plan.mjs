@@ -318,12 +318,17 @@ function checkChangeManifest(planDir, issues) {
   }
 }
 
-// Autonomy Leash enforcement (SKILL.md L344-354): max 2 fix attempts per step.
-// Counts lines under ## Fix Attempts that match `- Attempt N` (digit-prefixed).
-// Placeholder lines like `- (none yet)` are intentionally ignored. Conservative:
-// only fires during EXECUTE/REFLECT — outside those states the section is stale
-// from a previous step. WARN at 3, ERROR at 4+. Resets on step / PIVOT / user
-// direction (tracked by the agent rewriting the section).
+// Autonomy Leash enforcement (SKILL.md §"Autonomy Leash" L344-354): max 2 fix
+// attempts per step. Counts lines under ## Fix Attempts that match either:
+//   - documented format: `- Step N, attempt M: …` (see references/file-formats.md
+//     state.md section, lines 39-44)
+//   - legacy format:     `- Attempt M: …`        (pre-v2.18.0 plans; kept for
+//     backward compatibility so closed plans continue to validate identically)
+// Placeholder lines like `- (none yet)` and the `- Step N: LEASH HIT.` summary
+// line are intentionally NOT counted. Conservative: only fires during
+// EXECUTE/REFLECT — outside those states the section is stale from a previous
+// step. WARN at 3, ERROR at 4+. Resets on step / PIVOT / user direction
+// (tracked by the agent rewriting the section).
 function checkLeashCount(planDir, issues) {
   const state = readFile(join(planDir, "state.md"));
   if (!state) return;
@@ -333,7 +338,8 @@ function checkLeashCount(planDir, issues) {
 
   const section = extractSection(state, "Fix Attempts");
   if (!section) return; // No section — legacy state.md or pre-template plan. Silent.
-  const attempts = section.split("\n").filter((l) => /^-\s+Attempt\s+\d+/i.test(l));
+  // Alternation: documented `- Step N, attempt M` style first, legacy `- Attempt M` second.
+  const attempts = section.split("\n").filter((l) => /^-\s+(Step\s+\d+,\s+attempt\s+\d+|Attempt\s+\d+)/i.test(l));
   if (attempts.length >= 4) {
     issues.push({
       severity: "ERROR",
