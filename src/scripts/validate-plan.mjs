@@ -1314,8 +1314,24 @@ function checkChangelogFormat(planDir, issues) {
     if (line.startsWith("#")) continue;        // header
     if (line.startsWith("*")) continue;        // italic header note
     if (line.startsWith("<!--")) continue;     // comment
-    // Data line: split on " | " (literal pipe-with-spaces, as documented).
-    const fields = line.split(" | ");
+    // F3 — Data line: split on the FIRST 7 " | " separators; the 8th field
+    // (reason) absorbs any trailing " | " inside it. Pre-fix, a legitimate
+    // reason like "fix race: a | b" produced 9 fields → WARN [changelog-malformed]
+    // + classifyChangelogLine returned non-entry, hiding the line from compression.
+    // Parser is kept in lockstep with bootstrap.mjs splitChangelogFields.
+    const SEP = " | ";
+    const fields = [];
+    {
+      let cursor = 0;
+      let ok = true;
+      for (let i = 0; i < 7; i++) {
+        const idx = line.indexOf(SEP, cursor);
+        if (idx < 0) { ok = false; break; }
+        fields.push(line.slice(cursor, idx));
+        cursor = idx + SEP.length;
+      }
+      if (ok) fields.push(line.slice(cursor));
+    }
     if (fields.length !== 8) {
       issues.push({
         severity: "WARN",

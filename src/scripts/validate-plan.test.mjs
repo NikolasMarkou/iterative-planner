@@ -461,6 +461,21 @@ describe("validate-plan.mjs --pre-step gate", () => {
     assert.ok(r.stdout.trim().startsWith("GATE:FAIL [leash-cap]"), `expected GATE:FAIL [leash-cap], got:\n${r.stdout}`);
   });
 
+  // F3 — pipe in changelog reason must not corrupt validation.
+  it("(k) F3: changelog reason containing ` | ` is absorbed; no [changelog-malformed] WARN", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd, { state: "EXECUTE", iteration: 1 });
+    writeFileSync(join(planDir, "changelog.md"),
+`# Changelog
+*Append-only.*
+
+2026-05-15T10:00:00Z | iter-1/step-1 | abc1234 | src/foo.mjs | EDIT(+5,-2) | radius:LOW(1) | - | fix race: a | b condition
+`);
+    const r = run(cwd);
+    const malformed = r.stdout.split("\n").filter((l) => /\[changelog-malformed\]/.test(l));
+    assert.equal(malformed.length, 0, `pipe in reason must not produce changelog-malformed WARN, got:\n${r.stdout}`);
+  });
+
   it("(h) negative regression: full validator without --pre-step never emits exit code 2", () => {
     const cwd = getTempDir();
     writePlan(cwd, {

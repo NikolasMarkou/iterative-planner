@@ -625,6 +625,26 @@ const CHANGELOG_COMPRESSED_INLINE_RE = /^- \(compressed: \d+ low-decision-impact
  *   6: D-NNN-or-dash
  *   7: reason
  */
+// F3 — pipe-tolerant changelog field split.
+// Splits on the FIRST 7 occurrences of " | "; the 8th field (reason) absorbs
+// any remaining " | " sequences. Exported via `export` below the function
+// declarations so tests can probe it; validator uses an identical inline
+// implementation to keep parsing rules in lockstep (see validate-plan.mjs
+// checkChangelogFormat). Fields are returned trimmed.
+export function splitChangelogFields(line) {
+  const SEP = " | ";
+  const fields = [];
+  let cursor = 0;
+  for (let i = 0; i < 7; i++) {
+    const idx = line.indexOf(SEP, cursor);
+    if (idx < 0) return line.split(SEP).map((f) => f.trim()); // <8 fields; let caller reject
+    fields.push(line.slice(cursor, idx).trim());
+    cursor = idx + SEP.length;
+  }
+  fields.push(line.slice(cursor).trim()); // remainder = reason
+  return fields;
+}
+
 function classifyChangelogLine(line) {
   if (CHANGELOG_COMPRESSED_INLINE_RE.test(line)) {
     return { kind: "inline-summary" };
@@ -634,7 +654,11 @@ function classifyChangelogLine(line) {
   const sepCount = (line.match(/\|/g) || []).length;
   if (sepCount < 7) return { kind: "non-entry" };
 
-  const fields = line.split(" | ").map((f) => f.trim());
+  // F3: split on the first 7 " | " separators only; everything after the 7th
+  // belongs to `reason`. Without this, a legitimate reason containing " | "
+  // (e.g. "fix race: a | b") expands to 9+ fields, gets classified as
+  // non-entry, hides from compression and validator.
+  const fields = splitChangelogFields(line);
   if (fields.length < 8) return { kind: "non-entry" };
 
   const opField = fields[4];

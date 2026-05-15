@@ -802,6 +802,7 @@ Rules:
 - **Failed step revert** → append `REVERT(file)` lines for each reverted file. Do not delete the original lines.
 - **Decision-ref optional** — most edits don't have an anchored decision. Use `-` freely. The 5 `# DECISION` trigger conditions remain unchanged.
 - **Reason is mandatory** but should be terse (one clause, no period needed).
+- **Pipes (`|`) in reason are tolerated**: parsers split on the first 7 ` | ` separators, so the reason field absorbs any trailing ` | ` sequences. No escaping required — write the reason as natural prose.
 
 Failure modes:
 - `blast-radius.mjs` missing or errors → executor writes `radius:UNKNOWN(script-missing)` or `radius:UNKNOWN(script-error)` and proceeds.

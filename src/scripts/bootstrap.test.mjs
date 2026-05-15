@@ -2617,5 +2617,27 @@ describe("bootstrap.mjs", () => {
       assert.ok(r.afterLines < r.beforeLines, "metrics reflect compression");
       assert.equal(readChangelog(planDir), before, "dryRun did not write");
     });
+
+    // F3 — pipe in reason field must not corrupt classification.
+    it("F3: reason containing ` | ` is absorbed into reason field, classifies as entry", async () => {
+      const mod = await import(`file://${BOOTSTRAP}`);
+      const { splitChangelogFields } = mod;
+      const line = "2026-05-15T10:00:00Z | iter-1/step-1 | abc1234 | src/foo.mjs | EDIT(+5,-2) | radius:LOW(1) | - | fix race: a | b condition";
+      const fields = splitChangelogFields(line);
+      assert.equal(fields.length, 8, `expected 8 fields, got ${fields.length}: ${JSON.stringify(fields)}`);
+      assert.equal(fields[0], "2026-05-15T10:00:00Z");
+      assert.equal(fields[3], "src/foo.mjs");
+      assert.equal(fields[6], "-");
+      assert.equal(fields[7], "fix race: a | b condition", "trailing ` | ` absorbed into reason");
+    });
+
+    it("F3: multi-pipe reason `a | b | c` fully preserved in field 8", async () => {
+      const mod = await import(`file://${BOOTSTRAP}`);
+      const { splitChangelogFields } = mod;
+      const line = "2026-05-15T10:00:00Z | iter-1/step-1 | abc1234 | src/foo.mjs | EDIT(+5,-2) | radius:LOW(1) | - | a | b | c";
+      const fields = splitChangelogFields(line);
+      assert.equal(fields.length, 8);
+      assert.equal(fields[7], "a | b | c");
+    });
   });
 });
