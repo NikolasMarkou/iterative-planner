@@ -33,7 +33,35 @@ Before writing any code:
 ## Execution Rules
 - ONE step at a time. Do not look ahead.
 - Commit after success: `[iter-N/step-M] description`
-- Create checkpoint before risky changes (3+ files): `checkpoints/cp-NNN-iterN.md`
+- Create checkpoint before risky changes (3+ files): `checkpoints/cp-NNN-iterN.md`. Template + sibling-directory convention: `references/file-formats.md` § checkpoints/cp-NNN-iterN.md. Revert order (git first, then reinstall): `references/code-hygiene.md` § Revert procedures.
+
+### Checkpoint Lockfile Snapshot (MANDATORY when step touches a manifest)
+1. **Manifest detection**: lockfile snapshotting is REQUIRED when the planned step modifies any of these manifest files (or equivalent for the project's stack):
+   - `package.json` (npm / pnpm / yarn)
+   - `Cargo.toml`
+   - `pyproject.toml`
+   - `Gemfile`
+   - `go.mod`
+   - `composer.json`
+   - `mix.exs`
+   - `build.gradle` / `build.gradle.kts`
+2. **Snapshot procedure**:
+   - `mkdir -p {plan-dir}/checkpoints/cp-NNN-iterN.lockfiles/`
+   - `cp` each TRACKED lockfile corresponding to the modified manifest into that directory. Per ecosystem:
+     - npm → `package-lock.json`
+     - pnpm → `pnpm-lock.yaml`
+     - yarn → `yarn.lock`
+     - Cargo → `Cargo.lock`
+     - poetry / uv / pip → `poetry.lock`, `uv.lock`, `requirements*.txt` (if tracked)
+     - bundler → `Gemfile.lock`
+     - go → `go.sum` (also `go.mod` if capturing both)
+     - composer → `composer.lock`
+   - If no lockfile exists yet (first install in a fresh project), record `- none (no lockfile present pre-step)` in `cp-NNN-iterN.md` and skip the `cp`.
+   - **Security gates**: NEVER `cp` `.env` files. NEVER `cp` any file matching `.gitignore` patterns. NEVER `cp` files containing the substrings `SECRET`, `PRIVATE_KEY`, `TOKEN`, `PASSWORD` (sanity belt — lockfiles never carry these, but a stray file might).
+3. **Populate `cp-NNN-iterN.md`**:
+   - `## Lockfiles snapshotted:` — list the relative paths under `cp-NNN-iterN.lockfiles/` (one per line), or `- none (no package manager touched)`.
+   - Extend `## Rollback:` to include the package manager's restore command (`npm ci`, or detected equivalent: `cargo build` / `poetry install` / `bundle install` / `go mod download`).
+4. **Pure-code-edit steps**: lockfile snapshotting is NOT required. Still emit a `## Lockfiles snapshotted:` section containing the single line `- none (no package manager touched)` so every checkpoint has a uniform shape.
 
 ## Per-Edit Changelog (MANDATORY, v2.15.0+)
 After EACH `Edit` or `Write` (one line per file modified), append a single line to `{plan-dir}/changelog.md`:
