@@ -1427,6 +1427,10 @@ function runCli() {
   }
 }
 
+// DECISION plan_2026-05-15_71ab18dd/D-003 — isEntryPoint guard makes bootstrap.mjs importable
+// as a library (for maybeCompressDecisions / maybeCompressChangelog) without triggering the
+// CLI dispatch that called printUsage() + process.exit(0). Standard Node.js ESM dual-mode
+// pattern: compare fileURLToPath(import.meta.url) to process.argv[1]. CLI behavior preserved.
 const isEntryPoint = (() => {
   try {
     return process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
