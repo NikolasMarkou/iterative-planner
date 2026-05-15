@@ -697,10 +697,26 @@ function cmdClose(opts = {}) {
     const stateContent = readFileSync(statePath, "utf-8");
     const prevState = stateContent.match(/^# Current State:\s*(.+)$/m)?.[1] || "UNKNOWN";
     const timestamp = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
-    const updated = stateContent
+    let updated = stateContent
       .replace(/^# Current State:\s*.+$/m, "# Current State: CLOSE")
-      .replace(/^## Last Transition:\s*.+$/m, `## Last Transition: ${prevState} → CLOSE (${timestamp})`)
-      + `${stateContent.endsWith("\n") ? "" : "\n"}- ${prevState} → CLOSE (bootstrap close)\n`;
+      .replace(/^## Last Transition:\s*.+$/m, `## Last Transition: ${prevState} → CLOSE (${timestamp})`);
+    const transitionLine = `- ${prevState} → CLOSE (bootstrap close)\n`;
+    // Insert under `## Transition History:` rather than at EOF, so the new
+    // entry lands in the right section even when an agent has appended
+    // additional sections after the history block.
+    const historyMarker = "## Transition History:";
+    const historyIdx = updated.indexOf(historyMarker);
+    if (historyIdx >= 0) {
+      const afterMarker = historyIdx + historyMarker.length;
+      let sectionEnd = updated.indexOf("\n## ", afterMarker);
+      if (sectionEnd < 0) sectionEnd = updated.length;
+      const before = updated.slice(0, sectionEnd).replace(/[ \t]+$/g, "").replace(/\n+$/, "");
+      const after = updated.slice(sectionEnd);
+      updated = before + "\n" + transitionLine + (after.startsWith("\n") ? "" : after.length === 0 ? "" : "\n") + after;
+    } else {
+      // Fallback: legacy EOF append when Transition History section is absent.
+      updated += (updated.endsWith("\n") ? "" : "\n") + transitionLine;
+    }
     writeFileSync(statePath, updated);
   } catch (err) {
     if (!opts.silent && err.code !== "ENOENT") {
