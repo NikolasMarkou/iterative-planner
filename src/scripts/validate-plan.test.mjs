@@ -305,3 +305,111 @@ describe("validate-plan.mjs checkLeashCount regex reconciliation", () => {
     assert.equal(leashLines(r.stdout).length, 0, `expected no [leash] lines for non-matching bullets, got:\n${r.stdout}`);
   });
 });
+
+// ---------------------------------------------------------------------------
+// --pre-step gate suite (step 11 of plan_2026-05-15_71ab18dd, D-004)
+// ---------------------------------------------------------------------------
+
+function runPreStep(cwd, planDirOverride) {
+  const args = planDirOverride ? ["--pre-step", planDirOverride] : ["--pre-step"];
+  return run(cwd, ...args);
+}
+
+describe("validate-plan.mjs --pre-step gate", () => {
+  let tempDirs = [];
+  function getTempDir() { const d = makeTempDir(); tempDirs.push(d); return d; }
+  afterEach(() => { for (const d of tempDirs) removeTempDir(d); tempDirs = []; });
+
+  it("(a) PASS — happy path: state=EXECUTE, iter=1, 0 attempts → exit 0, GATE:PASS", () => {
+    const cwd = getTempDir();
+    writePlan(cwd, { state: "EXECUTE", iteration: 1, currentStep: "1 of 5" });
+    const r = runPreStep(cwd);
+    assert.equal(r.exitCode, 0, `expected exit 0, got ${r.exitCode}\nstdout:\n${r.stdout}\nstderr:\n${r.stderr}`);
+    assert.ok(r.stdout.trim().startsWith("GATE:PASS"), `expected GATE:PASS prefix, got:\n${r.stdout}`);
+  });
+
+  it("(b) FAIL [leash-cap] — documented format: 2 `- Step N, attempt M` lines → exit 2", () => {
+    const cwd = getTempDir();
+    writePlan(cwd, {
+      state: "EXECUTE",
+      fixAttemptsBody: [
+        "- Step 2, attempt 1: tried X — failed",
+        "- Step 2, attempt 2: tried Y — failed",
+      ].join("\n"),
+    });
+    const r = runPreStep(cwd);
+    assert.equal(r.exitCode, 2, `expected exit 2, got ${r.exitCode}\nstdout:\n${r.stdout}`);
+    assert.ok(r.stdout.trim().startsWith("GATE:FAIL [leash-cap]"), `expected GATE:FAIL [leash-cap] prefix, got:\n${r.stdout}`);
+    assert.ok(/attempts=2/.test(r.stdout), `expected attempts=2 in output, got:\n${r.stdout}`);
+  });
+
+  it("(c) FAIL [leash-cap] — legacy format: 2 `- Attempt N` lines → exit 2 (backward compat)", () => {
+    const cwd = getTempDir();
+    writePlan(cwd, {
+      state: "EXECUTE",
+      fixAttemptsBody: [
+        "- Attempt 1: tried X — failed",
+        "- Attempt 2: tried Y — failed",
+      ].join("\n"),
+    });
+    const r = runPreStep(cwd);
+    assert.equal(r.exitCode, 2, `expected exit 2, got ${r.exitCode}\nstdout:\n${r.stdout}`);
+    assert.ok(r.stdout.trim().startsWith("GATE:FAIL [leash-cap]"), `expected GATE:FAIL [leash-cap] prefix, got:\n${r.stdout}`);
+    assert.ok(/attempts=2/.test(r.stdout), `expected attempts=2 in output, got:\n${r.stdout}`);
+  });
+
+  it("(d) FAIL [wrong-state] — state=PLAN → exit 2, expected/actual reported", () => {
+    const cwd = getTempDir();
+    writePlan(cwd, { state: "PLAN", iteration: 1 });
+    const r = runPreStep(cwd);
+    assert.equal(r.exitCode, 2, `expected exit 2, got ${r.exitCode}\nstdout:\n${r.stdout}`);
+    assert.ok(r.stdout.trim().startsWith("GATE:FAIL [wrong-state]"), `expected GATE:FAIL [wrong-state] prefix, got:\n${r.stdout}`);
+    assert.ok(/expected=EXECUTE/.test(r.stdout), `expected expected=EXECUTE in output, got:\n${r.stdout}`);
+    assert.ok(/actual=PLAN/.test(r.stdout), `expected actual=PLAN in output, got:\n${r.stdout}`);
+  });
+
+  it("(e) FAIL [iteration-cap] — iter=6 → exit 2, iteration=6 hard-cap=6 reported", () => {
+    const cwd = getTempDir();
+    writePlan(cwd, { state: "EXECUTE", iteration: 6 });
+    const r = runPreStep(cwd);
+    assert.equal(r.exitCode, 2, `expected exit 2, got ${r.exitCode}\nstdout:\n${r.stdout}`);
+    assert.ok(r.stdout.trim().startsWith("GATE:FAIL [iteration-cap]"), `expected GATE:FAIL [iteration-cap] prefix, got:\n${r.stdout}`);
+    assert.ok(/iteration=6/.test(r.stdout), `expected iteration=6 in output, got:\n${r.stdout}`);
+    assert.ok(/hard-cap=6/.test(r.stdout), `expected hard-cap=6 in output, got:\n${r.stdout}`);
+  });
+
+  it("(f) FAIL [no-plan] — no .current_plan pointer + no positional arg → exit 2", () => {
+    const cwd = getTempDir(); // empty temp dir, no plans/ subtree
+    const r = runPreStep(cwd);
+    assert.equal(r.exitCode, 2, `expected exit 2, got ${r.exitCode}\nstdout:\n${r.stdout}`);
+    assert.ok(r.stdout.trim().startsWith("GATE:FAIL [no-plan]"), `expected GATE:FAIL [no-plan] prefix, got:\n${r.stdout}`);
+  });
+
+  it("(g) regression: full validator (no --pre-step) on 4 documented-format attempts → ERROR [leash]", () => {
+    const cwd = getTempDir();
+    writePlan(cwd, {
+      fixAttemptsBody: [
+        "- Step 2, attempt 1: a",
+        "- Step 2, attempt 2: b",
+        "- Step 2, attempt 3: c",
+        "- Step 2, attempt 4: d",
+      ].join("\n"),
+    });
+    const r = run(cwd); // no --pre-step
+    assert.equal(r.exitCode, 1, `expected exit 1 from full validator, got ${r.exitCode}\nstdout:\n${r.stdout}`);
+    assert.ok(/ERROR/.test(r.stdout), `expected ERROR in stdout, got:\n${r.stdout}`);
+    assert.ok(/\[leash\]/.test(r.stdout), `expected [leash] tag in stdout, got:\n${r.stdout}`);
+  });
+
+  it("(h) negative regression: full validator without --pre-step never emits exit code 2", () => {
+    const cwd = getTempDir();
+    writePlan(cwd, {
+      state: "PLAN",
+      iteration: 99,
+      fixAttemptsBody: Array.from({ length: 10 }, (_, i) => `- Step 2, attempt ${i + 1}: x`).join("\n"),
+    });
+    const r = run(cwd); // no --pre-step
+    assert.notEqual(r.exitCode, 2, `exit code 2 is --pre-step-exclusive per D-004; full validator returned ${r.exitCode}\nstdout:\n${r.stdout}`);
+    assert.ok(r.exitCode === 0 || r.exitCode === 1, `expected exit 0 or 1 from full validator, got ${r.exitCode}\nstdout:\n${r.stdout}`);
+  });
+});
