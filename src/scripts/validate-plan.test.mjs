@@ -50,7 +50,7 @@ function run(cwd, ...args) {
  * Fields:
  *   state, iteration, currentStep, fixAttemptsBody (raw body for the Fix Attempts section)
  */
-function writePlan(cwd, { state = "EXECUTE", iteration = 1, currentStep = "1 of 5", fixAttemptsBody = "- (none yet for current step)" } = {}) {
+function writePlan(cwd, { state = "EXECUTE", iteration = 1, currentStep = "1 of 5", fixAttemptsBody = "- (none yet for current step)", fixAttemptsHeading = "## Fix Attempts (resets per plan step)" } = {}) {
   const planId = "plan_2026-05-15_aaaabbbb";
   const plansDir = join(cwd, "plans");
   const planDir = join(plansDir, planId);
@@ -65,7 +65,7 @@ function writePlan(cwd, { state = "EXECUTE", iteration = 1, currentStep = "1 of 
 ## Current Plan Step: ${currentStep}
 ## Pre-Step Checklist (reset before each EXECUTE step)
 - [ ] Re-read state.md (this file)
-## Fix Attempts
+${fixAttemptsHeading}
 ${fixAttemptsBody}
 ## Change Manifest (current iteration)
 - (no changes yet)
@@ -258,6 +258,38 @@ describe("validate-plan.mjs checkLeashCount regex reconciliation", () => {
     });
     const r = run(cwd);
     assert.equal(leashLines(r.stdout).length, 0, `expected no [leash] lines, got:\n${r.stdout}`);
+  });
+
+  it("D-002 regression: parenthetical heading `## Fix Attempts (resets per plan step)` (bootstrap default) is correctly extracted and counted", () => {
+    const cwd = getTempDir();
+    writePlan(cwd, {
+      fixAttemptsHeading: "## Fix Attempts (resets per plan step)",
+      fixAttemptsBody: [
+        "- Step 2, attempt 1: a",
+        "- Step 2, attempt 2: b",
+        "- Step 2, attempt 3: c",
+        "- Step 2, attempt 4: d",
+      ].join("\n"),
+    });
+    const r = run(cwd);
+    const lines = leashLines(r.stdout);
+    assert.ok(lines.some((l) => /ERROR/.test(l)), `parenthetical heading must reach checkLeashCount; got:\n${r.stdout}`);
+  });
+
+  it("D-002 regression: bare heading `## Fix Attempts` (legacy) still extracted and counted", () => {
+    const cwd = getTempDir();
+    writePlan(cwd, {
+      fixAttemptsHeading: "## Fix Attempts",
+      fixAttemptsBody: [
+        "- Step 2, attempt 1: a",
+        "- Step 2, attempt 2: b",
+        "- Step 2, attempt 3: c",
+        "- Step 2, attempt 4: d",
+      ].join("\n"),
+    });
+    const r = run(cwd);
+    const lines = leashLines(r.stdout);
+    assert.ok(lines.some((l) => /ERROR/.test(l)), `bare heading must still work; got:\n${r.stdout}`);
   });
 
   it("non-matching bullets do not over-count (LEASH HIT line + placeholder)", () => {

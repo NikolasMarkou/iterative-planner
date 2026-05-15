@@ -143,9 +143,13 @@ function isPlaceholder(text) {
 }
 
 function extractSection(content, heading) {
+  // DECISION plan_2026-05-15_71ab18dd/D-002 — allow optional trailing
+  // parenthetical (e.g. "## Fix Attempts (resets per plan step)" as written
+  // by bootstrap.mjs). Without this, every callsite using a bootstrap-written
+  // parenthetical heading silently returned null.
   if (!content) return null;
   const escaped = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const headingRe = new RegExp(`^## ${escaped}[ \\t]*$`, "m");
+  const headingRe = new RegExp(`^## ${escaped}(?:\\s+\\(.*\\))?[ \\t]*$`, "m");
   const headingMatch = headingRe.exec(content);
   if (!headingMatch) return null;
   const start = headingMatch.index + headingMatch[0].length;
