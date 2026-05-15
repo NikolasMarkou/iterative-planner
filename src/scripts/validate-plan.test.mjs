@@ -501,6 +501,50 @@ describe("validate-plan.mjs --pre-step gate", () => {
     assert.equal(wrongErr.length, 0, `PIVOT-RECOVERY must not trip Complexity Assessment requirement, got:\n${r.stdout}`);
   });
 
+  // OBS-001 / D-002 — isPivotPhase must accept PIVOT-as-SOURCE (`PIVOT → PLAN`),
+  // not just PIVOT-as-DESTINATION. Previously the regression introduced by F5
+  // silently let `## D-NNN | PIVOT → PLAN | ...` escape the Complexity Assessment
+  // requirement. Pre-fix: this test FAILS (0 schema errors). Post-fix: PASSES.
+  it("(n) OBS-001: ## D-NNN | PIVOT → PLAN | ... without Complexity Assessment → ERROR [decisions-schema]", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd, { state: "EXECUTE", iteration: 1 });
+    writeFileSync(join(planDir, "decisions.md"),
+`# Decision Log
+*Plan: plan_2026-05-15_aaaabbbb*
+
+## D-001 | PIVOT → PLAN | 2026-05-15
+**Context**: ctx
+**Decision**: new approach after pivot
+**Trade-off**: a at the cost of b
+**Reasoning**: r
+**Anchor-Refs**: (none yet)
+`);
+    const r = run(cwd);
+    const schemaErrs = r.stdout.split("\n").filter((l) => /ERROR \[decisions-schema\].*Complexity Assessment/.test(l));
+    assert.ok(schemaErrs.length >= 1, `expected ERROR for missing Complexity Assessment on PIVOT → PLAN, got:\n${r.stdout}`);
+  });
+
+  // OBS-001 / D-002 — guard against over-broadening: `PIVOT-PLAN` (hyphen, not arrow)
+  // is still a SUBSTRING and must NOT trip the requirement.
+  it("(o) OBS-001: ## D-NNN | PIVOT-PLAN | ... must NOT trip Complexity Assessment", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd, { state: "EXECUTE", iteration: 1 });
+    writeFileSync(join(planDir, "decisions.md"),
+`# Decision Log
+*Plan: plan_2026-05-15_aaaabbbb*
+
+## D-001 | PIVOT-PLAN | 2026-05-15
+**Context**: ctx
+**Decision**: hyphenated qualifier, not a real PIVOT
+**Trade-off**: a at the cost of b
+**Reasoning**: r
+**Anchor-Refs**: (none yet)
+`);
+    const r = run(cwd);
+    const wrongErr = r.stdout.split("\n").filter((l) => /ERROR \[decisions-schema\].*Complexity Assessment/.test(l));
+    assert.equal(wrongErr.length, 0, `PIVOT-PLAN (hyphen) must not trip Complexity Assessment, got:\n${r.stdout}`);
+  });
+
   // F3 — pipe in changelog reason must not corrupt validation.
   it("(k) F3: changelog reason containing ` | ` is absorbed; no [changelog-malformed] WARN", () => {
     const cwd = getTempDir();

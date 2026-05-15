@@ -175,13 +175,20 @@ function normalizePhase(s) {
 }
 
 // Returns true iff the normalized phase represents a real PIVOT transition.
-// Accepts bare `PIVOT`, an arrow-form ending in `→ PIVOT`/`-> PIVOT`, or a
-// PIVOT side; rejects substring false-positives like `PIVOT-RECOVERY`.
+// Accepts bare `PIVOT`, arrow-form ending in `→ PIVOT`/`-> PIVOT` (REFLECT → PIVOT),
+// AND arrow-form STARTING with `PIVOT → ...` (PIVOT → PLAN). Rejects substring
+// false-positives like `PIVOT-RECOVERY` / `PIVOT-PLAN` (bare hyphen = qualifier,
+// not transition).
+//
+// DECISION plan_2026-05-15_9ae230f7/D-002 — pattern-discipline per LESSONS L-012:
+// when a check operates on phase semantics, accept BOTH sides of the arrow.
+// The prior implementation only matched PIVOT as DESTINATION, missing
+// PIVOT-as-SOURCE (`PIVOT → PLAN`) which the state machine produces.
 function isPivotPhase(s) {
   const n = normalizePhase(s);
   if (n === "PIVOT") return true;
-  if (/(?:→|->)\s*PIVOT$/.test(n)) return true;
-  // Two-sided "X → PIVOT" — already handled by endsWith above.
+  if (/(?:→|->)\s*PIVOT$/.test(n)) return true;       // X → PIVOT
+  if (/^PIVOT\s*(?:→|->)/.test(n)) return true;       // PIVOT → X
   return false;
 }
 
