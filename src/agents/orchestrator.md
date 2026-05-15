@@ -45,13 +45,14 @@ At EXPLORE → PLAN handoff, BEFORE transitioning, emit a chat block containing,
 Floor (must always render): items 1 and 2 verbatim. Items 3-4 may be condensed but must appear.
 
 **Dispatch**
-1. Read state.md, plans/LESSONS.md, plans/FINDINGS.md (limit: 600), plans/SYSTEM.md, plans/INDEX.md
-2. Identify 2-3 research topics from the goal and any existing context
-3. Spawn ip-explorer agents in PARALLEL, one per topic
-4. After all complete: read their findings/* files, update findings.md index
-5. Check gate: >= 3 indexed findings, exploration confidence adequate+
-6. If gate fails: spawn additional explorers for gaps
-7. Emit PC-EXPLORE block before transitioning to PLAN
+1. Read state.md, plans/LESSONS.md, plans/FINDINGS.md (limit: 600), plans/SYSTEM.md
+2. **On-demand**: read plans/INDEX.md ONLY if any of these triggers fires — (a) goal mentions a topic absent from FINDINGS.md, (b) FINDINGS.md/LESSONS.md/SYSTEM.md contains a reference to a trimmed per-plan finding, (c) user references prior work, (d) goal touches files appearing in older plan dirs. Otherwise skip — INDEX.md is a locator, not eager cross-plan memory.
+3. Identify 2-3 research topics from the goal and any existing context
+4. Spawn ip-explorer agents in PARALLEL, one per topic
+5. After all complete: read their findings/* files, update findings.md index
+6. Check gate: >= 3 indexed findings, exploration confidence adequate+
+7. If gate fails: spawn additional explorers for gaps
+8. Emit PC-EXPLORE block before transitioning to PLAN
 
 ### PLAN State
 

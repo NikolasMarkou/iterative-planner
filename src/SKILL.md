@@ -145,14 +145,16 @@ R = read only | W = update (implicit read + write) | R+W = distinct read and wri
 | plans/DECISIONS.md | R(600) | R(600) | — | — | R(600) | W(merge+compress) |
 | plans/LESSONS.md | R | R | — | — | R | W(rewrite≤200) |
 | plans/SYSTEM.md | R | R | — | — | R | W(rewrite≤300) |
-| plans/INDEX.md | R | — | — | — | — | W(append via bootstrap) |
+| plans/INDEX.md | R? | — | — | — | — | W(append via bootstrap) |
 | lessons_snapshot.md | — | — | — | — | — | W(auto via bootstrap) |
+
+`R?` = read on demand only, not as part of the eager cross-plan read set. See EXPLORE rules below for the triggers that warrant an INDEX.md read.
 
 ## Consolidated File Management
 
 `plans/FINDINGS.md` and `plans/DECISIONS.md` grow across plans. Two mechanisms prevent context window bloat:
 
-**Sliding window**: Bootstrap automatically trims consolidated files to the **8 most recent** plan sections on each close. Old plan sections are removed from the consolidated file but remain in their per-plan directories (`plans/plan_*/findings.md`, `plans/plan_*/decisions.md`). This keeps files naturally bounded at ~300-450 lines.
+**Sliding window**: Bootstrap automatically trims consolidated files to the **4 most recent** plan sections on each close. Old plan sections are removed from the consolidated file but remain in their per-plan directories (`plans/plan_*/findings.md`, `plans/plan_*/decisions.md`). Use `plans/INDEX.md` to locate trimmed plans by topic. This keeps files naturally bounded at ~150-250 lines.
 
 **Read limit**: Always read consolidated files with `limit: 600`. The compressed summary + most recent plan sections fit within this.
 
@@ -202,7 +204,13 @@ Institutional memory across plans. Unlike FINDINGS.md and DECISIONS.md which gro
 ## Per-State Rules
 
 ### EXPLORE
-- Read `state.md`, `plans/FINDINGS.md` and `plans/DECISIONS.md` (limit: 600 lines), `plans/LESSONS.md`, `plans/SYSTEM.md`, and `plans/INDEX.md` at start of EXPLORE for cross-plan context. SYSTEM.md is the structural prior — what the target system looks like, distinct from goal-driven findings. INDEX.md helps locate old findings that have been trimmed from consolidated files.
+- Read `state.md`, `plans/FINDINGS.md` and `plans/DECISIONS.md` (limit: 600 lines), `plans/LESSONS.md`, and `plans/SYSTEM.md` at start of EXPLORE for cross-plan context. SYSTEM.md is the structural prior — what the target system looks like, distinct from goal-driven findings. **Do NOT eagerly load `plans/INDEX.md`** — it is read on demand only.
+- **On-demand INDEX.md read** — consult `plans/INDEX.md` (and then the specific per-plan `plans/plan_*/findings.md` it points to) when ANY of the following triggers fires:
+  1. The goal mentions a topic or domain that is absent from the recent FINDINGS.md window.
+  2. A `[CORRECTED iter-N]` or other cross-reference in FINDINGS.md / LESSONS.md / SYSTEM.md points to a per-plan finding that is no longer in the sliding window.
+  3. The user explicitly references prior work ("we tried this before", "the X migration plan", etc.).
+  4. The current plan touches files that appear in older plan directories' change manifests.
+  See `references/file-formats.md` `plans/INDEX.md` section for the schema. Default is **do not read** — INDEX.md is a locator, not a cross-plan memory.
 - **System-atlas contradiction flag**: if an EXPLORE finding contradicts an existing `plans/SYSTEM.md` entry, mark the contradiction in `findings.md` with `[CONTRADICTED iter-N]` (mirrors the `[CORRECTED iter-N]` rule for findings) — the archivist will reconcile at CLOSE in Step 5.
 - Read code, grep, glob, search. One focused question at a time.
 - Flush to `findings.md` + `findings/` after every 2 reads. **Read the file first** before each write.

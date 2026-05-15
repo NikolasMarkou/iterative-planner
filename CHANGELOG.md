@@ -4,6 +4,19 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.17.2] - 2026-05-15
+
+### Changed
+- **`plans/INDEX.md` demoted from mandatory EXPLORE eager-read to on-demand lookup.** Aligns `src/SKILL.md` and `src/agents/orchestrator.md` to the already-canonical schema in `references/file-formats.md:705` ("Read during EXPLORE when cross-plan context doesn't contain what you need"). The orchestrator no longer loads `plans/INDEX.md` at every EXPLORE entry; it consults INDEX.md only when one of four explicit triggers fires: (a) goal mentions a topic absent from FINDINGS.md, (b) FINDINGS/LESSONS/SYSTEM contains a reference to a trimmed per-plan finding, (c) user references prior work, (d) goal touches files appearing in older plan dirs. File Lifecycle Matrix updated: `R` → `R?` for INDEX.md in EXPLORE column, with footnote explaining the convention.
+- **Honest cost-benefit**: ~10K tokens saved per planning cycle at N=100 plans (~$0.03/cycle at $3/M input). Earlier chat-level analysis claimed ~125K tokens/cycle savings — that figure was wrong by ~10×, conflating "total agent invocations per cycle" (~25) with "cross-plan re-reads per cycle" (~1-3, only at EXPLORE entries). The correct multiplier is small. The change is still worth shipping because it eliminates a doctrinal drift between SKILL.md/orchestrator.md and file-formats.md, reduces orchestrator working-set noise, and provides headroom for N>>100 where INDEX.md grows linearly.
+- **Edits**: `src/SKILL.md` (L148 matrix + L205-213 EXPLORE rule), `src/agents/orchestrator.md` (L47-55 EXPLORE Dispatch). No script changes. No test changes (122 tests still pass). No schema changes.
+
+## [2.17.1] - 2026-05-15
+
+### Changed
+- **Sliding window for consolidated files tightened 8 → 4 plans.** `MAX_CONSOLIDATED_PLANS` in `bootstrap.mjs` reduced from 8 to 4. `plans/FINDINGS.md` and `plans/DECISIONS.md` now retain only the 4 most recent plan sections after each close (down from 8). Older sections remain intact in their per-plan `plans/plan_*/` directories; `plans/INDEX.md` keeps trimmed plans discoverable. Rationale: at steady state (N ≥ window size), each cross-plan re-read pays the full consolidated-file token cost; halving the window halves that per-invocation cost (~12K tokens saved per re-read across FINDINGS+DECISIONS, ~300K tokens per planning cycle at ~25 agent invocations). Driven by context-cost model in `analyses/analysis_2026-05-15_714f6273/phase_outputs/phase_1_context_cost.md`.
+- **Doc + test updates** — `SKILL.md`, `README.md`, `references/file-formats.md`, `references/decision-anchoring.md` reflect new window size. `bootstrap.test.mjs` sliding-window tests updated (all 122 tests still pass).
+
 ## [2.17.0] - 2026-05-07
 
 ### Added

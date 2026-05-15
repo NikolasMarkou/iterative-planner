@@ -107,7 +107,7 @@ When code is reverted but the anchor cannot be removed in the same pass (e.g. du
 
 ## Expiration Handling
 
-Anchors are permanent in code; their backing decision context lives in per-plan `decisions.md` (kept in `plans/<plan-id>/`) and `plans/DECISIONS.md` (sliding-window trimmed to 8 plans).
+Anchors are permanent in code; their backing decision context lives in per-plan `decisions.md` (kept in `plans/<plan-id>/`) and `plans/DECISIONS.md` (sliding-window trimmed to 4 plans).
 
 **Plan-qualified anchors** close the historical orphan gap: even after `plans/DECISIONS.md` rotates an old plan out, the anchor names the originating plan directory directly. Resolvers (validator, humans) consult:
 

@@ -983,7 +983,7 @@ describe("bootstrap.mjs", () => {
   // sliding window (consolidated file trimming)
   // =========================================================================
   describe("sliding window for consolidated files", () => {
-    it("trims consolidated files to 8 most recent plan sections", () => {
+    it("trims consolidated files to 4 most recent plan sections", () => {
       const dir = getTempDir();
       const planDirs = [];
       // Create and close 10 plans with findings content
@@ -1000,19 +1000,19 @@ describe("bootstrap.mjs", () => {
       const consolidated = readFileSync(join(dir, "plans", "FINDINGS.md"), "utf-8");
       // Count plan sections
       const sections = consolidated.match(/\n## plan_/g) || [];
-      assert.equal(sections.length, 8, "should keep exactly 8 plan sections");
+      assert.equal(sections.length, 4, "should keep exactly 4 plan sections");
       // Newest (last created) should be present
       assert.ok(consolidated.includes(planDirs[9]), "newest plan should be present");
-      assert.ok(consolidated.includes(planDirs[2]), "8th newest plan should be present");
+      assert.ok(consolidated.includes(planDirs[6]), "4th newest plan should be present");
       // Oldest should be trimmed
       assert.ok(!consolidated.includes(planDirs[0]), "oldest plan should be trimmed");
-      assert.ok(!consolidated.includes(planDirs[1]), "2nd oldest plan should be trimmed");
+      assert.ok(!consolidated.includes(planDirs[5]), "5th newest plan should be trimmed");
     });
 
-    it("does not trim when ≤8 plan sections exist", () => {
+    it("does not trim when ≤4 plan sections exist", () => {
       const dir = getTempDir();
       const planDirs = [];
-      for (let i = 0; i < 5; i++) {
+      for (let i = 0; i < 3; i++) {
         run(dir, "new", `Plan ${i}`);
         const planDir = getPointer(dir);
         planDirs.push(planDir);
@@ -1024,7 +1024,7 @@ describe("bootstrap.mjs", () => {
       }
       const consolidated = readFileSync(join(dir, "plans", "FINDINGS.md"), "utf-8");
       const sections = consolidated.match(/\n## plan_/g) || [];
-      assert.equal(sections.length, 5, "all 5 plan sections should remain");
+      assert.equal(sections.length, 3, "all 3 plan sections should remain");
       for (const pd of planDirs) {
         assert.ok(consolidated.includes(pd), `plan ${pd} should still be present`);
       }
@@ -1052,9 +1052,9 @@ describe("bootstrap.mjs", () => {
       assert.ok(result.includes("<!-- COMPRESSED-SUMMARY -->"), "open marker preserved");
       assert.ok(result.includes("<!-- /COMPRESSED-SUMMARY -->"), "close marker preserved");
       assert.ok(result.includes("Key finding"), "summary content preserved");
-      // Should have at most 8 plan sections
+      // Should have at most 4 plan sections
       const sections = result.match(/\n## plan_/g) || [];
-      assert.ok(sections.length <= 8, `should have ≤8 sections, got ${sections.length}`);
+      assert.ok(sections.length <= 4, `should have ≤4 sections, got ${sections.length}`);
     });
   });
 

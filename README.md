@@ -170,7 +170,7 @@ If a step fails: **revert uncommitted**, two fix attempts max, each constrained 
 
 **Claude (REFLECT)** runs the verifier. The PASS/FAIL table from `verification.md` is rendered **verbatim** in the **PC-REFLECT** block. If it is iteration 2+, an `ip-reviewer` sub-agent runs an adversarial review and its concerns are folded in verbatim. Claude recommends close, pivot, or explore. **You** decide.
 
-**Claude (CLOSE)** spawns `ip-archivist` to write `summary.md`, audit `# DECISION plan_2026-05-07_a3f1b2c9/D-NNN` anchors in source, rewrite `plans/LESSONS.md` (≤200 lines), and rewrite the `plans/SYSTEM.md` atlas (≤300 lines). Then `bootstrap.mjs close` merges per-plan findings and decisions into the consolidated cross-plan files (sliding window of the 8 most recent plans).
+**Claude (CLOSE)** spawns `ip-archivist` to write `summary.md`, audit `# DECISION plan_2026-05-07_a3f1b2c9/D-NNN` anchors in source, rewrite `plans/LESSONS.md` (≤200 lines), and rewrite the `plans/SYSTEM.md` atlas (≤300 lines). Then `bootstrap.mjs close` merges per-plan findings and decisions into the consolidated cross-plan files (sliding window of the 4 most recent plans).
 
 The next plan starts with all of this on disk, available to read.
 
@@ -191,7 +191,7 @@ When a plan closes, its findings and decisions are merged into consolidated file
 - Failed approaches are visible to future plans, preventing repeated dead ends.
 - Corrected findings carry forward automatically.
 
-A **sliding window** trims consolidated files to the 8 most recent plan sections on each close. Older sections remain intact in their per-plan directories. `plans/INDEX.md` keeps a topic-to-directory map so trimmed plans are still discoverable.
+A **sliding window** trims consolidated files to the 4 most recent plan sections on each close. Older sections remain intact in their per-plan directories. `plans/INDEX.md` keeps a topic-to-directory map so trimmed plans are still discoverable.
 
 ### The system atlas (`plans/SYSTEM.md`)
 
@@ -287,8 +287,8 @@ Every change is tracked in a manifest. Failed steps revert immediately. Forbidde
 ```
 plans/
 ├── .current_plan                  # active plan directory name
-├── FINDINGS.md                    # consolidated findings, newest first, sliding window of 8 plans
-├── DECISIONS.md                   # consolidated decisions, newest first, sliding window of 8 plans
+├── FINDINGS.md                    # consolidated findings, newest first, sliding window of 4 plans
+├── DECISIONS.md                   # consolidated decisions, newest first, sliding window of 4 plans
 ├── LESSONS.md                     # cross-plan institutional memory (max 200 lines, rewritten on close)
 ├── SYSTEM.md                      # system atlas, domain-neutral map (max 300 lines, rewritten on close)
 ├── INDEX.md                       # topic-to-directory mapping (survives sliding-window trim)
