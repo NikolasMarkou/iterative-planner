@@ -99,6 +99,7 @@ const VALID_TRANSITIONS = new Set([
 const PLAN_SECTIONS = [
   "Goal",
   "Problem Statement",
+  "Context",
   "Files To Modify",
   "Steps",
   "Assumptions",
@@ -227,13 +228,15 @@ function checkFindings(planDir, issues) {
   const state = readFile(join(planDir, "state.md"));
   const currentState = extractField(state, /^# Current State:\s*(.+)$/m) || "";
 
-  // Count indexed findings (lines starting with "- [" or "- " under ## Index)
+  // Count indexed findings (lines starting with "- " or "N. " under ## Index).
+  // findingItems already captures both bullet links ("- [Foo](path)") and plain
+  // bullets ("- Foo") — links are a subset, so summing them with findingLinks
+  // would double-count. Use bullets + numbered to support mixed-style indexes.
   const indexSection = extractSection(findings, "Index");
   if (indexSection) {
-    const findingLinks = indexSection.split("\n").filter((l) => l.match(/^- \[/));
     const findingItems = indexSection.split("\n").filter((l) => l.match(/^- .+/));
     const numberedItems = indexSection.split("\n").filter((l) => l.match(/^\d+\.\s+.+/));
-    const count = Math.max(findingLinks.length, findingItems.length, numberedItems.length);
+    const count = findingItems.length + numberedItems.length;
 
     if (count < 3 && !["EXPLORE", "CLOSE"].includes(currentState.toUpperCase())) {
       issues.push({ severity: "WARN", check: "findings", message: `Only ${count} indexed findings (minimum 3 required before PLAN)` });
@@ -309,6 +312,37 @@ function checkChangeManifest(planDir, issues) {
 
   if (!state.includes("## Change Manifest")) {
     issues.push({ severity: "WARN", check: "manifest", message: "state.md missing Change Manifest section during EXECUTE/REFLECT" });
+  }
+}
+
+// Autonomy Leash enforcement (SKILL.md L344-354): max 2 fix attempts per step.
+// Counts lines under ## Fix Attempts that match `- Attempt N` (digit-prefixed).
+// Placeholder lines like `- (none yet)` are intentionally ignored. Conservative:
+// only fires during EXECUTE/REFLECT — outside those states the section is stale
+// from a previous step. WARN at 3, ERROR at 4+. Resets on step / PIVOT / user
+// direction (tracked by the agent rewriting the section).
+function checkLeashCount(planDir, issues) {
+  const state = readFile(join(planDir, "state.md"));
+  if (!state) return;
+
+  const currentState = extractField(state, /^# Current State:\s*(.+)$/m) || "";
+  if (!["EXECUTE", "REFLECT"].includes(currentState.toUpperCase())) return;
+
+  const section = extractSection(state, "Fix Attempts");
+  if (!section) return; // No section — legacy state.md or pre-template plan. Silent.
+  const attempts = section.split("\n").filter((l) => /^-\s+Attempt\s+\d+/i.test(l));
+  if (attempts.length >= 4) {
+    issues.push({
+      severity: "ERROR",
+      check: "leash",
+      message: `${attempts.length} fix attempts recorded in state.md (Autonomy Leash hard cap is 2). STOP COMPLETELY, revert, present to user. See SKILL.md §Autonomy Leash.`,
+    });
+  } else if (attempts.length === 3) {
+    issues.push({
+      severity: "WARN",
+      check: "leash",
+      message: `3 fix attempts recorded — Autonomy Leash cap is 2. Treat as a leash hit: revert, present, PIVOT. See SKILL.md §Autonomy Leash.`,
+    });
   }
 }
 
@@ -424,6 +458,101 @@ function checkSystemAtlasCap(issues) {
       severity: "ERROR",
       check: "atlas-cap",
       message: `plans/SYSTEM.md is ${lineCount} lines (>${SYSTEM_ATLAS_LINE_CAP} cap). Curate at next CLOSE — demote-by-staleness, do NOT truncate by recency. See references/file-formats.md ## plans/SYSTEM.md.`,
+    });
+  }
+}
+
+// Hard cap on plans/LESSONS.md (200 lines, per SKILL.md § Lessons Learned).
+// Mirrors the SYSTEM.md cap: the file is rewritten at CLOSE, so a cap violation
+// is a curation failure that must be corrected (consolidate / drop stale entries)
+// rather than silently truncated.
+const LESSONS_LINE_CAP = 200;
+
+// Validate compression-summary marker integrity in consolidated files
+// (plans/FINDINGS.md, plans/DECISIONS.md). Rules from SKILL.md §Consolidated
+// File Management — Compression: markers come in matched pairs, never nested,
+// at most one pair per file, and must sit between H1 and the first `## plan_`
+// section. We enforce pairing + non-nesting strictly, and the "at most one
+// pair" rule because the compression protocol REPLACES the block on each
+// regeneration (Step 3, SKILL.md L167); two pairs imply a regeneration bug.
+function checkCompressionMarkers(issues) {
+  const OPEN = "<!-- COMPRESSED-SUMMARY -->";
+  const CLOSE = "<!-- /COMPRESSED-SUMMARY -->";
+  for (const fname of ["FINDINGS.md", "DECISIONS.md"]) {
+    const path = join(plansDir, fname);
+    if (!existsSync(path)) continue;
+    let content;
+    try { content = readFileSync(path, "utf-8"); } catch { continue; }
+    const opens = [];
+    const closes = [];
+    let i = 0;
+    while ((i = content.indexOf(OPEN, i)) !== -1) { opens.push(i); i += OPEN.length; }
+    i = 0;
+    while ((i = content.indexOf(CLOSE, i)) !== -1) { closes.push(i); i += CLOSE.length; }
+    if (opens.length === 0 && closes.length === 0) continue;
+    if (opens.length !== closes.length) {
+      issues.push({
+        severity: "ERROR",
+        check: "compress-markers",
+        message: `plans/${fname}: unbalanced compression markers (${opens.length} open, ${closes.length} close). Markers must come in matched pairs. See SKILL.md §Consolidated File Management.`,
+      });
+      continue;
+    }
+    // Pair them positionally and verify strict alternation (no nesting).
+    let nested = false;
+    let outOfOrder = false;
+    for (let k = 0; k < opens.length; k++) {
+      if (opens[k] >= closes[k]) { outOfOrder = true; break; }
+      if (k > 0 && opens[k] < closes[k - 1]) { nested = true; break; }
+    }
+    if (outOfOrder) {
+      issues.push({ severity: "ERROR", check: "compress-markers", message: `plans/${fname}: compression marker found out of order (close before open). See SKILL.md §Consolidated File Management.` });
+      continue;
+    }
+    if (nested) {
+      issues.push({ severity: "ERROR", check: "compress-markers", message: `plans/${fname}: nested compression markers detected. The compression protocol REPLACES the block, never nests.` });
+      continue;
+    }
+    if (opens.length > 1) {
+      issues.push({
+        severity: "ERROR",
+        check: "compress-markers",
+        message: `plans/${fname}: ${opens.length} compression-summary blocks found (expected ≤1). Compression replaces the existing block — multiple blocks indicate a regeneration bug. See SKILL.md L167.`,
+      });
+      continue;
+    }
+    // One pair: verify it sits before the first ## plan_ section.
+    const firstPlanSection = content.search(/\n## plan_/);
+    if (firstPlanSection !== -1 && opens[0] > firstPlanSection) {
+      issues.push({
+        severity: "WARN",
+        check: "compress-markers",
+        message: `plans/${fname}: compression block appears AFTER the first \`## plan_\` section. Per SKILL.md §Compression Format, the block belongs between the H1 header and the first plan section.`,
+      });
+    }
+  }
+}
+
+function checkLessonsCap(issues) {
+  const path = join(plansDir, "LESSONS.md");
+  if (!existsSync(path)) {
+    // Created by bootstrap on first `new`. Absent file = legacy plan; informational only.
+    issues.push({ severity: "INFO", check: "lessons-absent", message: "plans/LESSONS.md not found (created on first `bootstrap.mjs new`; legacy plans may lack it)" });
+    return;
+  }
+  let content;
+  try {
+    content = readFileSync(path, "utf-8");
+  } catch {
+    return; // unreadable — silent.
+  }
+  const lines = content.split("\n");
+  const lineCount = lines[lines.length - 1] === "" ? lines.length - 1 : lines.length;
+  if (lineCount > LESSONS_LINE_CAP) {
+    issues.push({
+      severity: "ERROR",
+      check: "lessons-cap",
+      message: `plans/LESSONS.md is ${lineCount} lines (>${LESSONS_LINE_CAP} cap). Rewrite at next CLOSE — consolidate related lessons, drop low-value entries, tighten wording. See SKILL.md § Lessons Learned.`,
     });
   }
 }
@@ -1247,12 +1376,15 @@ function validate(planDirName) {
   checkFindings(planDir, issues);
   checkCrossFileConsistency(planDir, issues);
   checkChangeManifest(planDir, issues);
+  checkLeashCount(planDir, issues);
   checkIterationLimits(planDir, issues);
   checkProgressStructure(planDir, issues);
   checkCheckpoints(planDir, issues);
   checkComplexityBudget(planDir, issues);
   checkConsolidatedFiles(issues);
   checkSystemAtlasCap(issues);
+  checkLessonsCap(issues);
+  checkCompressionMarkers(issues);
 
   // Step 3 additions (2.13.0): schema and anchor enforcement.
   checkDecisionsSchema(planDir, issues);
@@ -1314,12 +1446,15 @@ Checks:
   - Findings count (≥3 before PLAN)
   - Cross-file consistency (state/plan/progress/verification)
   - Change manifest presence during EXECUTE/REFLECT
+  - Autonomy Leash fix-attempt count (WARN [leash] at 3, ERROR at 4+ during EXECUTE/REFLECT)
   - Iteration limits (5 = decomposition, 6+ = hard stop)
   - Progress.md structure (Completed/In Progress/Remaining)
   - Checkpoint existence for iteration 2+
   - Complexity Budget population during EXECUTE+
   - Consolidated files existence
   - plans/SYSTEM.md line count (ERROR [atlas-cap] on >300 lines, INFO [atlas-absent] when missing)
+  - plans/LESSONS.md line count (ERROR [lessons-cap] on >200 lines, INFO [lessons-absent] when missing)
+  - Compression-summary marker integrity in FINDINGS.md/DECISIONS.md (ERROR [compress-markers] on unbalanced/nested/duplicate)
   - decisions.md entry header format (## D-NNN | PHASE | YYYY-MM-DD)
   - decisions.md D-NNN sequential numbering (no gaps, starts at D-001)
   - decisions.md **Trade-off**: line in every entry
