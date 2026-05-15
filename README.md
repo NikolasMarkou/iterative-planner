@@ -476,7 +476,7 @@ No. They are an optimization layer. Without them, the monolithic skill drives th
 Run `bootstrap.mjs resume`. It reconstructs the current state from disk and prints a summary. The agent never starts over — it picks up from `state.md`.
 
 **Why plan-qualified DECISION anchors?**
-The consolidated `plans/DECISIONS.md` uses an 8-plan sliding window. Bare `D-NNN` anchors become orphans once their plan is trimmed. Plan-qualified anchors (`# DECISION plan_YYYY-MM-DD_XXXXXXXX/D-NNN`) survive trim and resolve unambiguously.
+The consolidated `plans/DECISIONS.md` uses a 4-plan sliding window. Bare `D-NNN` anchors become orphans once their plan is trimmed. Plan-qualified anchors (`# DECISION plan_YYYY-MM-DD_XXXXXXXX/D-NNN`) survive trim and resolve unambiguously.
 
 ---
 

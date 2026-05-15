@@ -102,8 +102,8 @@ When code is reverted but the anchor cannot be removed in the same pass (e.g. du
 ```
 
 - STALE anchors signal "this anchor's referenced code path no longer applies but the marker is preserved temporarily for traceability."
-- All STALE anchors MUST be removed before CLOSE. The CLOSE audit lists them as blockers if any remain.
-- The validator MAY downgrade STALE orphans (STALE anchor with no backing entry) to WARN rather than ERROR — but plain (non-STALE) orphans remain ERROR.
+- All STALE anchors SHOULD be removed before CLOSE. The CLOSE audit flags them so the agent can decide: remove (preferred), keep with explicit rationale in `summary.md` Decision Anchors Registry, or convert to a non-STALE anchor referencing a fresh decision entry.
+- The validator emits WARN (not ERROR) for STALE orphans (STALE anchor with no backing entry) — plain (non-STALE) orphans remain ERROR. WARN is non-blocking; the agent owns the disposition.
 
 ## Expiration Handling
 

@@ -225,13 +225,14 @@ Complexity Assessment mandatory for all PIVOT entries.
 
 **Pivot Direction Log** *(EXTENDED — 2nd PIVOT onward)* — track direction consistency across PIVOTs. Add to PIVOT entries: `**Pivot Direction**: [summary]`, `**Direction History**: [all directions]`, `**Momentum**: [ratio]`. See `convergence-metrics.md` for decision rules.
 
-**Root Cause Analysis** is mandatory for REFLECT entries that follow failure (EXECUTE → REFLECT due to failure, leash hit, or surprise). Format:
+**Root Cause Analysis** is mandatory for REFLECT entries that follow failure (EXECUTE → REFLECT due to failure, leash hit, or surprise). The canonical block has **four parts** — keep in sync with `references/planning-rigor.md`:
 
 ```markdown
 **Root Cause Analysis**:
 1. **Immediate cause**: Redis session format uses MessagePack tied to cookie serializer
 2. **Contributing factor**: EXPLORE didn't trace serialization path beyond storage layer
-3. **Prevention**: Always trace format coupling through full pipeline, not just storage endpoints
+3. **Failed defense**: No assumption check on storage/format independence; Failure Modes table didn't include serializer coupling
+4. **Prevention**: Always trace format coupling through full pipeline, not just storage endpoints
 ```
 
 ## findings.md

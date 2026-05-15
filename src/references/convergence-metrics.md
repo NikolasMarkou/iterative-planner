@@ -10,7 +10,7 @@ Computed during REFLECT Phase 2 (iteration 2+). Answers: "Is the plan converging
 
 ```
 convergence_score = pass_rate_delta + scope_stability + issue_trend
-                    (each scored -1 to +1, total range: -3 to +3)
+                    (total range: -2.0 to +3.0)
 
 pass_rate_delta = current_pass_rate - previous_pass_rate
   Pass rate = criteria PASS / total criteria (from verification.md)
@@ -19,11 +19,18 @@ pass_rate_delta = current_pass_rate - previous_pass_rate
 scope_stability = 1 - clamp(|files_changed - files_planned| / files_planned, 0, 1)
   Range: 0.0 to 1.0. 1.0 = no scope drift.
   Use Files To Modify (plan.md) vs change manifest (state.md).
+  Degenerate case: if files_planned == 0 (doc-only plan or all-deletions),
+  define scope_stability = 1.0 when files_changed == 0, else 0.0. Document
+  the assumption in verification.md so the score is reproducible.
 
 issue_trend = sign(previous_new_issues - current_new_issues)
   +1 if fewer new issues this iteration, -1 if more, 0 if same.
+  Range: -1, 0, or +1.
   Count: FAIL results + regressions + scope drift items in verification.md.
 ```
+
+Note: `scope_stability` cannot go negative (clamp 0..1), so the convergence
+total floor is `-1 + 0 + -1 = -2`, not `-3`.
 
 ### Decision Rules
 
