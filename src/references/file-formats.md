@@ -494,10 +494,29 @@ Name: `cp-NNN-iterN.md` — NNN increments globally, iterN = iteration when crea
 - config/initializers/session.rb (modify)
 - lib/session/token_service.rb (create)
 
+## Lockfiles snapshotted:
+- checkpoints/cp-001-iter2.lockfiles/package-lock.json
+- checkpoints/cp-001-iter2.lockfiles/Gemfile.lock
+<!-- OR, when no package manager touched: -->
+<!-- - none (no package manager touched) -->
+
 ## Rollback:
 git checkout abc123f -- app/middleware/auth.rb config/initializers/session.rb
 rm lib/session/token_service.rb
+# If checkpoints/cp-001-iter2.lockfiles/ exists, restore + reinstall:
+cp checkpoints/cp-001-iter2.lockfiles/* .   # adjust per detected lockfile
+npm ci                                       # or: cargo build / poetry install / bundle install / go mod download
 ```
+
+**Sibling-directory convention**: lockfile copies live in `{plan-dir}/checkpoints/cp-NNN-iterN.lockfiles/` — a sibling directory next to the `cp-NNN-iterN.md` file, NOT inside the markdown. The `.md` file only lists the relative paths under `## Lockfiles snapshotted:`.
+
+**Validator safety**: `checkCheckpoints()` in `src/scripts/validate-plan.mjs` does a non-recursive top-level scan filtered to `.md` files only (`readdirSync(cpDir).filter((f) => f.endsWith(".md"))`). Sibling directories like `cp-NNN-iterN.lockfiles/` are invisible to it — no validator change needed.
+
+**Scope**: lockfile snapshotting only happens when the step touches a manifest (`package.json`, `Cargo.toml`, `pyproject.toml`, `Gemfile`, `go.mod`, `composer.json`, etc.). For pure code edits that don't run a package manager, the `## Lockfiles snapshotted:` section contains the single line `- none (no package manager touched)`. The section is mandatory — present in every checkpoint — so its absence signals a malformed checkpoint.
+
+**Security**: never snapshot `.env`, `.env.local`, or any file matched by `.gitignore` that may carry secrets. Only `.env.example` / `.env.template` (explicitly git-tracked, secret-free) are eligible, and even then prefer `git checkout -- .env.example` over manual copy.
+
+**Restore order**: (1) `git checkout <hash> -- .` first — this automatically restores any git-tracked lockfile to its pre-step state; (2) optionally `cp checkpoints/cp-NNN-iterN.lockfiles/* .` — only needed when the original lockfile was `.gitignore`d (rare; Cargo library pattern, some CI setups); (3) run the package manager's restore command (`npm ci`, `cargo build`, `poetry install`, `bundle install`, `go mod download`) to materialize `node_modules/` / `target/` / `.venv/` from the restored lockfile. `npm ci` (not `npm install`) is correct — it installs exactly from the lockfile and errors on mismatch.
 
 ### When to Checkpoint
 - **Iteration 1, first EXECUTE**: `cp-000-iter1.md` = clean starting state (nuclear fallback)
