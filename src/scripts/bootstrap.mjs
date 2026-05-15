@@ -43,11 +43,20 @@ function ensureGitignore() {
   renameSync(gitignorePath + ".tmp", gitignorePath);
 }
 
+// Plan directory names follow this canonical shape (set by cmdNew at creation
+// time). Validating the pointer against it adds defense in depth against a
+// corrupted .current_plan file containing path-traversal or arbitrary content
+// — existsSync alone is fail-safe in practice but doesn't reject paths like
+// `../etc/something` that happen to exist.
+const PLAN_ID_RE = /^plan_\d{4}-\d{2}-\d{2}_[0-9a-f]{8}$/;
+
 function readPointer() {
   try {
     const name = readFileSync(pointerFile, "utf-8").trim();
-    if (name && existsSync(join(plansDir, name))) return name;
-    return null;
+    if (!name) return null;
+    if (!PLAN_ID_RE.test(name)) return null;
+    if (!existsSync(join(plansDir, name))) return null;
+    return name;
   } catch {
     return null;
   }
@@ -168,8 +177,11 @@ function stripHeader(content) {
 }
 
 function stripCrossPlanNote(content) {
-  // Match both old format ("...and plans/DECISIONS.md") and new format ("...plans/DECISIONS.md, and plans/LESSONS.md")
-  return content.replace(/\n?\*Cross-plan context: see plans\/FINDINGS\.md[^*]*\*\n?/g, "\n");
+  // Match both old format ("...and plans/DECISIONS.md") and new format ("...plans/DECISIONS.md, and plans/LESSONS.md").
+  // [^*\n] (rather than [^*]) keeps the match strictly single-line so a malformed
+  // note that accidentally drops the closing asterisk cannot eat the entire
+  // following file body.
+  return content.replace(/\n?\*Cross-plan context: see plans\/FINDINGS\.md[^*\n]*\*\n?/g, "\n");
 }
 
 const CONSOLIDATED_COMPRESS_THRESHOLD = 500;

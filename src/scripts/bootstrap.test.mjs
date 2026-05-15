@@ -786,6 +786,54 @@ describe("bootstrap.mjs", () => {
       assert.equal(r.exitCode, 0);
       assert.ok(r.stdout.includes("No active plan"), "should report no active plan");
     });
+
+    it("path-traversal pointer rejected by plan-id regex", () => {
+      // Even if an attacker-supplied pointer points to a real-existing path,
+      // the regex must reject anything outside the canonical plan_*-*-*_hex8 shape.
+      const dir = getTempDir();
+      mkdirSync(join(dir, "plans"), { recursive: true });
+      // Path traversal attempt — the path itself doesn't matter, the regex must reject the shape.
+      writeFileSync(join(dir, "plans", ".current_plan"), "../../etc\n");
+      const r = run(dir, "status");
+      assert.equal(r.exitCode, 0);
+      assert.ok(r.stdout.includes("No active plan"), "regex must reject traversal sequence");
+    });
+
+    it("pointer with valid shape but wrong-format date rejected", () => {
+      // Date-component must be YYYY-MM-DD; bare digits or wrong separators fail.
+      const dir = getTempDir();
+      mkdirSync(join(dir, "plans"), { recursive: true });
+      // Make a directory matching the wrong shape so existsSync would otherwise succeed
+      mkdirSync(join(dir, "plans", "plan_2026_05_15_a3f1b2c9"), { recursive: true });
+      writeFileSync(join(dir, "plans", ".current_plan"), "plan_2026_05_15_a3f1b2c9\n");
+      const r = run(dir, "status");
+      assert.equal(r.exitCode, 0);
+      assert.ok(r.stdout.includes("No active plan"), "regex must reject wrong date format");
+    });
+
+    it("pointer with non-hex characters in seed rejected", () => {
+      const dir = getTempDir();
+      mkdirSync(join(dir, "plans"), { recursive: true });
+      mkdirSync(join(dir, "plans", "plan_2026-05-15_ZZZZZZZZ"), { recursive: true });
+      writeFileSync(join(dir, "plans", ".current_plan"), "plan_2026-05-15_ZZZZZZZZ\n");
+      const r = run(dir, "status");
+      assert.equal(r.exitCode, 0);
+      assert.ok(r.stdout.includes("No active plan"), "regex must reject non-hex seed");
+    });
+
+    it("pointer with whitespace/newline trimmed and validated", () => {
+      // Trim handles whitespace, then the regex applies. Legitimate plan should still match.
+      const dir = getTempDir();
+      run(dir, "new", "Whitespace trim test");
+      const planDir = getPointer(dir);
+      // Rewrite pointer with extra leading newline + trailing whitespace
+      writeFileSync(join(dir, "plans", ".current_plan"), `\n  ${planDir}  \n\n`);
+      const r = run(dir, "status");
+      assert.equal(r.exitCode, 0);
+      // Active plan should still be discovered
+      assert.ok(r.stdout.includes(planDir) || r.stdout.includes("EXPLORE"),
+        `legitimate plan must survive whitespace trim. stdout: ${r.stdout}`);
+    });
   });
 
   // =========================================================================
