@@ -2298,6 +2298,62 @@ describe("bootstrap.mjs", () => {
       assert.equal(r.compressed, false);
       assert.equal(r.reason, "too-few-entries");
     });
+
+    // F2 — fingerprint-based idempotency catches add+delete drift that count alone missed.
+    it("F2: add+delete with same entry count → fingerprint mismatch → re-compress + summary reflects new IDs", async () => {
+      const maybeCompressDecisions = await loadHelper();
+      const dir = getTempDir();
+      const planDir = join(dir, "plans", "plan_2099-01-01_deadbeef");
+      // 6 entries, padded over threshold
+      const entries = [1, 2, 3, 4, 5, 6].map((n) => makeEntry(n));
+      writeDecisionsFile(planDir, buildDecisionsMd(entries, 320));
+      const r1 = maybeCompressDecisions(planDir);
+      assert.equal(r1.compressed, true, "first compress should succeed");
+
+      let body = readFileSync(join(planDir, "decisions.md"), "utf-8");
+      assert.ok(/<!-- entries-fingerprint: [0-9a-f]{12} -->/.test(body), "fingerprint marker emitted");
+
+      // Capture pass-1 fingerprint
+      const fp1 = body.match(/<!-- entries-fingerprint: ([0-9a-f]{12}) -->/)[1];
+
+      // Mutate raw: remove D-001 entry block (header+body+blank line), append D-007.
+      body = body.replace(/## D-001 \| EXPLORE → PLAN \| 2026-05-15\n[\s\S]*?\n(?=## D-|\n<!-- |$)/, "");
+      const d7 = makeEntry(7, { decision: "SECRET NEW DECISION not in pass-1 summary" });
+      body += `\n## ${d7.id} | ${d7.phase} | ${d7.date}\n${d7.body}\n`;
+      writeFileSync(join(planDir, "decisions.md"), body);
+
+      const r2 = maybeCompressDecisions(planDir);
+      assert.equal(r2.compressed, true, `F2: same count (6) but different IDs must trigger re-compress, got ${JSON.stringify(r2)}`);
+
+      const after = readFileSync(join(planDir, "decisions.md"), "utf-8");
+      const fp2 = after.match(/<!-- entries-fingerprint: ([0-9a-f]{12}) -->/)[1];
+      assert.notEqual(fp2, fp1, "fingerprint must change when IDs change");
+
+      // Summary block must reflect new entry set: D-007 in, D-001 out.
+      const blockStart = after.indexOf("<!-- COMPRESSED-SUMMARY -->");
+      const blockEnd = after.indexOf("<!-- /COMPRESSED-SUMMARY -->");
+      const block = after.slice(blockStart, blockEnd);
+      assert.ok(block.includes("**D-007**"), "summary must list new D-007");
+      assert.ok(!block.includes("**D-001**"), "summary must not reference deleted D-001");
+    });
+
+    // F2 — back-compat: legacy block with entries-at-compress but no fingerprint still no-ops on unchanged count.
+    it("F2 back-compat: legacy block (count-only, no fingerprint) is treated as no-new-entries on unchanged count", async () => {
+      const maybeCompressDecisions = await loadHelper();
+      const dir = getTempDir();
+      const planDir = join(dir, "plans", "plan_2099-01-01_deadbeef");
+      const entries = [1, 2, 3, 4, 5].map((n) => makeEntry(n));
+      writeDecisionsFile(planDir, buildDecisionsMd(entries, 320));
+      maybeCompressDecisions(planDir); // creates fingerprint-bearing block
+      // Strip fingerprint line to simulate a legacy compressed file.
+      let body = readFileSync(join(planDir, "decisions.md"), "utf-8");
+      body = body.replace(/<!-- entries-fingerprint: [0-9a-f]{12} -->\n/, "");
+      writeFileSync(join(planDir, "decisions.md"), body);
+
+      const r = maybeCompressDecisions(planDir);
+      assert.equal(r.compressed, false, "legacy block + unchanged count → no-op");
+      assert.equal(r.reason, "no-new-entries");
+    });
   });
 
   // =========================================================================

@@ -16,7 +16,7 @@
 
 import { mkdirSync, writeFileSync, readFileSync, readdirSync, renameSync, unlinkSync, existsSync, rmSync, copyFileSync } from "fs";
 import { join } from "path";
-import { randomBytes } from "crypto";
+import { randomBytes, createHash } from "crypto";
 
 const cwd = process.cwd();
 const plansDir = join(cwd, "plans");
@@ -279,6 +279,16 @@ function mergeToConsolidated(planDirName) {
 const DECISIONS_COMPRESS_THRESHOLD = 300;
 const COMPRESSED_SUMMARY_MAX_LINES = 100;
 const ENTRIES_AT_COMPRESS_RE = /<!-- entries-at-compress:\s*(\d+)\s*-->/;
+// F2 — fingerprint marker: 12-hex-char sha1 prefix of sorted entry IDs joined by ",".
+// Detects add+delete drift that count-only idempotency missed. Back-compat: when only
+// the count marker is present (legacy compressed blocks), fall back to count comparison.
+const ENTRIES_FINGERPRINT_RE = /<!-- entries-fingerprint:\s*([0-9a-f]{12})\s*-->/;
+
+function computeEntriesFingerprint(ids) {
+  // ids: array of "D-NNN" strings. Sort to canonicalize, hash, take 12 hex chars (48-bit).
+  const sorted = [...ids].sort();
+  return createHash("sha1").update(sorted.join(",")).digest("hex").slice(0, 12);
+}
 
 /**
  * Parse decisions.md into structured entries. Returns:
@@ -310,12 +320,15 @@ function parseDecisionsFile(content) {
   }
 
   // Locate existing compressed block (if any) — first occurrence wins
+  let entriesFingerprint = null;
   for (let i = 0; i < lines.length; i++) {
     if (lines[i].includes(COMPRESSED_SUMMARY_OPEN)) {
       existingBlockStart = i;
       for (let j = i; j < lines.length; j++) {
         const m = lines[j].match(ENTRIES_AT_COMPRESS_RE);
         if (m) entriesAtCompress = Number(m[1]);
+        const fm = lines[j].match(ENTRIES_FINGERPRINT_RE);
+        if (fm) entriesFingerprint = fm[1];
         if (lines[j].includes(COMPRESSED_SUMMARY_CLOSE)) {
           existingBlockEnd = j;
           break;
@@ -423,7 +436,7 @@ function parseDecisionsFile(content) {
     firstEntryLine,
     entries,
     existingBlock: existingBlockStart >= 0
-      ? { startLine: existingBlockStart, endLine: existingBlockEnd, entriesAtCompress }
+      ? { startLine: existingBlockStart, endLine: existingBlockEnd, entriesAtCompress, entriesFingerprint }
       : null,
     hasPreamble
   };
@@ -450,9 +463,11 @@ function buildDecisionsSummaryBlock(entries, beforeLines) {
     ? anchored.join("\n")
     : "*(none — no entries carry Anchor-Refs yet)*";
 
+  const fingerprint = computeEntriesFingerprint(entries.map((e) => e.id));
   const block = [
     COMPRESSED_SUMMARY_OPEN,
     `<!-- entries-at-compress: ${entries.length} -->`,
+    `<!-- entries-fingerprint: ${fingerprint} -->`,
     "## Summary (compressed)",
     `*Auto-compressed from ${beforeLines} lines (${entries.length} entries). Raw entries preserved below.*`,
     "",
@@ -521,10 +536,19 @@ export function maybeCompressDecisions(planDir, opts = {}) {
     return { compressed: false, beforeLines, afterLines: beforeLines, reason: "too-few-entries" };
   }
 
-  // Idempotency: if a compressed block exists and entry count is unchanged
-  // since last compression, no-op.
-  if (parsed.existingBlock && parsed.existingBlock.entriesAtCompress === parsed.entries.length) {
-    return { compressed: false, beforeLines, afterLines: beforeLines, reason: "no-new-entries" };
+  // Idempotency: prefer fingerprint over count. Count-only is fooled by add+delete (F2).
+  // - Fingerprint present: no-op iff fingerprint matches current entries.
+  // - Fingerprint absent (legacy block): fall back to count-only no-op.
+  if (parsed.existingBlock) {
+    const currentFingerprint = computeEntriesFingerprint(parsed.entries.map((e) => e.id));
+    if (parsed.existingBlock.entriesFingerprint) {
+      if (parsed.existingBlock.entriesFingerprint === currentFingerprint) {
+        return { compressed: false, beforeLines, afterLines: beforeLines, reason: "no-new-entries" };
+      }
+      // fingerprint mismatch → re-compress (drift detected).
+    } else if (parsed.existingBlock.entriesAtCompress === parsed.entries.length) {
+      return { compressed: false, beforeLines, afterLines: beforeLines, reason: "no-new-entries" };
+    }
   }
 
   const block = buildDecisionsSummaryBlock(parsed.entries, beforeLines);
