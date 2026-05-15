@@ -14,13 +14,84 @@
 // Writes plans/.current_plan with the directory name for discovery.
 // Requires Node.js 18+ (guaranteed by Claude Code).
 
-import { mkdirSync, writeFileSync, readFileSync, readdirSync, renameSync, unlinkSync, existsSync, rmSync, copyFileSync } from "fs";
+import { mkdirSync, writeFileSync, readFileSync, readdirSync, renameSync, unlinkSync, existsSync, rmSync, copyFileSync, openSync, closeSync } from "fs";
 import { join } from "path";
 import { randomBytes, createHash } from "crypto";
 
 const cwd = process.cwd();
 const plansDir = join(cwd, "plans");
 const pointerFile = join(plansDir, ".current_plan");
+const lockFile = join(plansDir, ".lock");
+
+// DECISION plan_2026-05-15_9ae230f7/D-004 — concurrent-new race fix (OBS-003).
+// Pre-fix: two parallel `bootstrap.mjs new` invocations both passed
+// `readPointer() === null`, both created plan dirs, last writer won the
+// pointer (loser orphaned). Worse, the loser's catch handler unconditionally
+// unlinked the pointer file — under race the WINNER's pointer could be
+// nuked, leaving 2 dirs + 0 pointer ("no active plan" with phantom dirs).
+//
+// Fix: O_EXCL atomic creation of `plans/.lock` with current PID. Stale-PID
+// detection (lock file exists but PID is dead) is best-effort recovery.
+// Catch handler only deletes the pointer if THIS process actually wrote it
+// (tracked via `wePersistedPointer` boolean).
+
+function isPidAlive(pid) {
+  if (!pid || !Number.isFinite(pid) || pid <= 0) return false;
+  try {
+    // Signal 0 is the canonical "does process exist" probe in POSIX. On
+    // Windows we don't have it cleanly; treat as "alive" (conservative —
+    // assumes the user will rerun rather than auto-clear an unfamiliar lock).
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    // EPERM = exists but not ours; EINVAL = invalid pid; ESRCH = not found.
+    return e && e.code === "EPERM";
+  }
+}
+
+function acquireLock() {
+  mkdirSync(plansDir, { recursive: true });
+  // Try atomic exclusive creation.
+  let fd;
+  try {
+    fd = openSync(lockFile, "wx");
+  } catch (err) {
+    if (err.code !== "EEXIST") throw err;
+    // Lock exists. Read PID; if stale, reclaim.
+    let priorPid = null;
+    try { priorPid = parseInt(readFileSync(lockFile, "utf-8").trim(), 10); } catch {}
+    if (priorPid && isPidAlive(priorPid)) {
+      const e = new Error(`Another bootstrap.mjs invocation is in progress (pid ${priorPid}). Retry shortly.`);
+      e.code = "ELOCKED";
+      throw e;
+    }
+    // Stale lock — remove and retry once. The retry is also racy if many
+    // processes converge on the stale lock simultaneously; the second-level
+    // EEXIST surfaces ELOCKED so callers see a clean failure rather than
+    // silent overwrite.
+    try { unlinkSync(lockFile); } catch {}
+    try {
+      fd = openSync(lockFile, "wx");
+    } catch (err2) {
+      if (err2.code === "EEXIST") {
+        const e = new Error("Lock contention reclaiming stale lock. Retry shortly.");
+        e.code = "ELOCKED";
+        throw e;
+      }
+      throw err2;
+    }
+  }
+  try {
+    writeFileSync(fd, String(process.pid));
+  } finally {
+    closeSync(fd);
+  }
+  return true;
+}
+
+function releaseLock() {
+  try { unlinkSync(lockFile); } catch { /* lock may already be gone */ }
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -951,6 +1022,47 @@ function snapshotLessons(planDirName) {
 function cmdNew(goal, force) {
   mkdirSync(plansDir, { recursive: true });
 
+  // D-004 — acquire exclusive lock before ANY pointer/dir mutation. Releases
+  // in finally below. Stale lock (dead PID) is reclaimed transparently.
+  try {
+    acquireLock();
+  } catch (err) {
+    if (err.code === "ELOCKED") {
+      console.error(`ERROR: ${err.message}`);
+      console.error(`  If you are certain no other bootstrap.mjs is running, delete plans/.lock manually.`);
+      process.exit(1);
+    }
+    throw err;
+  }
+
+  // Run inner. cmdNewInner throws structured errors (code = "EACTIVE" /
+  // "ECREATE") for paths that previously called process.exit() directly —
+  // process.exit skips finally blocks, leaking the lock. We catch here,
+  // release the lock, THEN exit with the appropriate code.
+  let exitCode = 0;
+  try {
+    cmdNewInner(goal, force);
+  } catch (err) {
+    if (err && (err.code === "EACTIVE" || err.code === "ECREATE")) {
+      if (err.message) console.error(err.message);
+      exitCode = 1;
+    } else {
+      releaseLock();
+      throw err;
+    }
+  } finally {
+    releaseLock();
+  }
+  if (exitCode !== 0) process.exit(exitCode);
+}
+
+function cmdNewInner(goal, force) {
+  // Track whether THIS invocation wrote the pointer file (D-004). The catch
+  // handler at the bottom must only unlink the pointer it itself committed —
+  // otherwise a partial-failure path can nuke another invocation's pointer
+  // (only possible if lock acquisition is bypassed, but defensive).
+  let wePersistedPointer = false;
+
   // Warn about orphaned plan directories (pointer file exists but is corrupted/stale)
   try {
     const activeName = readPointer();
@@ -970,12 +1082,16 @@ function cmdNew(goal, force) {
 
   const existing = readPointer();
   if (existing && !force) {
-    console.error(`ERROR: Active plan directory already exists: plans/${existing}`);
-    console.error(`  To resume:      node ${process.argv[1]} resume`);
-    console.error(`  To view status:  node ${process.argv[1]} status`);
-    console.error(`  To close it:     node ${process.argv[1]} close`);
-    console.error(`  To force new:    node ${process.argv[1]} new --force "goal"`);
-    process.exit(1);
+    // D-004 — throw structured error so cmdNew wrapper's finally releases the lock.
+    const msg =
+      `ERROR: Active plan directory already exists: plans/${existing}\n` +
+      `  To resume:      node ${process.argv[1]} resume\n` +
+      `  To view status:  node ${process.argv[1]} status\n` +
+      `  To close it:     node ${process.argv[1]} close\n` +
+      `  To force new:    node ${process.argv[1]} new --force "goal"`;
+    const e = new Error(msg);
+    e.code = "EACTIVE";
+    throw e;
   }
   if (existing && force) {
     cmdClose({ silent: true });
@@ -1185,6 +1301,7 @@ ${crossPlanNote}
 
     writeFileSync(pointerFile + ".tmp", planDirName);
     renameSync(pointerFile + ".tmp", pointerFile);
+    wePersistedPointer = true;
   } catch (err) {
     try { rmSync(planDir, { recursive: true, force: true }); } catch (e) { console.error(`WARNING: Failed to clean up partial plan directory: ${planDir}`); }
     try { if (existsSync(pointerFile + ".tmp")) unlinkSync(pointerFile + ".tmp"); } catch (e) { console.error("WARNING: Failed to clean up temp pointer file."); }
@@ -1194,11 +1311,16 @@ ${crossPlanNote}
         writeFileSync(pointerFile, previousPlan);
         console.error(`WARNING: Restored pointer to previous plan: plans/${previousPlan}`);
       } catch (e) { console.error(`WARNING: Failed to restore pointer to previous plan: plans/${previousPlan}`); }
-    } else {
+    } else if (wePersistedPointer) {
+      // D-004 — only unlink pointer we ourselves wrote. Pre-fix this branch
+      // ran unconditionally and could nuke another invocation's pointer under
+      // race conditions (now prevented by the lock, kept as defense-in-depth).
       try { if (existsSync(pointerFile)) unlinkSync(pointerFile); } catch (e) { console.error("WARNING: Failed to clean up pointer file."); }
     }
-    console.error(`ERROR: Failed to create plan directory: ${err.message}`);
-    process.exit(1);
+    // D-004 — throw structured error so cmdNew wrapper's finally releases the lock.
+    const wrapped = new Error(`ERROR: Failed to create plan directory: ${err.message}`);
+    wrapped.code = "ECREATE";
+    throw wrapped;
   }
 
   try {

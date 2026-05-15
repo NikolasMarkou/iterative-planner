@@ -2663,4 +2663,60 @@ describe("bootstrap.mjs", () => {
       assert.equal(fields[7], "a | b | c");
     });
   });
+
+  // OBS-003 / D-004 — concurrent `bootstrap.mjs new` race
+  describe("D-004: concurrent-new lockfile (OBS-003)", () => {
+    it("5 parallel `new` produces exactly 1 plan dir + 1 pointer; losers ELOCKED-or-EACTIVE", async () => {
+      const dir = getTempDir();
+      // Launch 5 truly-parallel processes via async spawn (NOT spawnSync — sync
+      // would serialize the test and make all but the first hit EACTIVE).
+      const { spawn } = await import("child_process");
+      const realProcs = [];
+      for (let i = 0; i < 5; i++) {
+        realProcs.push(new Promise((resolve) => {
+          const p = spawn("node", [BOOTSTRAP, "new", `goal-${i}`], { cwd: dir });
+          let stdout = "", stderr = "";
+          p.stdout.on("data", (b) => stdout += b);
+          p.stderr.on("data", (b) => stderr += b);
+          p.on("close", (code) => resolve({ stdout, stderr, code }));
+        }));
+      }
+      const results = await Promise.all(realProcs);
+
+      const dirs = readdirSync(join(dir, "plans")).filter((n) => n.startsWith("plan_"));
+      const pointer = (() => {
+        try { return readFileSync(join(dir, "plans", ".current_plan"), "utf-8").trim(); } catch { return null; }
+      })();
+      const lockExists = existsSync(join(dir, "plans", ".lock"));
+
+      const dump = results.map((r, i) =>
+        `[${i}] code=${r.code} stdout=${r.stdout.slice(0,80)} stderr=${r.stderr.slice(0,80)}`).join("\n");
+
+      assert.equal(dirs.length, 1, `expected exactly 1 plan dir, got ${dirs.length}\n${dump}`);
+      assert.ok(pointer, `pointer file must exist after winner commits\n${dump}`);
+      assert.equal(pointer, dirs[0], `pointer must point to the only plan dir\n${dump}`);
+      assert.ok(!lockExists, `lock file must be cleaned up after winner releases\n${dump}`);
+
+      const winners = results.filter((r) => r.code === 0);
+      const losers = results.filter((r) => r.code === 1);
+      assert.equal(winners.length, 1, `expected exactly 1 winner, got ${winners.length}\n${dump}`);
+      assert.equal(losers.length, 4, `expected 4 losers, got ${losers.length}\n${dump}`);
+      // Losers may either fail on the lock (ELOCKED) OR find the plan already
+      // exists after the winner released (EACTIVE). Both are correct outcomes.
+      for (const loser of losers) {
+        assert.ok(/in progress|active plan/i.test(loser.stderr),
+          `loser must report locked/active, got: ${loser.stderr.slice(0,200)}`);
+      }
+    });
+
+    it("stale lock (PID 999999, not alive) is reclaimed silently", () => {
+      const dir = getTempDir();
+      mkdirSync(join(dir, "plans"), { recursive: true });
+      writeFileSync(join(dir, "plans", ".lock"), "999999");
+      const r = run(dir, "new", "goal after stale lock");
+      assert.equal(r.exitCode, 0, `expected success reclaiming stale lock, got ${r.exitCode}\n${r.stdout}\n${r.stderr}`);
+      assert.ok(existsSync(join(dir, "plans", ".current_plan")), "pointer must be written");
+      assert.ok(!existsSync(join(dir, "plans", ".lock")), "stale lock must be cleaned");
+    });
+  });
 });
