@@ -211,12 +211,17 @@ function trimConsolidatedWindow(filePath) {
   // Old data is still in per-plan directories — no information lost.
   let content;
   try { content = readFileSync(filePath, "utf-8"); } catch { return; }
-  // Find all ## plan_ section positions
+  // Find all ## plan_ section positions. Also catch a section that begins
+  // at byte 0 (no preceding newline) — defensive against pathological
+  // consolidated files lacking the boilerplate H1 header.
   const positions = [];
+  if (/^## plan_/.test(content)) positions.push(0);
   const re = /\n## plan_/g;
   let match;
   while ((match = re.exec(content)) !== null) {
-    positions.push(match.index);
+    // Record the section start AT the heading (skip the leading \n), so that
+    // slicing to `positions[N]` cleanly truncates before the Nth section.
+    positions.push(match.index + 1);
   }
   if (positions.length <= MAX_CONSOLIDATED_PLANS) return;
   // Truncate after the Nth section (keep first N, they're the newest)
@@ -266,11 +271,18 @@ function appendToIndex(planDirName) {
   // Extract goal and date from plan files
   const plan = readPlanFile(planDirName, "plan.md");
   const goal = extractField(plan, /\n## Goal\s*\n([\s\S]+?)(?=\n## |$)/) || "No goal";
-  const goalOneLine = goal.split("\n")[0].slice(0, 60);
+  // Strip leading blank lines before taking the first content line — guards
+  // against a goal section that begins with a blank line, which would
+  // otherwise produce an empty INDEX.md goal column.
+  const goalFirstNonBlank = goal.split("\n").find((l) => l.trim().length > 0) || "No goal";
+  const goalOneLine = goalFirstNonBlank.slice(0, 60);
   const dateMatch = planDirName.match(/plan_(\d{4}-\d{2}-\d{2})/);
   const date = dateMatch ? dateMatch[1] : "unknown";
 
-  // Extract key topics from findings.md ## Index section only (first 3 topic slugs)
+  // Extract key topics from findings.md ## Index section only (first 3 topic slugs).
+  // Only pick links of the form `[label](target)` — bare brackets like
+  // [CORRECTED], [TODO], [WIP] are not topic labels and must not pollute the
+  // index column.
   const findings = readPlanFile(planDirName, "findings.md");
   let topics = "";
   if (findings) {
@@ -278,9 +290,12 @@ function appendToIndex(planDirName) {
     if (indexStart >= 0) {
       const afterIndex = findings.indexOf("\n## ", indexStart + 1);
       const indexBody = afterIndex >= 0 ? findings.slice(indexStart, afterIndex) : findings.slice(indexStart);
-      const topicMatches = indexBody.match(/\[([^\]]+)\]/g);
-      if (topicMatches) {
-        topics = topicMatches.slice(0, 3).map((t) => t.replace(/[[\]]/g, "").toLowerCase()).join(", ");
+      const linkRe = /\[([^\]]+)\]\(/g;
+      const linkLabels = [];
+      let lm;
+      while ((lm = linkRe.exec(indexBody)) !== null) linkLabels.push(lm[1]);
+      if (linkLabels.length > 0) {
+        topics = linkLabels.slice(0, 3).map((t) => t.toLowerCase()).join(", ");
       }
     }
   }
