@@ -50,7 +50,7 @@ function run(cwd, ...args) {
  * Fields:
  *   state, iteration, currentStep, fixAttemptsBody (raw body for the Fix Attempts section)
  */
-function writePlan(cwd, { state = "EXECUTE", iteration = 1, currentStep = "1 of 5", fixAttemptsBody = "- (none yet for current step)", fixAttemptsHeading = "## Fix Attempts (resets per plan step)" } = {}) {
+function writePlan(cwd, { state = "EXECUTE", iteration = 1, currentStep = "1 of 5", fixAttemptsBody = "- (none yet for current step)", fixAttemptsHeading = "## Fix Attempts (resets per plan step)", transitionHistoryExtra = null } = {}) {
   const planId = "plan_2026-05-15_aaaabbbb";
   const plansDir = join(cwd, "plans");
   const planDir = join(plansDir, planId);
@@ -75,6 +75,7 @@ ${fixAttemptsBody}
 - EXPLORE → PLAN (gathered enough context, 2026-05-15T11:30:00Z)
   - confidence: scope=deep, solutions=adequate, risks=clear
 - PLAN → EXECUTE (user approved, 2026-05-15T11:45:00Z)
+${transitionHistoryExtra || ""}
 `);
 
   writeFileSync(join(planDir, "plan.md"),
@@ -558,6 +559,100 @@ describe("validate-plan.mjs --pre-step gate", () => {
     const r = run(cwd);
     const malformed = r.stdout.split("\n").filter((l) => /\[changelog-malformed\]/.test(l));
     assert.equal(malformed.length, 0, `pipe in reason must not produce changelog-malformed WARN, got:\n${r.stdout}`);
+  });
+
+  // OBS-005 / D-005 — iteration cap must fire from Transition History EXECUTE→REFLECT
+  // count, even when the agent-written `## Iteration:` field is stale or zero.
+  it("(p) OBS-005: state.md with 7 EXECUTE→REFLECT transitions + declared Iteration 0 → ERROR [iteration] hard cap", () => {
+    const cwd = getTempDir();
+    const transitionHistory = [
+      "- INIT → EXPLORE (a)",
+      "- EXPLORE → PLAN (b)",
+      "- PLAN → EXECUTE (c)",
+      "- EXECUTE → REFLECT (1)",
+      "- EXECUTE → REFLECT (2)",
+      "- EXECUTE → REFLECT (3)",
+      "- EXECUTE → REFLECT (4)",
+      "- EXECUTE → REFLECT (5)",
+      "- EXECUTE → REFLECT (6)",
+      "- EXECUTE → REFLECT (7)",
+    ].join("\n");
+    writePlan(cwd, { state: "EXECUTE", iteration: 0, transitionHistoryExtra: transitionHistory });
+    const r = run(cwd);
+    const iterErrs = r.stdout.split("\n").filter((l) => /ERROR \[iteration\]/.test(l));
+    assert.ok(iterErrs.length >= 1, `expected ERROR [iteration] from derived count, got:\n${r.stdout}`);
+    assert.ok(/derived=7/.test(iterErrs[0]), `error message must mention derived=7, got: ${iterErrs[0]}`);
+  });
+
+  // OBS-005 / D-005 — derived count below cap must NOT trigger ERROR.
+  it("(q) OBS-005: state.md with 3 EXECUTE→REFLECT transitions + declared Iteration 0 → no [iteration] ERROR", () => {
+    const cwd = getTempDir();
+    const transitionHistory = [
+      "- EXECUTE → REFLECT (1)",
+      "- EXECUTE → REFLECT (2)",
+      "- EXECUTE → REFLECT (3)",
+    ].join("\n");
+    writePlan(cwd, { state: "EXECUTE", iteration: 0, transitionHistoryExtra: transitionHistory });
+    const r = run(cwd);
+    const iterErrs = r.stdout.split("\n").filter((l) => /ERROR \[iteration\]/.test(l));
+    assert.equal(iterErrs.length, 0, `derived=3 must not trigger cap, got:\n${r.stdout}`);
+  });
+
+  // OBS-010 / D-006 — checkCompressionMarkers must NOT count prose mentions.
+  it("(r) OBS-010: prose mention of `<!-- COMPRESSED-SUMMARY -->` in plans/FINDINGS.md must NOT trigger compress-markers ERROR", () => {
+    const cwd = getTempDir();
+    writePlan(cwd, { state: "EXPLORE", iteration: 0 });
+    // Write a FINDINGS.md with the marker text inside a backtick prose mention
+    writeFileSync(join(cwd, "plans", "FINDINGS.md"),
+`# Consolidated Findings
+
+## plan_X
+### Index
+This plan describes the \`<!-- COMPRESSED-SUMMARY -->\` marker pattern.
+Other prose: <!-- COMPRESSED-SUMMARY --> inside a sentence is still NOT a marker.
+`);
+    const r = run(cwd);
+    const cmErrs = r.stdout.split("\n").filter((l) => /ERROR \[compress-markers\]/.test(l));
+    assert.equal(cmErrs.length, 0, `prose mention must not trigger compress-markers ERROR, got:\n${r.stdout}`);
+  });
+
+  // OBS-010 / D-006 — a REAL standalone marker pair must still be accepted.
+  it("(s) OBS-010: real on-its-own-line marker pair is detected as one valid block", () => {
+    const cwd = getTempDir();
+    writePlan(cwd, { state: "EXPLORE", iteration: 0 });
+    writeFileSync(join(cwd, "plans", "FINDINGS.md"),
+`# Consolidated Findings
+
+<!-- COMPRESSED-SUMMARY -->
+## Summary (compressed)
+Lookup table here.
+<!-- /COMPRESSED-SUMMARY -->
+
+## plan_X
+real plan section
+`);
+    const r = run(cwd);
+    const cmErrs = r.stdout.split("\n").filter((l) => /ERROR \[compress-markers\]/.test(l));
+    assert.equal(cmErrs.length, 0, `real balanced marker pair must NOT error, got:\n${r.stdout}`);
+  });
+
+  // OBS-010 / D-006 — a real unbalanced marker MUST still trigger ERROR.
+  it("(t) OBS-010: real unbalanced marker (open only, no close) still triggers ERROR", () => {
+    const cwd = getTempDir();
+    writePlan(cwd, { state: "EXPLORE", iteration: 0 });
+    writeFileSync(join(cwd, "plans", "FINDINGS.md"),
+`# Consolidated Findings
+
+<!-- COMPRESSED-SUMMARY -->
+## Summary (compressed)
+no close marker
+
+## plan_X
+real plan section
+`);
+    const r = run(cwd);
+    const cmErrs = r.stdout.split("\n").filter((l) => /ERROR \[compress-markers\]/.test(l));
+    assert.ok(cmErrs.length >= 1, `real unbalanced marker must still ERROR, got:\n${r.stdout}`);
   });
 
   it("(h) negative regression: full validator without --pre-step never emits exit code 2", () => {

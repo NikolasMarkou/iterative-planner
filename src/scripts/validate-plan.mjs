@@ -389,18 +389,46 @@ function checkLeashCount(planDir, issues) {
   }
 }
 
+// DECISION plan_2026-05-15_9ae230f7/D-005 — derive iteration from Transition
+// History (OBS-005). Pre-fix: `## Iteration: N` is agent-written, so an agent
+// (or sloppy fork) that forgets to bump it bypasses the 5/6 caps indefinitely.
+// Cross-check: each EXECUTE → REFLECT arrow in Transition History closes one
+// iteration. Final value = max(declared, derived) — both signals govern.
+function deriveIterationFromHistory(state) {
+  if (!state) return 0;
+  const start = state.indexOf("## Transition History:");
+  if (start < 0) return 0;
+  const block = state.slice(start);
+  // Use normalizePhase semantics (en/em dash → hyphen). Count distinct
+  // EXECUTE → REFLECT transitions.
+  const norm = block.replace(/[–—‐]/g, "-");
+  const re = /EXECUTE\s*(?:→|->)\s*REFLECT/g;
+  let count = 0;
+  while (re.exec(norm) !== null) count++;
+  return count;
+}
+
 function checkIterationLimits(planDir, issues) {
   const state = readFile(join(planDir, "state.md"));
   if (!state) return;
 
   const iterStr = extractField(state, /^## Iteration:\s*(.+)$/m);
-  if (!iterStr) return;
+  const declared = iterStr ? parseInt(iterStr) : 0;
+  const derived = deriveIterationFromHistory(state);
+  // max() so neither side can silence the other.
+  const iter = Math.max(Number.isFinite(declared) ? declared : 0, derived);
+  if (!Number.isFinite(iter) || iter <= 0) return;
 
-  const iter = parseInt(iterStr);
+  // When derived > declared, mention the source so the agent knows to fix
+  // the discrepancy (and the validator's reasoning isn't opaque).
+  const source = derived > declared
+    ? ` (declared=${declared}, derived=${derived} from EXECUTE → REFLECT transition count)`
+    : "";
+
   if (iter >= 6) {
-    issues.push({ severity: "ERROR", check: "iteration", message: `Iteration ${iter} exceeds hard limit (6+): must decompose into smaller tasks` });
+    issues.push({ severity: "ERROR", check: "iteration", message: `Iteration ${iter}${source} exceeds hard limit (6+): must decompose into smaller tasks` });
   } else if (iter === 5) {
-    issues.push({ severity: "WARN", check: "iteration", message: "Iteration 5: mandatory decomposition analysis required (2-3 sub-goals)" });
+    issues.push({ severity: "WARN", check: "iteration", message: `Iteration 5${source}: mandatory decomposition analysis required (2-3 sub-goals)` });
   }
 }
 
@@ -526,12 +554,25 @@ function checkCompressionMarkers(issues) {
     if (!existsSync(path)) continue;
     let content;
     try { content = readFileSync(path, "utf-8"); } catch { continue; }
+    // DECISION plan_2026-05-15_9ae230f7/D-006 — OBS-010 line-anchored markers.
+    // Pre-fix: `content.indexOf(OPEN)` substring-matched prose mentions of
+    // the marker (e.g. a finding's plain-English description of the
+    // compression machinery wrapped in backticks). Result: false-positive
+    // ERROR `[compress-markers] unbalanced (1 open, 0 close)` for any plan
+    // documenting its own compression spec. Fix: only count occurrences
+    // where the trimmed line equals the marker exactly. Position arrays use
+    // BYTE OFFSETS of the line in the file (needed for the alternation
+    // check below).
+    const lines = content.split("\n");
     const opens = [];
     const closes = [];
-    let i = 0;
-    while ((i = content.indexOf(OPEN, i)) !== -1) { opens.push(i); i += OPEN.length; }
-    i = 0;
-    while ((i = content.indexOf(CLOSE, i)) !== -1) { closes.push(i); i += CLOSE.length; }
+    let offset = 0;
+    for (const ln of lines) {
+      const trimmed = ln.trim();
+      if (trimmed === OPEN) opens.push(offset);
+      else if (trimmed === CLOSE) closes.push(offset);
+      offset += ln.length + 1; // +1 for the "\n"
+    }
     if (opens.length === 0 && closes.length === 0) continue;
     if (opens.length !== closes.length) {
       issues.push({
