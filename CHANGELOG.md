@@ -4,6 +4,26 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.17.3] - 2026-05-15
+
+### Added
+- **`validate-plan.mjs checkLessonsCap`** — ERROR `[lessons-cap]` when `plans/LESSONS.md` exceeds 200 lines (the hard cap stated in SKILL.md L42, L198); INFO `[lessons-absent]` on missing file (legacy plans). Mirrors `checkSystemAtlasCap`. Closes the asymmetry where SYSTEM.md's 300-line cap was validator-enforced but LESSONS.md's 200-line cap was prose-only.
+- **`validate-plan.mjs checkCompressionMarkers`** — ERROR `[compress-markers]` on unbalanced, nested, out-of-order, or duplicate `<!-- COMPRESSED-SUMMARY -->` blocks in `plans/FINDINGS.md` / `plans/DECISIONS.md`. WARN when the block sits after the first `## plan_` section. Enforces SKILL.md §Consolidated File Management — Compression invariants (matched pairs, replace-not-append, position before first plan section).
+- **`validate-plan.mjs checkLeashCount`** — Autonomy Leash enforcement (SKILL.md §Autonomy Leash). Counts `- Attempt N` entries under `## Fix Attempts` in state.md during EXECUTE/REFLECT. WARN `[leash]` at 3 attempts, ERROR at 4+. Conservative pattern silently ignores the template placeholder `- (none yet)` and missing sections, so legacy plans don't false-fire. Closes a CORE-rule enforcement gap: SKILL.md L344-354 said "No exceptions" but had zero validator coverage.
+- **`validate-plan.mjs`** `Context` added to `PLAN_SECTIONS` — Context is mandatory per `references/file-formats.md:54` and is already scaffolded by `bootstrap.mjs:382`. Plans could previously pass validation without it.
+- **`bootstrap.mjs PLAN_ID_RE`** — defense-in-depth regex `/^plan_\d{4}-\d{2}-\d{2}_[0-9a-f]{8}$/` applied in `readPointer` after trim. Rejects malformed pointer content (path traversal sequences, wrong-format dates, non-hex seeds) before `join()` is reached. `existsSync` was fail-safe in practice but trusted the pointer's shape.
+- **4 new tests in `bootstrap.test.mjs`** — path-traversal pointer rejection, wrong-format-date rejection, non-hex-seed rejection, whitespace-trim survives. Test count 122 → 126.
+
+### Fixed
+- **`validate-plan.mjs` finding-count off-by-one** — `Math.max(findingLinks, findingItems, numberedItems)` undercounted indexes that mixed bullet links and numbered items because `findingItems` is a superset of `findingLinks` (every `- [foo](bar)` line also matches `^- `). With 2 bullet links + 2 numbered = 4 actual items, max returned 2 and falsely warned "Only 2 indexed findings". Now `findingItems + numberedItems`.
+- **`bootstrap.mjs stripCrossPlanNote`** — regex tightened from `[^*]*` to `[^*\n]*` between asterisks so a note that accidentally loses its closing asterisk cannot eat the file body. Single-line is the only documented format.
+- **`CLAUDE.md`** Repository Structure tree — added `src/scripts/blast-radius.mjs` and `src/references/blast-radius.md` (both are functional and cited from SKILL.md L262, L481 and ip-executor.md L47-50 since v2.15.0 but were absent from the documented tree).
+- **`README.md`** badge — synced to `v2.17.3` (was `v2.17.0`, lagged behind VERSION since v2.17.1).
+
+### Notes
+- All changes are doc + validator + bootstrap-pointer hardening. No protocol changes to SKILL.md state machine, file ownership, or presentation contracts. No new dependencies.
+- Driven by `analyses/analysis_2026-05-15_61ded372/` epistemic-deconstructor review. 7 verified findings remain deferred for a future iteration (Windows path-sep in blast-radius.mjs, --force partial-failure recovery, close-from-anywhere shortcut design review, EXTENDED-check parsers, manifest-vs-git cross-check, goal-extraction dedup, goal-truncation UX in resume).
+
 ## [2.17.2] - 2026-05-15
 
 ### Changed
