@@ -122,7 +122,10 @@ const PLACEHOLDER_PATTERNS = [
 
 function readFile(path) {
   try {
-    return readFileSync(path, "utf-8");
+    // Normalize CRLF on read so downstream regexes and trimmed-token
+    // comparisons (e.g. currentState.toUpperCase() === "EXECUTE") match on
+    // Windows-saved files as well as POSIX. Single point of fix.
+    return readFileSync(path, "utf-8").replace(/\r\n/g, "\n");
   } catch {
     return null;
   }
@@ -884,13 +887,17 @@ function findAnchorsInFile(file, projectRoot) {
   }
 
   // Block comment scan (multi-line) — applies to /* */ in C-family + CSS.
+  // Loop over EVERY anchor in the block; previously only the first was found.
   const blockRe = /\/\*([\s\S]*?)\*\//g;
   let bm;
   while ((bm = blockRe.exec(text)) !== null) {
     const body = bm[1];
-    const dm = blockInnerRe.exec(body);
-    if (dm) {
-      const lineNum = text.slice(0, bm.index).split("\n").length;
+    const bodyOffset = bm.index + 2; // skip past "/*"
+    const innerRe = new RegExp(blockInnerRe.source, "g");
+    let dm;
+    while ((dm = innerRe.exec(body)) !== null) {
+      // Compute the line number of this specific match within the file.
+      const lineNum = text.slice(0, bodyOffset + dm.index).split("\n").length;
       pushMatch(dm, lineNum);
     }
   }
@@ -1281,7 +1288,9 @@ function checkChangelogFormat(planDir, issues) {
   const STEP = /^iter-\d+\/step-\d+$/;
   const COMMIT = /^([0-9a-f]{7,40}|uncommitted)$/;
   const OP = /^(CREATE\(\+\d+\)|EDIT\(\+\d+,-\d+\)|DELETE\(-\d+\)|RENAME\([^→]+→[^)]+\)|REVERT\([^)]+\))$/;
-  const RADIUS = /^radius:(LOW|MED|HIGH)\(-?\d+\)|radius:UNKNOWN\([^)]+\)$/;
+  // Grouped alternation — without the outer group, ^ anchors only the first
+  // alternative and $ only the second, so e.g. `radius:LOW(2)trailing` passes.
+  const RADIUS = /^(radius:(LOW|MED|HIGH)\(-?\d+\)|radius:UNKNOWN\([^)]+\))$/;
   const DREF = /^(D-\d{3}|-)$/;
 
   const lines = content.split("\n");
