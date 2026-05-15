@@ -342,8 +342,10 @@ function checkLeashCount(planDir, issues) {
 
   const section = extractSection(state, "Fix Attempts");
   if (!section) return; // No section — legacy state.md or pre-template plan. Silent.
-  // Alternation: documented `- Step N, attempt M` style first, legacy `- Attempt M` second.
-  const attempts = section.split("\n").filter((l) => /^-\s+(Step\s+\d+,\s+attempt\s+\d+|Attempt\s+\d+)/i.test(l));
+  // Alternation: documented `- Step N, attempt M` first, comma-optional/space-only variants
+  // (`- Step 1 attempt 1`, `- Step 1  attempts 2`), and legacy bare `- Attempt M` / `- Attempts M`.
+  // Plural `attempts?` tolerated; previously a non-canonical write silently bypassed the leash (F1).
+  const attempts = section.split("\n").filter((l) => /^-\s+(Step\s+\d+[,\s]+attempts?\s+\d+|Attempts?\s+\d+)/i.test(l));
   if (attempts.length >= 4) {
     issues.push({
       severity: "ERROR",
@@ -1482,8 +1484,8 @@ function runPreStepGate(planDir) {
   }
 
   const section = extractSection(state, "Fix Attempts");
-  // Reconciled regex (step 1): documented `- Step N, attempt M` + legacy `- Attempt M`.
-  const attemptRe = /^-\s+(Step\s+\d+,\s+attempt\s+\d+|Attempt\s+\d+)/i;
+  // Same relaxed regex as checkLeashCount (F1): comma optional, attempts? plural ok.
+  const attemptRe = /^-\s+(Step\s+\d+[,\s]+attempts?\s+\d+|Attempts?\s+\d+)/i;
   const attempts = section ? section.split("\n").filter((l) => attemptRe.test(l)).length : 0;
   if (attempts >= 2) {
     console.log(`GATE:FAIL [leash-cap] attempts=${attempts} cap=2`);

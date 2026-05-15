@@ -304,6 +304,37 @@ describe("validate-plan.mjs checkLeashCount regex reconciliation", () => {
     const r = run(cwd);
     assert.equal(leashLines(r.stdout).length, 0, `expected no [leash] lines for non-matching bullets, got:\n${r.stdout}`);
   });
+
+  // F1 — relaxed regex tolerates comma-optional + plural variants. Pre-fix these all silently bypassed.
+  it("F1: comma-less `- Step N attempt M` form (4 attempts) → ERROR [leash]", () => {
+    const cwd = getTempDir();
+    writePlan(cwd, {
+      fixAttemptsBody: [
+        "- Step 1 attempt 1",
+        "- Step 1 attempt 2",
+        "- Step 1 attempt 3",
+        "- Step 1 attempt 4",
+      ].join("\n"),
+    });
+    const r = run(cwd);
+    const lines = leashLines(r.stdout);
+    assert.ok(lines.some((l) => /ERROR/.test(l)), `expected ERROR [leash] for no-comma form, got:\n${r.stdout}`);
+  });
+
+  it("F1: plural `attempts` form (4 attempts) → ERROR [leash]", () => {
+    const cwd = getTempDir();
+    writePlan(cwd, {
+      fixAttemptsBody: [
+        "- Step 2, attempts 1: a",
+        "- Step 2, attempts 2: b",
+        "- Step 2 attempts 3: c",
+        "- Step 2  attempts 4: d",
+      ].join("\n"),
+    });
+    const r = run(cwd);
+    const lines = leashLines(r.stdout);
+    assert.ok(lines.some((l) => /ERROR/.test(l)), `expected ERROR [leash] for plural+no-comma forms, got:\n${r.stdout}`);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -399,6 +430,35 @@ describe("validate-plan.mjs --pre-step gate", () => {
     assert.equal(r.exitCode, 1, `expected exit 1 from full validator, got ${r.exitCode}\nstdout:\n${r.stdout}`);
     assert.ok(/ERROR/.test(r.stdout), `expected ERROR in stdout, got:\n${r.stdout}`);
     assert.ok(/\[leash\]/.test(r.stdout), `expected [leash] tag in stdout, got:\n${r.stdout}`);
+  });
+
+  // F1 — pre-step gate must trip on comma-optional / plural variants too.
+  it("(i) F1: FAIL [leash-cap] — 2 no-comma `- Step N attempt M` lines → exit 2", () => {
+    const cwd = getTempDir();
+    writePlan(cwd, {
+      state: "EXECUTE",
+      fixAttemptsBody: [
+        "- Step 3 attempt 1: a",
+        "- Step 3 attempt 2: b",
+      ].join("\n"),
+    });
+    const r = runPreStep(cwd);
+    assert.equal(r.exitCode, 2, `expected exit 2 for no-comma form, got ${r.exitCode}\nstdout:\n${r.stdout}`);
+    assert.ok(r.stdout.trim().startsWith("GATE:FAIL [leash-cap]"), `expected GATE:FAIL [leash-cap], got:\n${r.stdout}`);
+  });
+
+  it("(j) F1: FAIL [leash-cap] — plural `attempts` form → exit 2", () => {
+    const cwd = getTempDir();
+    writePlan(cwd, {
+      state: "EXECUTE",
+      fixAttemptsBody: [
+        "- Attempts 1: a",
+        "- Attempts 2: b",
+      ].join("\n"),
+    });
+    const r = runPreStep(cwd);
+    assert.equal(r.exitCode, 2, `expected exit 2 for plural Attempts, got ${r.exitCode}\nstdout:\n${r.stdout}`);
+    assert.ok(r.stdout.trim().startsWith("GATE:FAIL [leash-cap]"), `expected GATE:FAIL [leash-cap], got:\n${r.stdout}`);
   });
 
   it("(h) negative regression: full validator without --pre-step never emits exit code 2", () => {
