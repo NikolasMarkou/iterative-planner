@@ -51,6 +51,12 @@ function Invoke-Build {
     # Copy scripts
     Get-ChildItem "src/scripts/*.mjs" -Exclude "*.test.mjs" | Copy-Item -Destination "$skillDir/scripts/"
 
+    # Copy agent definitions (if any)
+    if (Test-Path "src/agents") {
+        New-Item -ItemType Directory -Force -Path "$skillDir/agents" | Out-Null
+        Copy-Item "src/agents/*.md" "$skillDir/agents/"
+    }
+
     # Copy documentation
     @("README.md", "LICENSE", "CHANGELOG.md") | ForEach-Object {
         if (Test-Path $_) {
@@ -82,6 +88,25 @@ function Invoke-BuildCombined {
     $content += "> **Note**: This combined file does not include ``bootstrap.mjs``. Bootstrap commands`n"
     $content += "> referenced in the protocol require the full package. Plan directories must be`n"
     $content += "> created manually or by using the zip/tarball distribution.`n"
+
+    # Rewrite references/ cross-references to anchor links (content is inlined above)
+    $refMap = @{
+        '``references/code-hygiene.md``' = 'the Code Hygiene Reference section below'
+        '``references/complexity-control.md``' = 'the Complexity Control Reference section below'
+        '``references/convergence-metrics.md``' = 'the Convergence Metrics Reference section below'
+        '``references/decision-anchoring.md``' = 'the Decision Anchoring Reference section below'
+        '``references/file-formats.md``' = 'the File Formats Reference section below'
+        '``references/planning-rigor.md``' = 'the Planning Rigor Reference section below'
+        '``src/references/code-hygiene.md``' = 'the Code Hygiene Reference section below'
+        '``src/references/complexity-control.md``' = 'the Complexity Control Reference section below'
+        '``src/references/convergence-metrics.md``' = 'the Convergence Metrics Reference section below'
+        '``src/references/decision-anchoring.md``' = 'the Decision Anchoring Reference section below'
+        '``src/references/file-formats.md``' = 'the File Formats Reference section below'
+        '``src/references/planning-rigor.md``' = 'the Planning Rigor Reference section below'
+    }
+    foreach ($key in $refMap.Keys) {
+        $content = $content.Replace($key, $refMap[$key])
+    }
 
     Set-Content -Path $outputFile -Value $content
 
@@ -166,7 +191,7 @@ function Invoke-Validate {
         $transitions = @(
             @("EXPLORE", "PLAN"), @("PLAN", "EXPLORE"), @("PLAN", "PLAN"),
             @("PLAN", "EXECUTE"), @("EXECUTE", "REFLECT"), @("REFLECT", "CLOSE"),
-            @("REFLECT", "RE[-_]PLAN"), @("REFLECT", "EXPLORE"), @("RE[-_]PLAN", "PLAN")
+            @("REFLECT", "PIVOT"), @("REFLECT", "EXPLORE"), @("PIVOT", "PLAN")
         )
         foreach ($pair in $transitions) {
             $pattern = "$($pair[0]).*$($pair[1])"
@@ -213,6 +238,39 @@ function Invoke-Validate {
         }
         if ($bsContent -notmatch "INDEX\.md") {
             $errors += "ERROR: bootstrap.mjs does not reference INDEX.md"
+        }
+    }
+
+    # Verify agent definitions have required frontmatter
+    if (Test-Path "src/agents") {
+        Write-Host "Checking agent definitions..."
+        Get-ChildItem "src/agents/*.md" | ForEach-Object {
+            $agentContent = Get-Content $_.FullName -Raw
+            if ($agentContent -notmatch "(?m)^name:") {
+                $errors += "ERROR: $($_.Name) missing 'name' in frontmatter"
+            }
+            if ($agentContent -notmatch "(?m)^description:") {
+                $errors += "ERROR: $($_.Name) missing 'description' in frontmatter"
+            }
+            if ($agentContent -notmatch "(?m)^tools:") {
+                $errors += "ERROR: $($_.Name) missing 'tools' in frontmatter"
+            }
+        }
+    }
+
+    # Verify validate-plan.mjs VALID_TRANSITIONS covers all SKILL.md transitions
+    if (Test-Path "src/scripts/validate-plan.mjs") {
+        Write-Host "Checking validator transition coverage..."
+        $vpContent = Get-Content "src/scripts/validate-plan.mjs" -Raw
+        $requiredTransitions = @(
+            "EXPLORE→PLAN", "PLAN→EXPLORE", "PLAN→PLAN",
+            "PLAN→EXECUTE", "EXECUTE→REFLECT", "REFLECT→CLOSE",
+            "REFLECT→PIVOT", "REFLECT→EXPLORE", "PIVOT→PLAN"
+        )
+        foreach ($t in $requiredTransitions) {
+            if (-not $vpContent.Contains("`"$t`"")) {
+                $errors += "ERROR: validate-plan.mjs VALID_TRANSITIONS missing $t"
+            }
         }
     }
 
@@ -308,5 +366,8 @@ switch ($Command.ToLower()) {
     "clean"            { Invoke-Clean }
     "list"             { Invoke-List }
     "help"             { Show-Help }
-    default            { Show-Help }
+    default            {
+        Show-Help
+        exit 1
+    }
 }

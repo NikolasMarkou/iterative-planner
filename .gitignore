@@ -8,6 +8,9 @@ dist/
 # Iterative Planner
 plans/
 
+# Design notes
+docs/
+
 # Windows artifact
 nul
 analyses/

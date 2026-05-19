@@ -4,19 +4,19 @@ Techniques for stronger plans: surface assumptions, anticipate failure, and cali
 
 ## Ideation Discipline
 
-Divergence before convergence. The most common failure mode in EXPLORE → PLAN is "first idea wins by default" — the first viable approach gets locked in without a second one ever being articulated, and any trade-offs are invisible because there's nothing to trade against.
+Divergence before convergence. The most common failure mode at the EXPLORE → PLAN seam is "first idea wins by default" — the first viable approach gets locked in without a second one ever being articulated, and any trade-offs are invisible because there's nothing to trade against.
 
-The **Ideation Gate** (last action of EXPLORE; see SKILL.md EXPLORE section) materializes the Solutions dimension as a written artifact in `ideation.md`. Required: ≥3 candidates with trade-offs, OR 1 candidate plus a populated Single-Path Escape Hatch. Plus a Selection. Validated by `validate-plan.mjs` whenever state ≥ PLAN.
+The **Ideation Gate** (CORE step inside PLAN, owned by `ip-plan-writer`; see SKILL.md PLAN section) materializes the Solutions Exploration Confidence dimension as a written artifact in `ideation.md`. Required: ≥3 candidates with trade-offs, OR 1 candidate plus a populated Single-Path Escape Hatch (both "Why no alternatives" AND "Falsification"). Plus a Selection. Validated by `validate-plan.mjs` whenever state ≥ PLAN. Surfaced to the user via **PC-IDEATION** before `plan.md` is written — the user can approve, redirect to a rejected candidate, or request more options.
 
 **Why three, not two.** Two candidates degenerates into "the obvious choice and a strawman." A third candidate forces genuine search — what if you couldn't pick either of the first two? The third option is where ghost constraints get exposed.
 
-**Why a written artifact.** The Solutions Exploration Confidence dimension (below) used to be a self-assessment in the transition log. Self-assessments are vibes. `ideation.md` is evidence: a future RE-PLAN can read it, see what was rejected and why, and resurrect a candidate if its rejection constraint turns out to be a ghost.
+**Why a written artifact.** The Solutions Exploration Confidence dimension (below) used to be a self-assessment in the transition log. Self-assessments are vibes. `ideation.md` is evidence: a future PIVOT can read it, see what was rejected and why, and resurrect a candidate if its rejection constraint turns out to be a ghost (mark with `[REACTIVATED iter-N]`).
 
 **Failure mode it prevents**: locking the foundational approach on iter-1 unexamined, then layering fixes on top of it for 4 iterations until the Nuclear Option triggers.
 
-**Single-Path Escape Hatch**: not every task has design alternatives. Mechanical renames, deterministic migrations, idempotent backfills — these are genuinely single-path. The escape hatch lets you skip the 3-candidate requirement, but you must state *why* there are no alternatives and *one falsification trigger* that would invalidate the single-path assumption (e.g., "any caller depends on the old name as a string identifier"). The trigger is checked during EXECUTE — if it fires, you've discovered the design surface you missed.
+**Single-Path Escape Hatch**: not every task has design alternatives. Mechanical renames, deterministic migrations, idempotent backfills — these are genuinely single-path. The escape hatch lets you skip the 3-candidate requirement, but you must populate *both* fields: "Why no alternatives" (e.g., "Mechanical rename of `getCwd` across 15 files; no design surface") and "Falsification" — one observable trigger that would invalidate the single-path assumption (e.g., "Any caller depends on the old name as a string identifier"). The trigger is checked during EXECUTE — if it fires, you've discovered the design surface you missed. Validator rejects partial escape hatch (only one field populated) with a precise message.
 
-**Viability-flipping constraints — ask, don't guess.** A constraint is *viability-flipping* if reclassifying it (hard ↔ soft, hard ↔ ghost) would change which candidates are viable. Before generating candidates, scan the classified constraints. For each viability-flipping constraint that's uncertain, **ask the user a focused question** — don't guess. Example: in an auth migration, "is operational simplicity a hard constraint, or just a preference?" determines whether dual-write (two auth paths during migration) is viable. Guessing wrong here doesn't just produce a worse candidate — it produces a candidate set that doesn't include the right answer at all. If you discover mid-generation that a constraint was misclassified and that flips a candidate's viability, stop, re-classify in `findings.md` (with `[CORRECTED iter-N]` if you're correcting an earlier finding), and re-run the gate. The state stays EXPLORE — the gate is an EXPLORE sub-step, so this is "back up one step," not a transition.
+**Viability-flipping constraints — ask, don't guess.** A constraint is *viability-flipping* if reclassifying it (hard ↔ soft ↔ ghost) would change which candidates are viable. Before generating candidates, `ip-plan-writer` scans the classified constraints in `findings.md`. For each viability-flipping constraint that's uncertain, signal `NEEDS_USER_CLARIFICATION:<question>` to the orchestrator — the orchestrator asks the user, updates `findings.md` (with `[CORRECTED iter-N]` if applicable), and re-spawns the writer. Example: in an auth migration, "is operational simplicity a hard constraint, or just a preference?" determines whether dual-write (two auth paths during migration) is viable. Guessing wrong here doesn't just produce a worse candidate — it produces a candidate set that doesn't include the right answer at all. Same rule if `ip-plan-writer` discovers mid-generation that a constraint was misclassified.
 
 ## Assumption Tracking
 
@@ -35,7 +35,7 @@ Plans depend on assumptions discovered during EXPLORE. Make them explicit so whe
 - Bullet list, not a table. Each: what you assume, where it's grounded, which steps depend on it.
 - Add "Falsified if..." when the falsification condition is non-obvious.
 - On surprise discovery during EXECUTE: check Assumptions first. If a listed assumption is falsified, you know which steps to re-evaluate.
-- On RE-PLAN: review assumptions — were any wrong? Update findings with corrections.
+- On PIVOT: review assumptions — were any wrong? Update findings with corrections.
 
 **Common assumption categories**:
 
@@ -86,7 +86,7 @@ Before transitioning to PLAN, self-assess in the EXPLORE → PLAN transition log
 | Dimension | Levels |
 |-----------|--------|
 | **Problem scope** | shallow (key mechanics unclear) / adequate (can state problem, constraints, edge cases) / deep (traced causal chains, know internal dynamics) |
-| **Solution space** | Materialized in `ideation.md` (see Ideation Discipline above and SKILL.md EXPLORE Ideation Gate). "Adequate" = ≥3 candidates with documented trade-offs, OR 1 candidate + populated Single-Path Escape Hatch, AND a Selection. |
+| **Solution space** | Materialized in `ideation.md` (see Ideation Discipline above and SKILL.md PLAN Ideation Gate). "Adequate" = ≥3 candidates with documented trade-offs, OR 1 candidate + populated Single-Path Escape Hatch, AND a Selection. |
 | **Risk visibility** | blind (unknown unknowns) / partial (some risks identified) / clear (risks mapped, unknowns located) |
 
 **Gate**: Problem scope and Risk visibility must be at least "adequate"; Solution space is enforced by the Ideation Gate (validated by `validate-plan.mjs`). Any "shallow" or "blind" on the other two → keep exploring. Record scope and risk levels in the transition log; ideation.md is the artifact for solutions.
@@ -130,11 +130,40 @@ Track how well the plan predicted reality. Builds institutional memory about sys
 | Optimism on dependencies | External dependencies assumed to be reliable | Add buffer for every external dependency |
 | Complexity discount | "It's straightforward" → it wasn't | If you catch yourself saying "simple," add a risk entry |
 
-## Ghost Constraint Hunting (RE-PLAN)
+**Convergence metrics** — prediction accuracy measures plan-vs-reality *within* an iteration. For *cross-iteration* trend analysis (is the plan converging, stalling, or diverging?), see `convergence-metrics.md`. Both go in `verification.md` during REFLECT.
+
+## Root Cause Analysis (REFLECT after failure)
+
+When REFLECT follows a failure (step failed, leash hit, surprise discovery), structured root cause analysis prevents repeating the same class of mistake.
+
+> **Canonical schema location**: `references/file-formats.md` (decisions.md section) is the single source of truth for the Root Cause Analysis block format used in `decisions.md` entries. The format below is the same 4-part block — keep them in sync.
+
+**In `decisions.md`** — as part of the REFLECT entry:
+
+```markdown
+**Root Cause Analysis**:
+1. **Immediate cause**: [What directly caused the failure?]
+2. **Contributing factor**: [What allowed the immediate cause? Trace back one level — missing test? wrong assumption? insufficient exploration?]
+3. **Failed defense**: [Which barrier should have caught this earlier — a test, assumption check, explore step, failure-mode entry, pre-mortem signal — and why didn't it? If no defense existed, that's the prevention gap.]
+4. **Prevention**: [What would have caught this earlier? Add to LESSONS.md at CLOSE if pattern is recurring.]
+```
+
+**If the failure is a regression** (something that previously worked), add a Change Analysis question before #1: *"What changed since the last passing state?"* Candidates: recent edits in this plan, a new assumption introduced in the last iteration, a ghost constraint (see Ghost Constraint Hunting below), an external dependency that moved. Regressions almost always have a traceable delta — finding it is usually faster than reasoning forward from symptoms.
+
+**Rules**:
+- Required when REFLECT follows failure (EXECUTE → REFLECT due to failure, leash hit, or surprise). Skip when all criteria PASS on first attempt.
+- Keep each answer to 1-2 sentences. This is a forcing function for thought, not a report.
+- "Contributing factor" is where the real insight lives — the immediate cause is usually obvious.
+- If the contributing factor points to insufficient EXPLORE or a bad assumption, that's a signal for PIVOT → EXPLORE rather than PIVOT → PLAN.
+- **Multiple roots are normal.** If the causal chain feels suspiciously clean (one cause, one fix), look for a second contributing factor. A missing test *and* a wrong assumption is a more honest answer than either alone.
+- **Stop rule.** Keep asking "but why was that possible?" until further whys either leave the system boundary (out of your control) or stop yielding actionable levers. Don't stop at the first plausible cause — that's premature closure, the most common RCA failure mode.
+- **No prevention without a verification plan.** If step 4 says "add a test" or "check X earlier," the next REFLECT must confirm it actually catches the regression it was meant to catch. Otherwise the lesson is theoretical.
+
+## Ghost Constraint Hunting (PIVOT)
 
 Ghost constraints = past constraints baked into the current approach that no longer apply. They're the most common source of unnecessarily constrained solution spaces.
 
-**Active scan during RE-PLAN** — before designing a new approach, ask:
+**Active scan during PIVOT** — before designing a new approach, ask:
 
 1. **Is the constraint that led to the failed approach still valid?** Example: "We assumed we couldn't change the vendor because of a contract — but the contract was renegotiated last quarter."
 2. **Are we inheriting environmental constraints that are actually preferences?** Example: "Everyone uses tool X, so we assumed we must use tool X — but the actual requirement is 'reliable data processing,' not a specific tool."
@@ -149,6 +178,8 @@ Ghost constraints = past constraints baked into the current approach that no lon
 
 Log ghost constraints found in `decisions.md` with: what the ghost was, why it no longer applies, and how removing it changes the solution space.
 
+**Momentum tracker** — if PIVOTs are oscillating (momentum < 0.3), ghost constraints may be the cause: alternating between approaches that are each blocked by the other's constraints. See `convergence-metrics.md` for the pivot direction log.
+
 ## Phase Balance Heuristic
 
 Rough guideline for effort distribution. Not hard rules — adjust per task complexity.
@@ -159,7 +190,7 @@ Rough guideline for effort distribution. Not hard rules — adjust per task comp
 | PLAN | 10-15% | >25% → can't converge → go back to EXPLORE |
 | EXECUTE | 40-50% | >60% → likely under-explored |
 | REFLECT | 5-10% | <5% → skimming verification. If routing CLOSE after <5% REFLECT, explain in `decisions.md` why verification was trivial. |
-| RE-PLAN | 5-10% | >15% → churning, consider decomposition |
+| PIVOT | 5-10% | >15% → churning, consider decomposition |
 
 If EXECUTE consistently dominates (>60%), the pattern is: not enough exploration upfront → discoveries during execution → surprise pivots. Invest more in EXPLORE.
 

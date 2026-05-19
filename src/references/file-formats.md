@@ -27,14 +27,14 @@ Single source of truth for "where am I?"
 - EXPLORE → PLAN (gathered enough context on auth system)
 - PLAN → EXECUTE (user approved approach A)
 - EXECUTE → REFLECT (tests failing on edge case)
-- REFLECT → RE-PLAN (approach A can't handle concurrent sessions)
-- RE-PLAN → PLAN (switching to approach B: token-based)
+- REFLECT → PIVOT (approach A can't handle concurrent sessions)
+- PIVOT → PLAN (switching to approach B: token-based)
 - PLAN → EXECUTE (user approved revised plan)
 ```
 
 Update on every state transition.
 
-**Fix Attempts**: tracks autonomous fixes on current step. After 2 fails → STOP. Resets on: user direction, new step, RE-PLAN. Leash hit example:
+**Fix Attempts**: tracks autonomous fixes on current step. After 2 fails → STOP. Resets on: user direction, new step, PIVOT. Leash hit example:
 
 ```markdown
 ## Fix Attempts (resets per plan step)
@@ -43,13 +43,15 @@ Update on every state transition.
 - Step 2: LEASH HIT. Transitioned to REFLECT. Waiting for user direction.
 ```
 
-**Change Manifest**: `[x]` = committed, `[ ]` = uncommitted. On failed step / RE-PLAN → revert uncommitted. See `code-hygiene.md`.
+**Change Manifest**: `[x]` = committed, `[ ]` = uncommitted. On failed step / PIVOT → revert uncommitted. See `code-hygiene.md`.
 
 ## plan.md
 
 Living plan. **Rewritten** each iteration (old plans preserved via `decisions.md`).
 Only recommended approach. Rejected alternatives → `decisions.md`.
 
+**Goal** is mandatory — single sentence (or short paragraph) stating the outcome the plan exists to produce. Created by bootstrap from the `new "goal"` argument; refined during PLAN.
+**Context** is mandatory — short pointer paragraph linking to relevant findings, prior decisions, and abandoned approaches (e.g. "See findings.md for X. See decisions.md for why approach v1 was abandoned."). Keeps the plan body focused on the chosen approach rather than re-explaining background.
 **Problem Statement** is mandatory — expected behavior, invariants, edge cases. Can't write it clearly → go back to EXPLORE.
 **Failure Modes** table is mandatory when plan touches external dependencies or integration points. "None identified" if genuinely none (proves you checked).
 
@@ -136,8 +138,42 @@ approaches v1 (in-place migration) and v2 (dual-write) were abandoned.
 Append-only. **Never edit or delete past entries.**
 Every entry must include a **Trade-off** line: "X **at the cost of** Y".
 
+**Plan-id preamble** *(required for plans created on or after v2.14.0)*: the second line of the file, immediately following the `# Decision Log` H1, MUST be `*Plan: <plan-id>*` where `<plan-id>` is the plan directory name (e.g. `plan_2026-05-07_7556fb98`). The preamble lets the file self-identify after `plans/DECISIONS.md` sliding-window trim drops the wrapping `## <plan-id>` section. Bootstrap emits this line automatically. Validator: ERROR `[preamble-missing]` for plans whose `state.md` INIT timestamp is on or after the v2.14.0 release cutoff; WARN otherwise.
+
+**Entry header rule**: every entry begins with `## D-NNN | PHASE | YYYY-MM-DD` where:
+- `D-NNN` is sequential per plan starting at D-001 (D-001, D-002, ..., no gaps). Each plan directory has its own counter.
+- `PHASE` is the originating state or transition (e.g. `EXPLORE → PLAN`, `REFLECT → PIVOT`, `REFLECT`, `PIVOT`).
+- `YYYY-MM-DD` is the ISO 8601 date the entry was written.
+
+### Entry Schema by Type
+
+Required vs optional fields per entry type. Every entry, regardless of type, has the header above and a `**Trade-off**:` line ("X **at the cost of** Y").
+
+All entry types accept `Anchor-Refs` as optional. For PIVOT entries that are 2nd-onward in a sequence, also include `Pivot Direction`, `Direction History`, `Momentum` (see `convergence-metrics.md`).
+
+| Entry Type | Required Fields |
+|---|---|
+| `EXPLORE → PLAN` (initial approach) | Context, Decision, Trade-off, Reasoning |
+| `REFLECT → PIVOT` (failure pivot) | Context, What Failed, What Was Learned, Root Cause Analysis (4-part), Complexity Assessment, Decision, Trade-off, Reasoning |
+| `REFLECT` (no pivot, EXTENDED — iter 2+) | Context, Devil's Advocate Note, Decision, Trade-off, Reasoning |
+| Scope-drift justification | Context, Unplanned Files, Justification, Decision, Trade-off |
+| Falsification-signal log | Context, Signal Fired (pre-mortem item #), Observation, Decision, Trade-off |
+| Ghost-constraint discovery | Context, Constraint, Why No Longer Applies, Solution-Space Change, Decision, Trade-off |
+| 3-strike trigger | Context, "3-STRIKE TRIGGERED on [file/module]", Three Attempts, Decision, Trade-off |
+| Simplification-check failure | Context, 6 Check Answers, Blocker Found (Y/N), Decision, Trade-off |
+| Devil's-Advocate (EXTENDED) | Context, Strongest Counter-argument, Why Pursuing Anyway, Decision, Trade-off |
+
+**Anchor-Refs** *(required whenever a matching `# DECISION <plan-id>/D-NNN` anchor exists in source — for plans created on or after v2.14.0; recommended otherwise)*: file:line back-links from the decision entry to placed anchors. Format:
+
+```markdown
+**Anchor-Refs**: `app/middleware/auth.rb:23`, `lib/session/token_service.rb:1-15`
+```
+
+Multiple file:line refs are comma-separated; ranges use `LL-MM`. Maintained at EXECUTE-time when anchors are created or moved; verified at CLOSE during the reverse anchor audit. Validator: ERROR `[anchor-refs-missing]` for post-v2.14.0 plans whose decisions.md entry has a matching source anchor but no `**Anchor-Refs**:` line; WARN otherwise. Pre-v2.14.0 entries (legacy) keep WARN-only enforcement.
+
 ```markdown
 # Decision Log
+*Plan: plan_2026-01-15_a3f1b2c9*
 
 ## D-001 | EXPLORE → PLAN | 2025-01-15
 **Context**: Auth system uses 3 different session stores (Redis, DB, in-memory)
@@ -145,11 +181,15 @@ Every entry must include a **Trade-off** line: "X **at the cost of** Y".
 **Trade-off**: Fastest path to 80% coverage **at the cost of** ignoring DB/in-memory stores and risking format coupling issues
 **Reasoning**: Redis sessions are 80% of traffic, smallest blast radius
 
-## D-002 | REFLECT → RE-PLAN | 2025-01-15
+## D-002 | REFLECT → PIVOT | 2025-01-15
 **Context**: Approach A fails — Redis session format is coupled to cookie serializer
 **What Failed**: Cannot deserialize existing sessions with new token format
 **What Was Learned**: Session format tied to entire serialization pipeline in `lib/session/serializer.rb`
-**Root Cause**: Tight coupling between cookie format and session store
+**Root Cause Analysis**:
+1. **Immediate cause**: Redis session format uses MessagePack tied to the cookie serializer
+2. **Contributing factor**: EXPLORE didn't trace serialization path beyond storage layer
+3. **Failed defense**: No assumption check on storage/format independence; Failure Modes table didn't include serializer coupling
+4. **Prevention**: Always trace format coupling through full pipeline, not just storage endpoints
 **Complexity Assessment**:
 - Lines added in failed attempt: 34
 - New abstractions added: 1 (SessionAdapter — now deleted)
@@ -159,11 +199,15 @@ Every entry must include a **Trade-off** line: "X **at the cost of** Y".
 **Trade-off**: Safe rollback and format decoupling **at the cost of** doubled storage for TTL duration
 **Reasoning**: Decouples new format from legacy, allows rollback
 
-## D-003 | REFLECT → RE-PLAN | 2025-01-15
+## D-003 | REFLECT → PIVOT | 2025-01-15
 **Context**: Approach B works but dual-write doubles Redis memory usage
 **What Failed**: Memory spike in staging from 2GB to 4.1GB
 **What Was Learned**: Session TTLs are 30 days, so dual-write accumulates fast
-**Root Cause**: Dual-write inherently doubles storage for TTL duration
+**Root Cause Analysis**:
+1. **Immediate cause**: Dual-write inherently doubles storage for TTL duration
+2. **Contributing factor**: PLAN didn't model storage growth as a function of TTL × write rate
+3. **Failed defense**: Failure Modes covered Redis availability but not capacity; no staging memory budget check
+4. **Prevention**: For any dual-write strategy, project storage cost = retention × write rate before committing
 **Complexity Assessment**:
 - Lines added in failed attempt: 89
 - New abstractions added: 2 (DualWriter, MigrationTracker)
@@ -172,13 +216,27 @@ Every entry must include a **Trade-off** line: "X **at the cost of** Y".
 **Decision**: Switch to approach C (token-based with cookie fallback)
 **Trade-off**: Stateless validation and zero storage growth **at the cost of** maintaining two auth paths during migration
 **Reasoning**: Tokens are stateless, eliminates Redis growth problem entirely
+**Anchor-Refs**: `app/middleware/auth.rb:23`, `lib/session/token_service.rb:1-15`
 ```
 
-Complexity Assessment mandatory for all RE-PLAN entries.
+When this entry's anchor is later read in source it appears as `# DECISION plan_2026-01-15_a3f1b2c9/D-003: ...` (the plan-id prefix matches the preamble line above).
+
+Complexity Assessment mandatory for all PIVOT entries.
+
+**Pivot Direction Log** *(EXTENDED — 2nd PIVOT onward)* — track direction consistency across PIVOTs. Add to PIVOT entries: `**Pivot Direction**: [summary]`, `**Direction History**: [all directions]`, `**Momentum**: [ratio]`. See `convergence-metrics.md` for decision rules.
+
+**Root Cause Analysis** is mandatory for REFLECT entries that follow failure (EXECUTE → REFLECT due to failure, leash hit, or surprise). Format:
+
+```markdown
+**Root Cause Analysis**:
+1. **Immediate cause**: Redis session format uses MessagePack tied to cookie serializer
+2. **Contributing factor**: EXPLORE didn't trace serialization path beyond storage layer
+3. **Prevention**: Always trace format coupling through full pipeline, not just storage endpoints
+```
 
 ## findings.md
 
-Updated during EXPLORE. Corrected during RE-PLAN when earlier findings prove wrong. Always include **file paths with line numbers** and **code path traces**.
+Updated during EXPLORE. Corrected during PIVOT when earlier findings prove wrong. Always include **file paths with line numbers** and **code path traces**.
 
 `findings.md` = summary + index. Detailed findings → `findings/` as individual files. **Main agent** owns the index — subagents write to `findings/` only.
 
@@ -206,6 +264,45 @@ Updated during EXPLORE. Corrected during RE-PLAN when earlier findings prove wro
 Self-contained research artifacts. Subagents write directly to `{plan-dir}/findings/` — never rely on context-only results.
 
 **Naming**: `findings/{topic-slug}.md` — kebab-case, descriptive. Examples: `auth-system.md`, `test-coverage.md`, `db-schema.md`. Prevents collisions when multiple subagents run in parallel.
+
+**Required sections** (every `findings/{topic}.md` file must contain all five):
+
+| Section | Purpose | Required content |
+|---|---|---|
+| `## Summary` | One-paragraph overview | Plain prose, 2-5 sentences |
+| `## Key Findings` | Discrete observations | Each item must include `file:line` reference |
+| `## Constraints` | Limits on solution space | Each constraint classified `HARD` / `SOFT` / `GHOST` |
+| `## Code Patterns` | Recurring shapes worth knowing | file:line for at least one occurrence per pattern |
+| `## Risks & Unknowns` | What's unclear or risky | What was not determinable; what to verify next |
+
+`HARD` = cannot be relaxed (language/runtime/external API). `SOFT` = strong convention but negotiable. `GHOST` = thought to apply but doesn't on closer inspection (document so it's not re-discovered).
+
+Example skeleton:
+
+```markdown
+# Auth System Architecture
+
+## Summary
+Three session stores (Redis/DB/in-memory) wired via a shared `SessionSerializer`. Cookie middleware and API auth both depend on it, widening blast radius for format changes.
+
+## Key Findings
+- Entry point: `app/middleware/auth.rb:23` dispatches to SessionStore
+- Format coupling: `lib/session/serializer.rb:34-89` shared by cookie + token paths
+
+## Constraints
+| Constraint | Class | Source |
+|---|---|---|
+| `rack-session` pins cookie-compat format | HARD | `Gemfile.lock:142` |
+| Auth changes behind feature flag | SOFT | `docs/conventions.md:18` |
+| "Sessions must hit Redis" — disproved | GHOST | `lib/session/redis_store.rb:12` |
+
+## Code Patterns
+- `SessionStore#find` (`lib/session/store.rb:8`) used by 4 callers
+
+## Risks & Unknowns
+- Clock skew across nodes not investigated
+- SSO re-entry into auth middleware not traced
+```
 
 Example subagent prompt:
 > Explore the authentication system. Write your findings to `{plan-dir}/findings/auth-system.md`.
@@ -296,7 +393,7 @@ Written at end of EXPLORE, before transition to PLAN. Materializes the Solutions
 
 ## progress.md
 
-Flat checklist. Updated in: PLAN (populate Remaining), EXECUTE (move items), REFLECT (mark failed/blocked), RE-PLAN (annotate pivot).
+Flat checklist. Updated in: PLAN (populate Remaining), EXECUTE (move items), REFLECT (mark failed/blocked), PIVOT (annotate pivot).
 
 ```markdown
 # Progress
@@ -337,6 +434,9 @@ Written during PLAN (initial template with criteria), updated during EXECUTE (pe
 ## Additional Checks
 | Check | Command/Action | Result | Details |
 |-------|----------------|--------|---------|
+| Regression | `bundle exec rspec` (full suite re-run) | PASS | 47/47 specs, same as pre-iteration |
+| Scope drift | Compare state.md manifest vs plan.md Files To Modify | CLEAN | 4 files changed, all planned |
+| Diff review | Review git diff for artifacts | CLEAN | No debug code, no TODOs |
 | Lint | `rubocop --format simple` | PASS | 0 offenses |
 | Behavioral diff | diff /api/auth/validate response | EXPECTED DIFF | Token field added (intentional) |
 | Smoke test | POST /login with test credential | PASS | 200 + valid JWT returned |
@@ -355,21 +455,47 @@ Written during PLAN (initial template with criteria), updated during EXECUTE (pe
 | +45/-12 lines | +45/-12 lines | on budget |
 | 1 iteration (plan v3) | 1 iteration | on target |
 
+## Convergence Metrics
+| Metric | Previous | Current | Delta |
+|--------|----------|---------|-------|
+| Pass rate | 2/5 (40%) | 4/5 (80%) | +0.40 |
+| Scope (files planned vs changed) | 3 vs 4 | 3 vs 3 | stable (1.0) |
+| New issues found | 3 | 1 | improving (+1) |
+| **Convergence score** | — | **+2.4** | **Converging** |
+
 ## Verdict
 - Criteria passed: 3/3
-- Blockers: none
+- Regressions: none
+- Scope drift: none
+- Simplification blockers: none
 - Recommendation: → CLOSE
 ```
 
-**Criteria Verification table** is mandatory — one row per success criterion from `plan.md`. **Result** must be PASS or FAIL. **Evidence** must be concrete (counts, output excerpts, log references) — not "looks good" or "seems to work".
+**Criteria Verification table** is mandatory — one row per success criterion from `plan.md`. **Result** must be PASS or FAIL. **Evidence** must be concrete and follow one of these accepted formats:
 
-**Additional Checks** is optional — for lint, type checks, behavioral diffs, smoke tests, or other verification not directly tied to a success criterion.
+- **(a) Test output count** — e.g. `47/47 passed, 0 failures`, `3/3 specs`
+- **(b) Exit code + stdout excerpt** — e.g. `exit 0; "Build succeeded in 12.4s"`
+- **(c) Manual review** — explicit `manual review — observed X` stating what was observed (e.g. `manual review — observed token field present in /api/auth/validate response`)
+
+**Reject** these Evidence patterns: `looks good`, `seems to work`, `LGTM`, empty cells, single-word answers (`yes`, `ok`, `done`). The validator flags these as WARN.
+
+**Additional Checks** — includes optional checks (lint, type checks, behavioral diffs, smoke tests) and the following **required** rows every REFLECT cycle:
+- **Regression**: Re-run of previously-passing tests. Result = PASS (all still pass) or FAIL (regression found). Regressions block CLOSE.
+- **Scope drift**: Comparison of change manifest (state.md) against Files To Modify (plan.md). Result = CLEAN (no unplanned changes) or DRIFT (unplanned files changed — justify in decisions.md or revert).
+- **Diff review**: Manual review of code changes for debug artifacts, commented-out code, TODO/FIXME/HACK leftovers. Result = CLEAN or ISSUES (list them).
 
 **Not Verified** is mandatory — list what you didn't test and why (no coverage, out of scope, untestable, no environment). Forces honesty about coverage gaps. Even if empty, write "None — all criteria have automated verification."
 
-**Verdict** is mandatory — count of pass/fail, blockers, and recommended transition.
+**Verdict required bullets**: every Verdict section MUST contain these 5 bullets in order:
+1. **Criteria passed (count: N/M)** — e.g. `Criteria passed: 3/3`
+2. **Regressions (yes/no — list)** — `Regressions: none` or `Regressions: yes — <list>`
+3. **Scope drift (yes/no — list)** — `Scope drift: none` or `Scope drift: yes — <list>`
+4. **Simplification blockers (yes/no — list)** — `Simplification blockers: none` or `Simplification blockers: yes — <list>`
+5. **Recommended transition (CLOSE / PIVOT / EXPLORE)** — `Recommendation: → CLOSE` (or PIVOT, or EXPLORE)
 
 Plans with no testable criteria: write "N/A — manual review only" in Method column. Still record the manual review outcome in Result + Evidence.
+
+**Convergence Metrics** *(EXTENDED — iteration 2+ only)* — quantitative convergence signal. Iteration 1: write "N/A — first iteration, no previous data to compare." Iteration 2+: compute pass rate delta, scope stability, issue trend. See `convergence-metrics.md` for formula and decision rules.
 
 ## checkpoints/cp-NNN-iterN.md
 
@@ -499,7 +625,7 @@ Created automatically by bootstrap on first `new`. Updated on each `close`.
 **Decision**: Start with approach A (in-place migration)
 **Trade-off**: Fastest path **at the cost of** ignoring DB/in-memory stores
 
-### D-002 | REFLECT → RE-PLAN | 2025-01-15
+### D-002 | REFLECT → PIVOT | 2025-01-15
 **Context**: Approach A fails — format coupling
 **Decision**: Switch to approach B (dual-write)
 **Trade-off**: Safe rollback **at the cost of** doubled storage
@@ -563,12 +689,58 @@ Cross-plan institutional memory. **Rewritten** (not appended) at CLOSE to stay �
 ```
 
 Usage:
-- Read at start of EXPLORE, before PLAN gate check, and before RE-PLAN
+- Read at start of EXPLORE, before PLAN gate check, and before PIVOT
 - At CLOSE: read current file, integrate significant lessons from this plan, rewrite entire file ≤200 lines
 - Consolidate aggressively — merge related lessons, drop low-value or stale entries
 - Focus on: recurring patterns, failed approaches, successful strategies, codebase gotchas
 - Drop: one-off findings, detailed decision reasoning, plan-specific details
 - Created automatically by bootstrap on first `new`
+
+## plans/SYSTEM.md
+
+Cross-plan **system atlas** — a curated map of *what the system being planned against actually is*, distinct from goal-driven findings. **Rewritten** (not appended) by `ip-archivist` at CLOSE to stay ≤300 lines. Read at start of EXPLORE and start of PLAN. Schema is **domain-neutral** — works for codebases, research pipelines, ops runbooks, strategy systems. The optional `## Codebase Specialization` section is the only codebase-specific content.
+
+```markdown
+# System Atlas
+*Last refreshed: <plan-id> | <YYYY-MM-DD>*
+*Domain-neutral system map. Rewritten at CLOSE — max 300 lines. Read before PLAN/EXPLORE.*
+
+## Identity
+- What the system is (1-2 sentences). Domain (codebase / research / ops / strategy / other).
+
+## Components
+- Top-level building blocks. 5-15 entries. One line each: `name` — role.
+
+## Boundaries
+- In scope vs out of scope.
+- External dependencies (services, APIs, files).
+- Boundary inputs the planner reads but does not own (e.g. CLAUDE.md, config files).
+
+## Invariants
+- Properties that must always hold (security, data, contracts, performance budgets).
+- Each grounded in a finding-id or decision-id reference (e.g. `see plan_2026-05-07_xxxx/D-002`).
+
+## Flows
+- 3-7 named end-to-end flows: trigger → path → terminus.
+
+## Known Patterns
+- Architectural archetypes the system instantiates (e.g. "stateless HTTP API + Redis cache", "FSM-driven CLI", "compiler", "research pipeline", "agent workflow").
+
+## Codebase Specialization
+*Optional — present only when domain=codebase. Omit entirely for non-code systems.*
+- Module map: top-level directories and their purpose.
+- Key files (by frequency-of-relevance).
+- Build / test / run commands.
+```
+
+Usage:
+- Read at start of EXPLORE (orchestrator) and start of PLAN (orchestrator + ip-plan-writer). Provides the structural prior so EXPLORE doesn't re-derive system shape every plan.
+- At CLOSE: ip-archivist Step 5 — read current file, integrate this plan's system-shape findings, rewrite entire file under 300-line cap.
+- **Demote-by-staleness, not by recency**: when curating to fit the cap, drop entries that have not been referenced or implicitly reaffirmed by recent plans. Truncating most-recent entries defeats the curation contract.
+- During EXPLORE, if a finding contradicts an existing SYSTEM.md entry, mark the contradiction in `findings.md` with `[CONTRADICTED iter-N]` and surface to the archivist for correction at CLOSE (mirrors the `[CORRECTED iter-N]` rule for findings).
+- **Hard cap 300 lines** enforced by `validate-plan.mjs` ERROR `[atlas-cap]`. The cap forces curation; truncation by writers is forbidden — the validator ERROR exists to prevent silent degradation.
+- Created automatically by bootstrap on first `new` (skeleton matches the schema above).
+- Schema single-source-of-truth: this section. The bootstrap skeleton in `src/scripts/bootstrap.mjs` must match this schema exactly. If you change the schema here, update the bootstrap skeleton in lockstep.
 
 ## plans/INDEX.md
 
@@ -597,12 +769,57 @@ Automatic snapshot of `plans/LESSONS.md` taken at close, saved to the plan direc
 - Created automatically by `close` in `plans/{plan-dir}/lessons_snapshot.md`
 - Read-only reference — not updated after creation
 
+## changelog.md
+
+Per-edit, append-only ledger of every file edit during EXECUTE. One line per (file, edit). Owner: `ip-executor`. Reader: `ip-reviewer` at REFLECT. Lives at `{plan-dir}/changelog.md`. Reset per plan (not consolidated cross-plan).
+
+Format: pipe-delimited single line per edit:
+
+```
+2026-05-07T10:23:45Z | iter-1/step-3 | abc1234 | src/foo.ts | EDIT(+45,-12) | radius:LOW(2) | D-007 | rename for clarity
+```
+
+| # | Field | Required | Notes |
+|---|---|---|---|
+| 1 | UTC timestamp (ISO-8601 Z, second precision) | yes | monotonically increasing |
+| 2 | `iter-N/step-M` | yes | from state.md |
+| 3 | short commit hash, or `uncommitted` | yes | the commit this edit belongs to |
+| 4 | repo-relative file path | yes | one entry per file per edit |
+| 5 | op + LOC | yes | `CREATE(+N)`, `EDIT(+N,-M)`, `DELETE(-N)`, `RENAME(old→new)`, `REVERT(file)` |
+| 6 | radius score | yes | `LOW(score)` / `MED(score)` / `HIGH(score)` / `UNKNOWN(reason)` — from `blast-radius.mjs` |
+| 7 | decision-ref | optional | `D-NNN` (resolves against active plan's `decisions.md`), or `-` if none |
+| 8 | reason | yes | one short clause |
+
+Header (written by bootstrap on plan creation, or by executor on first append if missing):
+
+```markdown
+# Changelog
+*Append-only per-edit ledger. One line per file edit. See references/blast-radius.md for radius scoring. Decision-ref is optional — `-` means no `# DECISION` anchor governs this edit.*
+```
+
+Rules:
+- **Append-only**. Never edit existing lines. Mistakes get a correction line with op `EDIT(+0,-0)` and reason `correction: <what>`.
+- **Multi-file step** → one line per file, all sharing the same iter/step/commit.
+- **Failed step revert** → append `REVERT(file)` lines for each reverted file. Do not delete the original lines.
+- **Decision-ref optional** — most edits don't have an anchored decision. Use `-` freely. The 5 `# DECISION` trigger conditions remain unchanged.
+- **Reason is mandatory** but should be terse (one clause, no period needed).
+
+Failure modes:
+- `blast-radius.mjs` missing or errors → executor writes `radius:UNKNOWN(script-missing)` or `radius:UNKNOWN(script-error)` and proceeds.
+- Plan dir lacks changelog.md (older plans) → executor creates it idempotently with the header.
+
+Validator (`validate-plan.mjs`):
+- WARN `[changelog-malformed]` on lines not matching the 8-field shape.
+- WARN `[changelog-drift]` if a commit produced files absent from changelog.
+- Never blocks CLOSE. Changelog issues are advisory only.
+
 ## summary.md
 
 Written at CLOSE.
 
 ```markdown
 # Summary: Auth Session Migration
+*Plan: plan_2026-01-15_a3f1b2c9*
 
 ## Outcome
 Successfully migrated from cookie-based sessions to JWT tokens with
@@ -624,13 +841,119 @@ cookie fallback for legacy clients.
 - config/initializers/session.rb (modified)
 - test/integration/token_auth_test.rb (new)
 
-## Decision Anchors in Code
-- `app/middleware/auth.rb:23` — D-003 (token-based over cookie migration), D-005 (direct Redis call)
-- `lib/session/token_service.rb:1` — D-003 (stateless tokens over dual-write)
-- `lib/session/token_service.rb:15` — D-002, D-003 (stateless over dual-write)
+## Decision Anchors Registry
+- `app/middleware/auth.rb:23` — `plan_2026-01-15_a3f1b2c9/D-003` (token-based over cookie migration), `plan_2026-01-15_a3f1b2c9/D-005` (direct Redis call)
+- `lib/session/token_service.rb:1` — `plan_2026-01-15_a3f1b2c9/D-003` (stateless tokens over dual-write)
+- `lib/session/token_service.rb:15` — `plan_2026-01-15_a3f1b2c9/D-002`, `plan_2026-01-15_a3f1b2c9/D-003` (stateless over dual-write)
 
 ## Lessons
 - Check format coupling before assuming storage changes are isolated
 - Stateless > stateful when migrating session systems
 - Dual-write only viable with short TTLs
 ```
+
+## Presentation Contracts
+
+**Canonical, single-source-of-truth definition** of the user-visible chat block the orchestrator MUST emit at each user-facing state transition. Sub-agents are invisible — only the orchestrator's chat text reaches the user. Disk artifacts (plan.md, verification.md, findings/*) are persistent memory, not user-facing channels. Every state transition that requires user input MUST be preceded by the corresponding presentation contract in the same assistant turn.
+
+Each contract specifies: **name**, **when emitted**, **required content** (numbered, ordered), **fidelity** (verbatim vs digest), **minimum sections** (the floor — must always render even when token cost is high).
+
+Agent files (`agents/orchestrator.md` and contributing sub-agent files) inline these minimum-content lists at the point of dispatch — proximate instructions are followed more reliably than indirect references. This file is the canonical definition; agent files mirror the floor.
+
+### PC-EXPLORE — Findings Digest
+
+- **When emitted**: at EXPLORE → PLAN handoff, before transitioning state.
+- **Required content** (in order):
+  1. Findings index (file → topic → key takeaway), copied from `findings.md` Index table.
+  2. Key constraints, classified as HARD / SOFT / GHOST, copied from `findings.md` Key Constraints.
+  3. Exploration confidence self-assessment: scope [shallow/adequate/deep], solutions [narrow/open/constrained], risks [blind/partial/clear].
+  4. One-paragraph synthesis: what the findings collectively imply for the plan.
+- **Fidelity**: digest. Index and constraints rendered verbatim from disk; synthesis is the orchestrator's prose.
+- **Minimum sections** (floor): items 1 and 2 (index + constraints) MUST render. Items 3-4 may be condensed but must appear.
+
+### PC-IDEATION — Candidate Approaches Digest
+
+- **When emitted**: during PLAN, after `ideation.md` is written by `ip-plan-writer` and **before** `plan.md` is generated. The user approves the chosen candidate (or redirects to a rejected one / requests more options) before the plan is built around it.
+- **Required content** (in order):
+  1. Candidates — for each `### C-N` from `ideation.md`: name, 1-2 sentence sketch, hard-constraint check (file references), trade-off in **"X at the cost of Y"** form, top risk. Verbatim from disk.
+  2. Selection — picked candidate, criteria, confidence (verbatim from `ideation.md` Selection).
+  3. Rejected — one-line rationale per non-picked candidate (verbatim).
+  4. Single-Path Escape Hatch (only if invoked) — both "Why no alternatives" and "Falsification" rendered verbatim.
+  5. Explicit prompt: "Approve this direction, redirect to a rejected candidate, or request more options."
+- **Fidelity**: verbatim for items 1-4. Item 5 is the orchestrator's prompt.
+- **Minimum sections** (floor): items 1 and 2 verbatim always. Item 3 mandatory whenever ≥2 candidates exist. Item 4 only when escape hatch is invoked. Item 5 always.
+
+### PC-PLAN — Plan Presentation
+
+- **When emitted**: at PLAN → EXECUTE handoff, before requesting user approval.
+- **Required content** (in order):
+  1. Goal (verbatim from `plan.md` Goal section).
+  2. Problem Statement (verbatim — expected behavior, invariants, edge cases).
+  3. Files To Modify (verbatim table).
+  4. Steps (verbatim — every step, with risk/dependency annotations).
+  5. Assumptions (verbatim table).
+  6. Failure Modes (verbatim table).
+  7. Pre-Mortem & Falsification Signals (verbatim).
+  8. Success Criteria (verbatim table).
+  9. Verification Strategy (verbatim table).
+  10. Complexity Budget (verbatim).
+  11. Explicit prompt: "Approve to enter EXECUTE, or request revisions."
+- **Fidelity**: verbatim for items 1-10. Plan re-presentation after revision uses the same contract.
+- **Minimum sections** (floor — must always render even on token-cost grounds): Steps, Success Criteria, Verification Strategy, Failure Modes, Assumptions. Longer prose sections (Context, Pre-Mortem) may be condensed by reference if and only if the floor is rendered in full.
+
+### PC-EXECUTE-STEP — Per-Step Status Report
+
+- **When emitted**: after each successful EXECUTE step's Post-Step Gate, before starting the next step.
+- **Required content** (in order):
+  1. Step number and one-line description.
+  2. Files modified / created / deleted (paths only).
+  3. Commit hash + commit message.
+  4. Surprises encountered (or "none").
+  5. Next step preview (one line).
+- **Fidelity**: digest, but fields are mandatory (no field may be silently dropped).
+- **Minimum sections** (floor): all 5 fields. None are optional.
+
+### PC-EXECUTE-LEASH — Autonomy Leash Failure Block
+
+- **When emitted**: after 2 failed fix attempts on the same step (leash hit), before transitioning EXECUTE → REFLECT.
+- **Required content** (in order):
+  1. What the step was supposed to do (verbatim from `plan.md`).
+  2. What actually happened (per attempt, 2 attempts).
+  3. Root-cause guess (one paragraph).
+  4. Available checkpoints (id + git hash + reason) for rollback, copied from `checkpoints/*`.
+  5. Explicit prompt: requesting user direction (continue / pivot / rollback).
+- **Fidelity**: verbatim for items 1 and 4 (plan text and checkpoint registry); digest for items 2-3.
+- **Minimum sections** (floor): all 5 items. None may be omitted.
+
+### PC-REFLECT — REFLECT Phase-3 Gate-Out 5-Item Block
+
+- **When emitted**: after REFLECT Phase-2 evaluation, before requesting user routing decision (CLOSE / PIVOT / EXPLORE).
+- **Required content** (exactly 5 items, in order):
+  1. **What was completed** — copied from `progress.md` Completed section.
+  2. **What remains** — copied from `progress.md` Remaining + In Progress sections (or "none").
+  3. **Verification results summary** — PASS/FAIL counts plus the per-criterion table from `verification.md` Criteria Verification, rendered verbatim.
+  4. **Issues found** — regressions, scope drift, unverified areas, simplification blockers; **plus** any CRITICAL/WARNING items from `findings/review-iter-N.md` (iteration ≥ 2) folded in verbatim.
+  5. **Recommendation** — one of CLOSE / PIVOT / EXPLORE, with one-sentence justification, then explicit prompt for user confirmation.
+- **Fidelity**: verbatim for items 1-3 (progress + verification table + reviewer concerns); digest for items 4-5 commentary, but the underlying lists must be enumerated (no rolling-up into prose).
+- **Minimum sections** (floor): all 5 items. The block is defined by its 5-item structure; collapsing to fewer items violates the contract.
+
+### PC-PIVOT — Pivot Options Block
+
+- **When emitted**: at REFLECT → PIVOT routing decision, before transitioning to PLAN.
+- **Required content** (in order):
+  1. Pivot reason — what failed, what was learned (digest of `decisions.md` PIVOT entry).
+  2. Available checkpoints (id + git hash + reason), copied from `checkpoints/*`. Default-revert recommendation if uncertain.
+  3. Ghost constraints surfaced (if any) — copied from `decisions.md` Ghost Constraint Scan.
+  4. Candidate new directions — 1-3 options with one-sentence trade-off framing each ("X at the cost of Y").
+  5. Explicit prompt: which direction + keep-vs-revert decision.
+- **Fidelity**: verbatim for items 2-3 (checkpoint registry + ghost constraints); digest for items 1, 4-5.
+- **Minimum sections** (floor): all 5 items. Items 2 and 4 are non-negotiable: the user cannot make the routing decision without checkpoint visibility and concrete options.
+
+### Cross-references
+
+- `agents/orchestrator.md` — inlines the minimum-content list of each contract at the point of dispatch.
+- `agents/ip-plan-writer.md` — Output Format references PC-IDEATION (ideation phase) and PC-PLAN (plan phase). Writer is invoked twice during a PLAN cycle: first for `ideation.md`, then for `plan.md` after user approves the Selection.
+- `agents/ip-verifier.md` — Relay Contract references PC-REFLECT item 3.
+- `agents/ip-reviewer.md` — Relay Contract references PC-REFLECT item 4.
+- `agents/ip-executor.md` — Output Format references PC-EXECUTE-STEP and PC-EXECUTE-LEASH.
+- `SKILL.md` — User Interaction table cell references the contract by name.

@@ -10,6 +10,7 @@ DIST_DIR := dist
 SKILL_FILE := src/SKILL.md
 REFERENCE_FILES := $(sort $(wildcard src/references/*.md))
 SCRIPT_FILES := $(filter-out %.test.mjs,$(wildcard src/scripts/*.mjs))
+AGENT_FILES := $(sort $(wildcard src/agents/*.md))
 DOC_FILES := README.md LICENSE CHANGELOG.md
 
 # Default target
@@ -29,6 +30,11 @@ build:
 	cp $(REFERENCE_FILES) $(BUILD_DIR)/$(SKILL_NAME)/references/
 	@# Copy scripts
 	cp $(SCRIPT_FILES) $(BUILD_DIR)/$(SKILL_NAME)/scripts/
+	@# Copy agent definitions (if any)
+	@if [ -n "$(AGENT_FILES)" ]; then \
+		mkdir -p $(BUILD_DIR)/$(SKILL_NAME)/agents; \
+		cp $(AGENT_FILES) $(BUILD_DIR)/$(SKILL_NAME)/agents/; \
+	fi
 	@# Copy documentation
 	cp $(DOC_FILES) $(BUILD_DIR)/$(SKILL_NAME)/ 2>/dev/null || true
 	@echo "Build complete: $(BUILD_DIR)/$(SKILL_NAME)"
@@ -55,6 +61,19 @@ build-combined:
 	@echo "> **Note**: This combined file does not include \`bootstrap.mjs\`. Bootstrap commands" >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	@echo "> referenced in the protocol require the full package. Plan directories must be" >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	@echo "> created manually or by using the zip/tarball distribution." >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@# Rewrite references/ cross-references to anchor links (content is inlined above)
+	@sed -i 's|`references/code-hygiene\.md`|the Code Hygiene Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@sed -i 's|`references/complexity-control\.md`|the Complexity Control Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@sed -i 's|`references/convergence-metrics\.md`|the Convergence Metrics Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@sed -i 's|`references/decision-anchoring\.md`|the Decision Anchoring Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@sed -i 's|`references/file-formats\.md`|the File Formats Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@sed -i 's|`references/planning-rigor\.md`|the Planning Rigor Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@sed -i 's|`src/references/code-hygiene\.md`|the Code Hygiene Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@sed -i 's|`src/references/complexity-control\.md`|the Complexity Control Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@sed -i 's|`src/references/convergence-metrics\.md`|the Convergence Metrics Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@sed -i 's|`src/references/decision-anchoring\.md`|the Decision Anchoring Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@sed -i 's|`src/references/file-formats\.md`|the File Formats Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@sed -i 's|`src/references/planning-rigor\.md`|the Planning Rigor Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	@echo "Combined skill created: $(BUILD_DIR)/$(SKILL_NAME)-combined.md"
 
 # Package as zip for distribution
@@ -118,12 +137,28 @@ validate:
 		(echo "ERROR: bootstrap.mjs does not reference LESSONS.md" && exit 1)
 	@grep -q "INDEX.md" src/scripts/bootstrap.mjs || \
 		(echo "ERROR: bootstrap.mjs does not reference INDEX.md" && exit 1)
+	@# Verify agent definitions have required frontmatter
+	@echo "Checking agent definitions..."
+	@if [ -d src/agents ]; then \
+		for agent in src/agents/*.md; do \
+			grep -q "^name:" "$$agent" || (echo "ERROR: $$agent missing 'name' in frontmatter" && exit 1); \
+			grep -q "^description:" "$$agent" || (echo "ERROR: $$agent missing 'description' in frontmatter" && exit 1); \
+			grep -q "^tools:" "$$agent" || (echo "ERROR: $$agent missing 'tools' in frontmatter" && exit 1); \
+		done; \
+	fi
 	@# Verify transition table entries appear in Mermaid diagram
 	@echo "Checking state machine consistency..."
 	@for pair in "EXPLORE.*PLAN" "PLAN.*EXPLORE" "PLAN.*PLAN" "PLAN.*EXECUTE" "EXECUTE.*REFLECT" \
-		"REFLECT.*CLOSE" "REFLECT.*RE[-_]PLAN" "REFLECT.*EXPLORE" "RE[-_]PLAN.*PLAN"; do \
+		"REFLECT.*CLOSE" "REFLECT.*PIVOT" "REFLECT.*EXPLORE" "PIVOT.*PLAN"; do \
 		grep -qE "$$pair" $(SKILL_FILE) || \
 		(echo "ERROR: Transition $$pair missing from SKILL.md" && exit 1); \
+	done
+	@# Verify validate-plan.mjs VALID_TRANSITIONS covers all SKILL.md transitions
+	@echo "Checking validator transition coverage..."
+	@for pair in "EXPLORE→PLAN" "PLAN→EXPLORE" "PLAN→PLAN" "PLAN→EXECUTE" "EXECUTE→REFLECT" \
+		"REFLECT→CLOSE" "REFLECT→PIVOT" "REFLECT→EXPLORE" "PIVOT→PLAN"; do \
+		grep -qF "\"$$pair\"" src/scripts/validate-plan.mjs || \
+		(echo "ERROR: validate-plan.mjs VALID_TRANSITIONS missing $$pair" && exit 1); \
 	done
 	@echo "Validation passed!"
 

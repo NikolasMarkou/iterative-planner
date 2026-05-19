@@ -27,10 +27,11 @@ Successful steps already committed. Applies only to failed step.
    ```
 2. Update change manifest.
 3. Log reverted files in `decisions.md`.
+4. Append a `REVERT(file)` line to `{plan-dir}/changelog.md` for each reverted file (one line per file). Reason: `revert: <what failed>`. Append-only — never delete the original lines that recorded the failed edits.
 
 Codebase after failed step = last successful commit. No half-applied changes, no debug code, no commented-out attempts.
 
-## On RE-PLAN
+## On PIVOT
 
 Read `checkpoints/*` first — know your rollback options. Decide explicitly:
 
@@ -74,3 +75,9 @@ After any revert, grep for these — if found, revert is incomplete:
 - Commented-out code from failed approach
 - Import statements for removed modules
 - Test files for reverted code
+- Stale `# DECISION D-NNN` anchors on reverted code. Grep example:
+  ```
+  grep -rn "DECISION D-" --include="*.py" --include="*.js" --include="*.ts" \
+      --include="*.rb" --include="*.go" --include="*.rs" --include="*.java" .
+  ```
+  A `# DECISION D-NNN` (or `// DECISION D-NNN`, `/* DECISION D-NNN */`) comment whose `D-NNN` points at a decision tied to reverted code is a leftover and must be removed. Anchors only live on surviving code (see `decision-anchoring.md`). Alternative: mark with `[STALE]` per the staleness rule in `decision-anchoring.md` if it lands.

@@ -4,7 +4,7 @@ Guidance for working with the Iterative Planner codebase.
 
 ## Project Purpose
 
-Claude Code skill — state-machine driven iterative planning and execution. Cycle: Explore → Plan → Execute → Reflect → Re-plan. Filesystem (`plans/plan_YYYY-MM-DD_XXXXXXXX/`) as persistent memory.
+Claude Code skill — state-machine driven iterative planning and execution. Cycle: Explore → Plan → Execute → Reflect → Pivot. Filesystem (`plans/plan_YYYY-MM-DD_XXXXXXXX/`) as persistent memory.
 
 Use cases: multi-file tasks, migrations, refactoring, failed tasks, debugging, anything 3+ files or 2+ systems.
 
@@ -21,16 +21,25 @@ iterative-planner/
 ├── build.ps1                         # Windows PowerShell build script (reads VERSION)
 └── src/
     ├── SKILL.md                      # Core protocol (state machine, rules) - the main instruction set
+    ├── agents/                       # Sub-agent definitions (installed to ~/.claude/agents/)
+    │   ├── orchestrator.md           # State machine owner, spawns all other agents
+    │   ├── ip-explorer.md            # Read-only codebase research (EXPLORE phase)
+    │   ├── ip-plan-writer.md         # Plan generation (PLAN phase) — writes ideation.md then plan.md
+    │   ├── ip-executor.md            # Code execution (EXECUTE phase)
+    │   ├── ip-verifier.md            # Verification checks (REFLECT phase)
+    │   ├── ip-reviewer.md            # Adversarial review (REFLECT phase, iteration >= 2)
+    │   └── ip-archivist.md           # CLOSE phase housekeeping
     ├── scripts/
     │   ├── bootstrap.mjs             # Initializes plans/plan_YYYY-MM-DD_XXXXXXXX/ directory (Node.js 18+)
-    │   ├── bootstrap.test.mjs        # Test suite (node:test, 109 tests)
+    │   ├── bootstrap.test.mjs        # Test suite (node:test, 134 tests)
     │   └── validate-plan.mjs         # Protocol compliance validator (Node.js 18+)
     └── references/                   # Knowledge base documents
-        ├── complexity-control.md     # Anti-complexity protocol (revert-first, 3-strike, nuclear option)
         ├── code-hygiene.md           # Change manifest format, revert procedures, forbidden leftovers
+        ├── complexity-control.md     # Anti-complexity protocol (revert-first, 3-strike, nuclear option)
+        ├── convergence-metrics.md    # Convergence score, momentum tracker, iteration health signals
         ├── decision-anchoring.md     # When/how to anchor decisions in code, format, audit rules
         ├── file-formats.md           # Templates and examples for all plan directory files
-        └── planning-rigor.md         # Assumption tracking, pre-mortem, falsification signals, prediction accuracy
+        └── planning-rigor.md         # Assumption tracking, pre-mortem, falsification signals, prediction accuracy, root cause analysis
 ```
 
 ## Key Commands
@@ -49,7 +58,7 @@ node <skill-path>/scripts/bootstrap.mjs close                # Close active plan
 node <skill-path>/scripts/bootstrap.mjs list                 # Show all plan directories
 ```
 
-`new` creates plan directory with all files + writes `plans/.current_plan` pointer. Creates `plans/FINDINGS.md`, `plans/DECISIONS.md`, `plans/LESSONS.md`, and `plans/INDEX.md` if they don't exist. Idempotent-safe: refuses if active plan exists.
+`new` creates plan directory with all files + writes `plans/.current_plan` pointer. Creates `plans/FINDINGS.md`, `plans/DECISIONS.md`, `plans/LESSONS.md`, `plans/SYSTEM.md` (system atlas, max 300 lines, rewritten by ip-archivist at CLOSE), and `plans/INDEX.md` if they don't exist. Idempotent-safe: refuses if active plan exists.
 
 ### Activation Triggers
 
@@ -65,9 +74,9 @@ Complete spec in **src/SKILL.md**. Key sections:
 - **Complexity Control**: src/SKILL.md "Complexity Control" section + `src/references/complexity-control.md` (6 Simplification Checks including essential vs accidental complexity)
 - **Code Hygiene**: src/SKILL.md "Code Hygiene" section + `src/references/code-hygiene.md`
 - **Decision Anchoring**: src/SKILL.md "Decision Anchoring" section + `src/references/decision-anchoring.md`
-- **Planning Rigor**: src/SKILL.md PLAN/EXPLORE/REFLECT/RE-PLAN sections + `src/references/planning-rigor.md` (ideation discipline, assumptions, pre-mortem, falsification signals, exploration confidence, prediction accuracy, ghost constraints, decomposition)
-- **Ideation Gate**: src/SKILL.md EXPLORE Ideation Gate sub-step + `src/references/file-formats.md` (`ideation.md` template) + `src/references/planning-rigor.md` Ideation Discipline section
+- **Planning Rigor**: src/SKILL.md PLAN/EXPLORE/REFLECT/PIVOT sections + `src/references/planning-rigor.md` (assumptions, pre-mortem, falsification signals, exploration confidence, prediction accuracy, ghost constraints, decomposition)
 - **Git Integration**: src/SKILL.md "Git Integration" section
+- **Sub-Agent Architecture**: src/SKILL.md "Sub-Agent Architecture" section (agent definitions, file ownership, dispatch rules)
 
 Do not duplicate protocol content here. Read src/SKILL.md directly.
 
@@ -76,6 +85,7 @@ Do not duplicate protocol content here. Read src/SKILL.md directly.
 ### File Modification Guidelines
 
 - **src/SKILL.md** — core protocol. Changes affect all planning behavior.
+- **src/agents/** — sub-agent definitions. Each file uses YAML frontmatter (name, description, tools, model) + Markdown system prompt. Installed to `~/.claude/agents/`.
 - **src/references/** — supplementary knowledge, read on-demand. Add new files for expanded guidance.
 - **src/scripts/bootstrap.mjs** — requires Node.js 18+. Idempotent-safe (refuses if active plan exists).
 - **VERSION** — single source of truth. `Makefile` + `build.ps1` read from it. Bump only `VERSION` + `CHANGELOG.md`.
@@ -135,11 +145,13 @@ make help                    # Show available targets
 - [ ] Plan directory structure in src/SKILL.md matches bootstrap.mjs output (including `verification.md`)
 - [ ] `src/scripts/bootstrap.mjs` creates and references `FINDINGS.md`, `DECISIONS.md`, and `LESSONS.md` consolidated files
 - [ ] Consolidated files contain merged content after `close`
-- [ ] `plans/LESSONS.md` referenced in SKILL.md (EXPLORE, PLAN gate check, RE-PLAN, CLOSE, Recovery)
+- [ ] `plans/LESSONS.md` referenced in SKILL.md (EXPLORE, PLAN gate check, PIVOT, CLOSE, Recovery)
 - [ ] `plans/INDEX.md` created by bootstrap and updated on close
 - [ ] `lessons_snapshot.md` created in plan directory on close
 - [ ] `src/scripts/validate-plan.mjs` passes syntax check
-- [ ] `ideation.md` referenced in SKILL.md (EXPLORE Ideation Gate, PLAN gate check, RE-PLAN ghost-constraint scan, File Lifecycle Matrix, Filesystem Structure tree, Mandatory Re-reads), templated in `src/references/file-formats.md`, created by `bootstrap.mjs`, and enforced by `validate-plan.mjs` at state ≥ PLAN
+- [ ] All agent definitions in `src/agents/` have `name:`, `description:`, and `tools:` in YAML frontmatter
+- [ ] Agent definitions in src/SKILL.md "Sub-Agent Architecture" section match files in `src/agents/`
+- [ ] File Ownership Model table in src/SKILL.md matches agent tool permissions
 
 ## Updating Local Skill
 
@@ -151,6 +163,10 @@ cp src/SKILL.md ~/.claude/skills/iterative-planner/SKILL.md
 cp src/scripts/*.mjs ~/.claude/skills/iterative-planner/scripts/
 cp src/references/*.md ~/.claude/skills/iterative-planner/references/
 cp README.md LICENSE CHANGELOG.md ~/.claude/skills/iterative-planner/
+
+# Install agent definitions (optional — skill works without them)
+mkdir -p ~/.claude/agents
+cp src/agents/*.md ~/.claude/agents/
 ```
 
 Always verify with `diff -rq` after copying. Every file, every time.

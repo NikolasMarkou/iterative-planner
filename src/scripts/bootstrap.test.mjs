@@ -136,9 +136,13 @@ describe("bootstrap.mjs", () => {
 
       // All expected files exist
       const base = join(dir, "plans", planDir);
-      for (const f of ["state.md", "plan.md", "decisions.md", "findings.md", "ideation.md", "progress.md", "verification.md"]) {
+      for (const f of ["state.md", "plan.md", "decisions.md", "findings.md", "ideation.md", "progress.md", "verification.md", "changelog.md"]) {
         assert.ok(existsSync(join(base, f)), `${f} should exist`);
       }
+      const changelog = readFileSync(join(base, "changelog.md"), "utf-8");
+      assert.ok(changelog.includes("# Changelog"), "changelog should have header");
+      assert.ok(changelog.includes("Append-only per-edit ledger"), "changelog should describe purpose");
+      assert.ok(changelog.includes("references/blast-radius.md"), "changelog should reference blast-radius doc");
       // Subdirectories
       assert.ok(existsSync(join(base, "checkpoints")), "checkpoints/ should exist");
       assert.ok(existsSync(join(base, "findings")), "findings/ should exist");
@@ -147,6 +151,7 @@ describe("bootstrap.mjs", () => {
       assert.ok(existsSync(join(dir, "plans", "FINDINGS.md")), "FINDINGS.md should exist");
       assert.ok(existsSync(join(dir, "plans", "DECISIONS.md")), "DECISIONS.md should exist");
       assert.ok(existsSync(join(dir, "plans", "LESSONS.md")), "LESSONS.md should exist");
+      assert.ok(existsSync(join(dir, "plans", "SYSTEM.md")), "SYSTEM.md should exist");
     });
 
     it("LESSONS.md has correct initial content", () => {
@@ -156,6 +161,24 @@ describe("bootstrap.mjs", () => {
       assert.ok(lessons.includes("# Lessons Learned"), "should have header");
       assert.ok(lessons.includes("Max 200 lines"), "should mention 200 line limit");
       assert.ok(lessons.includes("institutional memory"), "should mention institutional memory");
+    });
+
+    it("SYSTEM.md skeleton has correct schema and is under cap", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Test goal");
+      const system = readFileSync(join(dir, "plans", "SYSTEM.md"), "utf-8");
+      assert.ok(system.includes("# System Atlas"), "should have System Atlas header");
+      assert.ok(system.includes("*Last refreshed: (none yet)"), "should have placeholder Last refreshed line");
+      assert.ok(system.includes("max 300 lines"), "should mention 300 line cap");
+      // Six core sections (domain-neutral) — must all be present.
+      for (const section of ["## Identity", "## Components", "## Boundaries", "## Invariants", "## Flows", "## Known Patterns"]) {
+        assert.ok(system.includes(section), `should have section: ${section}`);
+      }
+      // Optional codebase section is present in skeleton (becomes optional only after first archivist rewrite).
+      assert.ok(system.includes("## Codebase Specialization"), "should have optional Codebase Specialization section");
+      // Skeleton must be well under the 300-line hard cap.
+      const lineCount = system.split("\n").length;
+      assert.ok(lineCount < 100, `skeleton should be under 100 lines (got ${lineCount})`);
     });
 
     it("state.md starts in EXPLORE with iteration 0", () => {
@@ -1098,6 +1121,113 @@ describe("bootstrap.mjs", () => {
       assert.ok(v.includes("## Verdict"), "should have verdict section");
     });
 
+    it("verification.md Additional Checks has 3 required pre-populated rows", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Additional Checks rows test");
+      const planDir = getPointer(dir);
+      const v = readPlanFile(dir, planDir, "verification.md");
+      // Step 1 change — required rows: Regression, Scope drift, Diff review (all PENDING)
+      assert.ok(v.includes("| Regression |"), "should have Regression row");
+      assert.ok(v.includes("| Scope drift |"), "should have Scope drift row");
+      assert.ok(v.includes("| Diff review |"), "should have Diff review row");
+      // The old "Optional: lint, ..." placeholder must be gone
+      assert.ok(!v.match(/^\*Optional: lint, type checks/m), "should not contain old Optional-only placeholder");
+    });
+
+    it("verification.md Verdict has 5-bullet skeleton in order", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Verdict skeleton test");
+      const planDir = getPointer(dir);
+      const v = readPlanFile(dir, planDir, "verification.md");
+      // Step 2 — 5 required Verdict bullets
+      const verdictStart = v.indexOf("## Verdict");
+      assert.ok(verdictStart >= 0, "should have Verdict section");
+      const verdict = v.slice(verdictStart);
+      const expectedOrder = [
+        "Criteria passed:",
+        "Regressions:",
+        "Scope drift:",
+        "Simplification blockers:",
+        "Recommendation:",
+      ];
+      let lastIdx = -1;
+      for (const bullet of expectedOrder) {
+        const idx = verdict.indexOf(bullet);
+        assert.ok(idx >= 0, `Verdict should contain "${bullet}"`);
+        assert.ok(idx > lastIdx, `Verdict bullet "${bullet}" should appear after previous bullet`);
+        lastIdx = idx;
+      }
+    });
+
+    it("findings.md has Corrections section", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Corrections section test");
+      const planDir = getPointer(dir);
+      const findings = readPlanFile(dir, planDir, "findings.md");
+      // Step 1 — Corrections section
+      assert.ok(findings.includes("## Corrections"), "findings.md should have ## Corrections section");
+      assert.ok(findings.includes("[CORRECTED iter-N]"), "should mention [CORRECTED iter-N] marker convention");
+    });
+
+    it("decisions.md has schema example block", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Decisions schema example test");
+      const planDir = getPointer(dir);
+      const decisions = readPlanFile(dir, planDir, "decisions.md");
+      // Step 2 — commented schema example
+      assert.ok(decisions.includes("<!-- Schema example"), "should include HTML-comment schema example");
+      assert.ok(decisions.includes("D-001 | EXPLORE → PLAN"), "schema example should show D-001 header form");
+      assert.ok(decisions.includes("**Trade-off**:"), "schema example should show Trade-off field");
+      assert.ok(decisions.includes("**Anchor-Refs**:"), "schema example should mention Anchor-Refs field");
+    });
+
+    it("decisions.md has *Plan: <plan-id>* preamble line", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Plan-id preamble test");
+      const planDir = getPointer(dir);
+      const decisions = readPlanFile(dir, planDir, "decisions.md");
+      // v2.14.0 — plan-id preamble for self-identification post-trim
+      assert.ok(decisions.includes(`*Plan: ${planDir}*`), `decisions.md should contain "*Plan: ${planDir}*" preamble`);
+      // Preamble must appear before the schema example block
+      const preambleIdx = decisions.indexOf(`*Plan: ${planDir}*`);
+      const schemaIdx = decisions.indexOf("<!-- Schema example");
+      assert.ok(preambleIdx >= 0 && preambleIdx < schemaIdx, "preamble must appear before schema example block");
+    });
+
+    it("decisions.md schema example references qualified anchor format", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Qualified anchor schema example test");
+      const planDir = getPointer(dir);
+      const decisions = readPlanFile(dir, planDir, "decisions.md");
+      // v2.14.0 — anchor format in schema comment must use plan-id prefix
+      const qualifiedAnchorPattern = `# DECISION ${planDir}/D-NNN`;
+      assert.ok(
+        decisions.includes(qualifiedAnchorPattern),
+        `schema example should reference qualified anchor "${qualifiedAnchorPattern}"`
+      );
+    });
+
+    it("state.md has Exploration Confidence guidance for EXPLORE → PLAN", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Exploration confidence slot test");
+      const planDir = getPointer(dir);
+      const state = readPlanFile(dir, planDir, "state.md");
+      // Step 2 — Exploration Confidence slot in transition log
+      assert.ok(state.includes("Exploration Confidence"), "state.md should mention Exploration Confidence");
+      assert.ok(state.includes("confidence: scope="), "should show confidence shape: scope=");
+    });
+
+    it("verification.md has convergence metrics section", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Convergence metrics test");
+      const planDir = getPointer(dir);
+      const v = readPlanFile(dir, planDir, "verification.md");
+      assert.ok(v.includes("## Convergence Metrics"), "should have convergence metrics section");
+      assert.ok(v.includes("Pass rate"), "should have pass rate row");
+      assert.ok(v.includes("Convergence score"), "should have convergence score row");
+      assert.ok(v.includes("convergence-metrics.md"), "should reference convergence-metrics.md");
+    });
+
     it("decisions.md has append-only header", () => {
       const dir = getTempDir();
       run(dir, "new", "Decisions structure test");
@@ -1540,6 +1670,218 @@ describe("bootstrap.mjs", () => {
       writeFileSync(statePath, state.replace("# Current State: EXPLORE", "# Current State: PLAN"));
       const r = runValidate(dir);
       assert.ok(!r.stdout.includes("indexed findings"), "should count numbered-list findings without warning");
+    });
+
+    it("warns about placeholder convergence metrics at iteration 2+", () => {
+      const dir = getTempDir();
+      run(dir, "new", "convergence placeholder test");
+      const planDir = getPointer(dir);
+      // Set state to REFLECT at iteration 2 — convergence metrics should be filled
+      writeFileSync(
+        join(dir, "plans", planDir, "state.md"),
+        "# Current State: REFLECT\n## Iteration: 2\n## Current Plan Step: 3\n## Last Transition: EXECUTE → REFLECT\n## Transition History:\n- INIT → EXPLORE (start)\n- EXPLORE → PLAN (ready)\n- PLAN → EXECUTE (approved)\n- EXECUTE → REFLECT (done)\n"
+      );
+      // verification.md has the section header but placeholder dashes
+      const r = runValidate(dir);
+      assert.ok(r.stdout.includes("placeholder values"), "should warn when convergence metrics are still placeholders at iteration 2+");
+    });
+
+    // ---------------------------------------------------------------------
+    // v2.14.0 plan-qualified DECISION anchors
+    // ---------------------------------------------------------------------
+
+    /** Set the INIT timestamp in state.md (controls pre-/post-cutover gating). */
+    function setInitTimestamp(dir, planDir, isoTs) {
+      const statePath = join(dir, "plans", planDir, "state.md");
+      const state = readFileSync(statePath, "utf-8");
+      const updated = state.replace(
+        /## Last Transition: INIT → EXPLORE \([^)]+\)/,
+        `## Last Transition: INIT → EXPLORE (${isoTs})`
+      );
+      writeFileSync(statePath, updated);
+    }
+
+    /** Write a minimal valid decisions.md with one D-001 entry, with or without preamble. */
+    function writeDecisionsWithEntry(dir, planDir, { withPreamble = true, withAnchorRefs = false } = {}) {
+      const refs = withAnchorRefs ? "**Anchor-Refs**: `src/sample.py:3`\n" : "";
+      const preamble = withPreamble ? `*Plan: ${planDir}*\n` : "";
+      writeFileSync(
+        join(dir, "plans", planDir, "decisions.md"),
+        `# Decision Log\n${preamble}*Append-only.*\n\n## D-001 | EXPLORE → PLAN | 2026-05-07\n**Context**: test\n**Decision**: do it\n**Trade-off**: speed **at the cost of** thoroughness\n**Reasoning**: testing\n${refs}`
+      );
+    }
+
+    it("qualified anchor matching active plan resolves silently", () => {
+      const dir = getTempDir();
+      run(dir, "new", "qualified silent");
+      const planDir = getPointer(dir);
+      writeDecisionsWithEntry(dir, planDir);
+      writeFileSync(join(dir, "src.py"), `# DECISION ${planDir}/D-001: rationale\nx = 1\n`);
+      const r = runValidate(dir);
+      assert.ok(!r.stdout.includes("anchor-orphan"), "qualified anchor matching active plan should not be orphan");
+      assert.ok(!r.stdout.includes("anchor-unqualified"), "qualified anchor should not trigger unqualified WARN");
+      assert.ok(!r.stdout.includes("anchor-unknown-plan"), "active plan should be known");
+    });
+
+    it("bare D-NNN anchor emits WARN [anchor-unqualified] (resolution still works)", () => {
+      const dir = getTempDir();
+      run(dir, "new", "bare anchor migration");
+      const planDir = getPointer(dir);
+      writeDecisionsWithEntry(dir, planDir);
+      writeFileSync(join(dir, "src.py"), `# DECISION D-001: bare legacy form\nx = 1\n`);
+      const r = runValidate(dir);
+      assert.ok(r.stdout.includes("anchor-unqualified"), "bare anchor should WARN [anchor-unqualified]");
+      // Severity must be WARN not ERROR (migration nudge)
+      const lines = r.stdout.split("\n").filter((l) => l.includes("anchor-unqualified"));
+      assert.ok(lines.every((l) => l.trim().startsWith("WARN")), "anchor-unqualified must be WARN");
+      assert.ok(!r.stdout.includes("anchor-orphan"), "bare anchor with matching D-001 should still resolve");
+    });
+
+    it("qualified anchor naming unknown plan emits ERROR [anchor-unknown-plan]", () => {
+      const dir = getTempDir();
+      run(dir, "new", "unknown plan");
+      const planDir = getPointer(dir);
+      writeDecisionsWithEntry(dir, planDir);
+      writeFileSync(
+        join(dir, "src.py"),
+        `# DECISION plan_2099-12-31_deadbeef/D-001: from a plan that doesn't exist\nx = 1\n`
+      );
+      const r = runValidate(dir);
+      assert.ok(r.stdout.includes("anchor-unknown-plan"), "should ERROR on unknown plan name");
+      assert.equal(r.exitCode, 1, "unknown plan must exit non-zero");
+    });
+
+    it("qualified anchor with known plan but unknown id emits ERROR [anchor-orphan]", () => {
+      const dir = getTempDir();
+      run(dir, "new", "orphan id");
+      const planDir = getPointer(dir);
+      writeDecisionsWithEntry(dir, planDir); // only D-001 exists
+      writeFileSync(join(dir, "src.py"), `# DECISION ${planDir}/D-007: id never declared\nx = 1\n`);
+      const r = runValidate(dir);
+      assert.ok(r.stdout.includes("anchor-orphan"), "should ERROR [anchor-orphan] for unknown id");
+      assert.equal(r.exitCode, 1, "orphan must exit non-zero");
+    });
+
+    it("qualified anchor with [STALE] downgrades orphan to WARN", () => {
+      const dir = getTempDir();
+      run(dir, "new", "stale orphan");
+      const planDir = getPointer(dir);
+      writeDecisionsWithEntry(dir, planDir);
+      writeFileSync(
+        join(dir, "src.py"),
+        `# DECISION ${planDir}/D-099 [STALE]: known orphan, marked stale\nx = 1\n`
+      );
+      const r = runValidate(dir);
+      assert.ok(r.stdout.includes("anchor-orphan"), "should still flag orphan");
+      const orphanLines = r.stdout.split("\n").filter((l) => l.includes("anchor-orphan"));
+      assert.ok(orphanLines.every((l) => l.trim().startsWith("WARN")), "STALE orphan must be WARN not ERROR");
+      assert.equal(r.exitCode, 0, "STALE-only orphans should not fail validation");
+    });
+
+    it("missing plan-id preamble: ERROR for post-cutover INIT", () => {
+      const dir = getTempDir();
+      run(dir, "new", "preamble strict");
+      const planDir = getPointer(dir);
+      setInitTimestamp(dir, planDir, "2099-01-01T00:00:00Z"); // post-cutover
+      writeDecisionsWithEntry(dir, planDir, { withPreamble: false });
+      const r = runValidate(dir);
+      assert.ok(r.stdout.includes("ERROR [preamble-missing]"), "post-cutover INIT should yield ERROR for missing preamble");
+      assert.equal(r.exitCode, 1);
+    });
+
+    it("missing plan-id preamble: WARN for pre-cutover INIT", () => {
+      const dir = getTempDir();
+      run(dir, "new", "preamble lenient");
+      const planDir = getPointer(dir);
+      setInitTimestamp(dir, planDir, "2025-01-01T00:00:00Z"); // pre-cutover
+      writeDecisionsWithEntry(dir, planDir, { withPreamble: false });
+      const r = runValidate(dir);
+      assert.ok(r.stdout.includes("WARN  [preamble-missing]"), "pre-cutover INIT should yield WARN for missing preamble");
+      assert.ok(!r.stdout.includes("ERROR [preamble-missing]"), "pre-cutover must NOT be ERROR");
+    });
+
+    it("preamble plan-id mismatch is always ERROR", () => {
+      const dir = getTempDir();
+      run(dir, "new", "preamble mismatch");
+      const planDir = getPointer(dir);
+      setInitTimestamp(dir, planDir, "2025-01-01T00:00:00Z"); // pre-cutover (still ERROR for mismatch)
+      writeFileSync(
+        join(dir, "plans", planDir, "decisions.md"),
+        `# Decision Log\n*Plan: plan_2099-12-31_cafef00d*\n*Append-only.*\n\n## D-001 | EXPLORE → PLAN | 2025-01-01\n**Context**: x\n**Decision**: y\n**Trade-off**: a **at the cost of** b\n**Reasoning**: r\n`
+      );
+      const r = runValidate(dir);
+      assert.ok(r.stdout.includes("preamble-mismatch"), "mismatched preamble plan-id must be flagged");
+      assert.equal(r.exitCode, 1, "mismatch is always ERROR");
+    });
+
+    it("Anchor-Refs missing with matching anchor: ERROR for post-cutover", () => {
+      const dir = getTempDir();
+      run(dir, "new", "anchor-refs strict");
+      const planDir = getPointer(dir);
+      setInitTimestamp(dir, planDir, "2099-01-01T00:00:00Z"); // post-cutover
+      writeDecisionsWithEntry(dir, planDir, { withAnchorRefs: false });
+      writeFileSync(join(dir, "src.py"), `# DECISION ${planDir}/D-001: anchor exists, no Anchor-Refs\nx = 1\n`);
+      const r = runValidate(dir);
+      assert.ok(r.stdout.includes("ERROR [anchor-refs-missing]"), "post-cutover must ERROR on missing Anchor-Refs");
+      assert.equal(r.exitCode, 1);
+    });
+
+    it("Anchor-Refs missing with matching anchor: WARN for pre-cutover", () => {
+      const dir = getTempDir();
+      run(dir, "new", "anchor-refs lenient");
+      const planDir = getPointer(dir);
+      setInitTimestamp(dir, planDir, "2025-01-01T00:00:00Z"); // pre-cutover
+      writeDecisionsWithEntry(dir, planDir, { withAnchorRefs: false, withPreamble: false });
+      writeFileSync(join(dir, "src.py"), `# DECISION ${planDir}/D-001: anchor present, no Anchor-Refs\nx = 1\n`);
+      const r = runValidate(dir);
+      assert.ok(r.stdout.includes("WARN  [anchor-refs]"), "pre-cutover should WARN on missing Anchor-Refs");
+      assert.ok(!r.stdout.includes("ERROR [anchor-refs-missing]"), "pre-cutover must NOT be ERROR");
+    });
+
+    it("Anchor-Refs validity: WARN if referenced file missing", () => {
+      const dir = getTempDir();
+      run(dir, "new", "anchor-refs file missing");
+      const planDir = getPointer(dir);
+      writeFileSync(
+        join(dir, "plans", planDir, "decisions.md"),
+        `# Decision Log\n*Plan: ${planDir}*\n*Append-only.*\n\n## D-001 | EXPLORE → PLAN | 2026-05-07\n**Context**: x\n**Decision**: y\n**Trade-off**: a **at the cost of** b\n**Reasoning**: r\n**Anchor-Refs**: \`src/nonexistent.py:42\`\n`
+      );
+      const r = runValidate(dir);
+      assert.ok(r.stdout.includes("anchor-refs-stale"), "missing file in Anchor-Refs should yield WARN [anchor-refs-stale]");
+    });
+
+    it("two-plan disambiguation: D-001 in plan A and plan B do not collide", () => {
+      // Pre-Mortem Scenario B regression check.
+      const dir = getTempDir();
+      run(dir, "new", "plan A");
+      const planA = getPointer(dir);
+      writeDecisionsWithEntry(dir, planA);
+      run(dir, "close");
+      run(dir, "new", "plan B");
+      const planB = getPointer(dir);
+      writeDecisionsWithEntry(dir, planB);
+      // Anchor in source references plan A's D-001 explicitly. Plan B is active.
+      writeFileSync(join(dir, "src.py"), `# DECISION ${planA}/D-001: from plan A\nx = 1\n`);
+      const r = runValidate(dir);
+      assert.ok(!r.stdout.includes("anchor-orphan"), "qualified anchor for plan A must resolve via plan A's per-plan decisions.md");
+      assert.ok(!r.stdout.includes("anchor-unknown-plan"), "plan A is a known plan dir");
+    });
+  });
+
+  describe("INDEX.md topic extraction", () => {
+    it("extracts topics only from Index section, not from corrections", () => {
+      const dir = getTempDir();
+      run(dir, "new", "topic scoping test");
+      const planDir = getPointer(dir);
+      // Write findings with [CORRECTED iter-2] outside Index section
+      writeFileSync(
+        join(dir, "plans", planDir, "findings.md"),
+        "# Findings\n\n## Index\n- [Auth System](findings/auth.md) — auth\n- [DB Schema](findings/db.md) — db\n- [API Routes](findings/api.md) — api\n\n## Key Constraints\n- Something\n\n## Corrections\n- [CORRECTED iter-2] Redis not isolated\n"
+      );
+      run(dir, "close");
+      const index = readFileSync(join(dir, "plans", "INDEX.md"), "utf-8");
+      assert.ok(!index.includes("corrected iter-2"), "should not extract [CORRECTED] annotations as topics");
+      assert.ok(index.includes("auth system"), "should extract topics from Index section");
     });
   });
 

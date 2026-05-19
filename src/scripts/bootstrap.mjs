@@ -67,6 +67,34 @@ function extractField(content, pattern) {
   return match ? match[1].trim() : null;
 }
 
+// System Atlas skeleton — schema must match references/file-formats.md ## plans/SYSTEM.md exactly.
+// If you change the schema there, update this skeleton in lockstep.
+const SYSTEM_ATLAS_SKELETON = `# System Atlas
+*Last refreshed: (none yet) | (no plan closed yet)*
+*Domain-neutral system map. Rewritten by ip-archivist at CLOSE — max 300 lines. Read before PLAN/EXPLORE.*
+
+## Identity
+*To be populated at first CLOSE. What the system is (1-2 sentences). Domain (codebase / research / ops / strategy / other).*
+
+## Components
+*5-15 top-level building blocks. One line each: \`name\` — role.*
+
+## Boundaries
+*In scope vs out of scope. External dependencies. Boundary inputs the planner reads but does not own.*
+
+## Invariants
+*Properties that must always hold (security, data, contracts, performance budgets). Each grounded in a finding-id or decision-id reference.*
+
+## Flows
+*3-7 named end-to-end flows: trigger → path → terminus.*
+
+## Known Patterns
+*Architectural archetypes the system instantiates.*
+
+## Codebase Specialization
+*Optional — present only when domain=codebase. Omit entirely for non-code systems.*
+`;
+
 function ensureConsolidatedFiles() {
   const findingsPath = join(plansDir, "FINDINGS.md");
   const decisionsPath = join(plansDir, "DECISIONS.md");
@@ -86,6 +114,10 @@ function ensureConsolidatedFiles() {
 *Cross-plan lessons. Updated and consolidated on close. Max 200 lines — rewrite, don't append forever.*
 *Read before any PLAN state. This is institutional memory.*
 `);
+  }
+  const systemPath = join(plansDir, "SYSTEM.md");
+  if (!existsSync(systemPath)) {
+    writeFileSync(systemPath, SYSTEM_ATLAS_SKELETON);
   }
   const indexPath = join(plansDir, "INDEX.md");
   if (!existsSync(indexPath)) {
@@ -226,13 +258,18 @@ function appendToIndex(planDirName) {
   const dateMatch = planDirName.match(/plan_(\d{4}-\d{2}-\d{2})/);
   const date = dateMatch ? dateMatch[1] : "unknown";
 
-  // Extract key topics from findings.md index (first 3 topic slugs)
+  // Extract key topics from findings.md ## Index section only (first 3 topic slugs)
   const findings = readPlanFile(planDirName, "findings.md");
   let topics = "";
   if (findings) {
-    const topicMatches = findings.match(/\[([^\]]+)\]/g);
-    if (topicMatches) {
-      topics = topicMatches.slice(0, 3).map((t) => t.replace(/[[\]]/g, "").toLowerCase()).join(", ");
+    const indexStart = findings.indexOf("\n## Index");
+    if (indexStart >= 0) {
+      const afterIndex = findings.indexOf("\n## ", indexStart + 1);
+      const indexBody = afterIndex >= 0 ? findings.slice(indexStart, afterIndex) : findings.slice(indexStart);
+      const topicMatches = indexBody.match(/\[([^\]]+)\]/g);
+      if (topicMatches) {
+        topics = topicMatches.slice(0, 3).map((t) => t.replace(/[[\]]/g, "").toLowerCase()).join(", ");
+      }
     }
   }
 
@@ -325,6 +362,10 @@ function cmdNew(goal, force) {
 ## Last Transition: INIT → EXPLORE (${timestamp})
 ## Transition History:
 - INIT → EXPLORE (task started)
+<!-- When logging EXPLORE → PLAN, add Exploration Confidence on the line below the transition entry, e.g.:
+- EXPLORE → PLAN (gathered enough context, YYYY-MM-DDTHH:MM:SSZ)
+  - confidence: scope=deep|partial|shallow, solutions=adequate|thin, risks=clear|unclear
+See references/planning-rigor.md for definitions. -->
 `
     );
 
@@ -372,8 +413,21 @@ ${goal}
     writeFileSync(
       join(planDir, "decisions.md"),
       `# Decision Log
+*Plan: ${planDirName}*
 *Append-only. Never edit past entries.*
-${crossPlanNote}`
+${crossPlanNote}
+<!-- Schema example — DO NOT REMOVE. Real entries follow this shape.
+     See references/file-formats.md "Entry Schema by Type" for required fields per entry type.
+     In-code anchors carry the plan-id prefix: \`# DECISION ${planDirName}/D-NNN\` (see references/decision-anchoring.md).
+
+## D-001 | EXPLORE → PLAN | YYYY-MM-DD
+**Context**: <one-paragraph background — what was discovered in EXPLORE>
+**Decision**: <chosen approach in one sentence>
+**Trade-off**: <X> **at the cost of** <Y>
+**Reasoning**: <why this trade-off is acceptable; what alternatives were rejected>
+**Anchor-Refs**: \`path/to/file.ext:LL\`, \`other/file.ext:LL-MM\`  (required when a matching \`# DECISION ${planDirName}/D-NNN\` anchor exists in source)
+-->
+`
     );
 
     writeFileSync(
@@ -386,6 +440,9 @@ ${crossPlanNote}
 
 ## Key Constraints
 *To be populated during EXPLORE.*
+
+## Corrections
+*Append [CORRECTED iter-N] entries here when earlier findings prove wrong. Reference the original finding file and what changed.*
 `
     );
 
@@ -447,7 +504,13 @@ ${crossPlanNote}
 | 1 | *To be populated during PLAN* | - | - | PENDING | - |
 
 ## Additional Checks
-*Optional: lint, type checks, behavioral diffs, smoke tests.*
+*Required rows below are pre-populated every REFLECT cycle. Append optional rows (lint, type checks, behavioral diffs, smoke tests) as needed.*
+
+| Check | Command/Action | Result | Details |
+|-------|----------------|--------|---------|
+| Regression | *To be populated during REFLECT (re-run previously-passing tests)* | PENDING | - |
+| Scope drift | *To be populated during REFLECT (compare state.md manifest vs plan.md Files To Modify)* | PENDING | - |
+| Diff review | *To be populated during REFLECT (review git diff for debug artifacts, TODOs, commented-out code)* | PENDING | - |
 
 ## Not Verified
 | What | Why |
@@ -461,8 +524,33 @@ ${crossPlanNote}
 |--------------------------|--------|-------|
 | *To be populated during REFLECT* | - | - |
 
+## Convergence Metrics
+*EXTENDED — iteration 2+. First iteration: write "N/A — first iteration." See references/convergence-metrics.md.*
+
+| Metric | Previous | Current | Delta |
+|--------|----------|---------|-------|
+| Pass rate | - | - | - |
+| Scope (planned vs changed) | - | - | - |
+| New issues found | - | - | - |
+| **Convergence score** | - | - | - |
+
 ## Verdict
-*To be completed during REFLECT.*
+*To be completed during REFLECT. All 5 bullets required, in order. See references/file-formats.md.*
+
+- Criteria passed: PENDING (N/M)
+- Regressions: PENDING
+- Scope drift: PENDING
+- Simplification blockers: PENDING
+- Recommendation: PENDING (→ CLOSE / PIVOT / EXPLORE)
+`
+    );
+
+    writeFileSync(
+      join(planDir, "changelog.md"),
+      `# Changelog
+*Append-only per-edit ledger. One line per file edit. Owner: ip-executor (writes). Reader: ip-reviewer at REFLECT.*
+*Format: \`UTC | iter-N/step-M | commit | path | OP(+N,-M) | radius:TIER(score) | D-NNN-or-dash | reason\`*
+*See references/blast-radius.md for radius scoring. Decision-ref optional — \`-\` means no \`# DECISION\` anchor governs this edit.*
 `
     );
 
@@ -498,7 +586,7 @@ ${crossPlanNote}
   console.log(`  Pointer: plans/.current_plan → ${planDirName}`);
   console.log(`  Goal: ${goal}`);
   console.log(`  State: EXPLORE (iteration 0)`);
-  console.log(`  Cross-plan context: plans/FINDINGS.md, plans/DECISIONS.md, plans/LESSONS.md`);
+  console.log(`  Cross-plan context: plans/FINDINGS.md, plans/DECISIONS.md, plans/LESSONS.md, plans/SYSTEM.md`);
   console.log(`  Next: Read code, ask questions, write findings.`);
 }
 
@@ -573,6 +661,7 @@ function cmdResume() {
   console.log(`    plans/FINDINGS.md  — cross-plan findings archive`);
   console.log(`    plans/DECISIONS.md — cross-plan decision archive`);
   console.log(`    plans/LESSONS.md   — cross-plan lessons (read before PLAN)`);
+  console.log(`    plans/SYSTEM.md    — system atlas (read before EXPLORE/PLAN)`);
 }
 
 function cmdStatus() {
@@ -612,9 +701,13 @@ function cmdClose(opts = {}) {
     const updated = stateContent
       .replace(/^# Current State:\s*.+$/m, "# Current State: CLOSE")
       .replace(/^## Last Transition:\s*.+$/m, `## Last Transition: ${prevState} → CLOSE (${timestamp})`)
-      + `- ${prevState} → CLOSE (bootstrap close)\n`;
+      + `${stateContent.endsWith("\n") ? "" : "\n"}- ${prevState} → CLOSE (bootstrap close)\n`;
     writeFileSync(statePath, updated);
-  } catch { /* state.md update is best-effort */ }
+  } catch (err) {
+    if (!opts.silent && err.code !== "ENOENT") {
+      console.error(`WARNING: state.md update failed: ${err.message}`);
+    }
+  }
 
   // Merge per-plan findings/decisions to consolidated files before removing pointer
   try {

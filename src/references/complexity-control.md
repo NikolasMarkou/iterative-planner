@@ -63,7 +63,7 @@ Re-read `decisions.md`. Answer in `decisions.md` using this format:
 5. **Fighting the framework?** Writing adapters/shims → using it wrong. Read docs.
 6. **What if I revert everything?** Sunk cost ≠ reason to continue. Three clean attempts > one Frankenstein.
 
-If any check reveals a blocker → document in `decisions.md` → must address before CLOSE (RE-PLAN or fix).
+If any check reveals a blocker → document in `decisions.md` → must address before CLOSE (PIVOT or fix).
 
 ## 3-Strike Rule
 
@@ -73,8 +73,8 @@ Same area needs fixes 3× across iterations:
 2. → REFLECT.
 3. Log: "3-STRIKE TRIGGERED on [file/module]" in `decisions.md`.
 4. Do NOT attempt fix #4.
-5. Revert to checkpoint covering the struck area. If no matching checkpoint → revert uncommitted, then decide in RE-PLAN.
-6. → RE-PLAN: "fundamentally different approach for [file/module]."
+5. Revert to checkpoint covering the struck area. If no matching checkpoint → revert uncommitted, then decide in PIVOT.
+6. → PIVOT: "fundamentally different approach for [file/module]."
 7. Consider: is this code even necessary?
 
 ## Forbidden Fix Patterns
@@ -91,7 +91,7 @@ Catch yourself doing one → revert.
 | Adapter layer | New class to translate between things you control | Change one to match the other |
 | "Temporary" workaround | "I'll clean this up later" | Do it right now or don't |
 
-## Complexity Assessment (mandatory in RE-PLAN entries)
+## Complexity Assessment (mandatory in PIVOT entries)
 
 ```markdown
 **Complexity Assessment**:
@@ -108,6 +108,6 @@ Iteration 5 AND total lines added > 2× original scope:
 1. Present full decision log to user.
 2. Recommend: revert ALL, start clean with `decisions.md` knowledge.
 3. If agreed → revert to `cp-000` (initial checkpoint). User may choose a later checkpoint if partial progress is worth keeping — confirm explicitly.
-4. RE-PLAN from scratch using only decision log.
+4. PIVOT from scratch using only decision log.
 
 Protocol working as designed — not failure.
