@@ -104,3 +104,9 @@ After any revert, grep for these — if found, revert is incomplete:
       --include="*.rb" --include="*.go" --include="*.rs" --include="*.java" .
   ```
   A `# DECISION D-NNN` (or `// DECISION D-NNN`, `/* DECISION D-NNN */`) comment whose `D-NNN` points at a decision tied to reverted code is a leftover and must be removed. Anchors only live on surviving code (see `decision-anchoring.md`). Alternative: mark with `[STALE]` per the staleness rule in `decision-anchoring.md` if it lands.
+
+## Interface Contracts for Shared Assets
+
+A function or module imported by ≥2 callers (a shared/reused asset) carries a short interface contract at its definition: parameters, return shape, and failure mode. Undocumented shared code is a hygiene leftover — reuse fails when the contract is unclear, so developers re-duplicate instead of reusing. (Document everything you mean to reuse.)
+
+Robustness scales with reuse. Shared assets — or any HIGH blast-radius edit (`references/blast-radius.md`) — require their failure modes verified, not just the happy path. A reusable asset that is bug-prone gets abandoned and re-cloned, the opposite of reuse: prioritize robustness for anything meant to be shared.

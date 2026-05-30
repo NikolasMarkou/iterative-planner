@@ -37,6 +37,7 @@ Use this structure:
 
 ## Code Patterns
 (Relevant patterns, conventions, anti-patterns observed)
+- `[REUSE] path:line — what it already does` for every existing asset the goal could extend instead of rebuild. Duplication the plan would otherwise create is itself a finding.
 
 ## Risks / Unknowns
 (What you couldn't determine, what needs further investigation)
@@ -50,6 +51,7 @@ Use this structure:
 ## Rules
 - Include file paths + line numbers for EVERY finding
 - Classify ALL constraints as HARD/SOFT/GHOST
+- Tag reusable existing assets with `[REUSE]` in Code Patterns so the planner extends them instead of rebuilding (reuse-before-build is the default; centralize knowledge)
 - Do NOT modify any project files
 - Do NOT update findings.md index (orchestrator does this)
 - Do NOT update state.md, decisions.md, or plans/SYSTEM.md (archivist owns the atlas)

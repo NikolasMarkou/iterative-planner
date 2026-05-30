@@ -29,6 +29,7 @@ Before writing any code:
    - **3-strike** forced a different approach
    Anchor body must state what NOT to do and why, and reference the D-NNN entry in `decisions.md`.
 6. Anchor-Refs back-link: when an anchor is placed or moved, update the matching decisions.md entry's `**Anchor-Refs**:` line with file:line refs in the SAME commit. For plans created on or after v2.14.0 (state.md INIT >= 2026-05-07T09:00:00Z) the validator emits ERROR [anchor-refs-missing] otherwise.
+7. Reuse-before-write (DRY): before adding a new function, constant, parser, or rule, `grep -rn` for an existing one. If the behavior or fact already exists, import/reference it — do not re-implement. If a value or rule must live in 2+ places, that is a duplication smell: centralize it, or record in decisions.md why it cannot be (a hand-maintained "kept in lockstep" invariant is a defect, not a pattern).
 
 ## Execution Rules
 - ONE step at a time. Do not look ahead.

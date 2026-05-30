@@ -28,6 +28,8 @@ Track in `plan.md`:
 
 Any limit hit → STOP → REFLECT. Ask: "Root cause or symptom?"
 
+**Earned-abstraction rule (use before reuse).** An abstraction (class/module/interface/shared param/flag) is *earned* only when ≥2 concrete call sites need it. Simplicity before generality: build the concrete thing first, extract on the third occurrence — not in anticipation. A single-use abstraction is speculative generality — it spends the abstraction budget with no payoff → inline it. (YAGNI.)
+
 ## Revert-First Policy (EXECUTE failure)
 
 1. STOP. No new code.

@@ -39,6 +39,7 @@ Write chosen approach to decisions.md with trade-off framing:
 - Minimize dependencies between steps
 - Start with the riskiest part (most unknowns)
 - Split when concerns change for different reasons; merge when they always co-change
+- Simplicity before generality, use before reuse: do not plan an abstraction until ≥2 concrete call sites need it (the earned-abstraction rule, `references/complexity-control.md` § Complexity Budget). If you propose a single-use abstraction, mark it `[RISK: medium]` and justify in decisions.md — it is a Complexity-Budget charge with no payoff.
 
 ## Rules
 - MUST read all findings/* files before writing

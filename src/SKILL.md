@@ -337,6 +337,8 @@ All seven reads are CORE. Do not evaluate until all are complete.
 
 Default response to failure = simplify, not add. See `references/complexity-control.md`.
 
+These guards operationalize three principles already wired into the protocol — name them when applying: **KISS** (Simplification Checks #3 essential/accidental + #4 junior-dev test, `references/complexity-control.md`), **YAGNI** (Complexity Budget + earned-abstraction rule), **DRY** (reuse-before-write — EXECUTE Pre-Step Checklist + `references/code-hygiene.md` § Interface Contracts for Shared Assets).
+
 **Revert-First** — when something breaks: (1) STOP (2) revert? (3) delete? (4) one-liner? (5) none → REFLECT.
 **10-Line Rule** — fix needs >10 new lines → it's not a fix → REFLECT.
 **3-Strike Rule** — same area breaks 3× → PIVOT with fundamentally different approach. Revert to checkpoint covering the struck area.
