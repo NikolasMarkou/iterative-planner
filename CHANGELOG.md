@@ -4,6 +4,29 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.19.0] - 2026-05-30
+
+### Added
+- **Simplicity & reusability principles integrated into the protocol surfaces (DRY/KISS/YAGNI).** Six extend-in-place edits, no new files — each composes with an existing section:
+  - `references/complexity-control.md` § Complexity Budget: **earned-abstraction rule** (an abstraction is earned only at ≥2 concrete call sites; single-use → inline). [YAGNI / use before reuse]
+  - `agents/ip-plan-writer.md` § Decomposition Rules: use-before-reuse bullet at PLAN time, cross-referencing the earned-abstraction rule (no restating).
+  - `agents/ip-explorer.md` § Code Patterns + Rules: `[REUSE] path:line` tag mandate so the planner extends existing assets instead of rebuilding (centralize knowledge).
+  - `references/code-hygiene.md`: new **Interface Contracts for Shared Assets** subsection — shared (≥2-caller) assets carry a contract; robustness scales with reuse / blast-radius.
+  - `agents/ip-executor.md` § Pre-Step Checklist item 7: **reuse-before-write** (grep for an existing impl before adding; 2+ copies = duplication smell). [DRY keystone]
+  - `SKILL.md` § Complexity Control: one line naming KISS (Simplification Checks #3-4), YAGNI (Complexity Budget + earned-abstraction rule), DRY (Pre-Step Checklist #7 + Interface Contracts).
+  - Design note (lesson L-015): the generality gate was placed in the Complexity Budget rather than as a 7th Simplification Check, because "6 Simplification Checks" is duplicated in SKILL.md + CLAUDE.md — a 7th would force a multi-place count edit (the exact cross-surface invariant the principles fight).
+
+### Fixed
+- **Combined-build shipped dangling `references/blast-radius.md` links (live defect).** `make build-combined` emitted 4 un-rewritten cross-references because `blast-radius.md` was missing from the refMap in both `Makefile` and `build.ps1` (and one un-backticked prose mention in `file-formats.md`). All now rewrite correctly; verified by running the build (0 dangling).
+
+### Changed
+- **Extracted `src/scripts/shared.mjs` (DRY).** `extractField` (was byte-identical in `bootstrap.mjs` and `validate-plan.mjs`) and `splitChangelogFields` (was exported by bootstrap but reimplemented inline in validate-plan with a "kept in lockstep" comment) now live in one module imported by both. `bootstrap.mjs` re-exports `splitChangelogFields` so the test import surface is unchanged. Placed flat in `src/scripts/` so the existing `*.mjs` copy glob ships it with no build change.
+- **`changelog.md` added to the build `validate` file-list** (`Makefile`, `build.ps1`) — closes a latent regression-assertion gap (bootstrap creates it but the validate check omitted it).
+
+### Notes
+- Test count unchanged at 190 (bootstrap 157 + validate-plan 30 + blast-radius 3) — no tests added; both suites + `make validate` pass.
+- Driven by the epistemic-deconstructor audit (`analyses/analysis_2026-05-30_9f4059f2/summary.md`) and executed via the iterative-planner (`plans/plan_2026-05-30_b6e2f5a3/`).
+
 ## [2.18.2] - 2026-05-15
 
 ### Fixed
