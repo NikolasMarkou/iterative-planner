@@ -4,6 +4,29 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.19.1] - 2026-05-30
+
+Bug-fix and test-hardening release from a deep self-review (`plans/plan_2026-05-30_eb9b4fee/`). No protocol behavior changes; one concurrency fix, doc-drift cleanup, and a large test-coverage expansion.
+
+### Fixed
+- **`cmdClose` held no lock (concurrency).** Standalone `bootstrap.mjs close` performed all consolidated-file writes (merge/trim/index/snapshot/pointer-unlink) without `plans/.lock`, so concurrent closes could double-merge into `FINDINGS.md`/`DECISIONS.md`/`INDEX.md`. `cmdClose` now acquires the lock (skipped on the `--force` path, which already holds it) and acquires it *before* reading the pointer to close a TOCTOU; the no-plan exit routes through a structured error so the lock is released before exit (L-014). New 5-process concurrent-close test.
+- **`make test` / `build.ps1 test` ran only `bootstrap.test.mjs`** (157 of 214 tests) — `validate-plan.test.mjs` and `blast-radius.test.mjs` never ran in CI. Both targets now run all three suites.
+- **`make lint` / `build.ps1` lint skipped `blast-radius.mjs` and `shared.mjs`.** Both now `node --check` all four scripts.
+- **`build.ps1` combined-build refMap keys used double backticks** in single-quoted strings (literal), so they never matched SKILL.md's single-backtick reference spans — the Windows combined build left dangling `references/*.md` links. Keys switched to single backticks, matching the Makefile sed (verified 0 dangling via the equivalent Unix build).
+- **Misleading Autonomy-Leash validator text.** The full-validator ERROR said "hard cap is 2" but only fires at 4+ attempts. Reworded both leash messages to describe the two enforcement tiers accurately (no threshold change); added an "Enforcement tiers" note to SKILL.md §Autonomy Leash documenting why the `--pre-step` gate (cap 2) and the retrospective audit (WARN 3 / ERROR 4+) intentionally differ.
+- **`bootstrap.mjs` vs `validate-plan.mjs` preamble-scan mismatch.** bootstrap scanned the whole `decisions.md` for the `*Plan:` preamble; the validator only the first 10 non-blank lines, so a late preamble compressed in one tool but ERRORed in the other. bootstrap now uses the same 10-non-blank-line window.
+- **REFLECT step-numbering collision.** Phase 1 ended at step 7 and Phase 2 restarted at 7 (with an odd `8a`). Phase 2 renumbered contiguously 8–22, Phase 3 23–26.
+- **Cross-surface doc drift:** `code-hygiene.md` stale-anchor grep now matches qualified `plan-id/D-NNN` anchors (was bare-only); `ip-reviewer.md` uses the qualified anchor format; `plans/SYSTEM.md` added to the SKILL.md Recovery list and CLAUDE.md validation checklist; `ip-explorer.md` findings section name aligned to `file-formats.md` (`Risks & Unknowns`).
+
+### Removed
+- Dead code in `validate-plan.mjs`: unused `collectKnownDecisionIds` (no callsite since v2.14.0) and the `ANCHOR_PATTERNS` constant (`findAnchorsInFile` rebuilds patterns inline); plus a duplicated `a !== "-h"` condition in `--pre-step` arg parsing.
+
+### Added
+- **Test coverage 190 → 214.** `shared.mjs:extractField` (5 direct tests, was untested); `blast-radius.mjs` (3 → 14: all UNKNOWN exit paths, `--json` schema, per-signal scoring, `--verbose`); 4 high-risk `validate-plan.mjs` check functions (`checkChangelogFormat`, `checkPresentationContractLog`, `checkComplexityBudget`, `checkVerificationEvidence`); concurrent-close and preamble-window tests.
+
+### Notes
+- Test count 214 (bootstrap 164 + validate-plan 36 + blast-radius 14); all suites + `make validate` pass.
+
 ## [2.19.0] - 2026-05-30
 
 ### Added
