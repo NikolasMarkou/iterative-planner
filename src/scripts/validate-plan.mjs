@@ -873,19 +873,6 @@ const SKIP_DIR_NAMES = new Set([
   "target", "__pycache__", ".cache", "vendor", "out",
 ]);
 
-// Anchor regexes from references/decision-anchoring.md Formal Grammar.
-// Hash, slash, block, and SQL double-dash. Each captures:
-//   group 1 — optional plan-id prefix (qualified anchors, v2.14.0+)
-//   group 2 — D-NNN three-digit id
-//   group 3 — optional " [STALE]" marker
-// Plan-id prefix is captured non-greedily as PLAN_ID_PATTERN followed by "/".
-const ANCHOR_PATTERNS = [
-  new RegExp(`(?:^|\\s)#\\s+DECISION\\s+(?:(${PLAN_ID_PATTERN})\\/)?D-(\\d{3})(\\s+\\[STALE\\])?(?::|\\s|$)`),
-  new RegExp(`(?:^|\\s)\\/\\/\\s+DECISION\\s+(?:(${PLAN_ID_PATTERN})\\/)?D-(\\d{3})(\\s+\\[STALE\\])?(?::|\\s|$)`),
-  new RegExp(`\\/\\*\\s*DECISION\\s+(?:(${PLAN_ID_PATTERN})\\/)?D-(\\d{3})(\\s+\\[STALE\\])?[\\s\\S]*?\\*\\/`),
-  new RegExp(`(?:^|\\s)--\\s+DECISION\\s+(?:(${PLAN_ID_PATTERN})\\/)?D-(\\d{3})(\\s+\\[STALE\\])?(?::|\\s|$)`),
-];
-
 function walkSourceFiles(root, files = [], depth = 0) {
   if (depth > 12) return files;
   let entries;
@@ -1040,15 +1027,6 @@ function collectKnownDecisionIdsByPlan(planDir, activePlanName) {
   }
 
   return map;
-}
-
-// Backward-compat shim: flat Set<number> view of all known IDs across all plans.
-// Used only by checks that don't need plan-scoping (none after v2.14.0).
-function collectKnownDecisionIds(planDir, activePlanName) {
-  const flat = new Set();
-  const byPlan = collectKnownDecisionIdsByPlan(planDir, activePlanName);
-  for (const set of byPlan.values()) for (const id of set) flat.add(id);
-  return flat;
 }
 
 function checkReverseAnchors(planDir, planDirName, issues, projectRoot) {
@@ -1650,7 +1628,7 @@ Exit codes:
 // --pre-step branch — bypass the full validator entirely.
 if (args.includes("--pre-step")) {
   // Resolve plan dir: positional non-flag arg wins; else .current_plan pointer.
-  const positional = args.find((a) => !a.startsWith("--") && a !== "-h" && a !== "-h");
+  const positional = args.find((a) => !a.startsWith("--") && a !== "-h");
   let preStepDir;
   if (positional) {
     // Accept absolute path, relative path, or bare plan-dir name (resolved under plans/).
