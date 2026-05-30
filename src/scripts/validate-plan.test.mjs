@@ -667,3 +667,67 @@ real plan section
     assert.ok(r.exitCode === 0 || r.exitCode === 1, `expected exit 0 or 1 from full validator, got ${r.exitCode}\nstdout:\n${r.stdout}`);
   });
 });
+
+// M7 — targeted negative-case tests for high-risk check functions that
+// previously had only incidental (happy-path) integration coverage. Each
+// builds a valid plan, corrupts ONE file, and asserts the specific [tag] fires.
+describe("validate-plan.mjs — M7: targeted check-function coverage", () => {
+  let tempDirs = [];
+  function getTempDir() { const d = makeTempDir(); tempDirs.push(d); return d; }
+  afterEach(() => { for (const d of tempDirs) removeTempDir(d); tempDirs = []; });
+
+  it("checkChangelogFormat: bad timestamp field → WARN [changelog-malformed]", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    writeFileSync(join(planDir, "changelog.md"),
+      "# Changelog\n*note*\nNOTATIME | iter-1/step-1 | abc1234 | f.js | EDIT(+1,-0) | radius:LOW(1) | - | a reason\n");
+    const r = run(cwd);
+    assert.match(r.stdout, /\[changelog-malformed\]/, `expected changelog-malformed, got:\n${r.stdout}`);
+    assert.match(r.stdout, /bad timestamp/);
+  });
+
+  it("checkChangelogFormat: well-formed line (pipe in reason) does NOT warn", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    writeFileSync(join(planDir, "changelog.md"),
+      "# Changelog\n*note*\n2026-05-30T10:00:00Z | iter-1/step-1 | abc1234 | f.js | EDIT(+1,-0) | radius:LOW(1) | - | fix race: a | b\n");
+    const r = run(cwd);
+    assert.doesNotMatch(r.stdout, /\[changelog-malformed\]/, `clean line must not warn, got:\n${r.stdout}`);
+  });
+
+  it("checkPresentationContractLog: PLAN→EXECUTE without PC-PLAN → WARN [presentation-contract-unlogged]", () => {
+    const cwd = getTempDir();
+    writePlan(cwd); // default state.md has PLAN → EXECUTE, no PC-PLAN anywhere
+    const r = run(cwd);
+    assert.match(r.stdout, /\[presentation-contract-unlogged\]/, `expected unlogged-contract WARN, got:\n${r.stdout}`);
+  });
+
+  it("checkPresentationContractLog: PC-PLAN reference present → no WARN", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    // Append a PC-PLAN reference to decisions.md (one of the scanned files).
+    writeFileSync(join(planDir, "decisions.md"),
+      `# Decision Log\n*Plan: plan_2026-05-15_aaaabbbb*\n*Append-only.*\n\nPC-PLAN emitted to user before approval.\n\n## D-001 | EXPLORE → PLAN | 2026-05-15\n**Context**: fixture.\n**Decision**: fixture.\n**Trade-off**: a **at the cost of** b.\n**Reasoning**: fixture.\n**Anchor-Refs**: (none yet)\n`);
+    const r = run(cwd);
+    assert.doesNotMatch(r.stdout, /\[presentation-contract-unlogged\]/, `PC-PLAN present must suppress WARN, got:\n${r.stdout}`);
+  });
+
+  it("checkComplexityBudget: placeholder budget in EXECUTE → WARN [complexity]", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    writeFileSync(join(planDir, "plan.md"),
+      "# Plan v1\n## Goal\nx\n## Success Criteria\n- SC1\n## Complexity Budget\n*To be defined during PLAN.*\n");
+    const r = run(cwd);
+    assert.match(r.stdout, /\[complexity\]/, `expected complexity WARN, got:\n${r.stdout}`);
+  });
+
+  it("checkVerificationEvidence: weak Evidence cell → WARN [evidence]", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    writeFileSync(join(planDir, "verification.md"),
+      "# Verification\n## Criteria Verification\n| # | Criterion | Method | Command | Result | Evidence |\n|---|---|---|---|---|---|\n| 1 | SC1 | run | true | PASS | lgtm |\n## Verdict\n- Recommendation: continue\n");
+    const r = run(cwd);
+    assert.match(r.stdout, /\[evidence\]/, `expected evidence WARN, got:\n${r.stdout}`);
+    assert.match(r.stdout, /weak Evidence/);
+  });
+});
