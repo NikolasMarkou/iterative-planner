@@ -407,9 +407,18 @@ function parseDecisionsFile(content) {
   let entriesAtCompress = null;
   let hasPreamble = false;
 
-  // Locate *Plan: …* preamble (required)
-  for (let i = 0; i < lines.length; i++) {
-    if (/^\*Plan:\s*/.test(lines[i])) { hasPreamble = true; break; }
+  // Locate *Plan: …* preamble (required). Mirror validate-plan.mjs
+  // parseDecisionsEntries: only the first 10 NON-BLANK lines count, so this
+  // compressor and the validator agree on whether a preamble is present.
+  // (plan_2026-05-30_eb9b4fee/M8 — previously this scanned the whole file, so
+  // a preamble on non-blank line 11+ compressed here but ERRORed in the
+  // validator.)
+  let nonBlankSeen = 0;
+  for (let i = 0; i < lines.length && nonBlankSeen < 10; i++) {
+    const t = lines[i].trim();
+    if (t === "") continue;
+    nonBlankSeen += 1;
+    if (/^\*Plan:\s*/.test(t)) { hasPreamble = true; break; }
   }
 
   // Locate existing compressed block (if any) — first occurrence wins

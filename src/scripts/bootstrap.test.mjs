@@ -2169,6 +2169,39 @@ describe("bootstrap.mjs", () => {
       assert.ok(blockIdx < firstEntryIdx, `block (${blockIdx}) must precede first real entry (${firstEntryIdx})`);
     });
 
+    it("M8: preamble beyond first 10 non-blank lines is NOT detected (matches validator window)", async () => {
+      const maybeCompressDecisions = await loadHelper();
+      const dir = getTempDir();
+      const planDir = join(dir, "plans", "plan_2099-01-01_deadbeef");
+      // 11 non-blank lines with NO preamble, THEN the *Plan: line (12th
+      // non-blank) — past the validator's first-10-non-blank window. Old
+      // bootstrap scanned the whole file and would have compressed this;
+      // aligned bootstrap reports no-preamble, agreeing with the validator.
+      const head = [
+        "# Decision Log",
+        "*filler a*", "*filler b*", "*filler c*", "*filler d*", "*filler e*",
+        "*filler f*", "*filler g*", "*filler h*", "*filler i*", "*filler j*",
+        "*Plan: plan_2099-01-01_deadbeef*",
+        "",
+      ];
+      const body = [];
+      for (const e of [1, 2, 3, 4, 5].map((n) => makeEntry(n))) {
+        body.push(`## ${e.id} | ${e.phase} | ${e.date}`);
+        body.push(e.body);
+        body.push("");
+      }
+      const pad = [];
+      for (let i = 0; i < 320; i++) pad.push(`<!-- pad ${i} -->`);
+      const content = [...head, ...body, ...pad].join("\n");
+      writeDecisionsFile(planDir, content);
+      assert.ok(content.split("\n").length > 300, "fixture must exceed 300 lines");
+
+      const result = maybeCompressDecisions(planDir);
+      assert.equal(result.compressed, false, `out-of-window preamble must not compress, got ${JSON.stringify(result)}`);
+      assert.equal(result.reason, "no-preamble", "must report no-preamble (window aligned with validator)");
+      assert.equal(readFileSync(join(planDir, "decisions.md"), "utf-8"), content, "file must be untouched");
+    });
+
     it("Test 2: file under threshold returns under-threshold", async () => {
       const maybeCompressDecisions = await loadHelper();
       const dir = getTempDir();
