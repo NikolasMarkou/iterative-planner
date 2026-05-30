@@ -2711,6 +2711,59 @@ describe("bootstrap.mjs", () => {
 
   });
 
+  // plan_2026-05-30_eb9b4fee/D-003 — concurrent `bootstrap.mjs close` race.
+  // cmdClose must hold the same lock as cmdNew, or two closes double-merge into
+  // the consolidated files / INDEX.md (the appendToIndex dedup guard is itself
+  // TOCTOU-vulnerable: both read `existing` before either writes).
+  describe("D-003: concurrent-close lockfile", () => {
+    it("5 parallel `close` produces exactly 1 success, clean pointer/lock, no duplicate merge", async () => {
+      const dir = getTempDir();
+      // Create a plan to close.
+      run(dir, "new", "concurrent close goal");
+      const planName = readFileSync(join(dir, "plans", ".current_plan"), "utf-8").trim();
+
+      const { spawn } = await import("child_process");
+      const realProcs = [];
+      for (let i = 0; i < 5; i++) {
+        realProcs.push(new Promise((resolve) => {
+          const p = spawn("node", [BOOTSTRAP, "close"], { cwd: dir });
+          let stdout = "", stderr = "";
+          p.stdout.on("data", (b) => stdout += b);
+          p.stderr.on("data", (b) => stderr += b);
+          p.on("close", (code) => resolve({ stdout, stderr, code }));
+        }));
+      }
+      const results = await Promise.all(realProcs);
+      const dump = results.map((r, i) =>
+        `[${i}] code=${r.code} stdout=${r.stdout.slice(0,80)} stderr=${r.stderr.slice(0,80)}`).join("\n");
+
+      const pointerGone = !existsSync(join(dir, "plans", ".current_plan"));
+      const lockGone = !existsSync(join(dir, "plans", ".lock"));
+      assert.ok(pointerGone, `pointer must be removed after close\n${dump}`);
+      assert.ok(lockGone, `lock file must be cleaned after winner releases\n${dump}`);
+
+      const winners = results.filter((r) => r.code === 0);
+      assert.equal(winners.length, 1, `expected exactly 1 winning close, got ${winners.length}\n${dump}`);
+      // Losers acquire the lock after the winner released, find no active plan.
+      for (const loser of results.filter((r) => r.code !== 0)) {
+        assert.ok(/No active plan|in progress/i.test(loser.stderr),
+          `loser must report no-active-plan or locked, got: ${loser.stderr.slice(0,200)}`);
+      }
+
+      // No double-merge: INDEX.md lists the plan exactly once.
+      const index = readFileSync(join(dir, "plans", "INDEX.md"), "utf-8");
+      const idxCount = (index.split(`| ${planName} |`).length - 1);
+      assert.equal(idxCount, 1, `INDEX.md must list the plan exactly once, got ${idxCount}\n${index}`);
+
+      // Consolidated files have exactly one section for the plan.
+      for (const f of ["FINDINGS.md", "DECISIONS.md"]) {
+        const c = readFileSync(join(dir, "plans", f), "utf-8");
+        const secCount = c.split(`## ${planName}`).length - 1;
+        assert.equal(secCount, 1, `${f} must have exactly one section for the plan, got ${secCount}\n${c}`);
+      }
+    });
+  });
+
   // OBS-008 / D-008 — stripCrossPlanNote must only strip the boilerplate in
   // the preamble (first 10 lines), not body content that happens to quote it.
   describe("D-008: stripCrossPlanNote anchored regex (OBS-008)", () => {

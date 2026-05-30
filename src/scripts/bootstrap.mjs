@@ -1099,7 +1099,9 @@ function cmdNewInner(goal, force) {
     throw e;
   }
   if (existing && force) {
-    cmdClose({ silent: true });
+    // We already hold the lock (acquired in cmdNew) — tell cmdClose not to
+    // re-acquire it (would EEXIST against our own lock). D-003.
+    cmdClose({ silent: true, _holdsLock: true });
   }
   // Save old pointer name for recovery if --force was used and new plan creation fails
   const previousPlan = force ? existing : null;
@@ -1436,11 +1438,53 @@ function cmdStatus() {
 }
 
 function cmdClose(opts = {}) {
+  // DECISION plan_2026-05-30_eb9b4fee/D-003 — standalone `close` must hold the
+  // same exclusive lock as `new`, or two concurrent closes race on the
+  // consolidated-file merge/trim/index writes. The `new --force` path already
+  // holds the lock and passes _holdsLock, so it skips re-acquisition (avoids
+  // self-deadlock against its own O_EXCL lock).
+  const ownLock = !opts._holdsLock;
+  if (ownLock) {
+    try {
+      acquireLock();
+    } catch (err) {
+      if (err.code === "ELOCKED") {
+        if (!opts.silent) {
+          console.error(`ERROR: ${err.message}`);
+          console.error(`  If you are certain no other bootstrap.mjs is running, delete plans/.lock manually.`);
+        }
+        process.exit(1);
+      }
+      throw err;
+    }
+  }
+  // Lock is held before the pointer is read (cmdCloseInner) — this closes the
+  // TOCTOU where two closes both read the same active plan and merge it twice.
+  // process.exit inside the locked body would skip lock release (L-014), so the
+  // no-plan path throws ENOCLOSE and we exit AFTER finally releases the lock.
+  let exitCode = 0;
+  try {
+    cmdCloseInner(opts);
+  } catch (err) {
+    if (err && err.code === "ENOCLOSE") {
+      exitCode = 1;
+    } else {
+      throw err; // finally releases the lock before the exception propagates
+    }
+  } finally {
+    if (ownLock) releaseLock();
+  }
+  if (exitCode !== 0) process.exit(exitCode);
+}
+
+function cmdCloseInner(opts = {}) {
   const planDirName = readPointer();
   if (!planDirName) {
     if (!opts.silent) {
       console.error("ERROR: No active plan to close.");
-      process.exit(1);
+      const e = new Error("No active plan to close.");
+      e.code = "ENOCLOSE";
+      throw e;
     }
     return;
   }
