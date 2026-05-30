@@ -371,17 +371,22 @@ function checkLeashCount(planDir, issues) {
   // (`- Step 1 attempt 1`, `- Step 1  attempts 2`), and legacy bare `- Attempt M` / `- Attempts M`.
   // Plural `attempts?` tolerated; previously a non-canonical write silently bypassed the leash (F1).
   const attempts = section.split("\n").filter((l) => /^-\s+(Step\s+\d+[,\s]+attempts?\s+\d+|Attempts?\s+\d+)/i.test(l));
+  // Two enforcement tiers (see SKILL.md §Autonomy Leash "Enforcement tiers"):
+  // the real-time --pre-step gate HARD-blocks the 3rd spawn (cap = 2 attempts).
+  // This full-run check is a RETROSPECTIVE audit, so 2 recorded attempts is
+  // legal (you are allowed 2); 3 means a 3rd attempt slipped past the gate
+  // (WARN); 4+ means the gate was bypassed entirely (ERROR).
   if (attempts.length >= 4) {
     issues.push({
       severity: "ERROR",
       check: "leash",
-      message: `${attempts.length} fix attempts recorded in state.md (Autonomy Leash hard cap is 2). STOP COMPLETELY, revert, present to user. See SKILL.md §Autonomy Leash.`,
+      message: `${attempts.length} fix attempts recorded in state.md — the Autonomy Leash allows 2 per step and the --pre-step gate blocks the 3rd spawn in real time. ${attempts.length} recorded means the gate was bypassed: STOP COMPLETELY, revert, present to user. See SKILL.md §Autonomy Leash.`,
     });
   } else if (attempts.length === 3) {
     issues.push({
       severity: "WARN",
       check: "leash",
-      message: `3 fix attempts recorded — Autonomy Leash cap is 2. Treat as a leash hit: revert, present, PIVOT. See SKILL.md §Autonomy Leash.`,
+      message: `3 fix attempts recorded — the Autonomy Leash allows 2 per step (the --pre-step gate blocks the 3rd spawn). A 3rd recorded attempt means the leash was passed: revert, present, PIVOT. See SKILL.md §Autonomy Leash.`,
     });
   }
 }

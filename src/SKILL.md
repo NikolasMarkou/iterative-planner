@@ -360,6 +360,10 @@ Attempt counter in `state.md`. Resets on: user direction | new step | PIVOT.
 
 **Pre-step gate** (v2.18.0+): `node <skill-path>/scripts/validate-plan.mjs --pre-step` runs in the orchestrator before each ip-executor spawn. Exit code 2 with `GATE:FAIL [leash-cap]` mechanically halts EXECUTE when 2 fix attempts are recorded — converting the leash from advisory to enforced. See `agents/orchestrator.md` EXECUTE dispatch for the integration point.
 
+**Enforcement tiers** — the leash is enforced at two different points, with *intentionally* different thresholds. Do not "align" them:
+- **Real-time gate** (`--pre-step`, exit 2): HARD-blocks the **3rd** spawn — fires at `attempts >= 2`. This is the actual cap (2 attempts per step).
+- **Retrospective audit** (full `validate-plan.mjs`, `[leash]`): runs over a finished/in-progress plan where **2 recorded attempts is legal** (a step is *allowed* 2). So it WARNs at **3** (a 3rd attempt slipped past the gate) and ERRORs at **4+** (the gate was bypassed). ERRORing at 2 would false-positive on every plan that correctly used both attempts then pivoted.
+
 ## Code Hygiene (CRITICAL)
 
 Failed code must not survive. Track changes in **change manifest** in `state.md`.
