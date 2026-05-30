@@ -11,6 +11,7 @@
 
 import { readFileSync, existsSync, readdirSync, statSync } from "fs";
 import { join, extname, relative } from "path";
+import { extractField, splitChangelogFields } from "./shared.mjs";
 
 const cwd = process.cwd();
 const plansDir = join(cwd, "plans");
@@ -131,11 +132,7 @@ function readFile(path) {
   }
 }
 
-function extractField(content, pattern) {
-  if (!content) return null;
-  const match = content.match(pattern);
-  return match ? match[1].trim() : null;
-}
+// extractField now lives in ./shared.mjs (imported above).
 
 function isPlaceholder(text) {
   if (!text || !text.trim()) return true;
@@ -1391,20 +1388,9 @@ function checkChangelogFormat(planDir, issues) {
     // (reason) absorbs any trailing " | " inside it. Pre-fix, a legitimate
     // reason like "fix race: a | b" produced 9 fields → WARN [changelog-malformed]
     // + classifyChangelogLine returned non-entry, hiding the line from compression.
-    // Parser is kept in lockstep with bootstrap.mjs splitChangelogFields.
-    const SEP = " | ";
-    const fields = [];
-    {
-      let cursor = 0;
-      let ok = true;
-      for (let i = 0; i < 7; i++) {
-        const idx = line.indexOf(SEP, cursor);
-        if (idx < 0) { ok = false; break; }
-        fields.push(line.slice(cursor, idx));
-        cursor = idx + SEP.length;
-      }
-      if (ok) fields.push(line.slice(cursor));
-    }
+    // Single source of truth: ./shared.mjs splitChangelogFields (same function
+    // bootstrap.mjs uses) — no longer reimplemented inline here.
+    const fields = splitChangelogFields(line);
     if (fields.length !== 8) {
       issues.push({
         severity: "WARN",

@@ -62,12 +62,14 @@ build-combined:
 	@echo "> referenced in the protocol require the full package. Plan directories must be" >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	@echo "> created manually or by using the zip/tarball distribution." >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	@# Rewrite references/ cross-references to anchor links (content is inlined above)
+	@sed -i 's|`references/blast-radius\.md`|the Blast Radius Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	@sed -i 's|`references/code-hygiene\.md`|the Code Hygiene Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	@sed -i 's|`references/complexity-control\.md`|the Complexity Control Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	@sed -i 's|`references/convergence-metrics\.md`|the Convergence Metrics Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	@sed -i 's|`references/decision-anchoring\.md`|the Decision Anchoring Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	@sed -i 's|`references/file-formats\.md`|the File Formats Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	@sed -i 's|`references/planning-rigor\.md`|the Planning Rigor Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@sed -i 's|`src/references/blast-radius\.md`|the Blast Radius Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	@sed -i 's|`src/references/code-hygiene\.md`|the Code Hygiene Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	@sed -i 's|`src/references/complexity-control\.md`|the Complexity Control Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	@sed -i 's|`src/references/convergence-metrics\.md`|the Convergence Metrics Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
@@ -115,7 +117,7 @@ validate:
 	done
 	@# Verify bootstrap.mjs creates expected plan directory files
 	@echo "Checking bootstrap file list..."
-	@for f in state.md plan.md decisions.md findings.md progress.md verification.md; do \
+	@for f in state.md plan.md decisions.md findings.md progress.md verification.md changelog.md; do \
 		grep -q "\"$$f\"" src/scripts/bootstrap.mjs || \
 		grep -q "'$$f'" src/scripts/bootstrap.mjs || \
 		grep -q "$$f" src/scripts/bootstrap.mjs || \

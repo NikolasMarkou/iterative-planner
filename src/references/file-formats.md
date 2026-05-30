@@ -793,7 +793,7 @@ Header (written by bootstrap on plan creation, or by executor on first append if
 
 ```markdown
 # Changelog
-*Append-only per-edit ledger. One line per file edit. See references/blast-radius.md for radius scoring. Decision-ref is optional — `-` means no `# DECISION` anchor governs this edit.*
+*Append-only per-edit ledger. One line per file edit. See `references/blast-radius.md` for radius scoring. Decision-ref is optional — `-` means no `# DECISION` anchor governs this edit.*
 ```
 
 Rules:

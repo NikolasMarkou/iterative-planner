@@ -17,6 +17,9 @@
 import { mkdirSync, writeFileSync, readFileSync, readdirSync, renameSync, unlinkSync, existsSync, rmSync, copyFileSync, openSync, closeSync } from "fs";
 import { join } from "path";
 import { randomBytes, createHash } from "crypto";
+import { extractField, splitChangelogFields } from "./shared.mjs";
+// Re-exported so bootstrap.test.mjs can probe it via the bootstrap entrypoint.
+export { splitChangelogFields };
 
 const cwd = process.cwd();
 const plansDir = join(cwd, "plans");
@@ -141,11 +144,7 @@ function readPlanFile(planDirName, filename) {
   }
 }
 
-function extractField(content, pattern) {
-  if (!content) return null;
-  const match = content.match(pattern);
-  return match ? match[1].trim() : null;
-}
+// extractField now lives in ./shared.mjs (imported above).
 
 // System Atlas skeleton — schema must match references/file-formats.md ## plans/SYSTEM.md exactly.
 // If you change the schema there, update this skeleton in lockstep.
@@ -719,25 +718,8 @@ const CHANGELOG_COMPRESSED_INLINE_RE = /^- \(compressed: \d+ low-decision-impact
  *   6: D-NNN-or-dash
  *   7: reason
  */
-// F3 — pipe-tolerant changelog field split.
-// Splits on the FIRST 7 occurrences of " | "; the 8th field (reason) absorbs
-// any remaining " | " sequences. Exported via `export` below the function
-// declarations so tests can probe it; validator uses an identical inline
-// implementation to keep parsing rules in lockstep (see validate-plan.mjs
-// checkChangelogFormat). Fields are returned trimmed.
-export function splitChangelogFields(line) {
-  const SEP = " | ";
-  const fields = [];
-  let cursor = 0;
-  for (let i = 0; i < 7; i++) {
-    const idx = line.indexOf(SEP, cursor);
-    if (idx < 0) return line.split(SEP).map((f) => f.trim()); // <8 fields; let caller reject
-    fields.push(line.slice(cursor, idx).trim());
-    cursor = idx + SEP.length;
-  }
-  fields.push(line.slice(cursor).trim()); // remainder = reason
-  return fields;
-}
+// splitChangelogFields now lives in ./shared.mjs (imported + re-exported above).
+// validate-plan.mjs imports the same function instead of reimplementing it.
 
 function classifyChangelogLine(line) {
   if (CHANGELOG_COMPRESSED_INLINE_RE.test(line)) {
