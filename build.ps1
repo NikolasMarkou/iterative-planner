@@ -286,18 +286,14 @@ function Invoke-Validate {
 
 function Invoke-Lint {
     Write-Host "Checking script syntax..." -ForegroundColor Yellow
-    node --check src/scripts/bootstrap.mjs
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "Syntax check failed!" -ForegroundColor Red
-        exit 1
+    foreach ($script in @("bootstrap.mjs", "validate-plan.mjs", "blast-radius.mjs", "shared.mjs")) {
+        node --check "src/scripts/$script"
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "Syntax check failed: $script" -ForegroundColor Red
+            exit 1
+        }
     }
-    node --check src/scripts/validate-plan.mjs
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "Syntax check passed!" -ForegroundColor Green
-    } else {
-        Write-Host "Syntax check failed!" -ForegroundColor Red
-        exit 1
-    }
+    Write-Host "Syntax check passed!" -ForegroundColor Green
 }
 
 function Invoke-PackageTar {
@@ -322,9 +318,9 @@ function Invoke-PackageTar {
 function Invoke-Test {
     Invoke-Lint
 
-    Write-Host "Running bootstrap.mjs test suite..." -ForegroundColor Yellow
+    Write-Host "Running all test suites..." -ForegroundColor Yellow
 
-    node --test src/scripts/bootstrap.test.mjs
+    node --test src/scripts/bootstrap.test.mjs src/scripts/validate-plan.test.mjs src/scripts/blast-radius.test.mjs
     if ($LASTEXITCODE -ne 0) {
         Write-Host "Tests failed!" -ForegroundColor Red
         exit 1

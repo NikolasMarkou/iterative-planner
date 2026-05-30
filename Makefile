@@ -170,13 +170,15 @@ lint:
 	@echo "Checking script syntax..."
 	node --check src/scripts/bootstrap.mjs
 	node --check src/scripts/validate-plan.mjs
+	node --check src/scripts/blast-radius.mjs
+	node --check src/scripts/shared.mjs
 	@echo "Syntax check passed!"
 
 # Run tests
 .PHONY: test
 test: lint
-	@echo "Running bootstrap.mjs test suite..."
-	node --test src/scripts/bootstrap.test.mjs
+	@echo "Running all test suites..."
+	node --test src/scripts/bootstrap.test.mjs src/scripts/validate-plan.test.mjs src/scripts/blast-radius.test.mjs
 	@echo "Tests passed!"
 
 # Clean build artifacts
