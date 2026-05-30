@@ -13,6 +13,7 @@ import { randomBytes } from "crypto";
 
 // Path to bootstrap.mjs (relative to this test file)
 const BOOTSTRAP = resolve(import.meta.dirname, "bootstrap.mjs");
+const SHARED = resolve(import.meta.dirname, "shared.mjs");
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -2840,5 +2841,42 @@ describe("bootstrap.mjs", () => {
       assert.ok(existsSync(join(dir, "plans", ".current_plan")), "pointer must be written");
       assert.ok(!existsSync(join(dir, "plans", ".lock")), "stale lock must be cleaned");
     });
+  });
+});
+
+// H3 — shared.mjs:extractField is used by both bootstrap.mjs (goal extraction)
+// and validate-plan.mjs (iteration parsing) but had zero direct tests.
+describe("shared.mjs: extractField", () => {
+  async function load() {
+    const mod = await import(`file://${SHARED}`);
+    return mod.extractField;
+  }
+
+  it("returns null for null/empty content", async () => {
+    const extractField = await load();
+    assert.equal(extractField(null, /x/), null);
+    assert.equal(extractField("", /x/), null);
+    assert.equal(extractField(undefined, /x/), null);
+  });
+
+  it("returns null when the pattern does not match", async () => {
+    const extractField = await load();
+    assert.equal(extractField("no match here", /## Goal\s*\n(.+)/), null);
+  });
+
+  it("returns the first capture group on match", async () => {
+    const extractField = await load();
+    assert.equal(extractField("## Iteration: 3", /Iteration:\s*(\d+)/), "3");
+  });
+
+  it("trims surrounding whitespace from the captured group", async () => {
+    const extractField = await load();
+    assert.equal(extractField("Goal:    spaced value   \n", /Goal:(.+)/), "spaced value");
+  });
+
+  it("captures multi-line goal blocks via lazy group", async () => {
+    const extractField = await load();
+    const content = "# Plan\n## Goal\n  Do the thing\n## Next\n";
+    assert.equal(extractField(content, /\n## Goal\s*\n([\s\S]+?)(?=\n## |$)/), "Do the thing");
   });
 });
