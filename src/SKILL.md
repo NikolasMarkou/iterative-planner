@@ -397,8 +397,9 @@ See `references/decision-anchoring.md`.
 7. `checkpoints/*` → available rollback points and their git hashes
 8. `plans/FINDINGS.md` + `plans/DECISIONS.md` → cross-plan context from previous plans
 9. `plans/LESSONS.md` → institutional memory (read before planning)
-10. `plans/INDEX.md` → topic-to-directory mapping (find old findings by topic when sliding window has trimmed them)
-11. Resume from current state. Never start over.
+10. `plans/SYSTEM.md` → system atlas / structural prior (read before PLAN or EXPLORE)
+11. `plans/INDEX.md` → topic-to-directory mapping (find old findings by topic when sliding window has trimmed them)
+12. Resume from current state. Never start over.
 
 ## Git Integration
 

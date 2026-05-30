@@ -39,7 +39,7 @@ Use this structure:
 (Relevant patterns, conventions, anti-patterns observed)
 - `[REUSE] path:line — what it already does` for every existing asset the goal could extend instead of rebuild. Duplication the plan would otherwise create is itself a finding.
 
-## Risks / Unknowns
+## Risks & Unknowns
 (What you couldn't determine, what needs further investigation)
 ```
 

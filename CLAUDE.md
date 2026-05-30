@@ -148,6 +148,7 @@ make help                    # Show available targets
 - [ ] `src/scripts/bootstrap.mjs` creates and references `FINDINGS.md`, `DECISIONS.md`, and `LESSONS.md` consolidated files
 - [ ] Consolidated files contain merged content after `close`
 - [ ] `plans/LESSONS.md` referenced in SKILL.md (EXPLORE, PLAN gate check, PIVOT, CLOSE, Recovery)
+- [ ] `plans/SYSTEM.md` created by bootstrap and referenced in SKILL.md (EXPLORE, PLAN re-reads, Recovery)
 - [ ] `plans/INDEX.md` created by bootstrap and updated on close
 - [ ] `lessons_snapshot.md` created in plan directory on close
 - [ ] `src/scripts/validate-plan.mjs` passes syntax check
