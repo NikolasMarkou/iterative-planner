@@ -4,6 +4,20 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.21.0] - 2026-05-31
+
+Hardens the skill→orchestrator→sub-agent wiring that v2.20.0 introduced. Investigation (`plans/plan_2026-05-30_fa6267aa/`, findings W0–W3) confirmed via a **live dispatch test** that the v2.20.0 bridge already works on the skill-trigger path — the in-thread orchestrator resolved `agents/orchestrator.md` against the harness-announced base dir and spawned sub-agents successfully. The residual defect was that the wiring is *soft*: nothing distinguishes a working dispatch from the (explicitly allowed) monolithic fallback, so a degraded run looked identical to "agents not wired in." No state-machine, transition, or `.mjs` changes.
+
+### Added
+- **User-visible mode announcement (headline, W1).** `src/SKILL.md` "Orchestrator Role Assumption" now requires a one-line announcement of the live mode: condition 2 (agents installed) announces sub-agent dispatch is engaged; condition 3 (monolithic fallback) announces the degraded single-thread mode. Silent degradation becomes a visible signal — a user expecting sub-agents who sees the monolithic line immediately knows why. Mirrored as a positive announcement in `agents/orchestrator.md` "Your Role".
+- **Canonical dispatch example (W1).** Added one literal clarification under `agents/orchestrator.md` "Sub-Agent Dispatch Rules": the prose "Spawn ip-X" throughout the section means an actual agent-tool call with that named subagent type (e.g. `Agent(subagent_type: "ip-explorer", ...)`), not doing the work in-thread. One example only — the five per-state "Spawn" lines are unchanged and the section stays a pointer, not a per-state narrative.
+
+### Fixed
+- **Install drift between the two sync paths (W2).** The Makefile `build` target bundles `src/agents/*.md` into the skill package's `agents/` dir, but CLAUDE.md "Updating Local Skill" copied agents only to `~/.claude/agents/` — never the skill-bundled copy — so the bundled `agents/` silently went ~5 versions stale. The manual procedure now also `cp`s into `~/.claude/skills/iterative-planner/agents/` (authoritative-by-build), with a `diff -rq` verify and a Validation-Checklist bullet enforcing parity.
+
+### Changed
+- `src/SKILL.md` condition 2 now states explicitly that `agents/orchestrator.md` is resolved against the harness-announced skill base directory (removes an implicit assumption).
+
 ## [2.20.0] - 2026-05-31
 
 Closes a structural wiring gap: skill activation never engaged the orchestrator. `src/SKILL.md` (the file loaded on activation) had no instruction to read or assume `agents/orchestrator.md`, so the rich runtime dispatch (inlined Presentation Contract floors, PLAN compression gate, EXECUTE pre-step gate exit-code handling, PIVOT reset-attempts) was never reached on the skill-trigger path — only when the orchestrator was launched directly as a main thread. The dependency arrow pointed one way only (orchestrator.md declares `skills: [iterative-planner]`; nothing pointed back). No script changes.
