@@ -314,17 +314,17 @@ Each file has a lifecycle: which states write it, which states read it, which ne
 
 ### File ownership
 
-Each file has a single owner. Only the owner writes; others read. This prevents concurrent-write conflicts when sub-agents run in parallel.
+Each file has a single owner. Only the owner writes; others read. This prevents concurrent-write conflicts when sub-agents run in parallel. Co-ownership is permitted where writes are disjoint and never concurrent (the orchestrator sequences them); the orchestrator's co-owned writes are confined to Post-Step Gate cursor/ledger updates.
 
 | File | Owner | Readers |
 |------|-------|---------|
 | `state.md` | Orchestrator | All agents |
-| `plan.md` | Plan-writer | Orchestrator, Executor, Verifier |
+| `plan.md` | Plan-writer (full rewrite) + Orchestrator (Post-Step Gate) | Executor, Verifier |
 | `decisions.md` | Orchestrator + Plan-writer | All agents |
 | `findings/{topic}.md` | Explorer (one file per explorer) | Orchestrator, Plan-writer |
 | `progress.md` | Orchestrator + Executor | All agents |
 | `verification.md` | Plan-writer (template), Verifier (results) | Orchestrator, Reviewer |
-| `changelog.md` | Executor (append-only) | Reviewer, Orchestrator |
+| `changelog.md` | Executor (append per edit) + Orchestrator (Post-Step Gate) | Reviewer |
 | `summary.md` | Archivist | — |
 | `plans/LESSONS.md`, `plans/SYSTEM.md` | Archivist | All planning agents |
 
@@ -368,6 +368,8 @@ When `close` merges per-plan files into `plans/FINDINGS.md` and `plans/DECISIONS
 ## Sub-Agent Architecture
 
 The orchestrator coordinates seven specialized agents. Sub-agents cannot spawn other sub-agents — the orchestrator is the sole coordinator. Sub-agents are **optional**: if their definitions are not installed under `~/.claude/agents/`, the monolithic skill works as before.
+
+When the skill activates and the agent definitions are installed, the conversation assumes the orchestrator role **in-thread** (it reads `agents/orchestrator.md` and adopts it — it does not spawn a separate orchestrator); when they are not installed, the same conversation runs the full protocol single-threaded. See SKILL.md "Orchestrator Role Assumption".
 
 | Agent | Role | Tools | Model |
 |-------|------|-------|-------|

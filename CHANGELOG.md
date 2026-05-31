@@ -4,6 +4,21 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.20.0] - 2026-05-31
+
+Closes a structural wiring gap: skill activation never engaged the orchestrator. `src/SKILL.md` (the file loaded on activation) had no instruction to read or assume `agents/orchestrator.md`, so the rich runtime dispatch (inlined Presentation Contract floors, PLAN compression gate, EXECUTE pre-step gate exit-code handling, PIVOT reset-attempts) was never reached on the skill-trigger path — only when the orchestrator was launched directly as a main thread. The dependency arrow pointed one way only (orchestrator.md declares `skills: [iterative-planner]`; nothing pointed back). No script changes.
+
+### Fixed
+- **Skill→orchestrator bridge (headline).** Added an "Orchestrator Role Assumption" section at the top of `src/SKILL.md` (mirroring the sibling epistemic-deconstructor skill). Three-way conditional: (1) already-orchestrator guard — short-circuits the `skills: [iterative-planner]` reload loop, checked first; (2) agents installed → Read `agents/orchestrator.md` and assume the role **in-thread** (never spawn a second orchestrator); (3) monolithic fallback → run single-threaded with `Task` subagents. Idempotent: the role is read at most once per conversation.
+- **File Ownership Model contradiction.** The model assigned `plan.md`→Plan-writer and `changelog.md`→Executor under "only the owner writes", but the orchestrator's EXECUTE Post-Step Gate writes both. Amended both rows to co-ownership (the established idiom already used for `decisions.md`/`progress.md`), with a note that orchestrator co-owned writes are confined to Post-Step Gate cursor/ledger updates. Synced in SKILL.md and README.md.
+
+### Changed
+- **De-duplicated dispatch into a single source of truth.** `agents/orchestrator.md` is now authoritative for runtime dispatch sequencing. SKILL.md's "Dispatch Rules by State" subsection collapsed from a per-state spawn narrative to a pointer; SKILL.md retains the protocol/state-machine spec. Removed the stale "(orchestrator.md update lands in step 10 of v2.18.0)" drift note at the PLAN compression-gate bullet.
+- `agents/orchestrator.md` `description:` now documents both load paths (main thread via `claude --agent iterative-planner-orchestrator`, or procedure read in-thread per "Orchestrator Role Assumption") and the reload-loop guard; added a "Your Role" line anchoring that the installed agent name is `iterative-planner-orchestrator`.
+
+### Docs
+- README.md Sub-Agent Architecture: ownership table synced + role-assumption sentence added. CLAUDE.md validation checklist: +3 items (role-assumption naming, no dispatch duplication, README/SKILL ownership-table agreement).
+
 ## [2.19.3] - 2026-05-31
 
 Resolves the two remaining HIGH-severity findings from the deep self-review (`plans/plan_2026-05-30_fa6267aa/`): both "anchor graveyard" and "stuck leash counter" failure modes that could block the REFLECT→CLOSE gate of an unrelated, current plan. Two new `bootstrap.mjs` subcommands. Tests 218 → 225.

@@ -157,6 +157,9 @@ make help                    # Show available targets
 - [ ] All agent definitions in `src/agents/` have `name:`, `description:`, and `tools:` in YAML frontmatter
 - [ ] Agent definitions in src/SKILL.md "Sub-Agent Architecture" section match files in `src/agents/`
 - [ ] File Ownership Model table in src/SKILL.md matches agent tool permissions
+- [ ] src/SKILL.md "Orchestrator Role Assumption" section names `iterative-planner-orchestrator` and matches `src/agents/orchestrator.md` frontmatter `name:`
+- [ ] src/SKILL.md does not duplicate orchestrator.md dispatch sequencing (pointer only — "Dispatch Rules by State" is a pointer, not a per-state spawn narrative)
+- [ ] README.md and src/SKILL.md File Ownership tables agree (same co-ownership for `plan.md` and `changelog.md`)
 
 ## Updating Local Skill
 

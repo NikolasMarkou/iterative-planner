@@ -15,6 +15,18 @@ Write to disk immediately. The context window will rot. The files won't.
 **Discovery**: `plans/.current_plan` contains the plan directory name. One active plan at a time.
 **Cross-plan context**: `plans/FINDINGS.md`, `plans/DECISIONS.md` (merged on close), `plans/LESSONS.md` (rewritten on close), `plans/SYSTEM.md` (system atlas — domain-neutral map of the target system, rewritten on close), `plans/INDEX.md` (topic→directory map, survives sliding-window trim). Caps + R/W rules: File Lifecycle Matrix.
 
+## Orchestrator Role Assumption (READ FIRST)
+
+This skill is driven by a state-machine orchestrator. The authoritative runtime dispatch logic — sub-agent spawning, the six Presentation Contracts, the PLAN compression gate, and the EXECUTE pre-step gate — lives in `agents/orchestrator.md`, NOT in this file. This file is the protocol and state-machine **specification**; `agents/orchestrator.md` is the **procedure** you execute.
+
+On activation, determine your mode:
+
+1. **Already the orchestrator** — if you were launched as `iterative-planner-orchestrator` (via `claude --agent iterative-planner-orchestrator`) OR you have already read `agents/orchestrator.md` and assumed that role earlier in this conversation: do NOT re-read it and do NOT spawn another orchestrator. You ARE the orchestrator — continue with the dispatch logic you already hold. This guard is evaluated FIRST and short-circuits the reload loop that would otherwise arise because `agents/orchestrator.md` declares `skills: [iterative-planner]` (loading it re-loads this skill).
+2. **Agent definitions installed** — if `agents/orchestrator.md` is readable and you are NOT already operating as the orchestrator: immediately Read `agents/orchestrator.md` and assume that role for the remainder of this conversation. Treat its Sub-Agent Dispatch Rules, Presentation Contracts, compression gate, and pre-step gate as your operating procedure. Adopt the role **in-thread** — do NOT spawn or launch a separate `iterative-planner-orchestrator` agent. Then begin bootstrapping.
+3. **Monolithic fallback** — if `agents/orchestrator.md` (and the `agents/ip-*.md` definitions) are NOT installed: run the full protocol yourself in this single thread using the Per-State Rules in this file. Use `Task` subagents where this file calls for parallel work (EXPLORE, REFLECT review). The state machine, gates, leash, and Presentation Contracts (`references/file-formats.md`) are identical — you are simply both coordinator and worker.
+
+**Idempotency rule**: the trigger for reading `agents/orchestrator.md` is "not yet operating as the orchestrator." Once you have read it once in this conversation, condition 1 holds for every subsequent skill re-trigger — you never read it twice, and there is no spawn, so no reload loop.
+
 ## State Machine
 
 ```mermaid
@@ -233,7 +245,7 @@ Institutional memory across plans. Unlike FINDINGS.md / DECISIONS.md (append+mer
 
 ### PLAN
 - **Gate check**: apply Mandatory Re-reads table (PLAN row). If not read → read now. No exceptions. If `findings.md` has <3 indexed findings → go back to EXPLORE.
-- **Compression gate** — if `{plan-dir}/decisions.md` >300 lines or `{plan-dir}/changelog.md` >200 lines, run `maybeCompressDecisions` / `maybeCompressChangelog` (exported from `src/scripts/bootstrap.mjs`) before any other PLAN work. Append-only safe: raw entries are preserved verbatim; a metadata block is inserted at top (decisions) or inline summary lines replace LOW-radius/`-`-decision-ref groups (changelog). Re-compression is idempotent. See `references/file-formats.md` § Intra-plan compression for full spec. Orchestrator dispatch wires this at step-0.5 of PLAN (orchestrator.md update lands in step 10 of v2.18.0).
+- **Compression gate** — if `{plan-dir}/decisions.md` >300 lines or `{plan-dir}/changelog.md` >200 lines, run `maybeCompressDecisions` / `maybeCompressChangelog` (exported from `src/scripts/bootstrap.mjs`) before any other PLAN work. Append-only safe: raw entries are preserved verbatim; a metadata block is inserted at top (decisions) or inline summary lines replace LOW-radius/`-`-decision-ref groups (changelog). Re-compression is idempotent. See `references/file-formats.md` § Intra-plan compression for full spec. Orchestrator dispatch wires this at PLAN step 0 — see `agents/orchestrator.md` § PLAN State. This file specifies the gate; the orchestrator owns when it runs.
 - **Problem Statement first** — before designing steps, write in `plan.md`: (1) what behavior is expected, (2) invariants — what must always be true, (3) edge cases at boundaries. Can't state the problem clearly → go back to EXPLORE.
 - Write `plan.md` with all 11 validator-required sections (see `validate-plan.mjs` `PLAN_SECTIONS`): Goal, Problem Statement, Context, Files To Modify, Steps (with risk/dependency annotations), Assumptions, Failure Modes, Pre-Mortem & Falsification Signals, Success Criteria, Verification Strategy, Complexity Budget.
 - **Decomposition** — when breaking the goal into steps:
@@ -446,19 +458,19 @@ The iterative planner supports **optional** specialized sub-agents that parallel
 
 ### File Ownership Model
 
-Each file has a clear owner. Only the owner writes. Others read.
+Each file has a clear owner. Only the owner writes. Others read. Co-ownership (multiple writers) is permitted where the writes are disjoint in scope and never concurrent — the orchestrator sequences them. The orchestrator's co-owned writes are confined to Post-Step Gate cursor/ledger updates; the named content owner does all authoring.
 
 | File | Owner (Writes) | Readers |
 |------|----------------|---------|
 | `state.md` | Orchestrator | All agents |
-| `plan.md` | Plan-writer | Orchestrator, Executor, Verifier |
+| `plan.md` | Plan-writer (full rewrite) + Orchestrator (Post-Step Gate: step checkbox, marker, complexity budget) | Executor, Verifier |
 | `decisions.md` | Orchestrator + Plan-writer | All agents |
 | `findings.md` (index) | Orchestrator | Plan-writer, Reviewer |
 | `findings/{topic}.md` | Explorer (one per file) | Orchestrator, Plan-writer |
 | `findings/review-iter-N.md` | Reviewer | Orchestrator |
 | `progress.md` | Orchestrator + Executor | All agents |
 | `verification.md` | Plan-writer (template) → Verifier (results) | Orchestrator, Reviewer |
-| `changelog.md` | Executor (append per edit) | Reviewer (REFLECT scan), Orchestrator |
+| `changelog.md` | Executor (append per edit) + Orchestrator (Post-Step Gate: confirm one line per edited file) | Reviewer (REFLECT scan) |
 | `checkpoints/*` | Executor | Orchestrator (for PIVOT) |
 | `summary.md` | Archivist | — |
 | `plans/FINDINGS.md` | Archivist (via bootstrap) | Orchestrator, Plan-writer |
@@ -469,15 +481,7 @@ Each file has a clear owner. Only the owner writes. Others read.
 
 ### Dispatch Rules by State
 
-**EXPLORE**: Spawn 1-3 `ip-explorer` agents in parallel, each with a distinct topic. After all complete, orchestrator reads `findings/*` files and updates `findings.md` index. Gate check: ≥3 indexed findings.
-
-**PLAN**: Spawn `ip-plan-writer` with goal + findings summary. Plan-writer reads all `findings/*`, `plans/LESSONS.md`, `plans/DECISIONS.md`. Orchestrator verifies all required sections, presents to user.
-
-**EXECUTE**: Spawn `ip-executor` per step (sequential by default). For truly independent steps, use `isolation: "worktree"` for parallel execution. Orchestrator tracks autonomy leash externally in `state.md`.
-
-**REFLECT**: Spawn `ip-verifier`(s) for parallel verification checks. If iteration ≥ 2, spawn `ip-reviewer` for adversarial review. Orchestrator merges results, presents to user.
-
-**CLOSE**: Spawn `ip-archivist` for summary.md, decision anchor audit, LESSONS.md update. Orchestrator runs `bootstrap.mjs close` after archivist completes.
+Runtime dispatch — which agents to spawn per state, in what order, with the compression gate (PLAN step 0) and pre-step gate (EXECUTE step 1.5) — is owned by `agents/orchestrator.md` § "Sub-Agent Dispatch Rules". **That file is authoritative; do not duplicate its sequencing here.** The per-state *protocol* (gate checks, leash, rigor) is specified above under the Per-State Rules. Monolithic mode (no agents installed) runs the same sequence single-threaded using `Task` subagents for the parallel steps.
 
 ### Conflict Prevention
 1. No concurrent writes to the same file — orchestrator sequences agents accordingly.
