@@ -50,3 +50,41 @@ export function splitChangelogFields(line) {
   fields.push(line.slice(cursor).trim()); // remainder = reason
   return fields;
 }
+
+// ---------------------------------------------------------------------------
+// Intra-plan compression markers + recognizers.
+//
+// Single source of truth shared by the PRODUCER (bootstrap.mjs maybeCompress*)
+// and the VALIDATOR (validate-plan.mjs). Before centralizing these, the
+// validator did not know about the artifacts bootstrap wrote, so a correctly
+// compressed decisions.md / changelog.md tripped its own validator
+// (decisions-schema ERROR on "## Summary (compressed)"; changelog-malformed
+// WARN on the inline "- (compressed: ...)" line). Keep both consumers importing
+// from here so that drift cannot recur.
+// ---------------------------------------------------------------------------
+
+export const COMPRESSED_SUMMARY_OPEN = "<!-- COMPRESSED-SUMMARY -->";
+export const COMPRESSED_SUMMARY_CLOSE = "<!-- /COMPRESSED-SUMMARY -->";
+
+// Inline per-changelog compression summary line written by maybeCompressChangelog.
+export const CHANGELOG_COMPRESSED_INLINE_RE = /^- \(compressed: \d+ low-decision-impact edits/;
+
+/**
+ * Blank out the COMPRESSED-SUMMARY block (markers + body) in a decisions.md
+ * string, preserving line count so downstream line numbers stay accurate. The
+ * block body is plain markdown ("## Summary (compressed)", "### Decision lookup",
+ * ...) that must NOT be parsed as decision entries. Only non-newline characters
+ * are removed, so every line index is unchanged. Returns the content unchanged
+ * when no complete block is present.
+ */
+export function blankCompressedSummaryBlock(content) {
+  if (!content) return content;
+  const openIdx = content.indexOf(COMPRESSED_SUMMARY_OPEN);
+  if (openIdx < 0) return content;
+  const closeIdx = content.indexOf(COMPRESSED_SUMMARY_CLOSE, openIdx);
+  if (closeIdx < 0) return content;
+  const end = closeIdx + COMPRESSED_SUMMARY_CLOSE.length;
+  const block = content.slice(openIdx, end);
+  const blanked = block.replace(/[^\n]/g, "");
+  return content.slice(0, openIdx) + blanked + content.slice(end);
+}

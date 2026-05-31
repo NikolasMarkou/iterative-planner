@@ -1,8 +1,8 @@
 # Iterative Planner
 
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Skill](https://img.shields.io/badge/Skill-v2.19.0-green.svg)](CHANGELOG.md)
-[![Tests](https://img.shields.io/badge/tests-214%20passing-brightgreen.svg)](src/scripts/bootstrap.test.mjs)
+[![Skill](https://img.shields.io/badge/Skill-v2.19.1-green.svg)](CHANGELOG.md)
+[![Tests](https://img.shields.io/badge/tests-218%20passing-brightgreen.svg)](src/scripts/bootstrap.test.mjs)
 [![Sponsored by Electi](https://img.shields.io/badge/Sponsored%20by-Electi-red.svg)](https://www.electiconsulting.com)
 
 A [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skill that turns ad-hoc agent runs into structured, recoverable, evidence-driven work.
@@ -411,7 +411,7 @@ Canonical definitions are in [`src/references/file-formats.md`](src/references/f
 
 ## Validator
 
-`src/scripts/validate-plan.mjs` is a read-only protocol-compliance check. It runs automatically during REFLECT (step 16) and can be run manually any time. Exit 0 = pass, exit 1 = errors. Warnings are non-blocking.
+`src/scripts/validate-plan.mjs` is a read-only protocol-compliance check. It runs automatically during REFLECT (step 18) and can be run manually any time. Exit 0 = pass, exit 1 = errors. Warnings are non-blocking.
 
 It checks:
 
@@ -490,7 +490,7 @@ The test suite covers bootstrap operations, state transitions, consolidated file
 node --test src/scripts/bootstrap.test.mjs \
             src/scripts/validate-plan.test.mjs \
             src/scripts/blast-radius.test.mjs
-# 214 tests total: bootstrap 164, validate-plan 36, blast-radius 14
+# 218 tests total: bootstrap 165, validate-plan 39, blast-radius 14
 ```
 
 ### Build and package
@@ -530,7 +530,7 @@ make help
 Before submitting changes:
 
 - [ ] `make validate` (or `.\build.ps1 validate`) passes
-- [ ] `node --test src/scripts/bootstrap.test.mjs src/scripts/validate-plan.test.mjs src/scripts/blast-radius.test.mjs` passes (214 tests)
+- [ ] `node --test src/scripts/bootstrap.test.mjs src/scripts/validate-plan.test.mjs src/scripts/blast-radius.test.mjs` passes (218 tests)
 - [ ] `src/SKILL.md` has `name:` and `description:` in YAML frontmatter
 - [ ] All cross-references in `src/SKILL.md` point to existing files in `src/references/`
 - [ ] State machine diagram matches transition rules table
@@ -567,7 +567,7 @@ iterative-planner/
     │   ├── validate-plan.mjs       # protocol compliance validator (+ `--pre-step` gate, exit 2)
     │   ├── validate-plan.test.mjs  # validator test suite
     │   ├── blast-radius.mjs        # deterministic per-file blast-radius scorer (spawnSync argv — no shell)
-    │   └── blast-radius.test.mjs   # blast-radius test suite (214 tests total across 3 files)
+    │   └── blast-radius.test.mjs   # blast-radius test suite (218 tests total across 3 files)
     └── references/
         ├── file-formats.md         # templates for every plan directory file + Presentation Contracts
         ├── code-hygiene.md         # change manifests, revert procedures, cleanup rules

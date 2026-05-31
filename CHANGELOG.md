@@ -4,6 +4,23 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.19.2] - 2026-05-31
+
+Bug-fix release from a deep self-review (`plans/plan_2026-05-30_fa6267aa/`). Fixes a producer/validator parity defect where the protocol's own intra-plan compression output failed its own validator, plus an idempotent-close transition glitch and doc drift. No protocol behavior changes. Tests 214 → 218.
+
+### Fixed
+- **Validator rejected the compressor's own decisions.md output (B1).** `validate-plan.mjs parseDecisionsEntries` stripped the `<!-- COMPRESSED-SUMMARY -->` markers individually but left the `## Summary (compressed)` heading inside, which registered as a non-conforming decision entry → blocking `ERROR [decisions-schema]` once any plan's `decisions.md` crossed the 300-line compression threshold. Now blanks the whole marker block (preserving line count) before parsing. Markers + the inline changelog recognizer moved to `shared.mjs` so producer (`bootstrap.mjs`) and validator import one source of truth.
+- **Validator flagged the compressor's own changelog.md output (B3).** `checkChangelogFormat` had no skip for the `- (compressed: N low-decision-impact edits…)` summary line `maybeCompressChangelog` writes → `WARN [changelog-malformed]`. Now skipped via the shared `CHANGELOG_COMPRESSED_INLINE_RE`.
+- **`cmdClose` recorded an invalid `CLOSE→CLOSE` transition (B2).** Closing from the documented CLOSE flow (Current State already `CLOSE`) appended a `CLOSE → CLOSE` history bullet that `validate-plan.mjs` rejected. `cmdClose` now skips the history write when already CLOSE; the validator also accepts `CLOSE→CLOSE` as idempotent for legacy `state.md` files.
+
+### Docs
+- SKILL.md PLAN rules now list all 11 validator-required `plan.md` sections (previously omitted `Goal` and `Context`).
+- SKILL.md pre-step gate now documents all four `GATE:FAIL` slugs (`no-plan`, `wrong-state`, `leash-cap`, `iteration-cap`), not just `leash-cap`.
+- README: validate-plan REFLECT step 16 → 18; version badge 2.19.0 → 2.19.2; test counts updated to 218.
+
+### Tests
+- +4 regression tests (validate-plan +3 for B1/B3/B2 validator-tolerance; bootstrap +1 for the B2 generation guard). Count 218 (bootstrap 165 + validate-plan 39 + blast-radius 14).
+
 ## [2.19.1] - 2026-05-30
 
 Bug-fix and test-hardening release from a deep self-review (`plans/plan_2026-05-30_eb9b4fee/`). No protocol behavior changes; one concurrency fix, doc-drift cleanup, and a large test-coverage expansion.

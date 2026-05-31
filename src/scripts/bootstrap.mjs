@@ -17,7 +17,13 @@
 import { mkdirSync, writeFileSync, readFileSync, readdirSync, renameSync, unlinkSync, existsSync, rmSync, copyFileSync, openSync, closeSync } from "fs";
 import { join } from "path";
 import { randomBytes, createHash } from "crypto";
-import { extractField, splitChangelogFields } from "./shared.mjs";
+import {
+  extractField,
+  splitChangelogFields,
+  COMPRESSED_SUMMARY_OPEN,
+  COMPRESSED_SUMMARY_CLOSE,
+  CHANGELOG_COMPRESSED_INLINE_RE,
+} from "./shared.mjs";
 // Re-exported so bootstrap.test.mjs can probe it via the bootstrap entrypoint.
 export { splitChangelogFields };
 
@@ -279,8 +285,8 @@ export function stripCrossPlanNote(content) {
 
 const CONSOLIDATED_COMPRESS_THRESHOLD = 500;
 const MAX_CONSOLIDATED_PLANS = 4;
-const COMPRESSED_SUMMARY_OPEN = "<!-- COMPRESSED-SUMMARY -->";
-const COMPRESSED_SUMMARY_CLOSE = "<!-- /COMPRESSED-SUMMARY -->";
+// COMPRESSED_SUMMARY_OPEN / COMPRESSED_SUMMARY_CLOSE now live in ./shared.mjs
+// (imported above) so the validator recognizes the same markers this produces.
 
 function checkConsolidatedSize(filePath, label) {
   // After merge, warn the agent if a consolidated file exceeds the compression threshold.
@@ -709,7 +715,8 @@ export function maybeCompressDecisions(planDir, opts = {}) {
 const CHANGELOG_COMPRESS_THRESHOLD = 200;
 const CHANGELOG_HEADER_LINES = 4;
 const CHANGELOG_MIN_ELIDE_GROUP = 5;
-const CHANGELOG_COMPRESSED_INLINE_RE = /^- \(compressed: \d+ low-decision-impact edits/;
+// CHANGELOG_COMPRESSED_INLINE_RE now lives in ./shared.mjs (imported above) so
+// validate-plan.mjs skips the same inline summary line this produces.
 
 /**
  * Classify a changelog entry line into one of:
@@ -1511,9 +1518,13 @@ function cmdCloseInner(opts = {}) {
     // Insert under `## Transition History:` rather than at EOF, so the new
     // entry lands in the right section even when an agent has appended
     // additional sections after the history block.
+    // Skip when the plan is already CLOSE: re-closing is a no-op, and recording
+    // `CLOSE → CLOSE` would emit an invalid-transition ERROR from validate-plan.
     const historyMarker = "## Transition History:";
-    const historyIdx = updated.indexOf(historyMarker);
-    if (historyIdx >= 0) {
+    const historyIdx = prevState === "CLOSE" ? -2 : updated.indexOf(historyMarker);
+    if (historyIdx === -2) {
+      // already CLOSE — leave history untouched (no transition occurred)
+    } else if (historyIdx >= 0) {
       const afterMarker = historyIdx + historyMarker.length;
       let sectionEnd = updated.indexOf("\n## ", afterMarker);
       if (sectionEnd < 0) sectionEnd = updated.length;

@@ -731,3 +731,85 @@ describe("validate-plan.mjs — M7: targeted check-function coverage", () => {
     assert.match(r.stdout, /weak Evidence/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Producer/validator parity: the validator must accept the intra-plan
+// compression artifacts that bootstrap.mjs (maybeCompress*) itself writes, and
+// the idempotent CLOSE→CLOSE transition that cmdClose can leave on legacy
+// state.md files. Regression guards for review findings B1, B3, B2.
+// ---------------------------------------------------------------------------
+describe("validate-plan.mjs accepts bootstrap compression + idempotent-close artifacts", () => {
+  let tempDirs = [];
+  function getTempDir() { const d = makeTempDir(); tempDirs.push(d); return d; }
+  afterEach(() => { for (const d of tempDirs) removeTempDir(d); tempDirs = []; });
+
+  it("B1: COMPRESSED-SUMMARY block in decisions.md is not parsed as a decision entry", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    // decisions.md exactly as bootstrap.mjs maybeCompressDecisions writes it:
+    // a <!-- COMPRESSED-SUMMARY --> block (whose body contains "## Summary
+    // (compressed)" and "### Decision lookup" headings) above the raw entries.
+    writeFileSync(join(planDir, "decisions.md"),
+`# Decision Log
+*Plan: plan_2026-05-15_aaaabbbb*
+*Append-only.*
+
+<!-- COMPRESSED-SUMMARY -->
+<!-- entries-at-compress: 1 -->
+<!-- entries-fingerprint: deadbeef -->
+## Summary (compressed)
+*Auto-compressed from 320 lines (1 entries). Raw entries preserved below.*
+
+### Decision lookup
+- D-001: fixture decision
+
+### Things NOT to do (from PIVOT entries)
+*(none)*
+
+### Anchored decisions
+*(none — no entries carry Anchor-Refs yet)*
+<!-- /COMPRESSED-SUMMARY -->
+
+## D-001 | EXPLORE → PLAN | 2026-05-15
+**Context**: fixture.
+**Decision**: fixture.
+**Trade-off**: a **at the cost of** b.
+**Reasoning**: fixture.
+**Anchor-Refs**: (none yet)
+`);
+    const r = run(cwd);
+    assert.doesNotMatch(r.stdout, /\[decisions-schema\]/,
+      `compressed-summary block must not trigger decisions-schema error, got:\n${r.stdout}`);
+    assert.doesNotMatch(r.stdout, /Summary \(compressed\)/,
+      `"## Summary (compressed)" must not be reported as a non-conforming header, got:\n${r.stdout}`);
+  });
+
+  it("B3: inline `- (compressed: ...)` changelog line is not flagged as malformed", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    writeFileSync(join(planDir, "changelog.md"),
+`# Changelog
+*Append-only.*
+- (compressed: 7 low-decision-impact edits from steps 1-3, radius LOW)
+2026-05-15T11:50:00Z | iter-1/step-4 | abc1234 | src/foo.mjs | EDIT(+5,-2) | radius:LOW(3) | - | real edit
+`);
+    const r = run(cwd);
+    assert.doesNotMatch(r.stdout, /\[changelog-malformed\]/,
+      `inline compression summary line must be skipped, got:\n${r.stdout}`);
+  });
+
+  it("B2: CLOSE→CLOSE transition is accepted (idempotent re-close on legacy state.md)", () => {
+    const cwd = getTempDir();
+    writePlan(cwd, {
+      state: "CLOSE",
+      transitionHistoryExtra: [
+        "- EXECUTE → REFLECT (phase ended, 2026-05-15T12:00:00Z)",
+        "- REFLECT → CLOSE (all criteria met, 2026-05-15T12:10:00Z)",
+        "- CLOSE → CLOSE (bootstrap close)",
+      ].join("\n"),
+    });
+    const r = run(cwd);
+    assert.doesNotMatch(r.stdout, /Invalid transition: CLOSE→CLOSE/,
+      `CLOSE→CLOSE must be a valid (idempotent) transition, got:\n${r.stdout}`);
+  });
+});

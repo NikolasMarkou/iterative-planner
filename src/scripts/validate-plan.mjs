@@ -11,7 +11,12 @@
 
 import { readFileSync, existsSync, readdirSync, statSync } from "fs";
 import { join, extname, relative } from "path";
-import { extractField, splitChangelogFields } from "./shared.mjs";
+import {
+  extractField,
+  splitChangelogFields,
+  CHANGELOG_COMPRESSED_INLINE_RE,
+  blankCompressedSummaryBlock,
+} from "./shared.mjs";
 
 const cwd = process.cwd();
 const plansDir = join(cwd, "plans");
@@ -94,6 +99,7 @@ const VALID_TRANSITIONS = new Set([
   "REFLECT→CLOSE",   // already covered above
   "PIVOT→CLOSE",   // bootstrap close from PIVOT
   "UNKNOWN→CLOSE",   // bootstrap close fallback
+  "CLOSE→CLOSE",   // idempotent re-close (legacy state.md; new closes skip the write)
 ]);
 
 // Mandatory sections in plan.md (header text → considered populated if non-placeholder)
@@ -679,9 +685,13 @@ function parseDecisionsEntries(content) {
     }
   }
 
-  // Strip HTML comment blocks so the example schema in bootstrap.mjs (wrapped
-  // in <!-- ... -->) does not register as an entry.
-  const stripped = content.replace(/<!--[\s\S]*?-->/g, "");
+  // Blank the intra-plan COMPRESSED-SUMMARY block first (markers + body) so its
+  // markdown headings ("## Summary (compressed)", "### Decision lookup", ...) —
+  // written by bootstrap.mjs maybeCompressDecisions — are not parsed as decision
+  // entries. blankCompressedSummaryBlock preserves line count so reported line
+  // numbers stay accurate. Then strip remaining HTML comment blocks so the
+  // example schema in bootstrap.mjs (wrapped in <!-- ... -->) does not register.
+  const stripped = blankCompressedSummaryBlock(content).replace(/<!--[\s\S]*?-->/g, "");
   const lines = stripped.split("\n");
   const entries = [];
   const badHeaders = [];
@@ -1367,6 +1377,7 @@ function checkChangelogFormat(planDir, issues) {
     if (line.startsWith("#")) continue;        // header
     if (line.startsWith("*")) continue;        // italic header note
     if (line.startsWith("<!--")) continue;     // comment
+    if (CHANGELOG_COMPRESSED_INLINE_RE.test(line)) continue; // inline compression summary (bootstrap.mjs maybeCompressChangelog)
     // F3 — Data line: split on the FIRST 7 " | " separators; the 8th field
     // (reason) absorbs any trailing " | " inside it. Pre-fix, a legitimate
     // reason like "fix race: a | b" produced 9 fields → WARN [changelog-malformed]

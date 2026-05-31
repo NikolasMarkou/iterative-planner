@@ -233,7 +233,7 @@ Institutional memory across plans. Unlike FINDINGS.md / DECISIONS.md (append+mer
 - **Gate check**: apply Mandatory Re-reads table (PLAN row). If not read → read now. No exceptions. If `findings.md` has <3 indexed findings → go back to EXPLORE.
 - **Compression gate** — if `{plan-dir}/decisions.md` >300 lines or `{plan-dir}/changelog.md` >200 lines, run `maybeCompressDecisions` / `maybeCompressChangelog` (exported from `src/scripts/bootstrap.mjs`) before any other PLAN work. Append-only safe: raw entries are preserved verbatim; a metadata block is inserted at top (decisions) or inline summary lines replace LOW-radius/`-`-decision-ref groups (changelog). Re-compression is idempotent. See `references/file-formats.md` § Intra-plan compression for full spec. Orchestrator dispatch wires this at step-0.5 of PLAN (orchestrator.md update lands in step 10 of v2.18.0).
 - **Problem Statement first** — before designing steps, write in `plan.md`: (1) what behavior is expected, (2) invariants — what must always be true, (3) edge cases at boundaries. Can't state the problem clearly → go back to EXPLORE.
-- Write `plan.md`: problem statement, steps (with risk/dependency annotations), assumptions, failure modes, pre-mortem & falsification signals, success criteria, verification strategy, complexity budget.
+- Write `plan.md` with all 11 validator-required sections (see `validate-plan.mjs` `PLAN_SECTIONS`): Goal, Problem Statement, Context, Files To Modify, Steps (with risk/dependency annotations), Assumptions, Failure Modes, Pre-Mortem & Falsification Signals, Success Criteria, Verification Strategy, Complexity Budget.
 - **Decomposition** — when breaking the goal into steps:
   1. Understand the whole problem before splitting into parts. Resist diving into details.
   2. Identify natural boundaries — where do concerns separate?
@@ -359,7 +359,7 @@ When a step fails during EXECUTE:
 Attempt counter in `state.md`. Resets on: user direction | new step | PIVOT.
 **No exceptions.** Unguided fix chains derail projects.
 
-**Pre-step gate** (v2.18.0+): `node <skill-path>/scripts/validate-plan.mjs --pre-step` runs in the orchestrator before each ip-executor spawn. Exit code 2 with `GATE:FAIL [leash-cap]` mechanically halts EXECUTE when 2 fix attempts are recorded — converting the leash from advisory to enforced. See `agents/orchestrator.md` EXECUTE dispatch for the integration point.
+**Pre-step gate** (v2.18.0+): `node <skill-path>/scripts/validate-plan.mjs --pre-step` runs in the orchestrator before each ip-executor spawn. Exit code 2 emits one of four `GATE:FAIL` slugs — `[no-plan]`, `[wrong-state]`, `[leash-cap]`, `[iteration-cap]`. `[leash-cap]` mechanically halts EXECUTE when 2 fix attempts are recorded — converting the leash from advisory to enforced. See `agents/orchestrator.md` EXECUTE dispatch for the integration point and the full slug→action mapping.
 
 **Enforcement tiers** — the leash is enforced at two different points, with *intentionally* different thresholds. Do not "align" them:
 - **Real-time gate** (`--pre-step`, exit 2): HARD-blocks the **3rd** spawn — fires at `attempts >= 2`. This is the actual cap (2 attempts per step).

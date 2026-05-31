@@ -368,6 +368,22 @@ describe("bootstrap.mjs", () => {
       assert.ok(r.stderr.includes("No active plan"), "should report no active plan");
     });
 
+    it("does not record an invalid CLOSE→CLOSE transition when already CLOSE (B2)", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Idempotent close test");
+      const planDir = getPointer(dir);
+      const statePath = join(dir, "plans", planDir, "state.md");
+      // Simulate the documented CLOSE flow: the agent sets Current State to CLOSE
+      // (REFLECT→CLOSE already logged) before invoking `bootstrap.mjs close`.
+      const state = readFileSync(statePath, "utf-8")
+        .replace(/^# Current State:.*$/m, "# Current State: CLOSE");
+      writeFileSync(statePath, state);
+      run(dir, "close");
+      const after = readFileSync(statePath, "utf-8");
+      assert.ok(!after.includes("CLOSE → CLOSE (bootstrap close)"),
+        `re-close must not append a CLOSE→CLOSE history bullet:\n${after}`);
+    });
+
     it("merges findings to consolidated FINDINGS.md", () => {
       const dir = getTempDir();
       run(dir, "new", "Merge test");
