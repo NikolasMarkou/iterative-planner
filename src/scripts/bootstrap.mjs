@@ -15,7 +15,7 @@
 // Requires Node.js 18+ (guaranteed by Claude Code).
 
 import { mkdirSync, writeFileSync, readFileSync, readdirSync, renameSync, unlinkSync, existsSync, rmSync, copyFileSync, openSync, closeSync } from "fs";
-import { join } from "path";
+import { join, extname } from "path";
 import { randomBytes, createHash } from "crypto";
 import {
   extractField,
@@ -1607,6 +1607,119 @@ function cmdList() {
   }
 }
 
+// Source-file walk parameters for anchor maintenance (cmdRetire). Kept in sync
+// with validate-plan.mjs ANCHOR_SOURCE_EXTS / SKIP_DIR_NAMES so `retire` stamps
+// exactly the anchors the validator scans.
+const ANCHOR_SOURCE_EXTS = new Set([
+  ".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".rb", ".go", ".rs",
+  ".c", ".h", ".cpp", ".hpp", ".java", ".kt", ".sql",
+]);
+const ANCHOR_SKIP_DIRS = new Set([
+  "node_modules", ".git", "dist", "build", "plans",
+  "target", "__pycache__", ".cache", "vendor", "out",
+]);
+
+// DECISION plan_2026-05-30_fa6267aa/D-001 — `retire <plan-id>` is the auditable
+// path out of the "anchor graveyard" (OBS-004 / P1): when a plan dir is removed
+// or obsolete, a qualified `# DECISION <plan>/D-NNN` anchor still in source
+// becomes an orphan that validate-plan reports as a blocking ERROR — which jams
+// the REFLECT→CLOSE gate of the *current, unrelated* plan. retire stamps those
+// anchors `[STALE]` (downgrading orphan ERROR→WARN, see validate-plan.mjs
+// severityForOrphan) and drops the dir, instead of hand-editing every anchor.
+function cmdRetire(planId) {
+  if (!planId) {
+    console.error("ERROR: usage: node bootstrap.mjs retire <plan-id>");
+    process.exit(1);
+  }
+  if (!PLAN_ID_RE.test(planId)) {
+    console.error(`ERROR: "${planId}" is not a valid plan-id (expected plan_YYYY-MM-DD_XXXXXXXX).`);
+    process.exit(1);
+  }
+  if (readPointer() === planId) {
+    console.error(`ERROR: ${planId} is the ACTIVE plan. Run "close" first, then "retire".`);
+    process.exit(1);
+  }
+
+  // Match `DECISION <plan-id>/D-NNN` (any comment style) not already [STALE].
+  // The negative lookahead makes re-running retire idempotent.
+  const escaped = planId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const anchorRe = new RegExp(`(DECISION\\s+${escaped}\\/D-\\d{3})(?!\\s+\\[STALE\\])`, "g");
+
+  let stamped = 0;
+  let filesChanged = 0;
+  const walk = (dir, depth = 0) => {
+    if (depth > 12) return;
+    let ents;
+    try { ents = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of ents) {
+      if (e.isDirectory()) {
+        if (e.name.startsWith(".") || ANCHOR_SKIP_DIRS.has(e.name)) continue;
+        walk(join(dir, e.name), depth + 1);
+      } else if (e.isFile() && ANCHOR_SOURCE_EXTS.has(extname(e.name))) {
+        const full = join(dir, e.name);
+        let txt;
+        try { txt = readFileSync(full, "utf-8"); } catch { continue; }
+        if (!txt.includes(planId)) continue;
+        const matches = txt.match(anchorRe);
+        if (!matches) continue;
+        writeFileSync(full, txt.replace(anchorRe, "$1 [STALE]"));
+        stamped += matches.length;
+        filesChanged++;
+      }
+    }
+  };
+  walk(cwd);
+
+  const planDirPath = join(plansDir, planId);
+  let dirRemoved = false;
+  if (existsSync(planDirPath)) {
+    rmSync(planDirPath, { recursive: true, force: true });
+    dirRemoved = true;
+  }
+
+  console.log(`Retired ${planId}.`);
+  console.log(`  Anchors marked [STALE]: ${stamped} across ${filesChanged} file(s).`);
+  console.log(`  Plan directory: ${dirRemoved ? "removed" : "not present (already deleted)"}.`);
+  console.log(`  Per-plan section in plans/DECISIONS.md left intact (sliding window trims it).`);
+}
+
+// DECISION plan_2026-05-30_fa6267aa/D-002 — `reset-attempts` mechanically clears
+// the active plan's `## Fix Attempts` section (OBS-016 / P2). The pre-step gate
+// HARD-blocks at 2 recorded attempts, and SKILL.md says the counter "resets on
+// user direction | new step | PIVOT" — but nothing automated that reset, so a
+// stale counter carried across a PIVOT (or a forgotten new-step wipe) jams the
+// FIRST step of the next attempt. This subcommand is the auditable reset that
+// replaces hand-editing state.md — the exact manual surgery the gate exists to
+// avoid.
+function cmdResetAttempts() {
+  const planDirName = readPointer();
+  if (!planDirName) {
+    console.error("ERROR: No active plan. reset-attempts operates on the active plan's state.md.");
+    process.exit(1);
+  }
+  const statePath = join(plansDir, planDirName, "state.md");
+  let state;
+  try { state = readFileSync(statePath, "utf-8"); } catch {
+    console.error(`ERROR: cannot read ${statePath}.`);
+    process.exit(1);
+  }
+  const hIdx = state.indexOf("## Fix Attempts");
+  if (hIdx < 0) {
+    console.error("ERROR: no '## Fix Attempts' section found in state.md.");
+    process.exit(1);
+  }
+  const headingLineEnd = state.indexOf("\n", hIdx);
+  const bodyStart = headingLineEnd < 0 ? state.length : headingLineEnd + 1;
+  let sectionEnd = state.indexOf("\n## ", bodyStart);
+  if (sectionEnd < 0) sectionEnd = state.length;
+  const tail = state.slice(sectionEnd);
+  const updated = state.slice(0, bodyStart) + "- (none yet for current step)" + (tail || "\n");
+  writeFileSync(statePath, updated);
+  console.log(`Fix Attempts reset for active plan ${planDirName}.`);
+  console.log(`  state.md '## Fix Attempts' → "- (none yet for current step)"`);
+  console.log(`  The pre-step leash gate will count 0 attempts on the next EXECUTE step.`);
+}
+
 function printUsage() {
   console.log(`Usage: node bootstrap.mjs <command> [options]
 
@@ -1617,6 +1730,10 @@ Commands:
   status                  One-line state summary
   close                   Close active plan (preserves directory)
   list                    Show all plan directories (active and closed)
+  retire <plan-id>        Mark a removed/obsolete plan's DECISION anchors [STALE]
+                          (orphan ERROR→WARN) and drop its plan directory
+  reset-attempts          Clear the active plan's Fix Attempts section (unjams a
+                          stale pre-step leash counter after a PIVOT/new step)
 
 Backward-compatible:
   node bootstrap.mjs "goal"   Same as: node bootstrap.mjs new "goal"`);
@@ -1636,7 +1753,7 @@ import { fileURLToPath } from "url";
 
 function runCli() {
   const args = process.argv.slice(2);
-  const subcommands = new Set(["new", "resume", "status", "close", "list", "help"]);
+  const subcommands = new Set(["new", "resume", "status", "close", "list", "retire", "reset-attempts", "help"]);
 
   if (args.length === 0) {
     printUsage();
@@ -1665,6 +1782,10 @@ function runCli() {
     cmdClose();
   } else if (cmd === "list") {
     cmdList();
+  } else if (cmd === "retire") {
+    cmdRetire(args[1]);
+  } else if (cmd === "reset-attempts") {
+    cmdResetAttempts();
   } else if (cmd === "help") {
     printUsage();
   }

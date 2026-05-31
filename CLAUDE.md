@@ -58,6 +58,8 @@ node <skill-path>/scripts/bootstrap.mjs resume               # Output current pl
 node <skill-path>/scripts/bootstrap.mjs status               # One-line state summary
 node <skill-path>/scripts/bootstrap.mjs close                # Close active plan (preserves directory)
 node <skill-path>/scripts/bootstrap.mjs list                 # Show all plan directories
+node <skill-path>/scripts/bootstrap.mjs retire <plan-id>     # Mark a removed plan's DECISION anchors [STALE], drop its dir
+node <skill-path>/scripts/bootstrap.mjs reset-attempts       # Clear active plan's Fix Attempts (unjam stale leash counter)
 ```
 
 `new` creates plan directory with all files + writes `plans/.current_plan` pointer. Creates `plans/FINDINGS.md`, `plans/DECISIONS.md`, `plans/LESSONS.md`, `plans/SYSTEM.md` (system atlas, max 300 lines, rewritten by ip-archivist at CLOSE), and `plans/INDEX.md` if they don't exist. Idempotent-safe: refuses if active plan exists.

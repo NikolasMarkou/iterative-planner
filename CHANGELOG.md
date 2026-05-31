@@ -4,6 +4,20 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.19.3] - 2026-05-31
+
+Resolves the two remaining HIGH-severity findings from the deep self-review (`plans/plan_2026-05-30_fa6267aa/`): both "anchor graveyard" and "stuck leash counter" failure modes that could block the REFLECT→CLOSE gate of an unrelated, current plan. Two new `bootstrap.mjs` subcommands. Tests 218 → 225.
+
+### Added
+- **`bootstrap.mjs retire <plan-id>` (P1 / OBS-004).** When a plan dir is deleted or obsoleted while its qualified `# DECISION <plan>/D-NNN` anchors still live in source, `validate-plan.mjs` reported the orphan as a blocking `ERROR [anchor-unknown-plan]` — jamming the *current* plan's CLOSE gate, recoverable only by hand-editing every anchor. `retire` walks the same source set the validator scans (`ANCHOR_SOURCE_EXTS` / skip-dirs), stamps `[STALE]` on that plan's anchors (orphan ERROR → WARN, idempotent via negative lookahead), and drops the plan dir. Works whether or not the dir still exists; refuses the active plan and malformed ids.
+- **`bootstrap.mjs reset-attempts` (P2 / OBS-016).** The pre-step gate HARD-blocks at 2 recorded fix attempts, but nothing automated the "resets on new step | PIVOT" rule, so a stale counter jammed the first step after a pivot (`GATE:FAIL [leash-cap]`), recoverable only by hand-editing `state.md` — the exact surgery the gate exists to avoid. `reset-attempts` mechanically rewrites the active plan's `## Fix Attempts` section to placeholder.
+
+### Changed
+- Protocol wiring: SKILL.md (Bootstrapping list, Autonomy Leash, Decision Anchoring), `agents/orchestrator.md` (PIVOT dispatch now runs `reset-attempts`), README and CLAUDE.md command lists updated for both subcommands.
+
+### Tests
+- +7 regression tests (retire: stamp/dir-absent/idempotent/refuse-active/bad-id; reset-attempts: placeholder rewrite + no-active-plan). Count 225 (bootstrap 172 + validate-plan 39 + blast-radius 14).
+
 ## [2.19.2] - 2026-05-31
 
 Bug-fix release from a deep self-review (`plans/plan_2026-05-30_fa6267aa/`). Fixes a producer/validator parity defect where the protocol's own intra-plan compression output failed its own validator, plus an idempotent-close transition glitch and doc drift. No protocol behavior changes. Tests 214 → 218.

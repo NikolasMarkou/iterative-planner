@@ -2896,3 +2896,103 @@ describe("shared.mjs: extractField", () => {
     assert.equal(extractField(content, /\n## Goal\s*\n([\s\S]+?)(?=\n## |$)/), "Do the thing");
   });
 });
+
+// P1 — `retire <plan-id>` resolves the anchor-graveyard ERROR (OBS-004): stamp
+// [STALE] on a removed plan's qualified DECISION anchors so validate-plan
+// downgrades the orphan from ERROR (blocks REFLECT→CLOSE) to WARN.
+describe("bootstrap.mjs retire", () => {
+  let tempDirs = [];
+  function getTempDir() { const d = makeTempDir(); tempDirs.push(d); return d; }
+  afterEach(() => { for (const d of tempDirs) removeTempDir(d); tempDirs = []; });
+
+  const OTHER = "plan_2026-03-01_cccccccc";
+
+  function seedAnchor(dir) {
+    mkdirSync(join(dir, "src"), { recursive: true });
+    writeFileSync(join(dir, "src", "main.js"),
+      `// DECISION ${OTHER}/D-001: keep retry budget at 3\nfunction f(){ return 3; }\n`);
+  }
+
+  it("stamps [STALE] on a qualified anchor and removes the plan dir", () => {
+    const dir = getTempDir();
+    run(dir, "new", "active work");
+    seedAnchor(dir);
+    mkdirSync(join(dir, "plans", OTHER), { recursive: true }); // the plan existed once
+    const r = run(dir, "retire", OTHER);
+    assert.equal(r.exitCode, 0, `retire should succeed, got:\n${r.stdout}\n${r.stderr}`);
+    const src = readFileSync(join(dir, "src", "main.js"), "utf-8");
+    assert.match(src, /D-001 \[STALE\]/, `anchor should be marked [STALE], got:\n${src}`);
+    assert.ok(!existsSync(join(dir, "plans", OTHER)), "plan dir should be removed");
+  });
+
+  it("works when the plan dir is already gone (stamps anchors only)", () => {
+    const dir = getTempDir();
+    run(dir, "new", "active work");
+    seedAnchor(dir);
+    const r = run(dir, "retire", OTHER);
+    assert.equal(r.exitCode, 0);
+    assert.match(r.stdout, /not present/, `should note dir absent, got:\n${r.stdout}`);
+    assert.match(readFileSync(join(dir, "src", "main.js"), "utf-8"), /D-001 \[STALE\]/);
+  });
+
+  it("is idempotent — re-running does not double-stamp", () => {
+    const dir = getTempDir();
+    run(dir, "new", "active work");
+    seedAnchor(dir);
+    run(dir, "retire", OTHER);
+    run(dir, "retire", OTHER);
+    const src = readFileSync(join(dir, "src", "main.js"), "utf-8");
+    assert.ok(!/\[STALE\]\s+\[STALE\]/.test(src), `must not double-stamp, got:\n${src}`);
+    assert.equal((src.match(/\[STALE\]/g) || []).length, 1, "exactly one [STALE] marker");
+  });
+
+  it("refuses to retire the active plan", () => {
+    const dir = getTempDir();
+    run(dir, "new", "active work");
+    const active = getPointer(dir);
+    const r = runFull(dir, "retire", active);
+    assert.notEqual(r.exitCode, 0, "should refuse active plan");
+    assert.match(r.stderr, /ACTIVE plan/, `expected ACTIVE-plan error, got:\n${r.stderr}`);
+  });
+
+  it("rejects a malformed plan-id", () => {
+    const dir = getTempDir();
+    run(dir, "new", "active work");
+    const r = runFull(dir, "retire", "not-a-plan");
+    assert.notEqual(r.exitCode, 0);
+    assert.match(r.stderr, /not a valid plan-id/);
+  });
+});
+
+// P2 — `reset-attempts` clears a stale Fix Attempts counter (OBS-016) so the
+// pre-step leash gate cannot HARD-block the next EXECUTE step after a PIVOT.
+describe("bootstrap.mjs reset-attempts", () => {
+  let tempDirs = [];
+  function getTempDir() { const d = makeTempDir(); tempDirs.push(d); return d; }
+  afterEach(() => { for (const d of tempDirs) removeTempDir(d); tempDirs = []; });
+
+  it("rewrites the Fix Attempts section to the placeholder", () => {
+    const dir = getTempDir();
+    run(dir, "new", "leash work");
+    const planDir = getPointer(dir);
+    const statePath = join(dir, "plans", planDir, "state.md");
+    const jammed = readFileSync(statePath, "utf-8")
+      .replace("# Current State: EXPLORE", "# Current State: EXECUTE")
+      .replace(/## Fix Attempts \(resets per plan step\)\n- \(none yet\)/,
+        "## Fix Attempts (resets per plan step)\n- Step 1, attempt 1: tried X — failed\n- Step 1, attempt 2: tried Y — failed");
+    writeFileSync(statePath, jammed);
+    const r = run(dir, "reset-attempts");
+    assert.equal(r.exitCode, 0, `reset-attempts should succeed, got:\n${r.stdout}\n${r.stderr}`);
+    const after = readFileSync(statePath, "utf-8");
+    assert.match(after, /## Fix Attempts \(resets per plan step\)\n- \(none yet for current step\)\n## Change Manifest/,
+      `Fix Attempts must be reset to placeholder, got:\n${after}`);
+    assert.ok(!after.includes("tried X"), "stale attempt entries must be gone");
+  });
+
+  it("errors when there is no active plan", () => {
+    const dir = getTempDir();
+    const r = runFull(dir, "reset-attempts");
+    assert.notEqual(r.exitCode, 0);
+    assert.match(r.stderr, /No active plan/);
+  });
+});

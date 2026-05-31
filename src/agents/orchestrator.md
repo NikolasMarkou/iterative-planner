@@ -167,7 +167,10 @@ Floor: items 2 and 4 are non-negotiable.
 2. Decide keep vs revert (default: revert to latest checkpoint if unsure)
 3. Log pivot decision in decisions.md
 4. Update state.md, progress.md
-5. Emit PC-PIVOT block → get user approval → transition to PLAN
+5. Run `bootstrap.mjs reset-attempts` — the leash counter must NOT carry into the
+   post-pivot EXECUTE, or the pre-step gate HARD-fails (`leash-cap`) on the first
+   new step. (Same command applies when advancing to a genuinely new step.)
+6. Emit PC-PIVOT block → get user approval → transition to PLAN
 
 ### CLOSE State
 1. Spawn ip-archivist with all plan files

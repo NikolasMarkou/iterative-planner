@@ -91,6 +91,8 @@ node <skill-path>/scripts/bootstrap.mjs resume               # Re-entry summary 
 node <skill-path>/scripts/bootstrap.mjs status               # One-line state summary
 node <skill-path>/scripts/bootstrap.mjs close                # Close plan (preserves directory)
 node <skill-path>/scripts/bootstrap.mjs list                 # Show all plan directories
+node <skill-path>/scripts/bootstrap.mjs retire <plan-id>     # Mark a removed plan's DECISION anchors [STALE], drop its dir
+node <skill-path>/scripts/bootstrap.mjs reset-attempts       # Clear active plan's Fix Attempts (unjam stale leash counter)
 node <skill-path>/scripts/validate-plan.mjs                  # Validate active plan compliance
 ```
 
@@ -356,7 +358,7 @@ When a step fails during EXECUTE:
 4. Present: what step should do, what happened, 2 attempts, root cause guess, available checkpoints for rollback.
 5. Transition → REFLECT. Log leash hit in `state.md`. Wait for user.
 
-Attempt counter in `state.md`. Resets on: user direction | new step | PIVOT.
+Attempt counter in `state.md`. Resets on: user direction | new step | PIVOT. **Reset mechanically** — run `bootstrap.mjs reset-attempts` (clears the `## Fix Attempts` section to placeholder) rather than hand-editing state.md; a stale counter carried across a PIVOT or new step otherwise HARD-blocks the pre-step gate on the next step (`GATE:FAIL [leash-cap]`).
 **No exceptions.** Unguided fix chains derail projects.
 
 **Pre-step gate** (v2.18.0+): `node <skill-path>/scripts/validate-plan.mjs --pre-step` runs in the orchestrator before each ip-executor spawn. Exit code 2 emits one of four `GATE:FAIL` slugs — `[no-plan]`, `[wrong-state]`, `[leash-cap]`, `[iteration-cap]`. `[leash-cap]` mechanically halts EXECUTE when 2 fix attempts are recorded — converting the leash from advisory to enforced. See `agents/orchestrator.md` EXECUTE dispatch for the integration point and the full slug→action mapping.
@@ -375,6 +377,10 @@ Codebase must be known-good before any PLAN. See `references/code-hygiene.md`.
 
 Code from failed iterations carries invisible context. Anchor `# DECISION <plan-id>/D-NNN`
 at point of impact — state what NOT to do and why. Audit at CLOSE.
+When a plan is deleted or obsoleted while its qualified anchors still live in
+source, run `bootstrap.mjs retire <plan-id>` to mark those anchors `[STALE]`
+(orphan ERROR → WARN) instead of hand-editing each one — otherwise validate-plan
+ERRORs on the orphan and blocks the *current* plan's REFLECT→CLOSE gate.
 The plan-id prefix (e.g. `plan_2026-05-07_7556fb98`) makes the anchor globally
 unambiguous and resolvable after `plans/DECISIONS.md` sliding-window trim.
 See `references/decision-anchoring.md`.
