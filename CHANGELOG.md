@@ -18,6 +18,9 @@ Hardens the skill→orchestrator→sub-agent wiring that v2.20.0 introduced. Inv
 ### Changed
 - `src/SKILL.md` condition 2 now states explicitly that `agents/orchestrator.md` is resolved against the harness-announced skill base directory (removes an implicit assumption).
 
+### Docs
+- Sync the `--pre-step` `--help` leash-cap text to the actual `>= 2` condition (was `< 2`); refresh the README skill badge to v2.21.0.
+
 ## [2.20.0] - 2026-05-31
 
 Closes a structural wiring gap: skill activation never engaged the orchestrator. `src/SKILL.md` (the file loaded on activation) had no instruction to read or assume `agents/orchestrator.md`, so the rich runtime dispatch (inlined Presentation Contract floors, PLAN compression gate, EXECUTE pre-step gate exit-code handling, PIVOT reset-attempts) was never reached on the skill-trigger path — only when the orchestrator was launched directly as a main thread. The dependency arrow pointed one way only (orchestrator.md declares `skills: [iterative-planner]`; nothing pointed back). No script changes.
