@@ -636,6 +636,24 @@ describe("bootstrap.mjs", () => {
       assert.ok(plan.includes("No goal specified"), "should use default goal");
     });
 
+    it("near-miss subcommand is rejected with a suggestion", () => {
+      const dir = getTempDir();
+      const r = run(dir, "staus");
+      assert.notEqual(r.exitCode, 0, "should reject typo'd subcommand");
+      assert.ok(r.stderr.includes("status"), "should suggest the nearest subcommand");
+      assert.ok(!getPointer(dir), "should not create a plan");
+    });
+
+    it("single-word goal not near any subcommand still creates a plan", () => {
+      const dir = getTempDir();
+      const r = run(dir, "refactor");
+      assert.equal(r.exitCode, 0, `stderr: ${r.stderr}`);
+      const planDir = getPointer(dir);
+      assert.ok(planDir, "should create plan for a non-near single-word goal");
+      const plan = readPlanFile(dir, planDir, "plan.md");
+      assert.ok(plan.includes("refactor"), "should contain goal");
+    });
+
     it("multiple close-open cycles produce growing consolidated files", () => {
       const dir = getTempDir();
 

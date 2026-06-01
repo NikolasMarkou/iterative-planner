@@ -58,6 +58,28 @@ function isPidAlive(pid) {
   }
 }
 
+// Classic Levenshtein edit distance (full DP matrix). Inputs are short
+// subcommand names, so the O(m*n) cost is negligible. Used by the runCli typo
+// guard to detect a single bare token that is a near-miss of a subcommand.
+function editDistance(a, b) {
+  const m = a.length;
+  const n = b.length;
+  const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      dp[i][j] = Math.min(
+        dp[i - 1][j] + 1,
+        dp[i][j - 1] + 1,
+        dp[i - 1][j - 1] + cost
+      );
+    }
+  }
+  return dp[m][n];
+}
+
 function acquireLock() {
   mkdirSync(plansDir, { recursive: true });
   // Try atomic exclusive creation.
@@ -1766,6 +1788,17 @@ function runCli() {
     if (cmd.startsWith("-")) {
       console.error(`ERROR: Unknown flag "${cmd}". Use "help" for usage.`);
       process.exit(1);
+    }
+    // Typo guard: a single bare token closely matching a subcommand is almost
+    // certainly a mistyped subcommand, not a one-word goal. Multi-word args keep
+    // the backward-compat goal behavior untouched.
+    if (args.length === 1) {
+      const near = [...subcommands].find((s) => editDistance(cmd, s) <= 2);
+      if (near) {
+        console.error(`ERROR: "${cmd}" is not a subcommand (did you mean "${near}"?).`);
+        console.error(`  To use it as a plan goal, run: new "${cmd}"`);
+        process.exit(1);
+      }
     }
     // Backward compat: treat args as goal for `new`
     cmdNew(args.join(" ") || "No goal specified", false);
