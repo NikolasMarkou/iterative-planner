@@ -321,12 +321,18 @@ Each file has a single owner. Only the owner writes; others read. This prevents 
 | `state.md` | Orchestrator | All agents |
 | `plan.md` | Plan-writer (full rewrite) + Orchestrator (Post-Step Gate) | Executor, Verifier |
 | `decisions.md` | Orchestrator + Plan-writer | All agents |
+| `findings.md` (index) | Orchestrator | Plan-writer, Reviewer |
 | `findings/{topic}.md` | Explorer (one file per explorer) | Orchestrator, Plan-writer |
+| `findings/review-iter-N.md` | Reviewer | Orchestrator |
 | `progress.md` | Orchestrator + Executor | All agents |
 | `verification.md` | Plan-writer (template), Verifier (results) | Orchestrator, Reviewer |
 | `changelog.md` | Executor (append per edit) + Orchestrator (Post-Step Gate) | Reviewer |
+| `checkpoints/*` | Executor | Orchestrator (for PIVOT) |
 | `summary.md` | Archivist | — |
+| `plans/FINDINGS.md` | Archivist (via bootstrap) | Orchestrator, Plan-writer |
+| `plans/DECISIONS.md` | Archivist (via bootstrap) | Plan-writer |
 | `plans/LESSONS.md`, `plans/SYSTEM.md` | Archivist | All planning agents |
+| `plans/INDEX.md` | Archivist (via bootstrap) | Orchestrator |
 
 ---
 
