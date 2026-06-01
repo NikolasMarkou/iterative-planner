@@ -159,8 +159,8 @@ make help                    # Show available targets
 - [ ] File Ownership Model table in src/SKILL.md matches agent tool permissions
 - [ ] src/SKILL.md "Orchestrator Role Assumption" section names `iterative-planner-orchestrator` and matches `src/agents/orchestrator.md` frontmatter `name:`
 - [ ] src/SKILL.md does not duplicate orchestrator.md dispatch sequencing (pointer only — "Dispatch Rules by State" is a pointer, not a per-state spawn narrative)
-- [ ] README.md and src/SKILL.md File Ownership tables agree (same co-ownership for `plan.md` and `changelog.md`)
-- [ ] Skill-bundled `~/.claude/skills/iterative-planner/agents/` mirrors `src/agents/` (`diff -rq` empty) — kept in sync by "Updating Local Skill"
+- [ ] README.md and src/SKILL.md File Ownership tables agree (same co-ownership for `plan.md` and `changelog.md`); full row parity between the two File Ownership tables is now enforced automatically by `node src/scripts/check-doc-parity.mjs` (run via `make validate`)
+- [ ] Skill-bundled `~/.claude/skills/iterative-planner/agents/` mirrors `src/agents/` (`diff -rq --exclude='.claude' src/agents ~/.claude/skills/iterative-planner/agents` empty) — kept in sync by "Updating Local Skill"
 
 ## Updating Local Skill
 
@@ -184,4 +184,4 @@ cp src/agents/*.md ~/.claude/skills/iterative-planner/agents/   # keep skill-bun
 
 The Makefile `build` target bundles `src/agents/*.md` into the skill package's `agents/` dir, so the skill-bundled `agents/` is authoritative-by-build and this manual procedure must mirror it — otherwise the bundled copy drifts (as it did pre-v2.21.0).
 
-Always verify with `diff -rq` after copying. Every file, every time — including `diff -rq src/agents ~/.claude/skills/iterative-planner/agents`.
+Always verify with `diff -rq` after copying. Every file, every time — including `diff -rq --exclude='.claude' src/agents ~/.claude/skills/iterative-planner/agents`.
