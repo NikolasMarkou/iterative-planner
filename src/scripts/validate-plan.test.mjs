@@ -339,6 +339,41 @@ describe("validate-plan.mjs checkLeashCount regex reconciliation", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Standard-path plan-dir resolution (F2: absolute-path guard, plan_2026-06-01_dfe2202a step 2)
+// ---------------------------------------------------------------------------
+
+describe("validate-plan.mjs standard-path plan-dir resolution", () => {
+  let tempDirs = [];
+  function getTempDir() { const d = makeTempDir(); tempDirs.push(d); return d; }
+  afterEach(() => { for (const d of tempDirs) removeTempDir(d); tempDirs = []; });
+
+  it("F2: absolute path to a real plan dir resolves on the standard path (no `plans//` not-found error)", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    const r = run(cwd, planDir);
+    assert.doesNotMatch(r.stderr, /Plan directory not found/, `should not report not-found for a real abs path, got:\n${r.stderr}`);
+    assert.doesNotMatch(r.stdout + r.stderr, /plans\/\//, `resolved path must not contain a doubled \`plans//\`, got:\n${r.stdout}${r.stderr}`);
+  });
+
+  it("F2: bare plan-dir name still resolves under plans/ on the standard path", () => {
+    const cwd = getTempDir();
+    const { planId } = writePlan(cwd);
+    const r = run(cwd, planId);
+    assert.doesNotMatch(r.stderr, /Plan directory not found/, `bare name should resolve under plans/, got:\n${r.stderr}`);
+  });
+
+  it("F2: nonexistent absolute path errors with the resolved absolute path (no `plans/` prefix)", () => {
+    const cwd = getTempDir();
+    const missing = join(cwd, "no-such-plan-dir-xyz");
+    const r = run(cwd, missing);
+    assert.equal(r.exitCode, 1, `missing dir should exit 1, got ${r.exitCode}`);
+    assert.match(r.stderr, /Plan directory not found/, `expected not-found error, got:\n${r.stderr}`);
+    assert.match(r.stderr, new RegExp(missing.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), `error should report the resolved abs path, got:\n${r.stderr}`);
+    assert.doesNotMatch(r.stderr, /plans\/no-such-plan-dir-xyz/, `must not prepend plans/ to an absolute path, got:\n${r.stderr}`);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // --pre-step gate suite (step 11 of plan_2026-05-15_71ab18dd, D-004)
 // ---------------------------------------------------------------------------
 

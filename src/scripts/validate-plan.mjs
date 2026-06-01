@@ -1452,10 +1452,10 @@ function checkPresentationContractLog(planDir, issues) {
 }
 
 function validate(planDirName) {
-  const planDir = join(plansDir, planDirName);
+  const planDir = (planDirName.includes("/") || planDirName.startsWith(".")) ? planDirName : join(plansDir, planDirName);
 
   if (!existsSync(planDir)) {
-    console.error(`ERROR: Plan directory not found: plans/${planDirName}`);
+    console.error(`ERROR: Plan directory not found: ${planDir}`);
     process.exit(1);
   }
 
@@ -1499,11 +1499,11 @@ function validate(planDirName) {
   const infos = issues.filter((i) => i.severity === "INFO");
 
   if (issues.length === 0) {
-    console.log(`PASS: plans/${planDirName} — no issues found`);
+    console.log(`PASS: ${planDir} — no issues found`);
     process.exit(0);
   }
 
-  console.log(`Validation: plans/${planDirName}`);
+  console.log(`Validation: ${planDir}`);
   for (const issue of errors) {
     console.log(`  ERROR [${issue.check}]: ${issue.message}`);
   }
