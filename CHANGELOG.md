@@ -4,6 +4,21 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.22.0] - 2026-06-01
+
+Resolves five findings from an epistemic-deconstructor audit double-check (`plans/plan_2026-06-01_dfe2202a/`): two contract-path footguns in the Node scripts (F1, F2), a doc-ownership-table gap (F4), and a new executable parity gate (MF-1/F3) plus a CLAUDE.md nit. Riskiest/contract-sensitive fixes landed first; F4 (README rows) landed before the parity gate so the gate is green at introduction.
+
+### Added
+- **`src/scripts/check-doc-parity.mjs` parity gate (MF-1 / F3).** New executable gate enforcing that every File Ownership path in `src/SKILL.md` is also present in README's table. Exports a pure `comparison(skillText, readmeText)` (parses both tables, splits comma-merged cells, strips the `(index)` suffix) used by both the CLI wrapper and `check-doc-parity.test.mjs`; CLI exits 0 on parity, 1 with a missing-row diff. Wired by name into `make`/`build.ps1` `lint`/`test`/`validate`.
+
+### Fixed
+- **bootstrap.mjs typo-subcommand footgun (F1).** A single bare token within edit distance 2 of a known subcommand (e.g. `staus`) is now rejected with a "did you mean" suggestion plus a `new "..."` escape hatch, instead of silently becoming a plan goal. Multi-word and empty bare-goal invocations are unchanged (still tested byte-for-byte).
+- **validate-plan.mjs standard-path absolute/relative path handling (F2).** `validate()` now resolves absolute/relative path args (mirroring the existing `--pre-step` guard) and reports the resolved path in not-found / PASS / Validation messages, instead of a misleading `plans//...` prefix. Bare plan-id names still resolve under `plans/`; `--pre-step` exit codes untouched.
+
+### Docs
+- **README File Ownership table parity (F4).** Added the 6 rows present in `src/SKILL.md` but missing from README (`findings.md` index, `findings/review-iter-N.md`, `checkpoints/*`, `plans/FINDINGS.md`, `plans/DECISIONS.md`, `plans/INDEX.md`).
+- CLAUDE.md `diff -rq` mirror-check commands now use `--exclude='.claude'`; the File Ownership validation-checklist item references the new parity gate.
+
 ## [2.21.0] - 2026-05-31
 
 Hardens the skill→orchestrator→sub-agent wiring that v2.20.0 introduced. Investigation (`plans/plan_2026-05-30_fa6267aa/`, findings W0–W3) confirmed via a **live dispatch test** that the v2.20.0 bridge already works on the skill-trigger path — the in-thread orchestrator resolved `agents/orchestrator.md` against the harness-announced base dir and spawned sub-agents successfully. The residual defect was that the wiring is *soft*: nothing distinguishes a working dispatch from the (explicitly allowed) monolithic fallback, so a degraded run looked identical to "agents not wired in." No state-machine, transition, or `.mjs` changes.
