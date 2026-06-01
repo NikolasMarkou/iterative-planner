@@ -33,7 +33,12 @@ iterative-planner/
     │   ├── bootstrap.mjs             # Initializes plans/plan_YYYY-MM-DD_XXXXXXXX/ directory (Node.js 18+)
     │   ├── bootstrap.test.mjs        # Test suite (node:test)
     │   ├── validate-plan.mjs         # Protocol compliance validator (Node.js 18+)
-    │   └── blast-radius.mjs          # Per-edit blast-radius scorer (used by ip-executor; Node.js 18+)
+    │   ├── validate-plan.test.mjs    # Test suite (node:test)
+    │   ├── blast-radius.mjs          # Per-edit blast-radius scorer (used by ip-executor; Node.js 18+)
+    │   ├── blast-radius.test.mjs     # Test suite (node:test)
+    │   ├── check-doc-parity.mjs      # README<->SKILL.md File Ownership table parity gate (used by make/build.ps1 validate; Node.js 18+)
+    │   ├── check-doc-parity.test.mjs # Test suite (node:test)
+    │   └── shared.mjs                # Shared helpers (field extraction, changelog field split, compression markers)
     └── references/                   # Knowledge base documents
         ├── blast-radius.md           # Per-edit blast-radius signals + scoring spec
         ├── code-hygiene.md           # Change manifest format, revert procedures, forbidden leftovers
