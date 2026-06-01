@@ -279,6 +279,15 @@ function Invoke-Validate {
         }
     }
 
+    # Verify README <-> SKILL.md File Ownership table parity
+    if (Test-Path "src/scripts/check-doc-parity.mjs") {
+        Write-Host "Checking doc parity (README <-> SKILL.md File Ownership)..."
+        node src/scripts/check-doc-parity.mjs
+        if ($LASTEXITCODE -ne 0) {
+            $errors += "ERROR: README File Ownership table out of parity with SKILL.md (see check-doc-parity.mjs)"
+        }
+    }
+
     if ($errors.Count -gt 0) {
         $errors | ForEach-Object { Write-Host $_ -ForegroundColor Red }
         exit 1
@@ -289,7 +298,7 @@ function Invoke-Validate {
 
 function Invoke-Lint {
     Write-Host "Checking script syntax..." -ForegroundColor Yellow
-    foreach ($script in @("bootstrap.mjs", "validate-plan.mjs", "blast-radius.mjs", "shared.mjs")) {
+    foreach ($script in @("bootstrap.mjs", "validate-plan.mjs", "blast-radius.mjs", "shared.mjs", "check-doc-parity.mjs")) {
         node --check "src/scripts/$script"
         if ($LASTEXITCODE -ne 0) {
             Write-Host "Syntax check failed: $script" -ForegroundColor Red
@@ -323,7 +332,7 @@ function Invoke-Test {
 
     Write-Host "Running all test suites..." -ForegroundColor Yellow
 
-    node --test src/scripts/bootstrap.test.mjs src/scripts/validate-plan.test.mjs src/scripts/blast-radius.test.mjs
+    node --test src/scripts/bootstrap.test.mjs src/scripts/validate-plan.test.mjs src/scripts/blast-radius.test.mjs src/scripts/check-doc-parity.test.mjs
     if ($LASTEXITCODE -ne 0) {
         Write-Host "Tests failed!" -ForegroundColor Red
         exit 1

@@ -162,6 +162,9 @@ validate:
 		grep -qF "\"$$pair\"" src/scripts/validate-plan.mjs || \
 		(echo "ERROR: validate-plan.mjs VALID_TRANSITIONS missing $$pair" && exit 1); \
 	done
+	@# Verify README <-> SKILL.md File Ownership table parity
+	@echo "Checking doc parity (README <-> SKILL.md File Ownership)..."
+	@node src/scripts/check-doc-parity.mjs || exit 1
 	@echo "Validation passed!"
 
 # Check script syntax
@@ -172,13 +175,14 @@ lint:
 	node --check src/scripts/validate-plan.mjs
 	node --check src/scripts/blast-radius.mjs
 	node --check src/scripts/shared.mjs
+	node --check src/scripts/check-doc-parity.mjs
 	@echo "Syntax check passed!"
 
 # Run tests
 .PHONY: test
 test: lint
 	@echo "Running all test suites..."
-	node --test src/scripts/bootstrap.test.mjs src/scripts/validate-plan.test.mjs src/scripts/blast-radius.test.mjs
+	node --test src/scripts/bootstrap.test.mjs src/scripts/validate-plan.test.mjs src/scripts/blast-radius.test.mjs src/scripts/check-doc-parity.test.mjs
 	@echo "Tests passed!"
 
 # Clean build artifacts
