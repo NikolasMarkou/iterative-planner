@@ -371,4 +371,37 @@ describe("blast-radius.mjs — #9: deps + tests signal contributions", () => {
       assert.equal(o.signals.tests.score, 0);
     } finally { removeTempDir(cwd); }
   });
+
+  it("hist signal: file in active plan state.md Change Manifest -> hist.score=1, hist.prior=true", () => {
+    // iterationHistory() reads plans/.current_plan to find the active plan dir,
+    // then searches state.md (and checkpoints/*.md) for the target file path.
+    // Constructing a fake plans/ dir here exercises that path directly.
+    const cwd = makeTempDir();
+    try {
+      writeFileSync(join(cwd, "tracked.js"), "export const t=1;\n");
+      commitAll(cwd);
+
+      // Build a minimal plans/ dir with .current_plan and a state.md that
+      // references "tracked.js" in the Change Manifest section.
+      const planId = "plan_2026-01-01_aaaaaaaa";
+      const planDir = join(cwd, "plans", planId);
+      mkdirSync(planDir, { recursive: true });
+      writeFileSync(join(cwd, "plans", ".current_plan"), planId + "\n");
+      const stateContent = [
+        "# Current State: EXECUTE",
+        "## Iteration: 1",
+        "## Current Plan Step: 1",
+        "## Change Manifest (current iteration)",
+        "- step-1: tracked.js — some change (abc1234)",
+        "## Last Transition: INIT -> EXECUTE",
+      ].join("\n") + "\n";
+      writeFileSync(join(planDir, "state.md"), stateContent);
+
+      const o = JSON.parse(run(cwd, "tracked.js", "--json").stdout.trim());
+      assert.equal(o.signals.hist.score, 1,
+        `expected hist.score=1 (file in plan manifest); got ${JSON.stringify(o.signals.hist)}`);
+      assert.equal(o.signals.hist.prior, true,
+        `expected hist.prior=true; got ${JSON.stringify(o.signals.hist)}`);
+    } finally { removeTempDir(cwd); }
+  });
 });
