@@ -69,11 +69,15 @@ export function comparison(skillText, readmeText) {
   return { missing };
 }
 
-function isEntryPoint() {
-  return fileURLToPath(import.meta.url) === process.argv[1];
-}
+const isEntryPoint = (() => {
+  try {
+    return process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+  } catch {
+    return false;
+  }
+})();
 
-if (isEntryPoint()) {
+if (isEntryPoint) {
   const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
   const skillText = readFileSync(join(repoRoot, "src", "SKILL.md"), "utf8");
   const readmeText = readFileSync(join(repoRoot, "README.md"), "utf8");
