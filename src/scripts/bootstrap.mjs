@@ -32,7 +32,7 @@ const plansDir = join(cwd, "plans");
 const pointerFile = join(plansDir, ".current_plan");
 const lockFile = join(plansDir, ".lock");
 
-// DECISION plan_2026-05-15_9ae230f7/D-004 — concurrent-new race fix (OBS-003).
+// DECISION plan_2026-05-15_9ae230f7/D-004 [STALE] — concurrent-new race fix (OBS-003).
 // Pre-fix: two parallel `bootstrap.mjs new` invocations both passed
 // `readPointer() === null`, both created plan dirs, last writer won the
 // pointer (loser orphaned). Worse, the loser's catch handler unconditionally
@@ -275,7 +275,7 @@ function stripHeader(content) {
 }
 
 export function stripCrossPlanNote(content) {
-  // DECISION plan_2026-05-15_9ae230f7/D-008 — OBS-008. Pre-fix: a global
+  // DECISION plan_2026-05-15_9ae230f7/D-008 [STALE] — OBS-008. Pre-fix: a global
   // regex replace stripped the boilerplate note wherever it appeared. If a
   // finding's prose quoted the line (e.g. while documenting the protocol's
   // own template), that quoted line was silently elided at merge.
@@ -1476,7 +1476,7 @@ function cmdStatus() {
 }
 
 function cmdClose(opts = {}) {
-  // DECISION plan_2026-05-30_eb9b4fee/D-003 — standalone `close` must hold the
+  // DECISION plan_2026-05-30_eb9b4fee/D-003 [STALE] — standalone `close` must hold the
   // same exclusive lock as `new`, or two concurrent closes race on the
   // consolidated-file merge/trim/index writes. The `new --force` path already
   // holds the lock and passes _holdsLock, so it skips re-acquisition (avoids
@@ -1641,7 +1641,7 @@ const ANCHOR_SKIP_DIRS = new Set([
   "target", "__pycache__", ".cache", "vendor", "out",
 ]);
 
-// DECISION plan_2026-05-30_fa6267aa/D-001 — `retire <plan-id>` is the auditable
+// DECISION plan_2026-05-30_fa6267aa/D-001 [STALE] — `retire <plan-id>` is the auditable
 // path out of the "anchor graveyard" (OBS-004 / P1): when a plan dir is removed
 // or obsolete, a qualified `# DECISION <plan>/D-NNN` anchor still in source
 // becomes an orphan that validate-plan reports as a blocking ERROR — which jams
@@ -1705,7 +1705,7 @@ function cmdRetire(planId) {
   console.log(`  Per-plan section in plans/DECISIONS.md left intact (sliding window trims it).`);
 }
 
-// DECISION plan_2026-05-30_fa6267aa/D-002 — `reset-attempts` mechanically clears
+// DECISION plan_2026-05-30_fa6267aa/D-002 [STALE] — `reset-attempts` mechanically clears
 // the active plan's `## Fix Attempts` section (OBS-016 / P2). The pre-step gate
 // HARD-blocks at 2 recorded attempts, and SKILL.md says the counter "resets on
 // user direction | new step | PIVOT" — but nothing automated that reset, so a
@@ -1824,7 +1824,7 @@ function runCli() {
   }
 }
 
-// DECISION plan_2026-05-15_71ab18dd/D-003 — isEntryPoint guard makes bootstrap.mjs importable
+// DECISION plan_2026-05-15_71ab18dd/D-003 [STALE] — isEntryPoint guard makes bootstrap.mjs importable
 // as a library (for maybeCompressDecisions / maybeCompressChangelog) without triggering the
 // CLI dispatch that called printUsage() + process.exit(0). Standard Node.js ESM dual-mode
 // pattern: compare fileURLToPath(import.meta.url) to process.argv[1]. CLI behavior preserved.

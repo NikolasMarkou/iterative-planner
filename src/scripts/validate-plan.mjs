@@ -146,7 +146,7 @@ function isPlaceholder(text) {
 }
 
 function extractSection(content, heading) {
-  // DECISION plan_2026-05-15_71ab18dd/D-002 — allow optional trailing
+  // DECISION plan_2026-05-15_71ab18dd/D-002 [STALE] — allow optional trailing
   // parenthetical (e.g. "## Fix Attempts (resets per plan step)" as written
   // by bootstrap.mjs). Without this, every callsite using a bootstrap-written
   // parenthetical heading silently returned null.
@@ -183,7 +183,7 @@ function normalizePhase(s) {
 // false-positives like `PIVOT-RECOVERY` / `PIVOT-PLAN` (bare hyphen = qualifier,
 // not transition).
 //
-// DECISION plan_2026-05-15_9ae230f7/D-002 — pattern-discipline per LESSONS L-012:
+// DECISION plan_2026-05-15_9ae230f7/D-002 [STALE] — pattern-discipline per LESSONS L-012:
 // when a check operates on phase semantics, accept BOTH sides of the arrow.
 // The prior implementation only matched PIVOT as DESTINATION, missing
 // PIVOT-as-SOURCE (`PIVOT → PLAN`) which the state machine produces.
@@ -397,7 +397,7 @@ function checkLeashCount(planDir, issues) {
   }
 }
 
-// DECISION plan_2026-05-15_9ae230f7/D-005 — derive iteration from Transition
+// DECISION plan_2026-05-15_9ae230f7/D-005 [STALE] — derive iteration from Transition
 // History (OBS-005). Pre-fix: `## Iteration: N` is agent-written, so an agent
 // (or sloppy fork) that forgets to bump it bypasses the 5/6 caps indefinitely.
 // Cross-check: each EXECUTE → REFLECT arrow in Transition History closes one
@@ -562,7 +562,7 @@ function checkCompressionMarkers(issues) {
     if (!existsSync(path)) continue;
     let content;
     try { content = readFileSync(path, "utf-8"); } catch { continue; }
-    // DECISION plan_2026-05-15_9ae230f7/D-006 — OBS-010 line-anchored markers.
+    // DECISION plan_2026-05-15_9ae230f7/D-006 [STALE] — OBS-010 line-anchored markers.
     // Pre-fix: `content.indexOf(OPEN)` substring-matched prose mentions of
     // the marker (e.g. a finding's plain-English description of the
     // compression machinery wrapped in backticks). Result: false-positive
@@ -1522,7 +1522,7 @@ function validate(planDirName) {
 // Pre-step gate (--pre-step mode)
 // ---------------------------------------------------------------------------
 
-// DECISION plan_2026-05-15_71ab18dd/D-004 — Pre-step Autonomy Leash gate.
+// DECISION plan_2026-05-15_71ab18dd/D-004 [STALE] — Pre-step Autonomy Leash gate.
 // Lightweight HARD gate the orchestrator MUST run before every ip-executor
 // spawn (between "identify next step" and "Spawn ip-executor"). Exits 2 on
 // any HARD FAIL — exit code 2 is reserved EXCLUSIVELY for this mode, so

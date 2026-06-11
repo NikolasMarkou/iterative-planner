@@ -37,7 +37,7 @@ const repoRel = relative(cwd, filePath);
 // Helpers
 // -----------------------------------------------------------------------------
 
-// DECISION plan_2026-05-15_9ae230f7/D-003 — spawnSync(cmd, args[], …) instead of
+// DECISION plan_2026-05-15_9ae230f7/D-003 [STALE] — spawnSync(cmd, args[], …) instead of
 // execSync(cmd-string). Pre-fix: every callsite interpolated `repoRel` (and
 // `pat`) into a double-quoted shell command string, allowing `$()` / backtick
 // expansion when the filename contained those. Live probe (FN-004) created
