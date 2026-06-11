@@ -7,11 +7,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { readFileSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
-import { emitState, VALID_STATES } from "./emit-state.mjs";
+import { emitState, resolveModuleBody, VALID_STATES } from "./emit-state.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const emitStatePath = join(here, "emit-state.mjs");
@@ -117,9 +118,9 @@ test("CLI --state bogus exits 1 with 'unknown state' on stderr", () => {
   assert.match(res.stderr, /unknown state/);
 });
 
-test("CLI with no --state flag exits 1 with usage on stderr", () => {
+test("CLI with no --state flag exits 2 with usage on stderr", () => {
   const res = spawnSync("node", [emitStatePath], { encoding: "utf8" });
-  assert.equal(res.status, 1);
+  assert.equal(res.status, 2);
   assert.match(res.stderr, /Usage/);
 });
 
@@ -129,4 +130,43 @@ test("CLI --state close is rejected (exit 1)", () => {
   });
   assert.equal(res.status, 1);
   assert.match(res.stderr, /unknown state/);
+});
+
+// --- resolveModuleBody failure paths ------------------------------------------
+// Direct (no-spawn) tests of the injectable seam. pathToFileURL(dir) does NOT add a
+// trailing slash, so we append one — a base URL ending in "/" makes
+// `new URL("state-explore.md", base)` resolve INTO the temp dir.
+
+test("resolveModuleBody reports empty/corrupt for a zero-byte module", () => {
+  const tmpDir = mkdtempSync(join(tmpdir(), "emit-state-"));
+  try {
+    const base = pathToFileURL(tmpDir + "/");
+    writeFileSync(join(tmpDir, "state-explore.md"), "");
+    const r = resolveModuleBody("explore", base);
+    assert.equal(r.ok, false);
+    assert.equal(r.code, 1);
+    assert.match(r.message, /empty|corrupt/);
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("resolveModuleBody reports cannot-read for a missing module", () => {
+  const tmpDir = mkdtempSync(join(tmpdir(), "emit-state-"));
+  try {
+    const base = pathToFileURL(tmpDir + "/");
+    // Do not write the file — the module is absent.
+    const r = resolveModuleBody("explore", base);
+    assert.equal(r.ok, false);
+    assert.equal(r.code, 1);
+    assert.match(r.message, /cannot read/);
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("resolveModuleBody reports unknown state for an invalid state (default base)", () => {
+  const r = resolveModuleBody("bogus");
+  assert.equal(r.ok, false);
+  assert.match(r.message, /unknown state/);
 });
