@@ -1747,7 +1747,8 @@ function cmdResetAttempts() {
   let sectionEnd = relEnd < 0 ? state.length : bodyStart + relEnd;
   const tail = state.slice(sectionEnd);
   const updated = state.slice(0, bodyStart) + "- (none yet for current step)" + (tail || "\n");
-  writeFileSync(statePath, updated);
+  writeFileSync(statePath + ".tmp", updated);
+  renameSync(statePath + ".tmp", statePath);
   console.log(`Fix Attempts reset for active plan ${planDirName}.`);
   console.log(`  state.md '## Fix Attempts' → "- (none yet for current step)"`);
   console.log(`  The pre-step leash gate will count 0 attempts on the next EXECUTE step.`);
