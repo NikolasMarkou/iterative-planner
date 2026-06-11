@@ -11,6 +11,7 @@
 
 import { readFileSync, existsSync, readdirSync, statSync } from "fs";
 import { join, extname, relative } from "path";
+import { fileURLToPath } from "url";
 import {
   extractField,
   splitChangelogFields,
@@ -1576,10 +1577,24 @@ function runPreStepGate(planDir) {
 // CLI Dispatch
 // ---------------------------------------------------------------------------
 
-const args = process.argv.slice(2);
+// DECISION plan_2026-06-11_4ecd09f7/D-002 — CLI dispatch guarded behind isEntryPoint so the
+// module is import-safe (a test helper or future tooling can `import` validate-plan.mjs without
+// the arg-parsing + process.exit firing at module load). Standard Node.js ESM dual-mode pattern,
+// mirrors bootstrap.mjs:1831-1841. Do NOT move the process.exit calls or validate() back to
+// module scope — that re-breaks import-safety. See decisions.md D-002.
+const isEntryPoint = (() => {
+  try {
+    return process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+  } catch {
+    return false;
+  }
+})();
 
-if (args.includes("--help") || args.includes("-h")) {
-  console.log(`Usage: node validate-plan.mjs [plan-dir-name]
+if (isEntryPoint) {
+  const args = process.argv.slice(2);
+
+  if (args.includes("--help") || args.includes("-h")) {
+    console.log(`Usage: node validate-plan.mjs [plan-dir-name]
        node validate-plan.mjs --pre-step [plan-dir-name]
 
 Validates protocol compliance of an iterative-planner plan directory.
@@ -1638,44 +1653,45 @@ Exit codes:
   2 = GATE:FAIL — reserved EXCLUSIVELY for --pre-step HARD FAIL
       (leash-cap, wrong-state, iteration-cap, no-plan). Orchestrators MUST
       halt the EXECUTE spawn pipeline on exit 2.`);
-  process.exit(0);
-}
+    process.exit(0);
+  }
 
-// --pre-step branch — bypass the full validator entirely.
-if (args.includes("--pre-step")) {
-  // Resolve plan dir: positional non-flag arg wins; else .current_plan pointer.
-  const positional = args.find((a) => !a.startsWith("--") && a !== "-h");
-  let preStepDir;
-  if (positional) {
-    // Accept absolute path, relative path, or bare plan-dir name (resolved under plans/).
-    if (positional.includes("/") || positional.startsWith(".")) {
-      preStepDir = positional;
+  // --pre-step branch — bypass the full validator entirely.
+  if (args.includes("--pre-step")) {
+    // Resolve plan dir: positional non-flag arg wins; else .current_plan pointer.
+    const positional = args.find((a) => !a.startsWith("--") && a !== "-h");
+    let preStepDir;
+    if (positional) {
+      // Accept absolute path, relative path, or bare plan-dir name (resolved under plans/).
+      if (positional.includes("/") || positional.startsWith(".")) {
+        preStepDir = positional;
+      } else {
+        preStepDir = join(plansDir, positional);
+      }
     } else {
-      preStepDir = join(plansDir, positional);
+      try {
+        const pointed = readFileSync(pointerFile, "utf-8").trim();
+        preStepDir = join(plansDir, pointed);
+      } catch {
+        console.log("GATE:FAIL [no-plan]");
+        process.exit(2);
+      }
     }
+    runPreStepGate(preStepDir);
+  }
+
+  let planDirName;
+  if (args.length > 0) {
+    planDirName = args[0];
   } else {
     try {
-      const pointed = readFileSync(pointerFile, "utf-8").trim();
-      preStepDir = join(plansDir, pointed);
+      planDirName = readFileSync(pointerFile, "utf-8").trim();
     } catch {
-      console.log("GATE:FAIL [no-plan]");
-      process.exit(2);
+      console.error("ERROR: No active plan and no plan directory specified.");
+      console.error("  Usage: node validate-plan.mjs <plan-dir-name>");
+      process.exit(1);
     }
   }
-  runPreStepGate(preStepDir);
-}
 
-let planDirName;
-if (args.length > 0) {
-  planDirName = args[0];
-} else {
-  try {
-    planDirName = readFileSync(pointerFile, "utf-8").trim();
-  } catch {
-    console.error("ERROR: No active plan and no plan directory specified.");
-    console.error("  Usage: node validate-plan.mjs <plan-dir-name>");
-    process.exit(1);
-  }
+  validate(planDirName);
 }
-
-validate(planDirName);
