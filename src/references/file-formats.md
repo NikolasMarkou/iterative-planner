@@ -2,6 +2,7 @@
 
 Templates and examples for every `{plan-dir}` file.
 
+<!-- TEMPLATE:state -->
 ## state.md
 
 Single source of truth for "where am I?"
@@ -45,6 +46,7 @@ Update on every state transition.
 
 **Change Manifest**: `[x]` = committed, `[ ]` = uncommitted. On failed step / PIVOT → revert uncommitted. See `code-hygiene.md`.
 
+<!-- TEMPLATE:plan -->
 ## plan.md
 
 Living plan. **Rewritten** each iteration (old plans preserved via `decisions.md`).
@@ -133,6 +135,7 @@ approaches v1 (in-place migration) and v2 (dual-write) were abandoned.
 **Step annotations**: `[RISK: low/medium/high]` and `[deps: N,M]` are recommended on each step. Helps enforce risk-first ordering.
 **`[IRREVERSIBLE]`** tag on steps with side effects that can't be undone via git (DB migrations, external API calls, service config, non-tracked file deletion). Requires: user confirmation, rollback plan in checkpoint, dry-run if available.
 
+<!-- TEMPLATE:decisions -->
 ## decisions.md
 
 Append-only. **Never edit or delete past entries.**
@@ -270,6 +273,7 @@ Mirrors the cross-plan `<!-- COMPRESSED-SUMMARY -->` pattern (see `SKILL.md` "Co
 
 No-op return reasons (no file write): `missing`, `empty`, `under-threshold`, `no-preamble`, `too-few-entries`, `no-new-entries`. Compression returns `{ compressed, beforeLines, afterLines, reason }`.
 
+<!-- TEMPLATE:findings -->
 ## findings.md
 
 Updated during EXPLORE. Corrected during PIVOT when earlier findings prove wrong. Always include **file paths with line numbers** and **code path traces**.
@@ -372,6 +376,7 @@ authenticate! → SessionStore#find (line 45) → RedisStore#get (line 12) → R
 - Upgrading rack-session requires Rails 7.1+ (currently on 7.0.4)
 ```
 
+<!-- TEMPLATE:progress -->
 ## progress.md
 
 Flat checklist. Updated in: PLAN (populate Remaining), EXECUTE (move items), REFLECT (mark failed/blocked), PIVOT (annotate pivot).
@@ -398,6 +403,7 @@ Flat checklist. Updated in: PLAN (populate Remaining), EXECUTE (move items), REF
 - Nothing currently
 ```
 
+<!-- TEMPLATE:verification -->
 ## verification.md
 
 Written during PLAN (initial template with criteria), updated during EXECUTE (per-step results), completed during REFLECT (full verification pass). Rewritten each iteration (not append-only — each REFLECT cycle produces a fresh verification).
@@ -478,6 +484,7 @@ Plans with no testable criteria: write "N/A — manual review only" in Method co
 
 **Convergence Metrics** *(EXTENDED — iteration 2+ only)* — quantitative convergence signal. Iteration 1: write "N/A — first iteration, no previous data to compare." Iteration 2+: compute pass rate delta, scope stability, issue trend. See `convergence-metrics.md` for formula and decision rules.
 
+<!-- TEMPLATE:checkpoints -->
 ## checkpoints/cp-NNN-iterN.md
 
 Name: `cp-NNN-iterN.md` — NNN increments globally, iterN = iteration when created. Example: `cp-000-iter1.md`, `cp-001-iter2.md`.
@@ -525,6 +532,7 @@ npm ci                                       # or: cargo build / poetry install 
 - Before destructive operations (schema changes, file deletions, config overwrites)
 - User expresses uncertainty
 
+<!-- TEMPLATE:findings-consolidated -->
 ## plans/FINDINGS.md (consolidated)
 
 Cross-plan findings archive. Entries merged from per-plan `findings.md` on close. Per-plan headings demoted one level (## → ###) and nested under a `## plan_YYYY-MM-DD_XXXXXXXX` section. Relative `findings/` links rewritten to `plan_YYYY-MM-DD_XXXXXXXX/findings/`.
@@ -593,6 +601,7 @@ Usage:
 - Agent/user can curate (remove stale sections) manually if needed
 - When compressing: only summarize `## plan_*` sections, SKIP content between `<!-- COMPRESSED-SUMMARY -->` markers
 
+<!-- TEMPLATE:decisions-consolidated -->
 ## plans/DECISIONS.md (consolidated)
 
 Cross-plan decision archive. Entries merged from per-plan `decisions.md` on close. Decision IDs (D-NNN) are scoped to their plan section — no cross-plan deduplication.
@@ -659,6 +668,7 @@ Usage:
 - Decision IDs are scoped per plan section (each plan starts at D-001)
 - When compressing: only summarize `## plan_*` sections, SKIP content between `<!-- COMPRESSED-SUMMARY -->` markers
 
+<!-- TEMPLATE:lessons -->
 ## plans/LESSONS.md
 
 Cross-plan institutional memory. **Rewritten** (not appended) at CLOSE to stay ≤200 lines. Read before PLAN.
@@ -696,6 +706,7 @@ Usage:
 - Drop: one-off findings, detailed decision reasoning, plan-specific details
 - Created automatically by bootstrap on first `new`
 
+<!-- TEMPLATE:system -->
 ## plans/SYSTEM.md
 
 Cross-plan **system atlas** — a curated map of *what the system being planned against actually is*, distinct from goal-driven findings. **Rewritten** (not appended) by `ip-archivist` at CLOSE to stay ≤300 lines. Read at start of EXPLORE and start of PLAN. Schema is **domain-neutral** — works for codebases, research pipelines, ops runbooks, strategy systems. The optional `## Codebase Specialization` section is the only codebase-specific content.
@@ -741,6 +752,7 @@ Usage:
 - Created by bootstrap on first `new` (skeleton matches schema above).
 - Schema single-source: this section. Bootstrap skeleton in `src/scripts/bootstrap.mjs` must match exactly — update in lockstep.
 
+<!-- TEMPLATE:index -->
 ## plans/INDEX.md
 
 Topic-to-directory mapping. Updated automatically on `close`. Survives sliding window trim — use this to locate old findings when they've been removed from consolidated files.
@@ -761,6 +773,7 @@ Usage:
 - Created automatically by bootstrap on first `new`. Updated on each `close`.
 - Topics extracted from findings.md index entries
 
+<!-- TEMPLATE:lessons-snapshot -->
 ## lessons_snapshot.md
 
 Automatic snapshot of `plans/LESSONS.md` taken at close, saved to the plan directory. Allows recovery of lesson state at any point in the project's history.
@@ -768,6 +781,7 @@ Automatic snapshot of `plans/LESSONS.md` taken at close, saved to the plan direc
 - Created automatically by `close` in `plans/{plan-dir}/lessons_snapshot.md`
 - Read-only reference — not updated after creation
 
+<!-- TEMPLATE:changelog -->
 ## changelog.md
 
 Per-edit, append-only ledger of every file edit during EXECUTE. One line per (file, edit). Owner: `ip-executor`. Reader: `ip-reviewer` at REFLECT. Lives at `{plan-dir}/changelog.md`. Reset per plan (not consolidated cross-plan).
@@ -853,6 +867,7 @@ The `iter-X/step-Y..iter-X/step-Z` range collapses to a single `iter-X/step-Y` w
 
 No-op return reasons: `missing`, `empty`, `under-threshold`, `no-elidable-groups`, `no-new-entries`. Compression returns `{ compressed, beforeLines, afterLines, elidedCount, reason }`.
 
+<!-- TEMPLATE:summary -->
 ## summary.md
 
 Written at CLOSE.
@@ -892,6 +907,7 @@ cookie fallback for legacy clients.
 - Dual-write only viable with short TTLs
 ```
 
+<!-- TEMPLATE:presentation-contracts -->
 ## Presentation Contracts
 
 **Canonical, single-source-of-truth definition** of the user-visible chat block the orchestrator MUST emit at each user-facing state transition. Sub-agents are invisible — only the orchestrator's chat text reaches the user. Disk artifacts (plan.md, verification.md, findings/*) are persistent memory, not user-facing channels. Every state transition that requires user input MUST be preceded by the corresponding presentation contract in the same assistant turn.
@@ -985,3 +1001,4 @@ Agent files (`agents/orchestrator.md` and contributing sub-agent files) inline t
 - `agents/ip-reviewer.md` — Relay Contract references PC-REFLECT item 4.
 - `agents/ip-executor.md` — Output Format references PC-EXECUTE-STEP and PC-EXECUTE-LEASH.
 - `SKILL.md` — User Interaction table cell references the contract by name.
+<!-- TEMPLATE:END -->
