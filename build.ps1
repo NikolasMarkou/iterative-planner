@@ -45,6 +45,12 @@ function Invoke-Build {
 
     # Copy main skill file
     Copy-Item "src/SKILL.md" $skillDir
+    $skillMdPath = Join-Path $skillDir "SKILL.md"
+    $skillMdContent = Get-Content $skillMdPath -Raw
+    $skillMdContent = $skillMdContent -replace '__SKILL_VERSION__', $Version
+    $skillMdContent = $skillMdContent -replace '__SKILL_DATE__', (Get-Date -Format 'yyyy-MM-dd')
+    $skillMdContent = $skillMdContent -replace '__SKILL_COMMIT__', (git rev-parse --short HEAD)
+    Set-Content $skillMdPath $skillMdContent
 
     # Copy reference files
     Copy-Item "src/references/*.md" "$skillDir/references/"
@@ -126,6 +132,10 @@ function Invoke-BuildCombined {
     foreach ($key in $refMap.Keys) {
         $content = $content.Replace($key, $refMap[$key])
     }
+
+    $content = $content -replace '__SKILL_VERSION__', $Version
+    $content = $content -replace '__SKILL_DATE__', (Get-Date -Format 'yyyy-MM-dd')
+    $content = $content -replace '__SKILL_COMMIT__', (git rev-parse --short HEAD)
 
     Set-Content -Path $outputFile -Value $content
 
