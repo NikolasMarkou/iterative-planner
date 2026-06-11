@@ -219,134 +219,27 @@ Institutional memory across plans. Unlike FINDINGS.md / DECISIONS.md (append+mer
 
 ## Per-State Rules
 
+> The operative rules for each state are emitted on demand by the router `scripts/emit-state.mjs`, not inlined here. On **entering** a state, run `node <skill-path>/scripts/emit-state.mjs --state <state>` and follow its stdout as the authoritative per-state rules. Full module text lives in `scripts/modules/state-<state>.md`. (This keeps SKILL.md's resident context to the spine; per-state detail is pulled only for the active state. CLOSE has no module — it lives in the State Machine / Transitions table and the ip-archivist.)
+
 ### EXPLORE
-- Read `state.md`, `plans/FINDINGS.md` and `plans/DECISIONS.md` (limit: 600 lines), `plans/LESSONS.md`, and `plans/SYSTEM.md` at start of EXPLORE for cross-plan context. SYSTEM.md is the structural prior — what the target system looks like, distinct from goal-driven findings. **Do NOT eagerly load `plans/INDEX.md`** — it is read on demand only.
-- **On-demand INDEX.md read** — consult `plans/INDEX.md` (and then the specific per-plan `plans/plan_*/findings.md` it points to) when ANY of the following triggers fires:
-  1. The goal mentions a topic or domain that is absent from the recent FINDINGS.md window.
-  2. A `[CORRECTED iter-N]` or other cross-reference in FINDINGS.md / LESSONS.md / SYSTEM.md points to a per-plan finding that is no longer in the sliding window.
-  3. The user explicitly references prior work ("we tried this before", "the X migration plan", etc.).
-  4. The current plan touches files that appear in older plan directories' change manifests.
-  See `references/file-formats.md` `plans/INDEX.md` section for the schema. Default is **do not read** — INDEX.md is a locator, not a cross-plan memory.
-- **System-atlas contradiction flag**: if an EXPLORE finding contradicts an existing `plans/SYSTEM.md` entry, mark the contradiction in `findings.md` with `[CONTRADICTED iter-N]` (mirrors the `[CORRECTED iter-N]` rule for findings) — the archivist will reconcile at CLOSE in Step 5.
-- Read code, grep, glob, search. One focused question at a time.
-- Flush to `findings.md` + `findings/` after every 2 reads. **Read the file first** before each write.
-- Include file paths + code path traces (e.g. `auth.rb:23` → `SessionStore#find` → `redis_store.rb:get`).
-- DO NOT skip EXPLORE even if you think you know the answer.
-- **Minimum depth**: ≥3 indexed findings in `findings.md` before transitioning to PLAN. Findings must cover: (1) problem scope, (2) affected files, (3) existing patterns or constraints. Fewer than 3 → keep exploring.
-- **Exploration Confidence** — before transitioning to PLAN, self-assess: problem scope [shallow/adequate/deep], solution space [narrow/open/constrained], risk visibility [blind/partial/clear]. All must be at least "adequate." Any "shallow" or "blind" → keep exploring. Record in the transition log entry in `state.md`. See `references/planning-rigor.md`.
-- **Constraint classification** — when documenting constraints in `findings.md`, classify each as:
-  - **Hard constraint**: non-negotiable (physics, budget, existing systems, regulations, deadlines).
-  - **Soft constraint**: preferences, conventions, team familiarity — negotiable if trade-off is explicit.
-  - **Ghost constraint**: past constraints baked into current approach that **no longer apply**. Finding and removing ghost constraints unlocks options nobody thought were available.
-  Separate constraints from preferences — be honest about which is which. Can't distinguish them → keep exploring.
-- Use **Task subagents** (or `ip-explorer` agents if installed) to parallelize research. Spawn 1-3 explorer agents simultaneously, each assigned a distinct research topic. All subagent output → `{plan-dir}/findings/` files. Never rely on context-only results. **Main agent** updates `findings.md` index after subagents write — subagents don't touch the index. **Naming**: `findings/{topic-slug}.md` (kebab-case, descriptive — e.g. `auth-system.md`, `test-coverage.md`). See "Sub-Agent Architecture" section for dispatch details.
-- Use "think hard" / "ultrathink" for complex analysis.
-- REFLECT → EXPLORE loops: append to existing findings, don't overwrite. Mark corrections with `[CORRECTED iter-N]`.
+Gather context: read-only research (code, grep, glob, subagents), flush findings to `findings.md` + `findings/` every 2 reads, classify constraints (hard/soft/ghost), self-assess Exploration Confidence, and reach ≥3 indexed findings covering scope/files/patterns before PLAN.
+→ Operative rules: `node <skill-path>/scripts/emit-state.mjs --state explore` (module: `scripts/modules/state-explore.md`).
 
 ### PLAN
-- **Gate check**: apply Mandatory Re-reads table (PLAN row). If not read → read now. No exceptions. If `findings.md` has <3 indexed findings → go back to EXPLORE.
-- **Compression gate** — if `{plan-dir}/decisions.md` >300 lines or `{plan-dir}/changelog.md` >200 lines, run `maybeCompressDecisions` / `maybeCompressChangelog` (exported from `src/scripts/bootstrap.mjs`) before any other PLAN work. Append-only safe: raw entries are preserved verbatim; a metadata block is inserted at top (decisions) or inline summary lines replace LOW-radius/`-`-decision-ref groups (changelog). Re-compression is idempotent. See `references/file-formats.md` § Intra-plan compression for full spec. Orchestrator dispatch wires this at PLAN step 0 — see `agents/orchestrator.md` § PLAN State. This file specifies the gate; the orchestrator owns when it runs.
-- **Problem Statement first** — before designing steps, write in `plan.md`: (1) what behavior is expected, (2) invariants — what must always be true, (3) edge cases at boundaries. Can't state the problem clearly → go back to EXPLORE.
-- Write `plan.md` with all 11 validator-required sections (see `validate-plan.mjs` `PLAN_SECTIONS`): Goal, Problem Statement, Context, Files To Modify, Steps (with risk/dependency annotations), Assumptions, Failure Modes, Pre-Mortem & Falsification Signals, Success Criteria, Verification Strategy, Complexity Budget.
-- **Decomposition** — when breaking the goal into steps:
-  1. Understand the whole problem before splitting into parts. Resist diving into details.
-  2. Identify natural boundaries — where do concerns separate?
-  3. Minimize dependencies between steps. If two steps must always change together, they're one step.
-  4. Start with the hardest or riskiest part (most unknowns). Easier parts rarely invalidate the plan.
-  5. When unsure whether to split or merge: split when concerns change for different reasons; merge when split pieces always change together or the split creates more coordination overhead than it removes.
-- **Verification Strategy** — for each success criterion, define: what test/check to run, what command to execute, what result means "pass". Write to plan.md `Verification Strategy` section. Plans with no testable criteria → write "N/A — manual review only" (proves you checked). See `references/file-formats.md` for template.
-- **Assumptions** — bullet list in plan.md: what you assume, which finding grounds it, which steps depend on it. On surprise discovery during EXECUTE → check this list first. See `references/planning-rigor.md`.
-- **Failure Mode Analysis** — for each external dependency or integration point in the plan, answer: what if slow? returns garbage? is down? What's the blast radius? Write to plan.md `Failure Modes` section. No dependencies → write "None identified" (proves you checked).
-- **Pre-Mortem & Falsification Signals** — assume the plan failed. 2-3 scenarios with concrete STOP IF triggers. If a trigger fires during EXECUTE → stop and REFLECT. Covers approach validity (distinct from Failure Modes which cover dependencies, and Autonomy Leash which covers step failure). See `references/planning-rigor.md`.
-- Write `decisions.md`: log chosen approach + why (mandatory even for first plan). **Trade-off rule** — phrase every decision as **"X at the cost of Y"**. Never recommend without stating what it costs.
-- Read then write `verification.md` with initial template (criteria table populated from success criteria, methods from verification strategy, results pending).
-- Read then write `state.md` + `progress.md`.
-- List **every file** to modify/create. Can't list them → go back to EXPLORE.
-- Only recommended approach in plan. Alternatives → `decisions.md`.
-- Wait for explicit user approval. Before requesting approval, emit **PC-PLAN** (Plan Presentation contract — see `references/file-formats.md` "Presentation Contracts"): the orchestrator renders `plan.md` verbatim per the floor (Steps, Success Criteria, Verification Strategy, Failure Modes, Assumptions). Same contract on re-presentation after revisions.
+Design the approach: pass the gate check + compression gate, write Problem Statement first, then `plan.md` with all 11 validator-required sections (decomposition, verification strategy, assumptions, failure modes, pre-mortem), log `decisions.md` as "X at the cost of Y", seed `verification.md`/`state.md`/`progress.md`, then emit PC-PLAN and wait for explicit user approval.
+→ Operative rules: `node <skill-path>/scripts/emit-state.mjs --state plan` (module: `scripts/modules/state-plan.md`).
 
 ### EXECUTE
-- **Pre-Step Checklist** in `state.md`: reset all boxes `[ ]`, then check each `[x]` as completed before starting the step. This is the file-based enforcement of Mandatory Re-reads.
-- Iteration 1, first EXECUTE → create `checkpoints/cp-000-iter1.md` (nuclear fallback). "Git State" = commit hash BEFORE changes (the restore point).
-- One step at a time. Post-Step Gate after each (see below).
-- Checkpoint before risky changes (3+ files, shared modules, destructive ops). Name: `cp-NNN-iterN.md` (e.g. `cp-001-iter2.md`). Increment NNN globally across iterations.
-- Commit after each successful step: `[iter-N/step-M] description`.
-- If something breaks → STOP. 2 fix attempts max (Autonomy Leash). Each must follow Revert-First.
-- **Irreversible operations** (DB migrations, external API calls, service config, non-tracked file deletion): mark step `[IRREVERSIBLE]` in `plan.md` during PLAN. Full procedure: `references/code-hygiene.md`.
-- **Surprise discovery** (behavior contradicts findings, unknown dependency, wrong assumption) → check plan.md Assumptions to identify which steps are invalidated. Note in `state.md`, finish or revert current step, transition to REFLECT. Do NOT silently update findings during EXECUTE.
-- **Falsification signal fires** (from Pre-Mortem & Falsification Signals in plan.md) → same as surprise discovery. Log which signal fired in `decisions.md`.
-- Add `# DECISION <plan-id>/D-NNN` comments (e.g. `# DECISION plan_2026-05-07_7556fb98/D-003`) where any of the 5 trigger conditions in `references/decision-anchoring.md` apply. Plan-id prefix matches the active plan directory name.
-- **Per-Edit Changelog (v2.15.0+)**: after each `Edit` or `Write`, append one pipe-delimited line per file to `{plan-dir}/changelog.md` recording timestamp, iter/step, commit (or `uncommitted`), path, op + LOC, blast-radius (`node <skill-path>/scripts/blast-radius.mjs <file>` — first stdout line), decision-ref (`D-NNN` or `-`), and a one-clause reason. Append-only. Decision-ref is optional — `-` is fine for most edits. The 5 `# DECISION` trigger conditions are unchanged. Radius script always exits 0 — never blocks the step. See `references/file-formats.md` for full format and `references/blast-radius.md` for radius scoring.
-
-#### Post-Step Gate (successful steps only — all 4 before moving on)
-1. `plan.md` — mark step `[x]`, advance marker, update complexity budget
-2. `progress.md` — move item Remaining → Completed, set next In Progress
-3. `state.md` — update step number, append to change manifest
-4. `changelog.md` — confirm one line per file edited in this step (validator WARNs on drift)
-
-On **failed step**: skip gate. Follow Autonomy Leash (revert-first, 2 attempts max).
+Implement one step at a time: run the Pre-Step Checklist, create the iteration-1 nuclear checkpoint, checkpoint before risky changes, commit each successful step, append the per-edit changelog line, run the 4-item Post-Step Gate, and on breakage follow the Autonomy Leash (revert-first, 2 attempts max).
+→ Operative rules: `node <skill-path>/scripts/emit-state.mjs --state execute` (module: `scripts/modules/state-execute.md`).
 
 ### REFLECT
-
-Three phases: Gate-In (gather context), Evaluate (verify + analyze), Gate-Out (decide + present).
-
-#### Phase 1: Gate-In (mandatory reads before any evaluation)
-1. Read `plan.md` — success criteria, verification strategy, assumptions, pre-mortem signals.
-2. Read `progress.md` — what was completed, what remains, what failed.
-3. Read `verification.md` — previous verification results (if iteration 2+).
-4. Read `findings.md` + relevant `findings/*` — check if EXECUTE discoveries contradict earlier findings. Note contradictions in `decisions.md`.
-5. Read `checkpoints/*` — know rollback options before deciding next transition. Note available restore points in `decisions.md` if transitioning to PIVOT.
-6. Read `decisions.md` — check 3-strike patterns, review previous REFLECT cycles (iteration 2+).
-7. Read `changelog.md` — per-edit ledger for this iteration. Surfaces HIGH-radius edits, "tiny edit big radius" outliers, and REVERT lines.
-
-All seven reads are CORE. Do not evaluate until all are complete.
-
-#### Phase 2: Evaluate
-*(Continues the numbering from Phase 1's 7 reads — Evaluate runs 8–22.)*
-8. **Cross-validate plan vs progress** — every `[x]` in plan.md must be "Completed" in progress.md. Fix drift before proceeding.
-9. **Diff review** — review actual code changes (git diff or change manifest in state.md). Check for: debug artifacts, commented-out code, TODO/FIXME/HACK leftovers, unintended modifications to files not in the plan. This checks code quality; verification (below) checks correctness.
-10. **Changelog scan (v2.15.0+)** — read `changelog.md`. List HIGH-radius edits and "tiny edit big radius" outliers (small `EDIT(+N,-M)` paired with MED/HIGH radius). Flag thin reasons. Surface concerns in the review output (or `findings/review-iter-N.md` when an `ip-reviewer` runs). Informational only — never blocks CLOSE.
-11. **Run verification** — execute each check from the Verification Strategy. Read `verification.md`, then record results: criterion, method, command/action, result (PASS/FAIL), evidence (output summary or log reference). See `references/file-formats.md` for template.
-12. **Regression check** — re-run any tests that passed before this iteration. If a previously-passing test now fails, record as FAIL in Additional Checks with "regression" noted in Details. Regressions block CLOSE.
-13. **Scope drift check** — compare files actually changed (change manifest in state.md) against Files To Modify in plan.md. Unplanned file changes must be justified in `decisions.md` or reverted. Criteria can pass even when implementation has drifted.
-14. **Criteria adequacy** — before accepting PASS results, ask: do these criteria test what matters, or what was easy to test? Are there behaviors the criteria don't cover? Record gaps in `verification.md` Not Verified section.
-15. **Not-verified list** — in `verification.md`, write what you didn't test and why (no coverage, out of scope, untestable). Absence of evidence is not evidence of absence.
-16. **Root cause analysis** (when REFLECT follows failure) — in `decisions.md`, answer: (1) immediate cause, (2) contributing factor (trace back one level), (3) failed defense (which barrier should have caught this and why didn't it), (4) prevention. If the failure is a regression, prepend a Change Analysis question: "what changed since the last passing state?". Multiple roots are normal — don't stop at the first plausible cause. Skip entirely if all criteria PASS on first attempt. See `references/planning-rigor.md`.
-17. **Run 6 Simplification Checks** (`references/complexity-control.md`). Compare against **written criteria**, not memory.
-18. **Run `validate-plan.mjs`** — protocol compliance check. Address ERRORs before CLOSE. WARNs are advisory.
-19. **Prediction accuracy** *(EXTENDED — skip for iteration 1)* — compare plan.md predictions against actual results. Record in `verification.md` Prediction Accuracy table. See `references/planning-rigor.md`.
-20. **Convergence score** *(EXTENDED — iteration 2+)* — compute pass rate trend, scope stability, issue decay. Record in `verification.md` Convergence Metrics table. Stalling/diverging scores strengthen case for PIVOT or decomposition — don't wait for iteration 5. See `references/convergence-metrics.md`.
-21. **Devil's advocate** *(EXTENDED — skip for iteration 1)* — before routing to CLOSE: name one reason this might still be wrong despite passing verification. If you can't think of one, be more suspicious, not less. Record in `decisions.md`.
-22. **Adversarial review** *(EXTENDED — iteration 2+ only)* — spawn an `ip-reviewer` agent (or Task subagent) with `verification.md`, `plan.md` (criteria), and `decisions.md`. Its job: are criteria adequate? what wasn't tested? does evidence support CLOSE? Output → `findings/review-iter-N.md`. Main agent must address each concern in `decisions.md` before routing to CLOSE. See "Sub-Agent Architecture" section for dispatch details.
-
-#### Phase 3: Gate-Out (write + present)
-23. Write `verification.md` — complete Verdict section.
-24. Write `decisions.md` — what happened, what was learned, root cause (if failure). Include Simplification Checks output.
-25. Write `progress.md` — update status of all items.
-26. Write `state.md` — log evaluation summary, update transition.
-
-**Present to user before routing — PC-REFLECT contract** (see `references/file-formats.md` "Presentation Contracts"). Emit a 5-item block (exactly 5 — collapsing violates the contract):
-1. What was completed (verbatim from `progress.md`)
-2. What remains (verbatim from `progress.md`, or "none")
-3. Verification results summary — PASS/FAIL counts plus the per-criterion table from `verification.md` rendered **verbatim** (the verifier's table is the literal payload, do not paraphrase)
-4. Issues found: regressions, scope drift, unverified areas, simplification blockers; **plus** any CRITICAL/WARNING items from `findings/review-iter-N.md` (iteration ≥ 2) folded in verbatim
-5. Recommend: close, pivot, or explore — **wait for user confirmation**
-
-| Condition | → Transition |
-|-----------|--------------|
-| All criteria verified PASS in `verification.md`, no regressions, no simplification blockers + **user confirms** | → CLOSE |
-| Failure understood, new approach clear | → PIVOT |
-| Unknowns need investigation, or findings contradicted | → EXPLORE (update findings first) |
+Run the 3-phase gate: Gate-In (7 mandatory reads), Evaluate (cross-validate, diff review, run verification + regression + scope-drift + simplification checks + `validate-plan.mjs`), then Gate-Out (write `verification.md`/`decisions.md`/`progress.md`/`state.md`), and present the 5-item PC-REFLECT contract before routing to CLOSE / PIVOT / EXPLORE.
+→ Operative rules: `node <skill-path>/scripts/emit-state.mjs --state reflect` (module: `scripts/modules/state-reflect.md`).
 
 ### PIVOT
-- Read `decisions.md`, `findings.md`, relevant `findings/*`, `plans/LESSONS.md`.
-- Read `checkpoints/*` — decide keep vs revert. Default: if unsure, revert to latest checkpoint. See `references/code-hygiene.md` for full decision framework.
-- **Ghost constraint scan** *(EXTENDED — skip for iteration 1)* — before designing a new approach, ask: (1) Is the constraint that led to the failed approach still valid? (2) Are we inheriting environmental constraints that are actually preferences? (3) Did an early finding become stale? Log ghost constraints found in `decisions.md`. See `references/planning-rigor.md`.
-- If earlier findings proved wrong or incomplete → update `findings.md` + `findings/*` with corrections. Mark corrections: `[CORRECTED iter-N]` + what changed and why. Append, don't delete original text.
-- **Momentum check** *(EXTENDED — 2nd PIVOT onward)* — log pivot direction, check for oscillation. Momentum < 0.3 → recommend decomposition. See `references/convergence-metrics.md`.
-- Write `decisions.md`: log pivot + mandatory Complexity Assessment (+ pivot direction log if EXTENDED).
-- Write `state.md` + `progress.md` (mark failed items, note pivot).
-- Present options to user → get approval → transition to PLAN. Emit **PC-PIVOT** (Pivot Options contract — see `references/file-formats.md` "Presentation Contracts"): pivot reason, available checkpoints (verbatim from `checkpoints/*`), ghost constraints surfaced, 1-3 candidate directions framed "X at the cost of Y", and an explicit prompt for direction + keep-vs-revert decision.
+Re-route after failure: read `decisions.md`/`findings.md`/`plans/LESSONS.md` + `checkpoints/*`, decide keep-vs-revert, run the ghost-constraint scan, correct stale findings, log the pivot + Complexity Assessment in `decisions.md`, update `state.md`/`progress.md`, then present PC-PIVOT options and get approval before returning to PLAN.
+→ Operative rules: `node <skill-path>/scripts/emit-state.mjs --state pivot` (module: `scripts/modules/state-pivot.md`).
 
 ## Complexity Control (CRITICAL)
 
