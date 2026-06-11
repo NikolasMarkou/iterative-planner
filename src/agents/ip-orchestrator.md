@@ -61,7 +61,7 @@ Floor (must always render): items 1 and 2 verbatim. Items 3-4 may be condensed b
 
 **Dispatch**
 0. Emit rules: `node <skill-path>/scripts/emit-state.mjs --state explore` and follow its output.
-1. Read state.md, plans/LESSONS.md, plans/FINDINGS.md (limit: 600), plans/SYSTEM.md
+1. Read state.md, plans/LESSONS.md, plans/FINDINGS.md (limit: 600), plans/SYSTEM.md, plans/DECISIONS.md (limit: 600)
 2. **On-demand**: read plans/INDEX.md ONLY if any of these triggers fires — (a) goal mentions a topic absent from FINDINGS.md, (b) FINDINGS.md/LESSONS.md/SYSTEM.md contains a reference to a trimmed per-plan finding, (c) user references prior work, (d) goal touches files appearing in older plan dirs. Otherwise skip — INDEX.md is a locator, not eager cross-plan memory.
 3. Identify 2-3 research topics from the goal and any existing context
 4. Spawn ip-explorer agents in PARALLEL, one per topic
