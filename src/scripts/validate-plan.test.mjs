@@ -633,6 +633,24 @@ describe("validate-plan.mjs --pre-step gate", () => {
     assert.equal(iterErrs.length, 0, `derived=3 must not trigger cap, got:\n${r.stdout}`);
   });
 
+  // #12 — checkIterationLimits: iteration 5 is the decomposition-reminder
+  // threshold → WARN [iteration], NOT ERROR. The hard cap is 6+ (covered by
+  // (p)). Default writePlan transition history has zero EXECUTE → REFLECT lines,
+  // so derived=0 and max(5,0)=5 lands exactly on the WARN branch.
+  it("(u) #12: declared Iteration 5 (no derived transitions) → WARN [iteration], no ERROR [iteration]", () => {
+    const cwd = getTempDir();
+    writePlan(cwd, { state: "EXECUTE", iteration: 5 });
+    const r = run(cwd);
+    const lines = r.stdout.split("\n");
+    // "WARN" is space-padded to align with "ERROR" in the render → match \s+.
+    const iterWarns = lines.filter((l) => /WARN\s+\[iteration\]/.test(l));
+    const iterErrs = lines.filter((l) => /ERROR\s+\[iteration\]/.test(l));
+    assert.equal(iterErrs.length, 0, `iter=5 must NOT ERROR, got:\n${r.stdout}`);
+    assert.ok(iterWarns.length >= 1, `expected WARN [iteration] at iter=5, got:\n${r.stdout}`);
+    assert.ok(/Iteration 5/.test(iterWarns[0]), `WARN must reference Iteration 5, got: ${iterWarns[0]}`);
+    assert.ok(/decomposition/.test(iterWarns[0]), `WARN must mention decomposition analysis, got: ${iterWarns[0]}`);
+  });
+
   // OBS-010 / D-006 — checkCompressionMarkers must NOT count prose mentions.
   it("(r) OBS-010: prose mention of `<!-- COMPRESSED-SUMMARY -->` in plans/FINDINGS.md must NOT trigger compress-markers ERROR", () => {
     const cwd = getTempDir();

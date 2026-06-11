@@ -2980,6 +2980,17 @@ describe("bootstrap.mjs retire", () => {
     assert.notEqual(r.exitCode, 0);
     assert.match(r.stderr, /not a valid plan-id/);
   });
+
+  // #12 — error path: retire with NO plan-id arg. cmdRetire guards `!planId`
+  // first → exit 1 + usage message (bootstrap.mjs:1657-1660).
+  it("errors with usage when no plan-id is given", () => {
+    const dir = getTempDir();
+    run(dir, "new", "active work");
+    const r = runFull(dir, "retire");
+    assert.equal(r.exitCode, 1, `retire with no arg should exit 1, got ${r.exitCode}\n${r.stderr}`);
+    assert.match(r.stderr, /usage: node bootstrap\.mjs retire <plan-id>/,
+      `expected retire usage error, got:\n${r.stderr}`);
+  });
 });
 
 // P2 — `reset-attempts` clears a stale Fix Attempts counter (OBS-016) so the
@@ -3012,5 +3023,25 @@ describe("bootstrap.mjs reset-attempts", () => {
     const r = runFull(dir, "reset-attempts");
     assert.notEqual(r.exitCode, 0);
     assert.match(r.stderr, /No active plan/);
+  });
+
+  // #12 — error path: active plan exists but state.md has NO `## Fix Attempts`
+  // heading. cmdResetAttempts does `state.indexOf("## Fix Attempts")` and exits
+  // 1 with an explicit message when absent (bootstrap.mjs:1737-1741) — it is NOT
+  // a silent no-op.
+  it("errors when state.md has no '## Fix Attempts' section", () => {
+    const dir = getTempDir();
+    run(dir, "new", "leash work");
+    const planDir = getPointer(dir);
+    const statePath = join(dir, "plans", planDir, "state.md");
+    // Strip the entire `## Fix Attempts` section (heading + body up to the next ## heading).
+    const stripped = readFileSync(statePath, "utf-8")
+      .replace(/## Fix Attempts \(resets per plan step\)\n- \(none yet\)\n/, "");
+    writeFileSync(statePath, stripped);
+    assert.ok(!stripped.includes("## Fix Attempts"), "fixture must have removed the heading");
+    const r = runFull(dir, "reset-attempts");
+    assert.equal(r.exitCode, 1, `missing Fix Attempts section should exit 1, got ${r.exitCode}\n${r.stderr}`);
+    assert.match(r.stderr, /no '## Fix Attempts' section found/,
+      `expected missing-section error, got:\n${r.stderr}`);
   });
 });
