@@ -4,6 +4,18 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.23.1] - 2026-06-11
+
+Patch hardening of the script-emission layer's error paths, found in a post-refactor audit of the v2.23.0 migration (`plans/plan_2026-06-11_26c6bdc6/`). No behavior change on the happy path — all five states still emit byte-identically; only failure modes and one fallback-mode doc clause changed. The audit otherwise confirmed the migration correct and complete (byte-faithful modules, all pointers resolve, build/validate green).
+
+### Changed
+- **`emit-state.mjs` CLI exit-code split (F6a).** A missing/absent `--state` flag is now a usage error → exit `2` (POSIX convention, USAGE on stderr); an unknown-but-provided state value (including `close`) stays a value error → exit `1`. Previously both exited `1`, distinguishable only by message text.
+- **`emit-state.mjs` fail-loud module reads (F6b).** New exported pure helper `resolveModuleBody(state, modulesBaseUrl)` returns a tagged `{ ok, code, message }` result: a missing/unreadable module yields a friendly `cannot read module for <state>` diagnostic instead of a raw `readFileSync` stack trace, and a zero-byte/whitespace-only module is rejected as `empty/corrupt` (exit `1`) instead of silently emitting nothing with exit `0`. `emitState(state, modulesBaseUrl?)` gains an optional injectable base-URL param (dependency injection for testability — the default preserves the production read path byte-for-byte, not a config toggle).
+- **SKILL.md mode-3 monolithic fallback (F6c).** Tightened the bullet so the operative per-state rules unambiguously come from the `emit-state` router on state entry, not from the inline Per-State Rules section (which is summaries + pointers only).
+
+### Added
+- **`emit-state.test.mjs`** gains direct `resolveModuleBody` unit tests for the empty-module and missing-module paths (temp-dir fixtures via `mkdtempSync` + `pathToFileURL`); the no-flag CLI test now asserts exit `2`.
+
 ## [2.23.0] - 2026-06-11
 
 Moves the five per-state rule bodies out of `src/SKILL.md` into on-demand emitted modules (`plans/plan_2026-06-11_f2637f3b/`, the LIGHTER variant of a script-emission migration). SKILL.md keeps its spine — state machine, transition rules, File Ownership table, autonomy leash, complexity control — and the per-state rule text is relocated **verbatim** behind a router, fidelity-proven byte-for-byte. This is a content-conserving structural change, not a protocol behavior change; `check-doc-parity` is unaffected because the File Ownership table stays in SKILL.md.
