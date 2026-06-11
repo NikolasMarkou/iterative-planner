@@ -832,8 +832,13 @@ function parseChangelogFile(content) {
       if (endLine >= 0) metadataBlock = { startLine, endLine, entriesAtCompress };
       break;
     }
-    // Only scan a few lines beyond header before giving up.
-    if (i > CHANGELOG_HEADER_LINES + 8) break;
+    // Stop at the first real body line (the true structural boundary). The
+    // metadata block only ever lives in the leading comment/blank region
+    // between the header and the first entry; once we hit an entry line (or a
+    // `## ` heading) the block cannot be below us. Using the structural
+    // boundary instead of a fixed `+8` line budget means a block pushed deeper
+    // (e.g. to line 13+ by surrounding blank lines) is still detected.
+    if (classifyChangelogLine(lines[i]).kind === "entry" || lines[i].startsWith("## ")) break;
   }
 
   // entryCount counts BOTH live entry lines AND the entry-equivalents
@@ -1684,7 +1689,11 @@ function cmdRetire(planId) {
         if (!txt.includes(planId)) continue;
         const matches = txt.match(anchorRe);
         if (!matches) continue;
-        writeFileSync(full, txt.replace(anchorRe, "$1 [STALE]"));
+        // Atomic write: mirror the `.tmp`+renameSync idiom used everywhere else
+        // in this file (ensureGitignore ~144, maybeCompressChangelog ~986). A
+        // process kill mid-write must not corrupt a SOURCE file permanently.
+        writeFileSync(full + ".tmp", txt.replace(anchorRe, "$1 [STALE]"));
+        renameSync(full + ".tmp", full);
         stamped += matches.length;
         filesChanged++;
       }
