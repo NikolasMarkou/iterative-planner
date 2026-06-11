@@ -599,7 +599,8 @@ iterative-planner/
         ├── convergence-metrics.md  # convergence score, momentum tracker, iteration health
         ├── decision-anchoring.md   # when and how to anchor decisions in code (plan-qualified)
         ├── planning-rigor.md       # assumptions, pre-mortem, falsification, root cause, decomposition
-        └── blast-radius.md         # tiers, signals, scoring formula for the per-edit ledger
+        ├── blast-radius.md         # tiers, signals, scoring formula for the per-edit ledger
+        └── python-software.md      # Python/software-engineering caveat (conditional)
 ```
 
 For the complete protocol specification, see [`src/SKILL.md`](src/SKILL.md).

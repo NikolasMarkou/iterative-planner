@@ -56,7 +56,8 @@ iterative-planner/
         ├── convergence-metrics.md    # Convergence score, momentum tracker, iteration health signals
         ├── decision-anchoring.md     # When/how to anchor decisions in code, format, audit rules
         ├── file-formats.md           # Templates and examples for all plan directory files
-        └── planning-rigor.md         # Assumption tracking, pre-mortem, falsification signals, prediction accuracy, root cause analysis
+        ├── planning-rigor.md         # Assumption tracking, pre-mortem, falsification signals, prediction accuracy, root cause analysis
+        └── python-software.md        # Python/software-engineering domain caveat (conditional; consulted only for software work)
 ```
 
 ## Key Commands
