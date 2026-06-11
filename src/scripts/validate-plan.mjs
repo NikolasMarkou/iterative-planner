@@ -220,7 +220,7 @@ function checkStateTransitions(planDir, issues) {
 
   for (const line of lines) {
     // Format: "- STATE1 → STATE2 (reason)" — arrow can be → or ->
-    const match = line.match(/^- (.+?)\s+(?:→|->)\s+(\S+)/);
+    const match = line.match(/^- (.+?)\s+(?:→|->)\s+([A-Za-z_]+)/);
     if (!match) continue;
 
     // F5 — use shared normalizePhase helper (same transform used by checkDecisionsSchema)
@@ -840,7 +840,8 @@ function checkVerificationVerdict(planDir, issues) {
       check: "verdict",
       message: `verification.md Verdict missing required bullet(s): ${missing.join(", ")}`,
     });
-  } else if (orderBroken) {
+  }
+  if (orderBroken) {
     issues.push({
       severity: "ERROR",
       check: "verdict",
