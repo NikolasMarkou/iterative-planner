@@ -302,6 +302,15 @@ function Invoke-Validate {
         }
     }
 
+    # Verify README version badge and test-count badge match VERSION and TEST_COUNT files
+    if (Test-Path "src/scripts/check-readme-parity.mjs") {
+        Write-Host "Checking README badge parity (version + test count)..."
+        node src/scripts/check-readme-parity.mjs
+        if ($LASTEXITCODE -ne 0) {
+            $errors += "ERROR: README badges out of parity with VERSION/TEST_COUNT (see check-readme-parity.mjs)"
+        }
+    }
+
     if ($errors.Count -gt 0) {
         $errors | ForEach-Object { Write-Host $_ -ForegroundColor Red }
         exit 1
@@ -312,7 +321,7 @@ function Invoke-Validate {
 
 function Invoke-Lint {
     Write-Host "Checking script syntax..." -ForegroundColor Yellow
-    foreach ($script in @("bootstrap.mjs", "validate-plan.mjs", "blast-radius.mjs", "shared.mjs", "check-doc-parity.mjs", "emit-state.mjs", "emit-template.mjs")) {
+    foreach ($script in @("bootstrap.mjs", "validate-plan.mjs", "blast-radius.mjs", "shared.mjs", "check-doc-parity.mjs", "check-readme-parity.mjs", "emit-state.mjs", "emit-template.mjs")) {
         node --check "src/scripts/$script"
         if ($LASTEXITCODE -ne 0) {
             Write-Host "Syntax check failed: $script" -ForegroundColor Red
@@ -346,7 +355,7 @@ function Invoke-Test {
 
     Write-Host "Running all test suites..." -ForegroundColor Yellow
 
-    node --test src/scripts/bootstrap.test.mjs src/scripts/validate-plan.test.mjs src/scripts/blast-radius.test.mjs src/scripts/check-doc-parity.test.mjs src/scripts/emit-state.test.mjs src/scripts/emit-template.test.mjs
+    node --test src/scripts/bootstrap.test.mjs src/scripts/validate-plan.test.mjs src/scripts/blast-radius.test.mjs src/scripts/check-doc-parity.test.mjs src/scripts/emit-state.test.mjs src/scripts/emit-template.test.mjs src/scripts/check-readme-parity.test.mjs
     if ($LASTEXITCODE -ne 0) {
         Write-Host "Tests failed!" -ForegroundColor Red
         exit 1
