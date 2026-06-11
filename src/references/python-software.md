@@ -128,3 +128,237 @@ If a model below would lead you to restate any of these, stop and write a `see r
 
 Mental shifts: "make it work" → "manage complexity"; "solve the problem" → "choose the right problem"; "clever" → "obvious"; "my code" → "our system". AI-era addendum: AI collapses implementation cost, so **decision quality becomes the bottleneck** — trade-off reasoning matters more, not less.
 *Use it when*: calibrating how much rigor a task deserves and which failure mode you're personally prone to.
+
+## B. Python architecture patterns
+
+Condensed from Cosmic Python (Percival & Gregory) plus Hettinger, McKinney, Montani, Shaw. These are the structural patterns for Python software with non-trivial business logic. Each entry: when-to-use + the smallest illustrative form. **Read §B.16 (when NOT to apply) first** — most code should NOT reach for these.
+
+### B.1 Dependency Inversion + Hexagonal (Ports & Adapters)
+
+High-level modules must not depend on low-level ones; both depend on abstractions. In Python: domain/business logic **never imports** SQLAlchemy, Flask, Redis, or requests — infrastructure *implements* interfaces the domain defines via `Protocol` or ABC.
+**The acid test**: can you unit-test your entire business logic with no database, network, or filesystem? If no, your dependencies are inverted. Hexagonal layout: pure domain at the center, service layer around it, adapters (Flask | CLI | Celery | tests | DB | queue) at the edges plugging into ports.
+*Use it when*: you need swappable infrastructure or fast unit tests. Target the test pyramid — many fast unit tests, some integration, few E2E; if most tests need a DB the architecture is wrong.
+
+### B.2 Layered architecture
+
+Four layers, dependencies point inward only:
+
+| Layer | Holds | Rule |
+|---|---|---|
+| Presentation | Flask routes, CLI, Celery tasks | thin — zero business logic |
+| Service | use-case orchestration | calls domain, owns the transaction |
+| Domain | rules, invariants, entities | pure Python, no I/O, **imports nothing from the project** |
+| Infrastructure | SQLAlchemy, Redis, S3 | implements domain ports |
+
+The leak to catch: a business rule (`if qty <= 0`) or an infrastructure call (`db.session.commit()`) inside a route. Push the rule down to the domain and the commit into the service/UoW.
+
+### B.3 Domain modeling (DDD tactical patterns)
+
+- **Value Object** — `@dataclass(frozen=True)`, equality by value, validate in `__post_init__`. Use instead of a primitive when a `str`/`int` carries domain meaning (`Money`, `OrderId`, `EmailAddress`). `Money(100,'GBP') == Money(100,'GBP')`.
+- **Entity** — identity by id, not value: define `__eq__`/`__hash__` on the id field; mutable state is fine. Two entities with the same id are the same thing even if other fields differ.
+- **Domain Service** — a stateless function over domain objects for logic that belongs to no single entity (e.g. `allocate(line, batches) -> ref`).
+
+```python
+@dataclass(frozen=True)
+class Money:
+    amount: int       # pence/cents — never float for money
+    currency: str
+    def __add__(self, o: "Money") -> "Money":
+        if self.currency != o.currency: raise CurrencyMismatch
+        return Money(self.amount + o.amount, self.currency)
+```
+
+### B.4 Repository + Fake
+
+A `Protocol` port the domain owns; a real adapter wraps the DB session; an in-memory fake makes tests DB-free. The fake is the payoff — same interface, a list instead of a session.
+
+```python
+class BatchRepository(Protocol):
+    def add(self, b: Batch) -> None: ...
+    def get(self, ref: str) -> Batch | None: ...
+
+class FakeBatchRepository:               # tests use this — no DB
+    def __init__(self, batches=None): self._b = list(batches or [])
+    def add(self, b): self._b.append(b)
+    def get(self, ref): return next((x for x in self._b if x.reference == ref), None)
+```
+
+The ORM maps infrastructure → domain (`orm.py` imports the domain model, never the reverse), keeping the domain pure. (SQLAlchemy 2.0+ `Mapped`/`mapped_column` is the modern API; the principle is unchanged.)
+
+### B.5 Service Layer
+
+One function per use case; primitives in, primitives out (never leak a domain object to the caller). Shape: fetch from repo → validate pre-conditions → call domain → commit via UoW → return a primitive.
+
+```python
+def allocate(orderid: str, sku: str, qty: int, uow) -> str:   # not (line: OrderLine, ...)
+    with uow:
+        product = uow.products.get(sku)
+        if product is None: raise InvalidSku(sku)
+        ref = model.allocate(OrderLine(orderid, sku, qty), product.batches)
+        uow.commit()
+    return ref
+```
+
+### B.6 Unit of Work
+
+A context manager that is the transaction boundary: `__enter__` opens the session/repos, `__exit__` rolls back by default, `commit()` is explicit. Nothing persists unless the body reaches `uow.commit()`. The fake just flips a `committed` flag — tests assert on it without a DB.
+
+```python
+class AbstractUnitOfWork(ABC):
+    products: "AbstractRepository"
+    def __enter__(self): return self
+    def __exit__(self, *a): self.rollback()
+    @abstractmethod
+    def commit(self): ...
+    @abstractmethod
+    def rollback(self): ...
+```
+
+### B.7 Aggregates
+
+An aggregate is a consistency boundary: all changes to objects inside it go through the **root**. Define **one repository per aggregate root** (not per table). Hold a `version_number` on the root and bump it on every change for optimistic concurrency. The root also collects domain events for the message bus.
+
+```python
+@dataclass
+class Product:                       # root; Batch/OrderLine reached only through it
+    sku: str
+    batches: list[Batch] = field(default_factory=list)
+    version_number: int = 0          # optimistic-concurrency guard
+    events: list = field(default_factory=list, repr=False)
+```
+
+### B.8 Event-driven + Message Bus
+
+Domain events are `@dataclass(frozen=True)` records named in past tense. A message bus dispatches them to handlers; processing one event can enqueue more.
+
+| | Command | Event |
+|---|---|---|
+| Name | imperative `Allocate` | past tense `Allocated` |
+| Recipients | exactly one (may reject) | zero or more (cannot reject) |
+| On failure | raises | handled in background |
+
+```python
+def handle(self, message):
+    queue = [message]
+    while queue:
+        msg = queue.pop(0)
+        if isinstance(msg, events.Event):
+            for h in self.event_handlers.get(type(msg), []): h(msg)
+        elif isinstance(msg, commands.Command):
+            self.command_handlers[type(msg)](msg)
+        queue.extend(self.uow.collect_new_events())
+```
+
+### B.9 CQRS
+
+Domain models are for **writing**; use direct SQL for **reading** (skip ORM traversal and N+1 on the read path). Optionally maintain denormalized read models updated by event handlers for hot queries.
+
+```python
+def get_allocations(orderid: str, session) -> list[dict]:    # read side: plain SQL
+    rows = session.execute(text("SELECT sku, batchref FROM allocations_view WHERE orderid=:o"),
+                           {"o": orderid})
+    return [dict(r) for r in rows]
+```
+
+### B.10 Dependency Injection + Bootstrap
+
+Inject collaborators through the constructor (no module-level globals, no hard-coded adapters). Wire concretions **only at the edge** in a `bootstrap()` function; tests call the same bootstrap with fakes.
+
+```python
+def bootstrap(uow=None, send_mail=None) -> MessageBus:
+    uow = uow or SqlAlchemyUnitOfWork()           # real concretions at the edge
+    send_mail = send_mail or email.send
+    return MessageBus(uow=uow, ...)
+
+def bootstrap_test():                              # same wiring, fake everything
+    return bootstrap(uow=FakeUnitOfWork(), send_mail=Mock())
+```
+
+### B.11 Pipeline (Montani)
+
+A sequence of stateless callables over a shared doc object, plus a registry so components are config-swappable. Build **bottom-up**: the caller composes objects; do not pass a config dict that buries defaults.
+
+```python
+class Pipeline:
+    def __init__(self, components: list[tuple[str, Callable]]): self._c = components
+    def __call__(self, text: str) -> Doc:
+        doc = Doc(text=text)
+        for _, comp in self._c: doc = comp(doc)
+        return doc
+# registry: @register("ner.v2") on each component; Pipeline([(n, registry[f]) for n,f in cfg.items()])
+```
+
+### B.12 Composable Data Stack (McKinney)
+
+Layer a data analysis explicitly instead of tangling load/clean/compute in one function: small pure functions chained with `df.pipe(...)`, each independently testable. Layered stack: query/API (Ibis, SQL, pandas) → execution (DuckDB, Polars, Spark — swappable) → interchange (Apache Arrow, zero-copy columnar) → storage (Parquet, Iceberg). Reach for Arrow/Parquet for large in-memory datasets.
+
+```python
+def run(path) -> dict:
+    return (load(path).pipe(clean).pipe(compute_margins)
+            .groupby("region")["margin"].mean().to_dict())
+```
+
+### B.13 Class architecture (Hettinger)
+
+- **Cooperative `super()` / MRO** — `super().method()` walks the method-resolution order, not just the literal parent, so mixins chain (`LoggingMixin, TimestampMixin, BaseModel` → each `save()` calls `super().save()`).
+- **`__slots__` flyweight** — declare `__slots__` to drop per-instance `__dict__`: ~200B → ~40-80B per object. Critical at millions of instances.
+- **Template method** — base `run()` fixes the algorithm skeleton (`fetch → clean → transform`); subclasses override the steps.
+
+### B.14 GIL / concurrency decision table
+
+| Workload | Tool | Why |
+|---|---|---|
+| CPU-bound | `ProcessPoolExecutor` | each process has its own GIL |
+| I/O-bound | `asyncio` / `ThreadPoolExecutor` | GIL released during I/O |
+| Mixed | `asyncio` + `run_in_executor` for the CPU part | best of both |
+
+Two asyncio pitfalls that silently kill concurrency:
+1. **Blocking call inside `async`** — `requests.get(...)` in a coroutine freezes the whole event loop. Use an async client (`httpx.AsyncClient`).
+2. **Sequential when it should be concurrent** — `a = await f(); b = await g()` runs serially. Use `a, b = await asyncio.gather(f(), g())`.
+
+(Mirrors Section A's "I/O-bound → async; CPU-bound → processes" heuristic — applied at the code level.)
+
+### B.15 Canonical Python project structure
+
+`src/` layout, dependencies point inward, enforced by `import-linter` in CI:
+
+```
+src/allocation/
+├── domain/         # pure Python — zero project/infrastructure imports
+├── service_layer/  # handlers.py, messagebus.py, unit_of_work.py
+├── adapters/       # orm.py, repository.py (import domain)
+└── entrypoints/    # flask_app.py, redis_consumer.py
+tests/ {unit/ (FakeUoW, no I/O), integration/ (real infra), e2e/}
+```
+
+Import discipline: `entrypoints → service_layer, adapters`; `adapters → domain`; `service_layer → domain`; `domain → nothing from this project`. Illegal: domain importing service_layer or adapters. Config comes from the environment (`os.environ.get(..., default)`), never hard-coded.
+
+### B.16 When NOT to apply these patterns (read first)
+
+These patterns earn their keep only with **non-trivial business logic that changes often, multiple teams, swappable infrastructure, or DB-slow CI**. For CRUD APIs, data-science scripts, prototypes, and thin API wrappers they are pure over-engineering — the minimal route below *is* the correct architecture:
+
+```python
+@app.route("/users", methods=["POST"])     # correct for simple CRUD — do NOT add layers
+def create_user():
+    user = User(**request.json)
+    db.session.add(user); db.session.commit()
+    return {"id": user.id}, 201
+```
+
+Decision matrix — reach for a pattern only when the situation on the left is real:
+
+| Situation | Pattern |
+|---|---|
+| Business logic growing complex | Domain Model |
+| Tests need a database | Repository + Fake |
+| Use cases scattered across views | Service Layer |
+| Atomic multi-step operations | Unit of Work |
+| Cross-aggregate consistency | Domain Events + Message Bus |
+| Slow/complex read queries | CQRS — direct SQL reads |
+| Hard-to-test constructors | DI + Bootstrap |
+| Multiple infrastructure backends | Ports & Adapters |
+| Sequence of data transforms | Pipeline + registry |
+| I/O-bound concurrency | `asyncio` + `gather` |
+| CPU-bound parallelism | `ProcessPoolExecutor` |
+| Large in-memory datasets | Arrow / Parquet |
+| **Simple CRUD / script / prototype** | **None — use the ORM directly** |
