@@ -1564,7 +1564,8 @@ function cmdCloseInner(opts = {}) {
       // Fallback: legacy EOF append when Transition History section is absent.
       updated += (updated.endsWith("\n") ? "" : "\n") + transitionLine;
     }
-    writeFileSync(statePath, updated);
+    writeFileSync(statePath + ".tmp", updated);
+    renameSync(statePath + ".tmp", statePath);
   } catch (err) {
     if (!opts.silent && err.code !== "ENOENT") {
       console.error(`WARNING: state.md update failed: ${err.message}`);
