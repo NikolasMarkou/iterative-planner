@@ -362,3 +362,118 @@ Decision matrix — reach for a pattern only when the situation on the left is r
 | CPU-bound parallelism | `ProcessPoolExecutor` |
 | Large in-memory datasets | Arrow / Parquet |
 | **Simple CRUD / script / prototype** | **None — use the ORM directly** |
+
+## C. Python style + anti-patterns
+
+Terse, table-first. Distilled from van Rossum, Langa, Hettinger, Katriel, McKinney, Reitz, Montani, Shaw. The 20-item checklist in C.11 is the REVIEW GATE — run it in REFLECT.
+
+### C.1 Mindset
+
+Code is read far more than written — optimise every name and abstraction for the next reader. *Explicit > implicit*: every dependency/transformation/assumption visible at the call site. *One obvious way*: when reaching for a clever construct (lambda IIFE, manual index loop), stop and pick the plain one. If a comment explains *what* (not *why*), rewrite the code instead.
+
+### C.2 Naming
+
+| Construct | Convention | Example |
+|---|---|---|
+| Variable / function | `snake_case` | `user_count`, `get_active_users()` |
+| Class | `PascalCase` | `UserRepository` |
+| Constant | `UPPER_SNAKE_CASE` | `MAX_RETRIES = 3` |
+| Module | `lowercase` | `user_service.py` |
+| Internal | `_leading_underscore` | `_internal_cache` |
+| Type variable | short `PascalCase` | `T`, `KT`, `VT` |
+
+Booleans read as assertions: `is_active`, `is_valid_email`, `has_permission`. Names pronounceable + descriptive (`calculate_distance`, not `calc`). No 1-letter names except loop indices; abbreviations only when universal (`df`, `np`, `pd`).
+
+### C.3 Formatting
+
+Black is non-negotiable (4-space indent, 88-col lines, double quotes, wrap *before* binary operators, trailing comma forces expansion). Implicit continuation inside `() [] {}` — never backslash. `isort` for imports: three groups (stdlib / third-party / local), blank line between, one per line, absolute over relative, never `from x import *`. 2 blank lines around top-level defs, 1 between methods.
+
+### C.4 Iteration idioms
+
+| Need | Idiom (not this) |
+|---|---|
+| Iterate elements | `for x in xs` — not `for i in range(len(xs))` |
+| Index + element | `for i, x in enumerate(xs)` |
+| Parallel sequences | `for a, b in zip(as, bs)` |
+| Swap / step | `x, y = y, x + y` (simultaneous, no temp) |
+| Build list/dict/set | comprehension over manual `append` loop |
+| Lazy aggregate | generator: `sum(x*x for x in rng)` |
+| Search with fallback | `for ... else:` (else runs if no `break`) |
+
+Dict/set comps and `{k: f(v) for ...}` over loops. If a comprehension exceeds 88 chars, expand it to a loop.
+
+### C.5 Data-structure selection
+
+| Want | Use | Note |
+|---|---|---|
+| Membership / key lookup | `set` / `dict` | O(1) vs list O(n) |
+| Grouping | `collections.defaultdict(list)` | no `setdefault` boilerplate |
+| Layered config | `collections.ChainMap` | first-match wins |
+| Queue (FIFO) | `collections.deque` | `popleft()` O(1); `list.pop(0)` O(n) |
+| Named record | `@dataclass` | over positional tuples |
+| Lightweight immutable record | `NamedTuple` | tuple semantics + names |
+| Tabular ops | NumPy/pandas vectorised | not `df.iterrows()` Python loop |
+
+### C.6 Function patterns
+
+Guard clauses over nested `if` (return early; no pyramid of doom). One logical step per function — if the name needs "and", split it. Keyword-only args via `*` for booleans/flags (`def f(x, *, verbose=False)`); pass them by keyword at the call site (`create_user("alice", is_admin=True)`). Generators (`yield`) for large/streamed sequences. `@functools.cache` / `lru_cache` for pure functions. (Class vs function and Hettinger patterns: see Section B.10.)
+
+### C.7 Type annotations
+
+Annotate all public signatures. Modern 3.10+ syntax: `list[int]`, `dict[str, int]`, `X | None` — not `List`/`Optional`/`Union`. `TypeAlias` for complex repeated types (`Matrix: TypeAlias = list[list[float]]`). `Protocol` for structural ("duck") typing instead of ABCs. Gate CI with `mypy --strict`.
+
+### C.8 Error handling
+
+Catch the *specific* exception, never bare `except:` / `except Exception: pass`. Preserve context with chaining: `raise ServiceError(...) from e`. Narrow the `try` to the one operation that can fail. `ExceptionGroup` + `except*` for concurrent failures (3.11+, e.g. `asyncio.TaskGroup`). Context managers (`with`) for all resource cleanup; build custom ones with `@contextlib.contextmanager`.
+
+### C.9 Performance
+
+| Operation | Structure | Cost |
+|---|---|---|
+| key / `in` lookup | `dict`, `set` | O(1) |
+| value / `in` lookup | `list` | O(n) |
+| append | `list`, `deque` | O(1) |
+| prepend | `deque` | O(1) (list O(n)) |
+
+O(n) lookup inside a loop is O(n²) — hoist the haystack into a `set`. Profile before optimising (`cProfile` + `pstats`). Prefer built-ins + `itertools` (`chain`, `pairwise`, `sum(...)`) over hand-rolled loops. Avoid intermediate list comps: use a generator `(f(x) for x in data)` when only iterating, and `any(x.id == v for x in xs)` over `v in [x.id for x in xs]`.
+
+### C.10 Testing
+
+`pytest`, not `unittest`, for new code. Fixtures (`@pytest.fixture` in `conftest.py`) for setup/teardown. `@pytest.mark.parametrize` for input tables. Mock at the boundary (`unittest.mock.patch` the I/O call, e.g. `requests.get`). Test observable *behaviour*, not internal state (`service._cache` assertions are fragile). Mirror source layout: `src/pkg/models.py → tests/test_models.py`.
+
+### C.11 Toolchain
+
+| Tool | Purpose |
+|---|---|
+| Black | format |
+| isort | import order |
+| ruff | lint (replaces flake8; `E,F,W,I,N,UP,B,C4,PERF`) |
+| mypy | static types (`--strict`) |
+| pytest | test |
+| pre-commit | run gates before commit |
+| uv | env + dependency management |
+
+Config lives in `pyproject.toml` (the single source of truth: `[tool.black]`, `[tool.ruff]`, `[tool.mypy]`, `[tool.pytest.ini_options]`).
+
+### C.12 Anti-pattern checklist (REVIEW GATE — run all 20 in REFLECT)
+
+1. `for i in range(len(x))` → `for item in x` / `enumerate(x)`
+2. String concat in a loop (`x = x + s`) → `"".join(parts)`
+3. `except Exception: pass` → catch specific, log, re-raise
+4. Mutable default arg (`def f(x=[])`) → `def f(x=None): x = x or []`
+5. `from module import *` → explicit imports only
+6. Class with only `__init__` + one method → plain function
+7. `if x == True` → `if x`
+8. `if x == None` → `if x is None`
+9. `len(x) == 0` → `if not x`
+10. `list(x.keys())` to iterate → `for k in x`
+11. `try/except` wrapping a whole block → narrow to the one failing op
+12. God class (20+ methods) → split into focused classes
+13. Hardcoded magic numbers → named constants (`MAX_RETRIES = 3`)
+14. Nesting > 3 levels → early returns / guard clauses
+15. Comments explaining *what* → rename variables/functions
+16. `print()` debugging committed → `logging`
+17. `list.pop(0)` for a queue → `collections.deque.popleft()`
+18. `df.iterrows()` in pandas → vectorised ops
+19. Relative imports across packages → absolute imports
+20. No type annotations on public API → annotate all public signatures
