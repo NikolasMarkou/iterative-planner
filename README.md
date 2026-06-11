@@ -577,7 +577,10 @@ iterative-planner/
     │   ├── validate-plan.mjs       # protocol compliance validator (+ `--pre-step` gate, exit 2)
     │   ├── validate-plan.test.mjs  # validator test suite
     │   ├── blast-radius.mjs        # deterministic per-file blast-radius scorer (spawnSync argv — no shell)
-    │   └── blast-radius.test.mjs   # blast-radius test suite (225 tests total across 3 files)
+    │   ├── blast-radius.test.mjs   # blast-radius test suite (225 tests total across 3 files)
+    │   ├── emit-state.mjs          # per-state rule router; emits scripts/modules/state-<s>.md on demand
+    │   ├── emit-state.test.mjs     # emit-state test suite (node:test)
+    │   └── modules/                # verbatim per-state rule bodies (EXPLORE/PLAN/EXECUTE/REFLECT/PIVOT), emitted on demand
     └── references/
         ├── file-formats.md         # templates for every plan directory file + Presentation Contracts
         ├── code-hygiene.md         # change manifests, revert procedures, cleanup rules

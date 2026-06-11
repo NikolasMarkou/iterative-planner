@@ -38,6 +38,14 @@ iterative-planner/
     │   ├── blast-radius.test.mjs     # Test suite (node:test)
     │   ├── check-doc-parity.mjs      # README<->SKILL.md File Ownership table parity gate (used by make/build.ps1 validate; Node.js 18+)
     │   ├── check-doc-parity.test.mjs # Test suite (node:test)
+    │   ├── emit-state.mjs            # Per-state rule router; emits scripts/modules/state-<s>.md on demand (used by SKILL.md per-state pointers / orchestrator dispatch; Node.js 18+)
+    │   ├── emit-state.test.mjs       # Test suite (node:test)
+    │   ├── modules/                  # Verbatim per-state rule bodies, emitted on demand by emit-state.mjs
+    │   │   ├── state-explore.md      # EXPLORE per-state rules
+    │   │   ├── state-plan.md         # PLAN per-state rules
+    │   │   ├── state-execute.md      # EXECUTE per-state rules (incl. Post-Step Gate)
+    │   │   ├── state-reflect.md      # REFLECT per-state rules (all 3 phases)
+    │   │   └── state-pivot.md        # PIVOT per-state rules
     │   └── shared.mjs                # Shared helpers (field extraction, changelog field split, compression markers)
     └── references/                   # Knowledge base documents
         ├── blast-radius.md           # Per-edit blast-radius signals + scoring spec
@@ -97,6 +105,7 @@ Do not duplicate protocol content here. Read src/SKILL.md directly.
 - **src/agents/** — sub-agent definitions. Each file uses YAML frontmatter (name, description, tools, model) + Markdown system prompt. Installed to `~/.claude/agents/`.
 - **src/references/** — supplementary knowledge, read on-demand. Add new files for expanded guidance.
 - **src/scripts/bootstrap.mjs** — requires Node.js 18+. Idempotent-safe (refuses if active plan exists).
+- **src/scripts/emit-state.mjs + src/scripts/modules/** — the per-state emission layer. SKILL.md "Per-State Rules" keeps only summaries + `emit-state --state <s>` pointers; the verbatim rule bodies live in `modules/state-<s>.md` and are emitted on demand. Edit a rule body in its module, not in SKILL.md.
 - **VERSION** — single source of truth. `Makefile` + `build.ps1` read from it. Bump only `VERSION` + `CHANGELOG.md`.
 - Keep state machine diagram, transition rules, file lifecycle matrix, and file format references in sync across src/SKILL.md and src/references/.
 
@@ -166,6 +175,8 @@ make help                    # Show available targets
 - [ ] src/SKILL.md does not duplicate orchestrator.md dispatch sequencing (pointer only — "Dispatch Rules by State" is a pointer, not a per-state spawn narrative)
 - [ ] README.md and src/SKILL.md File Ownership tables agree (same co-ownership for `plan.md` and `changelog.md`); full row parity between the two File Ownership tables is now enforced automatically by `node src/scripts/check-doc-parity.mjs` (run via `make validate`)
 - [ ] Skill-bundled `~/.claude/skills/iterative-planner/agents/` mirrors `src/agents/` (`diff -rq --exclude='.claude' src/agents ~/.claude/skills/iterative-planner/agents` empty) — kept in sync by "Updating Local Skill"
+- [ ] `node src/scripts/emit-state.mjs --state <explore|plan|execute|reflect|pivot>` emits the verbatim per-state rule body (round-trip fidelity vs the SKILL.md "Per-State Rules" bodies before extraction); unknown/missing `--state` exits non-zero
+- [ ] `src/scripts/modules/` is synced into the skill bundle (`diff -rq --exclude='.claude' src/scripts/modules ~/.claude/skills/iterative-planner/scripts/modules` empty) and re-inlined by `make build-combined` (each of the 5 module bodies present in the combined output)
 
 ## Updating Local Skill
 
@@ -175,6 +186,7 @@ When asked to "update local skill", copy **everything** from the repo to `~/.cla
 # Full sync — mirrors repo structure exactly
 cp src/SKILL.md ~/.claude/skills/iterative-planner/SKILL.md
 cp src/scripts/*.mjs ~/.claude/skills/iterative-planner/scripts/
+mkdir -p ~/.claude/skills/iterative-planner/scripts/modules && cp src/scripts/modules/*.md ~/.claude/skills/iterative-planner/scripts/modules/   # the *.mjs glob does NOT copy the modules/ subdir — copy it explicitly
 cp src/references/*.md ~/.claude/skills/iterative-planner/references/
 cp README.md LICENSE CHANGELOG.md ~/.claude/skills/iterative-planner/
 
@@ -189,4 +201,4 @@ cp src/agents/*.md ~/.claude/skills/iterative-planner/agents/   # keep skill-bun
 
 The Makefile `build` target bundles `src/agents/*.md` into the skill package's `agents/` dir, so the skill-bundled `agents/` is authoritative-by-build and this manual procedure must mirror it — otherwise the bundled copy drifts (as it did pre-v2.21.0).
 
-Always verify with `diff -rq` after copying. Every file, every time — including `diff -rq --exclude='.claude' src/agents ~/.claude/skills/iterative-planner/agents`.
+Always verify with `diff -rq` after copying. Every file, every time — including `diff -rq --exclude='.claude' src/agents ~/.claude/skills/iterative-planner/agents` and `diff -rq --exclude='.claude' src/scripts/modules ~/.claude/skills/iterative-planner/scripts/modules` (both must be empty — the modules/ subdir is easy to miss because the `*.mjs` glob skips it).
