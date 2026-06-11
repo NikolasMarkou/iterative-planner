@@ -580,7 +580,7 @@ iterative-planner/
     │   ├── validate-plan.mjs       # protocol compliance validator (+ `--pre-step` gate, exit 2)
     │   ├── validate-plan.test.mjs  # validator test suite
     │   ├── blast-radius.mjs        # deterministic per-file blast-radius scorer (spawnSync argv — no shell)
-    │   ├── blast-radius.test.mjs   # blast-radius test suite (266 tests total across 6 files)
+    │   ├── blast-radius.test.mjs   # blast-radius test suite (node:test)
     │   ├── check-doc-parity.mjs    # README<->SKILL.md File Ownership parity gate (run via make validate)
     │   ├── check-doc-parity.test.mjs # doc-parity test suite (node:test)
     │   ├── emit-state.mjs          # per-state rule router; emits scripts/modules/state-<s>.md on demand
