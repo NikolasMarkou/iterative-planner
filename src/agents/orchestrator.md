@@ -47,6 +47,8 @@ Six contracts: PC-EXPLORE, PC-PLAN, PC-EXECUTE-STEP, PC-EXECUTE-LEASH, PC-REFLEC
 
 Throughout this section, "Spawn ip-X" means **issue an actual agent-tool call** with that named subagent type — not do the work yourself in-thread. For example, "Spawn ip-explorer" means dispatch the `ip-explorer` agent type via the Agent/Task tool (e.g. `Agent(subagent_type: "ip-explorer", ...)`), then read the file artifacts it writes. This is one canonical clarification; it does not add per-state dispatch procedure.
 
+**Per-state rule emission (v2.23.0+):** On ENTERING each of EXPLORE/PLAN/EXECUTE/REFLECT/PIVOT, FIRST run `node <skill-path>/scripts/emit-state.mjs --state <state>` and treat its stdout as the authoritative, operative per-state rules for that state (they are no longer inlined in SKILL.md — only a one-line summary + pointer remains there). Then proceed with the dispatch steps below. CLOSE has no module and no emit call.
+
 ### EXPLORE State
 
 **User-Visible Presentation (PC-EXPLORE — Findings Digest)**
@@ -58,6 +60,7 @@ At EXPLORE → PLAN handoff, BEFORE transitioning, emit a chat block containing,
 Floor (must always render): items 1 and 2 verbatim. Items 3-4 may be condensed but must appear.
 
 **Dispatch**
+0. Emit rules: `node <skill-path>/scripts/emit-state.mjs --state explore` and follow its output.
 1. Read state.md, plans/LESSONS.md, plans/FINDINGS.md (limit: 600), plans/SYSTEM.md
 2. **On-demand**: read plans/INDEX.md ONLY if any of these triggers fires — (a) goal mentions a topic absent from FINDINGS.md, (b) FINDINGS.md/LESSONS.md/SYSTEM.md contains a reference to a trimmed per-plan finding, (c) user references prior work, (d) goal touches files appearing in older plan dirs. Otherwise skip — INDEX.md is a locator, not eager cross-plan memory.
 3. Identify 2-3 research topics from the goal and any existing context
@@ -85,7 +88,8 @@ At PLAN → EXECUTE handoff, BEFORE requesting user approval, emit a chat block 
 Floor (always render verbatim, even on token-cost grounds): Steps, Success Criteria, Verification Strategy, Failure Modes, Assumptions. Context and Pre-Mortem may be condensed by reference only if the floor renders in full. Same contract on re-presentation after revision.
 
 **Dispatch**
-0. **Compression gate** (v2.18.0+, instrumented v2.18.2+): Before reading decisions.md / changelog.md for PLAN work and before spawning ip-plan-writer, invoke the intra-plan compression helpers exported from `bootstrap.mjs` (see `references/file-formats.md` § Intra-plan compression for the full spec, and decisions.md D-003 for the `isEntryPoint` dual-mode pattern that makes dynamic import safe).
+0. Emit rules: `node <skill-path>/scripts/emit-state.mjs --state plan` and follow its output.
+0.5. **Compression gate** (v2.18.0+, instrumented v2.18.2+): Before reading decisions.md / changelog.md for PLAN work and before spawning ip-plan-writer, invoke the intra-plan compression helpers exported from `bootstrap.mjs` (see `references/file-formats.md` § Intra-plan compression for the full spec, and decisions.md D-003 for the `isEntryPoint` dual-mode pattern that makes dynamic import safe).
 
    **DECISION plan_2026-05-15_9ae230f7/D-007** (anchor logged textually per L-007 since `.md` is outside `ANCHOR_SOURCE_EXTS`; recorded in `summary.md` Decision Anchors Registry at CLOSE): the dispatch CAPTURES STDOUT JSON and appends a `- Compression: …` line to `{plan-dir}/state.md` Transition History. Pre-v2.18.2 the dispatch was failure-silent (no `.catch()`, no exit-code check, helpers return `{reason: "missing"}` on bad paths) — successes AND errors were invisible. Now both are observable.
 
@@ -128,6 +132,7 @@ Floor: all 5 items. None may be omitted.
 <!-- DECISION plan_2026-05-15_71ab18dd/D-004: pre-step gate is HARD via exit code 2 — do NOT downgrade to advisory/grep-stdout. Reserved exit code keeps shell-script orchestrators robust and bypasses the full validator pipeline for <50ms latency. See plans/plan_2026-05-15_71ab18dd/decisions.md D-004. -->
 
 **Dispatch**
+0. Emit rules: `node <skill-path>/scripts/emit-state.mjs --state execute` and follow its output.
 1. Read plan.md, identify next step
 1.5. **Pre-step gate** (v2.18.0+): Run `node <skill-path>/scripts/validate-plan.mjs --pre-step`. Contract per decisions.md D-004 and `references/file-formats.md` § Presentation Contracts.
    - **Exit 0** (`GATE:PASS`): proceed to spawn ip-executor.
@@ -158,6 +163,7 @@ After Phase-2 evaluation, BEFORE requesting user routing decision, emit a chat b
 5. **Recommendation** — one of CLOSE / PIVOT / EXPLORE with one-sentence justification, then explicit prompt for user confirmation. NEVER auto-close.
 
 **Dispatch**
+0. Emit rules: `node <skill-path>/scripts/emit-state.mjs --state reflect` and follow its output.
 1. Spawn ip-verifier(s) with verification strategy checks from plan.md
 2. Collect results, merge into verification.md
 3. If iteration >= 2: spawn ip-reviewer for adversarial review (output → findings/review-iter-N.md)
@@ -176,6 +182,7 @@ At REFLECT → PIVOT routing, BEFORE transitioning to PLAN, emit a chat block wi
 Floor: items 2 and 4 are non-negotiable.
 
 **Dispatch**
+0. Emit rules: `node <skill-path>/scripts/emit-state.mjs --state pivot` and follow its output.
 1. Read decisions.md, findings.md, checkpoints/*
 2. Decide keep vs revert (default: revert to latest checkpoint if unsure)
 3. Log pivot decision in decisions.md
