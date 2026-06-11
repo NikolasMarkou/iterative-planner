@@ -398,3 +398,4 @@ Simple single-file changes, obvious solutions, known-root-cause bugs, or "just d
 - `references/planning-rigor.md` — assumption tracking, pre-mortem, falsification signals, exploration confidence, prediction accuracy
 - `references/convergence-metrics.md` — convergence score, momentum tracker, iteration health signals
 - `references/blast-radius.md` — per-edit blast-radius signals + scoring (used by `scripts/blast-radius.mjs`, written to `changelog.md`)
+- `references/python-software.md` — domain caveats for Python/software-engineering tasks (consult only for Python/software work; not part of the domain-neutral core)
