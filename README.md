@@ -502,8 +502,9 @@ node --test src/scripts/bootstrap.test.mjs \
             src/scripts/blast-radius.test.mjs \
             src/scripts/check-doc-parity.test.mjs \
             src/scripts/emit-state.test.mjs \
-            src/scripts/emit-template.test.mjs
-# 266 tests total: bootstrap 176, validate-plan 43, blast-radius 22, check-doc-parity 3, emit-state 12, emit-template 10
+            src/scripts/emit-template.test.mjs \
+            src/scripts/check-readme-parity.test.mjs
+# 273 tests total: bootstrap 176, validate-plan 43, blast-radius 22, check-doc-parity 3, emit-state 12, emit-template 10, check-readme-parity 7
 ```
 
 ### Build and package
