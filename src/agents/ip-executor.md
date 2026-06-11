@@ -34,7 +34,7 @@ Before writing any code:
 ## Execution Rules
 - ONE step at a time. Do not look ahead.
 - Commit after success: `[iter-N/step-M] description`
-- Create checkpoint before risky changes (3+ files): `checkpoints/cp-NNN-iterN.md`. Template + sibling-directory convention: `references/file-formats.md` § checkpoints/cp-NNN-iterN.md. Revert order (git first, then reinstall): `references/code-hygiene.md` § Revert procedures.
+- Create checkpoint before risky changes (3+ files): `checkpoints/cp-NNN-iterN.md`. Template + sibling-directory convention: `references/file-formats.md` § checkpoints/cp-NNN-iterN.md — or run `node <skill-path>/scripts/emit-template.mjs --name checkpoints` to get just this template (file-formats.md is the canonical fallback). Revert order (git first, then reinstall): `references/code-hygiene.md` § Revert procedures.
 
 ### Checkpoint Lockfile Snapshot (MANDATORY when step touches a manifest)
 1. **Manifest detection**: lockfile snapshotting is REQUIRED when the planned step modifies any of these manifest files (or equivalent for the project's stack):
@@ -77,7 +77,7 @@ Procedure:
    node <skill-path>/scripts/blast-radius.mjs <repo-rel-path>
    ```
    Capture the first stdout line (`radius:TIER(score)` or `radius:UNKNOWN(reason)`). Script always exits 0 — never fails the step.
-2. If `changelog.md` is missing (older plans), create it with the standard header (see `references/file-formats.md`) before appending.
+2. If `changelog.md` is missing (older plans), create it with the standard header (see `references/file-formats.md` — or run `node <skill-path>/scripts/emit-template.mjs --name changelog` to get just this template; file-formats.md is the canonical fallback) before appending.
 3. Append the line. Append-only — never edit prior lines.
 4. After the step's commit, you MAY rewrite the trailing `uncommitted` token to the short hash; otherwise leave as `uncommitted` (validator accepts both).
 

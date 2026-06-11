@@ -40,6 +40,8 @@ iterative-planner/
     │   ├── check-doc-parity.test.mjs # Test suite (node:test)
     │   ├── emit-state.mjs            # Per-state rule router; emits scripts/modules/state-<s>.md on demand (used by SKILL.md per-state pointers / orchestrator dispatch; Node.js 18+)
     │   ├── emit-state.test.mjs       # Test suite (node:test)
+    │   ├── emit-template.mjs         # Per-template slicer; emits one plan-file template sliced from references/file-formats.md via --name <slug> (used by agents/modules to fetch a single template instead of the 987-line file; Node.js 18+)
+    │   ├── emit-template.test.mjs    # Test suite (node:test)
     │   ├── modules/                  # Verbatim per-state rule bodies, emitted on demand by emit-state.mjs
     │   │   ├── state-explore.md      # EXPLORE per-state rules
     │   │   ├── state-plan.md         # PLAN per-state rules
@@ -176,6 +178,7 @@ make help                    # Show available targets
 - [ ] README.md and src/SKILL.md File Ownership tables agree (same co-ownership for `plan.md` and `changelog.md`); full row parity between the two File Ownership tables is now enforced automatically by `node src/scripts/check-doc-parity.mjs` (run via `make validate`)
 - [ ] Skill-bundled `~/.claude/skills/iterative-planner/agents/` mirrors `src/agents/` (`diff -rq --exclude='.claude' src/agents ~/.claude/skills/iterative-planner/agents` empty) — kept in sync by "Updating Local Skill"
 - [ ] `node src/scripts/emit-state.mjs --state <explore|plan|execute|reflect|pivot>` emits the verbatim per-state rule body (round-trip fidelity vs the SKILL.md "Per-State Rules" bodies before extraction); unknown/missing `--state` exits non-zero
+- [ ] `node src/scripts/emit-template.mjs --name <slug>` emits the byte-faithful template slice from references/file-formats.md for each of the 16 slugs; unknown/missing `--name` exits non-zero (2 for missing, 1 for unknown)
 - [ ] `src/scripts/modules/` is synced into the skill bundle (`diff -rq --exclude='.claude' src/scripts/modules ~/.claude/skills/iterative-planner/scripts/modules` empty) and re-inlined by `make build-combined` (each of the 5 module bodies present in the combined output)
 
 ## Updating Local Skill

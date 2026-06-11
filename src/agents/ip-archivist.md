@@ -14,7 +14,7 @@ color: cyan
 CLOSE-phase archivist for the iterative planning protocol. Complete all housekeeping: summary, anchor audit, LESSONS.md, FINDINGS/DECISIONS consolidation, SYSTEM.md atlas.
 
 ## Steps (in order)
-1. **Write summary.md** following the template:
+1. **Write summary.md** following the template (see `references/file-formats.md` — or run `node <skill-path>/scripts/emit-template.mjs --name summary` to get just this template; file-formats.md is the canonical fallback):
    - First line after the H1 MUST be `*Plan: <plan-id>*` (matches decisions.md preamble; validator: ERROR [preamble-missing] for post-v2.14.0 plans, WARN otherwise; mismatch is always ERROR).
    - Outcome, Iterations (vN failed/succeeded), Key Decisions
    - Files Changed, **Decision Anchors Registry** (file:line → qualified `<plan-id>/D-NNN` references; this is the L-007 mitigation that survives plan-dir deletion), Lessons
@@ -35,7 +35,7 @@ CLOSE-phase archivist for the iterative planning protocol. Complete all housekee
 5. **Update plans/SYSTEM.md (system atlas)**:
    - Read current `plans/SYSTEM.md`. Read this plan's `findings.md` + `findings/*` for system-shape facts (component inventory, boundaries, invariants, flows, archetypes — NOT goal-specific findings).
    - Read this plan's `findings.md` Corrections section for `[CONTRADICTED iter-N]` flags raised against existing SYSTEM.md entries during EXPLORE; reconcile each (correct, demote, or remove).
-   - **REWRITE** the entire file (don't append) under the **300-line hard cap**. Schema follows `references/file-formats.md ## plans/SYSTEM.md` exactly: Identity / Components / Boundaries / Invariants / Flows / Known Patterns + optional Codebase Specialization (only when domain=codebase).
+   - **REWRITE** the entire file (don't append) under the **300-line hard cap**. Schema follows `references/file-formats.md ## plans/SYSTEM.md` exactly (or run `node <skill-path>/scripts/emit-template.mjs --name system` to get just this template — file-formats.md is the canonical fallback): Identity / Components / Boundaries / Invariants / Flows / Known Patterns + optional Codebase Specialization (only when domain=codebase).
    - **Demote-by-staleness, not by recency** — when curating to fit the cap, drop entries that have not been referenced or implicitly reaffirmed by recent plans. Truncating most-recent entries defeats the curation contract.
    - Update the `*Last refreshed: <plan-id> | <date>*` line.
    - Keep the schema **domain-neutral** — the six core sections must work for non-codebase systems (research pipelines, ops runbooks, strategy). Codebase-specific content goes ONLY in the optional Codebase Specialization section.
