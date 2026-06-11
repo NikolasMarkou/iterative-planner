@@ -157,14 +157,14 @@ R = read only | W = update (implicit read + write) | R+W = distinct read and wri
 | changelog.md | — | W* | W (append) | R | W (append REVERT) | R |
 | checkpoints/* | — | — | W | R | R | — |
 | summary.md | — | — | — | — | — | W |
-| plans/FINDINGS.md | R(600) | R(600) | — | — | R(600) | W(merge+compress) |
+| plans/FINDINGS.md | R(600) | R? | — | — | R(600) | W(merge+compress) |
 | plans/DECISIONS.md | R(600) | R(600) | — | — | R(600) | W(merge+compress) |
 | plans/LESSONS.md | R | R | — | — | R | W(rewrite≤200) |
 | plans/SYSTEM.md | R | R | — | — | R | W(rewrite≤300) |
 | plans/INDEX.md | R? | — | — | — | — | W(append via bootstrap) |
 | lessons_snapshot.md | — | — | — | — | — | W(auto via bootstrap) |
 
-`R?` = read on demand only, not as part of the eager cross-plan read set. See EXPLORE rules below for the triggers that warrant an INDEX.md read.
+`R?` = read on demand only, not as part of the eager cross-plan read set. See EXPLORE rules below for the triggers that warrant an INDEX.md read. `plans/FINDINGS.md` at PLAN is `R?` because the plan-writer reads per-plan `findings/*` files (already in PLAN dispatch), not the cross-plan consolidated `plans/FINDINGS.md`, unless explicitly needed for cross-plan context.
 
 `*` Intra-plan compression may insert a `<!-- COMPRESSED-SUMMARY -->` block at PLAN gate-in (decisions.md >300 lines, changelog.md >200 lines). Raw entries preserved verbatim; the W operation is bounded — only the metadata block is written. See `references/file-formats.md` § Intra-plan compression.
 
