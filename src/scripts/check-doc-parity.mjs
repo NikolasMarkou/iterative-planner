@@ -59,14 +59,15 @@ export function parseOwnershipKeys(markdownText) {
 }
 
 /**
- * Pure comparison: returns the path-keys present in the SKILL table but absent
- * from the README table.
+ * Pure comparison: returns path-keys present in SKILL but absent from README
+ * (`missing`) and path-keys present in README but absent from SKILL (`extra`).
  */
 export function comparison(skillText, readmeText) {
   const skillKeys = parseOwnershipKeys(skillText);
   const readmeKeys = parseOwnershipKeys(readmeText);
   const missing = [...skillKeys].filter((k) => !readmeKeys.has(k));
-  return { missing };
+  const extra = [...readmeKeys].filter((k) => !skillKeys.has(k));
+  return { missing, extra };
 }
 
 const isEntryPoint = (() => {
@@ -81,17 +82,25 @@ if (isEntryPoint) {
   const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
   const skillText = readFileSync(join(repoRoot, "src", "SKILL.md"), "utf8");
   const readmeText = readFileSync(join(repoRoot, "README.md"), "utf8");
-  const { missing } = comparison(skillText, readmeText);
-  if (missing.length === 0) {
+  const { missing, extra } = comparison(skillText, readmeText);
+  if (missing.length === 0 && extra.length === 0) {
     const n = parseOwnershipKeys(skillText).size;
     console.log(
       `check-doc-parity: PASS (README File Ownership table mirrors SKILL.md — ${n} keys)`,
     );
     process.exit(0);
   }
-  console.error(
-    `check-doc-parity: FAIL — README File Ownership table is missing ${missing.length} row(s) present in SKILL.md:`,
-  );
-  for (const k of missing) console.error(k);
+  if (missing.length > 0) {
+    console.error(
+      `check-doc-parity: FAIL — README File Ownership table is missing ${missing.length} row(s) present in SKILL.md:`,
+    );
+    for (const k of missing) console.error(k);
+  }
+  if (extra.length > 0) {
+    console.error(
+      `check-doc-parity: FAIL — README File Ownership table has ${extra.length} row(s) not present in SKILL.md:`,
+    );
+    for (const k of extra) console.error(k);
+  }
   process.exit(1);
 }

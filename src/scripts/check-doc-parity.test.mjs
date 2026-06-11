@@ -50,6 +50,31 @@ test("negative: SKILL key absent from README is reported missing", () => {
   assert.ok(missing.includes("c.md"), `expected c.md in ${JSON.stringify(missing)}`);
 });
 
+test("negative: README key absent from SKILL is reported extra", () => {
+  const skill = [
+    "### File Ownership Model",
+    "| File | Owner | Readers |",
+    "|------|-------|---------|",
+    "| `a.md` | X | Y |",
+    "| `b.md` | X | Y |",
+    "",
+    "## Next Section",
+  ].join("\n");
+  const readme = [
+    "### File ownership",
+    "| File | Owner | Readers |",
+    "|------|-------|---------|",
+    "| `a.md` | X | Y |",
+    "| `b.md` | X | Y |",
+    "| `z.md` | X | Y |",
+    "",
+    "## Next Section",
+  ].join("\n");
+  const { extra } = comparison(skill, readme);
+  assert.equal(extra.length, 1);
+  assert.ok(extra.includes("z.md"), `expected z.md in ${JSON.stringify(extra)}`);
+});
+
 test("merged cell + (index) suffix: no false positive", () => {
   const skill = [
     "### File Ownership Model",
