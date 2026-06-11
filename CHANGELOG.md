@@ -4,6 +4,13 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.29.0] - 2026-06-11
+
+### Added
+- `src/references/python-software.md` — a new conditional reference: the Python / software-engineering domain caveat (~479 lines, 3 sections: A. universal software-design mental models not already in the protocol, B. condensed Python architecture patterns, C. Python style + a 20-item anti-pattern checklist). It cross-references (does not restate) the concepts the planner already owns: Kleppmann "X at the cost of Y", Brooks essential/accidental complexity + rule-of-three + Forbidden Fix Patterns (`complexity-control.md`), and Hohpe hard/soft/ghost constraints (`planning-rigor.md`).
+- Domain-gated pointers to the new caveat from `src/SKILL.md` `## References`, the `state-plan` and `state-reflect` rule modules, and the `ip-plan-writer` and `ip-reviewer` agents. Every pointer is phrased "For Python/software-engineering tasks, ..." so the domain-neutral default path is unchanged for non-software plans.
+- `Makefile` and `build.ps1` combined-build rewrite maps now normalize the `python-software.md` backtick link.
+
 ## [2.28.0] - 2026-06-11
 
 ### Added
