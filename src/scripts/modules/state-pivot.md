@@ -5,5 +5,6 @@
 - **Momentum check** *(EXTENDED — 2nd PIVOT onward)* — log pivot direction, check for oscillation. Momentum < 0.3 → recommend decomposition. See `references/convergence-metrics.md`.
 - Write `decisions.md`: log pivot + mandatory Complexity Assessment (+ pivot direction log if EXTENDED).
 - Write `state.md` + `progress.md` (mark failed items, note pivot).
+- Run `bootstrap.mjs reset-attempts` — the leash counter must NOT carry into the post-pivot EXECUTE, or the pre-step gate HARD-fails (`leash-cap`) on the first new step. (Same command applies when advancing to a genuinely new step.)
 - Present options to user → get approval → transition to PLAN. Emit **PC-PIVOT** (Pivot Options contract — see `references/file-formats.md` "Presentation Contracts"): pivot reason, available checkpoints (verbatim from `checkpoints/*`), ghost constraints surfaced, 1-3 candidate directions framed "X at the cost of Y", and an explicit prompt for direction + keep-vs-revert decision.
 
