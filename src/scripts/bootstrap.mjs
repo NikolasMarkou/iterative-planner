@@ -1359,7 +1359,8 @@ ${crossPlanNote}
     // If --force was used, restore the old pointer so the previous plan is not orphaned
     if (previousPlan) {
       try {
-        writeFileSync(pointerFile, previousPlan);
+        writeFileSync(pointerFile + ".tmp", previousPlan);
+        renameSync(pointerFile + ".tmp", pointerFile);
         console.error(`WARNING: Restored pointer to previous plan: plans/${previousPlan}`);
       } catch (e) { console.error(`WARNING: Failed to restore pointer to previous plan: plans/${previousPlan}`); }
     } else if (wePersistedPointer) {
