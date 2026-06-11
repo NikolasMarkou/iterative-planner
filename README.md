@@ -584,6 +584,8 @@ iterative-planner/
     │   ├── blast-radius.test.mjs   # blast-radius test suite (node:test)
     │   ├── check-doc-parity.mjs    # README<->SKILL.md File Ownership parity gate (run via make validate)
     │   ├── check-doc-parity.test.mjs # doc-parity test suite (node:test)
+    │   ├── check-readme-parity.mjs         # README version badge and test count parity gate (used by make/build.ps1 validate; Node.js 18+)
+    │   ├── check-readme-parity.test.mjs    # Test suite (node:test)
     │   ├── emit-state.mjs          # per-state rule router; emits scripts/modules/state-<s>.md on demand
     │   ├── emit-state.test.mjs     # emit-state test suite (node:test)
     │   ├── emit-template.mjs       # per-template slicer; emits one plan-file template from references/file-formats.md via --name <slug>
