@@ -4,6 +4,9 @@ description: >
   State-machine driven iterative planning and execution for complex coding tasks.
   Cycle: Explore → Plan → Execute → Reflect → Pivot. Filesystem as persistent memory.
   Use for multi-file tasks, migrations, refactoring, failed tasks, or anything non-trivial.
+version: __SKILL_VERSION__
+released: __SKILL_DATE__
+commit: __SKILL_COMMIT__
 ---
 
 # Iterative Planner
