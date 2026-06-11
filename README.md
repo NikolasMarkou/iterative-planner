@@ -16,10 +16,10 @@ Works for refactoring, migrations, debugging, system design, deep research — a
 ## Table of Contents
 
 - [When to Use This](#when-to-use-this)
-- [Get Started in 60 Seconds](#get-started-in-60-seconds)
 - [How It Works](#how-it-works)
 - [A Worked Example](#a-worked-example)
 - [Why This Works](#why-this-works)
+- [Get Started in 60 Seconds](#get-started-in-60-seconds)
 - [The Plan Directory](#the-plan-directory)
 - [Bootstrapping](#bootstrapping)
 - [Sub-Agent Architecture](#sub-agent-architecture)
@@ -47,50 +47,6 @@ Works for refactoring, migrations, debugging, system design, deep research — a
 | Anything where you'd benefit from "what did I already try?" | |
 
 **Trigger phrases**: *"plan this"*, *"figure out"*, *"help me think through"*, *"I've been struggling with"*, *"debug this complex issue"*.
-
----
-
-## Get Started in 60 Seconds
-
-**Requires**: Node.js 18+ (for the bootstrap and validator scripts).
-
-### Option 1 — Zip package (recommended)
-
-Download the latest zip from [Releases](https://github.com/NikolasMarkou/iterative-planner/releases) and unzip into your local skills directory:
-
-```bash
-unzip iterative-planner-v*.zip -d ~/.claude/skills/
-```
-
-### Option 2 — Single-file skill
-
-Download `iterative-planner-combined.md` from [Releases](https://github.com/NikolasMarkou/iterative-planner/releases) and add it to Claude Code's Custom Instructions (Settings → Custom Instructions).
-
-> The single-file version does not include `bootstrap.mjs`. Plan directories must be created manually. For full bootstrap support, use the zip package.
-
-### Option 3 — Clone and install
-
-```bash
-git clone https://github.com/NikolasMarkou/iterative-planner.git
-cd iterative-planner
-make build
-cp -r build/iterative-planner ~/.claude/skills/
-```
-
-### Sub-agents (optional but recommended)
-
-To enable parallel agent dispatch (explorers in parallel, dedicated verifier, adversarial reviewer):
-
-```bash
-mkdir -p ~/.claude/agents
-cp src/agents/*.md ~/.claude/agents/
-```
-
-The skill works without sub-agents — they are an optimization layer, not a requirement.
-
-### First run
-
-In any project directory, give Claude a complex task or just say: **"plan this"**. Claude will run `bootstrap.mjs new "<your goal>"`, drop into EXPLORE, and walk through the cycle.
 
 ---
 
@@ -178,56 +134,21 @@ The next plan starts with all of this on disk, available to read.
 
 ## Why This Works
 
+Five properties separate this from "ask Claude to make a plan."
+
 ### Persistent memory
 
-Everything important lives on disk, not the context window. State, decisions, findings, progress, and verification results are recoverable across conversation restarts. **Mandatory re-reads** keep the agent grounded: `state.md` is re-read every 10 tool calls; after 50 messages, `state.md` and `plan.md` are re-read before every response.
+Everything important lives on disk, not the context window. State, decisions, findings, progress, and verification results are recoverable across conversation restarts. **Mandatory re-reads** keep the agent grounded: `state.md` is re-read every 10 tool calls; after 50 messages, `state.md` and `plan.md` are re-read before every response. The context window can rot mid-task; the plan directory cannot.
 
 ### Cross-plan intelligence
 
-When a plan closes, its findings and decisions are merged into consolidated files at the `plans/` root. The next plan reads them during EXPLORE. This means:
+When a plan closes, its findings and decisions merge into consolidated files at the `plans/` root, and the next plan reads them during EXPLORE. Migrations build on earlier debugging sessions; design plans inherit constraints discovered during prior research; failed approaches stay visible so future plans don't repeat dead ends. A **sliding window** keeps the consolidated files to the 4 most recent plans (older sections stay intact in their own directories, indexed by `plans/INDEX.md`).
 
-- Migrations build on analysis from previous debugging sessions.
-- Design plans inherit constraints discovered during earlier research.
-- Failed approaches are visible to future plans, preventing repeated dead ends.
-- Corrected findings carry forward automatically.
-
-A **sliding window** trims consolidated files to the 4 most recent plan sections on each close. Older sections remain intact in their per-plan directories. `plans/INDEX.md` keeps a topic-to-directory map so trimmed plans are still discoverable.
-
-### The system atlas (`plans/SYSTEM.md`)
-
-Distinct from goal-driven findings, the system atlas is a curated, **domain-neutral** map of *what the system being planned against actually is* — Identity, Components, Boundaries, Invariants, Flows, Known Patterns. Capped at 300 lines. Rewritten by the archivist at CLOSE. Read at the start of every EXPLORE and PLAN. This is the structural prior the agent brings into every new plan.
+Alongside the goal-driven findings sits the **system atlas** (`plans/SYSTEM.md`): a curated, domain-neutral map of *what the system being planned against actually is* — Identity, Components, Boundaries, Invariants, Flows, Known Patterns. Capped at 300 lines, rewritten at CLOSE, read at the start of every EXPLORE and PLAN. It is the structural prior the agent carries into every new plan.
 
 ### Self-correcting research
 
-Every discovery is written to `findings.md` with file paths, code path traces, and evidence. The agent cannot transition to PLAN until it has at least 3 indexed findings covering problem scope, affected areas, and existing patterns. When execution proves a finding wrong, it gets a `[CORRECTED iter-N]` marker. The original stays for traceability.
-
-### Built-in reasoning frameworks
-
-Each state embeds domain-agnostic thinking tools:
-
-**Exploration**
-
-| Framework | What it does |
-|-----------|-------------|
-| **Constraint classification** | Tag every constraint as *hard*, *soft*, or *ghost* (no longer applies). Ghost constraints reveal previously blocked options. |
-| **Exploration confidence** | Self-assess scope, solution space, risk visibility. "Shallow" on any dimension means keep exploring. |
-
-**Planning**
-
-| Framework | What it does |
-|-----------|-------------|
-| **Problem decomposition** | Understand the whole, find natural boundaries, minimize dependencies, start with the riskiest part. |
-| **Assumption tracking** | Every assumption traced to a finding, linked to dependent steps. When one breaks, you know what's invalidated. |
-| **Pre-mortem and falsification** | Assume the plan failed. Why? Extract concrete STOP IF triggers. Prevents confirmation bias. |
-
-**Reflection and pivot**
-
-| Framework | What it does |
-|-----------|-------------|
-| **Prediction accuracy** | Compare predicted step count, file count, line delta against actuals. Calibrates future estimates via LESSONS.md. |
-| **Root cause analysis** | On failure: immediate cause, contributing factor, failed defense, prevention. Stop rule against premature closure. |
-| **Essential vs accidental complexity** | "Inherent in the problem, or did we create it?" Essential = partition. Accidental = remove. |
-| **Ghost constraint hunting** | Before pivoting, check whether the constraint behind the failed approach is still valid. |
+Every discovery is written to `findings.md` with file paths, code-path traces, and evidence. The agent cannot transition to PLAN until it has at least 3 indexed findings covering problem scope, affected areas, and existing patterns. When execution proves a finding wrong, it gets a `[CORRECTED iter-N]` marker — the original stays for traceability.
 
 ### The autonomy leash
 
@@ -235,50 +156,83 @@ When a step fails during EXECUTE, the agent gets **2 fix attempts**, each constr
 
 ### Revert-first complexity control
 
-The default response to failure is to **simplify, never to add**:
-
-1. Can I fix by **reverting**? Do that.
-2. Can I fix by **deleting**? Do that.
-3. **One-line** fix? Do that.
-4. None of the above? **Stop.** Enter REFLECT.
-
-Hard limits:
+The default response to failure is to **simplify, never to add**: can I fix by reverting? deleting? a one-line change? If none of those — **stop** and enter REFLECT. Hard limits back this up:
 
 | Rule | What it does |
 |------|-------------|
 | **10-Line Rule** | If a "fix" needs more than 10 new lines, it's not a fix. It needs a plan. |
-| **3-Strike Rule** | Same area breaks 3 times? The approach is wrong. Mandatory PIVOT, with revert to a checkpoint covering the struck area. |
+| **3-Strike Rule** | Same area breaks 3 times? The approach is wrong. Mandatory PIVOT, with revert to a covering checkpoint. |
 | **Complexity Budget** | Max 3 new files, max 2 new abstractions, target net-zero or negative line count. Tracked in `plan.md`. |
 | **Nuclear Option** | At iteration 5, scope doubled? Recommend full revert to the iteration-1 checkpoint. The decision log preserves all learnings. |
-| **6 Simplification Checks** | Structured diagnostic at REFLECT: delete instead? symptom or root cause? essential or accidental? fighting the framework? worth reverting everything? |
+| **6 Simplification Checks** | Structured REFLECT diagnostic: delete instead? symptom or root cause? essential or accidental complexity? fighting the framework? worth reverting everything? |
 
-### Decision anchoring
+### Reasoning frameworks built into each state
 
-When code survives failed alternatives, the agent leaves a plan-qualified comment at the point of impact:
+Each state embeds domain-agnostic thinking tools so the rigor is structural, not improvised:
 
-```python
-# DECISION plan_2026-05-07_a3f1b2c9/D-003: stateless tokens, not dual-write.
-# Dual-write doubled Redis memory due to 30-day TTLs (see decisions.md D-002).
-# Do NOT switch back to session-store-based approach without addressing memory growth.
-def create_token(user):
-    ...
+| Framework | State | What it does |
+|-----------|-------|-------------|
+| **Constraint classification** | EXPLORE | Tag every constraint *hard*, *soft*, or *ghost* (no longer applies). Ghost constraints reveal previously blocked options. |
+| **Exploration confidence** | EXPLORE | Self-assess scope, solution space, risk visibility. "Shallow" on any dimension means keep exploring. |
+| **Problem decomposition** | PLAN | Understand the whole, find natural boundaries, minimize dependencies, start with the riskiest part. |
+| **Assumption tracking** | PLAN | Every assumption traced to a finding and linked to dependent steps. When one breaks, you know what's invalidated. |
+| **Pre-mortem & falsification** | PLAN | Assume the plan failed. Why? Extract concrete STOP IF triggers. Counters confirmation bias. |
+| **Prediction accuracy** | REFLECT | Compare predicted vs actual step/file/line counts. Calibrates future estimates via LESSONS.md. |
+| **Root cause analysis** | REFLECT | On failure: immediate cause, contributing factor, failed defense, prevention. Stop rule against premature closure. |
+| **Essential vs accidental complexity** | REFLECT | "Inherent in the problem, or did we create it?" Essential = partition. Accidental = remove. |
+| **Ghost-constraint hunting** | PIVOT | Before pivoting, check whether the constraint behind the failed approach is still valid. |
+
+### Audit trail and clean output
+
+Three mechanisms keep the workspace honest, all visible on disk:
+
+- **Decision anchoring** — when code survives a failed alternative, the agent leaves a plan-qualified `# DECISION plan_YYYY-MM-DD_XXXXXXXX/D-NNN` comment at the point of impact, stating what *not* to do and why. The plan-id prefix stays resolvable even after the consolidated `plans/DECISIONS.md` sliding-window trim. The validator audits every anchor at CLOSE. (Details: [`src/references/decision-anchoring.md`](src/references/decision-anchoring.md).)
+- **Per-edit changelog + blast-radius scoring** — every file edit appends one line to `{plan-dir}/changelog.md` (timestamp, iter/step, commit, path, op, blast-radius tier, decision-ref, reason). A deterministic scorer tiers each edit LOW/MED/HIGH and surfaces "tiny edit, big radius" outliers that plan-level failure modes miss. Always advisory, never blocks CLOSE. (Details: [`src/references/blast-radius.md`](src/references/blast-radius.md).)
+- **Clean output hygiene** — every change is tracked in a manifest, failed steps revert immediately, and forbidden leftovers (TODOs, debug prints, commented-out code, orphan helpers) are flagged at REFLECT. The workspace is always known-good before new work begins.
+
+---
+
+## Get Started in 60 Seconds
+
+**Requires**: Node.js 18+ (for the bootstrap and validator scripts).
+
+### Option 1 — Zip package (recommended)
+
+Download the latest zip from [Releases](https://github.com/NikolasMarkou/iterative-planner/releases) and unzip into your local skills directory:
+
+```bash
+unzip iterative-planner-v*.zip -d ~/.claude/skills/
 ```
 
-The plan-id prefix makes the anchor globally unambiguous and resolvable even after the consolidated `plans/DECISIONS.md` sliding-window trim drops the originating plan section. The validator audits anchors at CLOSE — orphans, unknown plans, and missing back-links are flagged.
+### Option 2 — Single-file skill
 
-### Per-edit changelog and blast-radius scoring
+Download `iterative-planner-combined.md` from [Releases](https://github.com/NikolasMarkou/iterative-planner/releases) and add it to Claude Code's Custom Instructions (Settings → Custom Instructions).
 
-Every file edit during EXECUTE appends one line to `{plan-dir}/changelog.md`:
+> The single-file version does not include `bootstrap.mjs`. Plan directories must be created manually. For full bootstrap support, use the zip package.
 
+### Option 3 — Clone and install
+
+```bash
+git clone https://github.com/NikolasMarkou/iterative-planner.git
+cd iterative-planner
+make build
+cp -r build/iterative-planner ~/.claude/skills/
 ```
-2026-05-07T14:23:11Z | iter-1/step-3 | a3f1b2c | src/auth/jwt.py | EDIT(+42,-8) | MED(0.62) | D-003 | switch verifier to RS256
+
+### Sub-agents (optional but recommended)
+
+To enable parallel agent dispatch (explorers in parallel, dedicated verifier, adversarial reviewer):
+
+```bash
+mkdir -p ~/.claude/agents
+cp src/agents/*.md ~/.claude/agents/
 ```
 
-Eight pipe-delimited fields: timestamp, iter/step, commit, path, op + LOC delta, **blast-radius tier (LOW/MED/HIGH/UNKNOWN)**, decision-ref, one-clause reason. The blast-radius scorer (`scripts/blast-radius.mjs`) is a deterministic Node.js heuristic: LOC churn, reverse-dependency count, shared-path flag, public-API touch, test-coverage delta, iteration history. Surfaces "tiny edit, big radius" outliers that plan-level Failure Modes miss. The reviewer reads this during REFLECT. Always advisory, never blocks CLOSE.
+The skill works without sub-agents — they are an optimization layer, not a requirement.
 
-### Clean output hygiene
+### First run
 
-Every change is tracked in a manifest. Failed steps revert immediately. Forbidden leftovers (TODOs, debug prints, commented-out code, orphan helpers) are flagged at REFLECT diff review. The workspace is always in a known-good state before new work begins.
+In any project directory, give Claude a complex task or just say: **"plan this"**. Claude will run `bootstrap.mjs new "<your goal>"`, drop into EXPLORE, and walk through the cycle.
 
 ---
 
@@ -308,9 +262,7 @@ plans/
 
 Templates for every file are in [`src/references/file-formats.md`](src/references/file-formats.md).
 
-### File lifecycle matrix
-
-Each file has a lifecycle: which states write it, which states read it, which never touch it. The full matrix is in [`src/SKILL.md`](src/SKILL.md). The protocol enforces a **read-before-write** rule on every plan file — the writing agent must read first, even on the first update after bootstrap.
+**File lifecycle** — each file has a lifecycle: which states write it, which read it, which never touch it. The full matrix is in [`src/SKILL.md`](src/SKILL.md). The protocol enforces a **read-before-write** rule on every plan file — the writing agent must read first, even on the first update after bootstrap.
 
 ### File ownership
 
@@ -352,22 +304,15 @@ node <skill-path>/scripts/bootstrap.mjs reset-attempts       # clear active plan
 node <skill-path>/scripts/validate-plan.mjs                  # validate active plan compliance
 ```
 
-**`new`** creates the plan directory, writes the `.current_plan` pointer, ensures cross-plan files exist (`FINDINGS.md`, `DECISIONS.md`, `LESSONS.md`, `SYSTEM.md`, `INDEX.md`), adds `plans/` to `.gitignore`, and drops the agent into EXPLORE. Refuses if an active plan already exists. Use `resume` to continue, `close` to end it, or `new --force` to close-and-replace.
+**`new`** creates the plan directory, writes the `.current_plan` pointer, ensures cross-plan files exist (`FINDINGS.md`, `DECISIONS.md`, `LESSONS.md`, `SYSTEM.md`, `INDEX.md`), adds `plans/` to `.gitignore`, and drops the agent into EXPLORE. Refuses if an active plan already exists — use `resume` to continue, `close` to end it, or `new --force` to close-and-replace.
 
-**`close`** merges per-plan findings and decisions into the consolidated files (newest first), appends to `INDEX.md`, snapshots `LESSONS.md` to the plan directory as `lessons_snapshot.md`, removes the pointer, and preserves the plan directory for reference.
+**`close`** merges per-plan findings and decisions into the consolidated files (newest first), appends to `INDEX.md`, snapshots `LESSONS.md` to the plan directory, removes the pointer, and preserves the plan directory for reference.
 
-**`resume`** outputs the current plan state for quick re-entry. This is the key command for surviving context window resets — at the start of a new conversation, after context compression, or any time the agent seems to have lost track. Reads `state.md`, `plan.md`, `progress.md`, and `decisions.md` and prints a structured summary.
-
-**`status`** prints a single-line summary. **`list`** shows all plan directories with their state and goal.
+**`resume`** is the key command for surviving context-window resets — at the start of a new conversation, after compression, or any time the agent seems to have lost track. It reads `state.md`, `plan.md`, `progress.md`, and `decisions.md` and prints a structured re-entry summary. **`status`** prints a one-line summary; **`list`** shows all plan directories with state and goal.
 
 ### Merge edge cases
 
-When `close` merges per-plan files into `plans/FINDINGS.md` and `plans/DECISIONS.md`:
-
-- Only content at and below the first `##` heading is merged.
-- Per-plan files with no `##` headings are treated as boilerplate and skipped.
-- Cross-plan boilerplate notes are stripped to avoid duplication.
-- Relative links like `(findings/foo.md)` are rewritten to include the plan directory path.
+When `close` merges per-plan files into `plans/FINDINGS.md` and `plans/DECISIONS.md`: only content at and below the first `##` heading is merged; per-plan files with no `##` headings are skipped as boilerplate; cross-plan boilerplate notes are stripped to avoid duplication; relative links like `(findings/foo.md)` are rewritten to include the plan directory path.
 
 ---
 
@@ -375,7 +320,7 @@ When `close` merges per-plan files into `plans/FINDINGS.md` and `plans/DECISIONS
 
 The orchestrator coordinates seven specialized agents. Sub-agents cannot spawn other sub-agents — the orchestrator is the sole coordinator. Sub-agents are **optional**: if their definitions are not installed under `~/.claude/agents/`, the monolithic skill works as before.
 
-When the skill activates and the agent definitions are installed, the conversation assumes the orchestrator role **in-thread** (it reads `agents/ip-orchestrator.md` and adopts it — it does not spawn a separate orchestrator); when they are not installed, the same conversation runs the full protocol single-threaded. See SKILL.md "Orchestrator Role Assumption".
+When the skill activates with the agent definitions installed, the conversation assumes the orchestrator role **in-thread** (it reads `agents/ip-orchestrator.md` and adopts it — it does not spawn a separate orchestrator); when they are not installed, the same conversation runs the full protocol single-threaded. See [`src/SKILL.md`](src/SKILL.md) "Orchestrator Role Assumption."
 
 | Agent | Role | Tools | Model |
 |-------|------|-------|-------|
@@ -387,24 +332,13 @@ When the skill activates and the agent definitions are installed, the conversati
 | **ip-reviewer** | Adversarial review, iteration ≥ 2 (REFLECT) | Read, Write, Grep, Glob, Bash | opus |
 | **ip-archivist** | CLOSE housekeeping: `summary.md`, anchor audit, LESSONS, SYSTEM | Read, Write, Edit, Grep, Glob, Bash | sonnet |
 
-### Dispatch by state
-
-- **EXPLORE**: 1-3 explorers in parallel, each on a distinct topic. Orchestrator updates `findings.md` index after they complete.
-- **PLAN**: one plan-writer with goal + findings summary.
-- **EXECUTE**: one executor per step, sequential by default. Independent steps can run in parallel via `isolation: "worktree"`.
-- **REFLECT**: verifier(s) for parallel checks; reviewer (iteration 2+) for adversarial review.
-- **CLOSE**: archivist for `summary.md`, anchor audit, LESSONS rewrite, SYSTEM rewrite.
+**Dispatch by state**: EXPLORE — 1-3 explorers in parallel, one per topic. PLAN — one plan-writer. EXECUTE — one executor per step, sequential by default (independent steps can parallelize via `isolation: "worktree"`). REFLECT — verifier(s) for checks, reviewer (iteration 2+) for adversarial review. CLOSE — archivist for the housekeeping.
 
 ---
 
 ## Presentation Contracts
 
-Sub-agents are invisible to the user — only the orchestrator's chat text reaches them. To prevent the orchestrator from collapsing critical artifacts (the verifier's PASS/FAIL table, the reviewer's concerns, the leash failure block) into terse summaries, every user-facing state transition is governed by a named **Presentation Contract**. Each contract specifies:
-
-- When it is emitted.
-- The required content list (numbered, ordered).
-- Fidelity (verbatim vs digest).
-- The minimum sections (the floor).
+Sub-agents are invisible to the user — only the orchestrator's chat text reaches them, and disk artifacts are memory, not a user-facing channel. To stop the orchestrator from collapsing critical artifacts (the verifier's PASS/FAIL table, the reviewer's concerns, a leash-failure block) into a terse summary, every user-facing state transition is governed by a named **Presentation Contract** that fixes when it fires, the ordered content list, the fidelity (verbatim vs digest), and the minimum sections (the floor).
 
 | Contract | When | Floor |
 |----------|------|-------|
@@ -415,28 +349,15 @@ Sub-agents are invisible to the user — only the orchestrator's chat text reach
 | **PC-REFLECT** | Phase-3 Gate-Out | Exactly 5 items: completed, remaining, verifier table verbatim, issues + reviewer concerns, recommendation + prompt |
 | **PC-PIVOT** | Pivot Options | Pivot reason, checkpoint registry, ghost constraints, 1-3 candidate directions framed "X at the cost of Y", explicit prompt |
 
-Canonical definitions are in [`src/references/file-formats.md`](src/references/file-formats.md) under "Presentation Contracts." This is the load-bearing fix that closes the user-presentation gap where the protocol previously used single verbs ("Present", "Report", "Surface") and the orchestrator defaulted to terse summaries.
+Canonical definitions live in [`src/references/file-formats.md`](src/references/file-formats.md) under "Presentation Contracts." This closes the gap where the protocol once used single verbs ("Present", "Report", "Surface") and the orchestrator defaulted to terse summaries.
 
 ---
 
 ## Validator
 
-`src/scripts/validate-plan.mjs` is a read-only protocol-compliance check. It runs automatically during REFLECT (step 18) and can be run manually any time. Exit 0 = pass, exit 1 = errors. Warnings are non-blocking.
+`src/scripts/validate-plan.mjs` is a read-only protocol-compliance check. It runs automatically during REFLECT and can be run manually any time. Exit 0 = pass, exit 1 = errors; warnings are non-blocking. A separate `--pre-step` mode runs before each EXECUTE step and HARD-blocks (exit 2) on a leash-cap, wrong-state, iteration-cap, or no-plan condition.
 
-It checks:
-
-- State transition validity.
-- Mandatory `plan.md` sections (Problem Statement, Verification Strategy, Failure Modes, Assumptions, Pre-Mortem).
-- Findings count gate (≥ 3 before PLAN).
-- Cross-file consistency (state ↔ plan ↔ progress ↔ verification).
-- Decisions schema (D-NNN sequential, Trade-off line, PIVOT Complexity Assessment block).
-- Plan-qualified DECISION anchors in source (forward + reverse audit).
-- Verdict 5-bullet structure in `verification.md`.
-- Convergence metrics population (iteration 2+).
-- Iteration limits (5 = decomposition warning, 6+ = hard stop).
-- SYSTEM.md cap (≤ 300 lines).
-- Changelog format (8 fields, ISO-8601 timestamp, blast-radius tier shape).
-- Presentation Contract logging (best-effort, advisory).
+It checks, among other things: state-transition validity; the mandatory `plan.md` sections (Problem Statement, Verification Strategy, Failure Modes, Assumptions, Pre-Mortem); the ≥3-findings gate before PLAN; cross-file consistency (state ↔ plan ↔ progress ↔ verification); the decisions schema (D-NNN sequential, "X at the cost of Y" trade-off, PIVOT complexity assessment); plan-qualified DECISION anchors in source (forward + reverse audit); the `verification.md` verdict structure; convergence metrics (iteration 2+); iteration limits; the SYSTEM.md cap; and the 8-field changelog format.
 
 The validator cannot inspect chat content — it surfaces metadata signals only. Content fidelity is enforced by the agent prompts themselves.
 
