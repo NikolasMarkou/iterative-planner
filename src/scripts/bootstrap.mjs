@@ -20,6 +20,7 @@ import { randomBytes, createHash } from "crypto";
 import {
   extractField,
   splitChangelogFields,
+  blankCompressedSummaryBlock,
   COMPRESSED_SUMMARY_OPEN,
   COMPRESSED_SUMMARY_CLOSE,
   CHANGELOG_COMPRESSED_INLINE_RE,
@@ -370,7 +371,7 @@ function mergeToConsolidated(planDirName) {
   // Merge per-plan decisions.md → plans/DECISIONS.md (newest first)
   const decisionsContent = readPlanFile(planDirName, "decisions.md");
   if (decisionsContent) {
-    let stripped = stripCrossPlanNote(stripHeader(decisionsContent));
+    let stripped = stripCrossPlanNote(stripHeader(blankCompressedSummaryBlock(decisionsContent)));
     // Demote ## → ###
     stripped = stripped.replace(/^## /gm, "### ");
     stripped = stripped.trim();
