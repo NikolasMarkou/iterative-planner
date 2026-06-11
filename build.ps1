@@ -41,6 +41,7 @@ function Invoke-Build {
     New-Item -ItemType Directory -Force -Path $skillDir | Out-Null
     New-Item -ItemType Directory -Force -Path "$skillDir/references" | Out-Null
     New-Item -ItemType Directory -Force -Path "$skillDir/scripts" | Out-Null
+    New-Item -ItemType Directory -Force -Path "$skillDir/scripts/modules" | Out-Null
 
     # Copy main skill file
     Copy-Item "src/SKILL.md" $skillDir
@@ -50,6 +51,9 @@ function Invoke-Build {
 
     # Copy scripts
     Get-ChildItem "src/scripts/*.mjs" -Exclude "*.test.mjs" | Copy-Item -Destination "$skillDir/scripts/"
+
+    # Copy per-state rule modules (emitted on demand by emit-state.mjs)
+    Copy-Item "src/scripts/modules/*.md" "$skillDir/scripts/modules/"
 
     # Copy agent definitions (if any)
     if (Test-Path "src/agents") {
@@ -81,6 +85,16 @@ function Invoke-BuildCombined {
     # Append each reference file
     Get-ChildItem "src/references/*.md" | Sort-Object Name | ForEach-Object {
         $content += "`n---`n`n"
+        $content += Get-Content $_.FullName -Raw
+    }
+
+    # Re-inline the per-state rule modules so the single-file channel is self-contained
+    # (emit-state.mjs is not runnable in a paste context — the bodies must be baked in).
+    $content += "`n`n---`n`n# Bundled State Modules`n"
+    Get-ChildItem "src/scripts/modules/*.md" | Sort-Object Name | ForEach-Object {
+        $state = $_.BaseName -replace '^state-', ''
+        $content += "`n---`n`n"
+        $content += "## State Module: $state`n`n"
         $content += Get-Content $_.FullName -Raw
     }
 
@@ -298,7 +312,7 @@ function Invoke-Validate {
 
 function Invoke-Lint {
     Write-Host "Checking script syntax..." -ForegroundColor Yellow
-    foreach ($script in @("bootstrap.mjs", "validate-plan.mjs", "blast-radius.mjs", "shared.mjs", "check-doc-parity.mjs")) {
+    foreach ($script in @("bootstrap.mjs", "validate-plan.mjs", "blast-radius.mjs", "shared.mjs", "check-doc-parity.mjs", "emit-state.mjs")) {
         node --check "src/scripts/$script"
         if ($LASTEXITCODE -ne 0) {
             Write-Host "Syntax check failed: $script" -ForegroundColor Red

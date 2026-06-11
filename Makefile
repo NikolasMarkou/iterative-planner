@@ -10,6 +10,7 @@ DIST_DIR := dist
 SKILL_FILE := src/SKILL.md
 REFERENCE_FILES := $(sort $(wildcard src/references/*.md))
 SCRIPT_FILES := $(filter-out %.test.mjs,$(wildcard src/scripts/*.mjs))
+MODULE_FILES := $(sort $(wildcard src/scripts/modules/*.md))
 AGENT_FILES := $(sort $(wildcard src/agents/*.md))
 DOC_FILES := README.md LICENSE CHANGELOG.md
 
@@ -24,12 +25,15 @@ build:
 	mkdir -p $(BUILD_DIR)/$(SKILL_NAME)
 	mkdir -p $(BUILD_DIR)/$(SKILL_NAME)/references
 	mkdir -p $(BUILD_DIR)/$(SKILL_NAME)/scripts
+	mkdir -p $(BUILD_DIR)/$(SKILL_NAME)/scripts/modules
 	@# Copy main skill file
 	cp $(SKILL_FILE) $(BUILD_DIR)/$(SKILL_NAME)/
 	@# Copy reference files
 	cp $(REFERENCE_FILES) $(BUILD_DIR)/$(SKILL_NAME)/references/
 	@# Copy scripts
 	cp $(SCRIPT_FILES) $(BUILD_DIR)/$(SKILL_NAME)/scripts/
+	@# Copy per-state rule modules (emitted on demand by emit-state.mjs)
+	cp $(MODULE_FILES) $(BUILD_DIR)/$(SKILL_NAME)/scripts/modules/
 	@# Copy agent definitions (if any)
 	@if [ -n "$(AGENT_FILES)" ]; then \
 		mkdir -p $(BUILD_DIR)/$(SKILL_NAME)/agents; \
@@ -54,6 +58,21 @@ build-combined:
 		echo "---" >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md; \
 		echo "" >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md; \
 		cat $$ref >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md; \
+	done
+	@# Re-inline the per-state rule modules so the single-file channel is self-contained
+	@# (emit-state.mjs is not runnable in a paste context — the bodies must be baked in).
+	@echo "" >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@echo "---" >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@echo "" >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@echo "# Bundled State Modules" >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@for mod in $(MODULE_FILES); do \
+		state=$$(basename $$mod .md | sed 's/^state-//'); \
+		echo "" >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md; \
+		echo "---" >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md; \
+		echo "" >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md; \
+		echo "## State Module: $$state" >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md; \
+		echo "" >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md; \
+		cat $$mod >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md; \
 	done
 	@echo "" >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	@echo "---" >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md
@@ -176,6 +195,7 @@ lint:
 	node --check src/scripts/blast-radius.mjs
 	node --check src/scripts/shared.mjs
 	node --check src/scripts/check-doc-parity.mjs
+	node --check src/scripts/emit-state.mjs
 	@echo "Syntax check passed!"
 
 # Run tests
