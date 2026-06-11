@@ -581,6 +581,26 @@ describe("validate-plan.mjs --pre-step gate", () => {
     assert.equal(wrongErr.length, 0, `PIVOT-PLAN (hyphen) must not trip Complexity Assessment, got:\n${r.stdout}`);
   });
 
+  // 3.1c — Trade-off present but missing "at the cost of" phrase → WARN [decisions-schema].
+  it("(p2) 3.1c: **Trade-off**: present but missing 'at the cost of' → WARN [decisions-schema]", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd, { state: "EXECUTE", iteration: 1 });
+    writeFileSync(join(planDir, "decisions.md"),
+`# Decision Log
+*Plan: plan_2026-05-15_aaaabbbb*
+
+## D-001 | EXPLORE → PLAN | 2026-05-15
+**Context**: ctx
+**Decision**: chose approach X instead of Y
+**Trade-off**: used approach X instead of Y
+**Reasoning**: r
+**Anchor-Refs**: (none yet)
+`);
+    const r = run(cwd);
+    const warnLines = r.stdout.split("\n").filter((l) => /WARN\s+\[decisions-schema\].*at the cost of/.test(l));
+    assert.ok(warnLines.length >= 1, `expected WARN for missing "at the cost of" phrase, got:\n${r.stdout}`);
+  });
+
   // F3 — pipe in changelog reason must not corrupt validation.
   it("(k) F3: changelog reason containing ` | ` is absorbed; no [changelog-malformed] WARN", () => {
     const cwd = getTempDir();

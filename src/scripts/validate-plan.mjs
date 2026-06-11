@@ -769,15 +769,22 @@ function checkDecisionsSchema(planDir, issues) {
     }
   }
 
-  // 3.1c — Trade-off line presence in every entry.
+  // 3.1c — Trade-off line presence in every entry, and "at the cost of" phrase.
   // 3.1d — Complexity Assessment block in PIVOT entries.
   const tradeoffRe = /^\*\*Trade-off\*\*:/m;
+  const atTheCostOfRe = /at the cost of/i;
   for (const e of entries) {
     if (!tradeoffRe.test(e.body)) {
       issues.push({
         severity: "ERROR",
         check: "decisions-schema",
         message: `decisions.md ${e.idStr} (line ${e.lineNum}) missing **Trade-off**: line`,
+      });
+    } else if (!atTheCostOfRe.test(e.body)) {
+      issues.push({
+        severity: "WARN",
+        check: "decisions-schema",
+        message: `decisions.md ${e.idStr} (line ${e.lineNum}) **Trade-off**: line missing "at the cost of" phrase`,
       });
     }
     // F5 — strict PIVOT detection via shared helper. Previously raw
