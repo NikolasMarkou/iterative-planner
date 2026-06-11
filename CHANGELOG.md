@@ -4,6 +4,32 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.27.0] - 2026-06-11
+
+Second-generation deep-dive review fixes (`plans/plan_2026-06-11_8e311f61/`): three latent correctness bugs in `bootstrap.mjs`, two protocol-consistency gaps (orchestrator EXPLORE dispatch, File Lifecycle Matrix), four test-coverage additions (check-doc-parity reverse direction, blast-radius hist signal, validate-plan "at the cost of" check + test), two documentation cleanups, and a new executable parity gate for README version/test-count drift. Test suite grows 266 → 273; 7 test files.
+
+### Fixed
+- **`mergeToConsolidated` no longer orphans compression close-marker (#1).** When a per-plan `decisions.md` had been compressed (`maybeCompressDecisions` fired), `stripHeader` sliced from `## Summary (compressed)` inside the block, leaving `<!-- /COMPRESSED-SUMMARY -->` without its open marker in `plans/DECISIONS.md`. The `blankCompressedSummaryBlock` helper (already in `shared.mjs`) is now applied before `stripHeader`, ensuring both markers are stripped together.
+- **`--force` error-recovery pointer restore is now atomic (#2).** The catch block in `cmdNewInner` was restoring `.current_plan` with a bare `writeFileSync`; replaced with the `.tmp`+`renameSync` idiom used everywhere else in `bootstrap.mjs`.
+- **`cmdResetAttempts` section-boundary no longer clips on inner `## ` headings (#3).** Changed `state.indexOf("\n## ", bodyStart)` to a regex search for `\n## [^#]`, preventing an agent-written `## `-prefixed sub-line inside the Fix Attempts body from clipping the section early and leaving stale attempt records.
+- **`checkDecisionsSchema` now validates "at the cost of" phrasing.** The `**Trade-off**:` field was only checked for presence; added a `WARN [decisions-schema]` when the phrase "at the cost of" is absent from the field value.
+- **`ip-orchestrator.md` EXPLORE dispatch now reads `plans/DECISIONS.md` (#7).** Step 1 of the EXPLORE dispatch was missing `plans/DECISIONS.md (limit: 600)` — present in `state-explore.md` and the File Lifecycle Matrix but not in the orchestrator dispatch, so sub-agent mode silently skipped cross-plan decisions context.
+- **File Lifecycle Matrix `plans/FINDINGS.md` PLAN annotation corrected (#8).** Changed `R(600)` to `R?` to align with the Mandatory Re-reads PLAN row and actual orchestrator/plan-writer behaviour (on-demand, not mandatory).
+
+### Added
+- **`check-readme-parity.mjs` — README version/test-count parity gate (#11).** Exports `checkVersionBadge` and `checkTestCount`; CLI reads `VERSION` and `TEST_COUNT` and asserts the README badges match. Wired into `make validate` and both harnesses (Makefile + build.ps1). Closes the GHOST candidate logged in LESSONS.md.
+- **`TEST_COUNT` file.** Single-integer authoritative test count; replaces the manual README badge annotation. Must be bumped alongside `TEST_COUNT` when tests are added.
+
+### Tests
+- `check-doc-parity.test.mjs`: added reverse-direction test (README row absent from SKILL.md); extended `comparison()` to return `{ missing, extra }` and report extras as failures.
+- `blast-radius.test.mjs`: added explicit `hist` signal test with a plan manifest fixture (`hist.score === 1, prior === true`).
+- `validate-plan.test.mjs`: added negative test for `checkDecisionsSchema` "at the cost of" requirement.
+- `check-readme-parity.test.mjs`: 4 tests (real-repo exit 0, wrong-version unit, wrong-count unit, CLI exit 1 on mismatch).
+
+### Docs
+- `README.md`: removed misleading `(266 tests total across 6 files)` annotation from `blast-radius.test.mjs` tree line (#9).
+- `CLAUDE.md`: removed ghost-constraint parenthetical `(round-trip fidelity vs the SKILL.md "Per-State Rules" bodies before extraction)` from the `emit-state` checklist item (#13).
+
 ## [2.26.0] - 2026-06-11
 
 Fixes the actionable findings from a comprehensive deep-dive review of the codebase (`plans/plan_2026-06-11_4ecd09f7/`): four latent code bugs, one protocol-drift omission, the highest-value test-coverage gaps, and stale documentation. All edits are surgical and pattern-mirroring — no new scripts, test files, or abstractions. Test suite grows 255 → 266; all green.
