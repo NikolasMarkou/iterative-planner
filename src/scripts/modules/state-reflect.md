@@ -1,0 +1,51 @@
+
+Three phases: Gate-In (gather context), Evaluate (verify + analyze), Gate-Out (decide + present).
+
+#### Phase 1: Gate-In (mandatory reads before any evaluation)
+1. Read `plan.md` — success criteria, verification strategy, assumptions, pre-mortem signals.
+2. Read `progress.md` — what was completed, what remains, what failed.
+3. Read `verification.md` — previous verification results (if iteration 2+).
+4. Read `findings.md` + relevant `findings/*` — check if EXECUTE discoveries contradict earlier findings. Note contradictions in `decisions.md`.
+5. Read `checkpoints/*` — know rollback options before deciding next transition. Note available restore points in `decisions.md` if transitioning to PIVOT.
+6. Read `decisions.md` — check 3-strike patterns, review previous REFLECT cycles (iteration 2+).
+7. Read `changelog.md` — per-edit ledger for this iteration. Surfaces HIGH-radius edits, "tiny edit big radius" outliers, and REVERT lines.
+
+All seven reads are CORE. Do not evaluate until all are complete.
+
+#### Phase 2: Evaluate
+*(Continues the numbering from Phase 1's 7 reads — Evaluate runs 8–22.)*
+8. **Cross-validate plan vs progress** — every `[x]` in plan.md must be "Completed" in progress.md. Fix drift before proceeding.
+9. **Diff review** — review actual code changes (git diff or change manifest in state.md). Check for: debug artifacts, commented-out code, TODO/FIXME/HACK leftovers, unintended modifications to files not in the plan. This checks code quality; verification (below) checks correctness.
+10. **Changelog scan (v2.15.0+)** — read `changelog.md`. List HIGH-radius edits and "tiny edit big radius" outliers (small `EDIT(+N,-M)` paired with MED/HIGH radius). Flag thin reasons. Surface concerns in the review output (or `findings/review-iter-N.md` when an `ip-reviewer` runs). Informational only — never blocks CLOSE.
+11. **Run verification** — execute each check from the Verification Strategy. Read `verification.md`, then record results: criterion, method, command/action, result (PASS/FAIL), evidence (output summary or log reference). See `references/file-formats.md` for template.
+12. **Regression check** — re-run any tests that passed before this iteration. If a previously-passing test now fails, record as FAIL in Additional Checks with "regression" noted in Details. Regressions block CLOSE.
+13. **Scope drift check** — compare files actually changed (change manifest in state.md) against Files To Modify in plan.md. Unplanned file changes must be justified in `decisions.md` or reverted. Criteria can pass even when implementation has drifted.
+14. **Criteria adequacy** — before accepting PASS results, ask: do these criteria test what matters, or what was easy to test? Are there behaviors the criteria don't cover? Record gaps in `verification.md` Not Verified section.
+15. **Not-verified list** — in `verification.md`, write what you didn't test and why (no coverage, out of scope, untestable). Absence of evidence is not evidence of absence.
+16. **Root cause analysis** (when REFLECT follows failure) — in `decisions.md`, answer: (1) immediate cause, (2) contributing factor (trace back one level), (3) failed defense (which barrier should have caught this and why didn't it), (4) prevention. If the failure is a regression, prepend a Change Analysis question: "what changed since the last passing state?". Multiple roots are normal — don't stop at the first plausible cause. Skip entirely if all criteria PASS on first attempt. See `references/planning-rigor.md`.
+17. **Run 6 Simplification Checks** (`references/complexity-control.md`). Compare against **written criteria**, not memory.
+18. **Run `validate-plan.mjs`** — protocol compliance check. Address ERRORs before CLOSE. WARNs are advisory.
+19. **Prediction accuracy** *(EXTENDED — skip for iteration 1)* — compare plan.md predictions against actual results. Record in `verification.md` Prediction Accuracy table. See `references/planning-rigor.md`.
+20. **Convergence score** *(EXTENDED — iteration 2+)* — compute pass rate trend, scope stability, issue decay. Record in `verification.md` Convergence Metrics table. Stalling/diverging scores strengthen case for PIVOT or decomposition — don't wait for iteration 5. See `references/convergence-metrics.md`.
+21. **Devil's advocate** *(EXTENDED — skip for iteration 1)* — before routing to CLOSE: name one reason this might still be wrong despite passing verification. If you can't think of one, be more suspicious, not less. Record in `decisions.md`.
+22. **Adversarial review** *(EXTENDED — iteration 2+ only)* — spawn an `ip-reviewer` agent (or Task subagent) with `verification.md`, `plan.md` (criteria), and `decisions.md`. Its job: are criteria adequate? what wasn't tested? does evidence support CLOSE? Output → `findings/review-iter-N.md`. Main agent must address each concern in `decisions.md` before routing to CLOSE. See "Sub-Agent Architecture" section for dispatch details.
+
+#### Phase 3: Gate-Out (write + present)
+23. Write `verification.md` — complete Verdict section.
+24. Write `decisions.md` — what happened, what was learned, root cause (if failure). Include Simplification Checks output.
+25. Write `progress.md` — update status of all items.
+26. Write `state.md` — log evaluation summary, update transition.
+
+**Present to user before routing — PC-REFLECT contract** (see `references/file-formats.md` "Presentation Contracts"). Emit a 5-item block (exactly 5 — collapsing violates the contract):
+1. What was completed (verbatim from `progress.md`)
+2. What remains (verbatim from `progress.md`, or "none")
+3. Verification results summary — PASS/FAIL counts plus the per-criterion table from `verification.md` rendered **verbatim** (the verifier's table is the literal payload, do not paraphrase)
+4. Issues found: regressions, scope drift, unverified areas, simplification blockers; **plus** any CRITICAL/WARNING items from `findings/review-iter-N.md` (iteration ≥ 2) folded in verbatim
+5. Recommend: close, pivot, or explore — **wait for user confirmation**
+
+| Condition | → Transition |
+|-----------|--------------|
+| All criteria verified PASS in `verification.md`, no regressions, no simplification blockers + **user confirms** | → CLOSE |
+| Failure understood, new approach clear | → PIVOT |
+| Unknowns need investigation, or findings contradicted | → EXPLORE (update findings first) |
+

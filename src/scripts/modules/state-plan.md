@@ -1,0 +1,21 @@
+- **Gate check**: apply Mandatory Re-reads table (PLAN row). If not read → read now. No exceptions. If `findings.md` has <3 indexed findings → go back to EXPLORE.
+- **Compression gate** — if `{plan-dir}/decisions.md` >300 lines or `{plan-dir}/changelog.md` >200 lines, run `maybeCompressDecisions` / `maybeCompressChangelog` (exported from `src/scripts/bootstrap.mjs`) before any other PLAN work. Append-only safe: raw entries are preserved verbatim; a metadata block is inserted at top (decisions) or inline summary lines replace LOW-radius/`-`-decision-ref groups (changelog). Re-compression is idempotent. See `references/file-formats.md` § Intra-plan compression for full spec. Orchestrator dispatch wires this at PLAN step 0 — see `agents/orchestrator.md` § PLAN State. This file specifies the gate; the orchestrator owns when it runs.
+- **Problem Statement first** — before designing steps, write in `plan.md`: (1) what behavior is expected, (2) invariants — what must always be true, (3) edge cases at boundaries. Can't state the problem clearly → go back to EXPLORE.
+- Write `plan.md` with all 11 validator-required sections (see `validate-plan.mjs` `PLAN_SECTIONS`): Goal, Problem Statement, Context, Files To Modify, Steps (with risk/dependency annotations), Assumptions, Failure Modes, Pre-Mortem & Falsification Signals, Success Criteria, Verification Strategy, Complexity Budget.
+- **Decomposition** — when breaking the goal into steps:
+  1. Understand the whole problem before splitting into parts. Resist diving into details.
+  2. Identify natural boundaries — where do concerns separate?
+  3. Minimize dependencies between steps. If two steps must always change together, they're one step.
+  4. Start with the hardest or riskiest part (most unknowns). Easier parts rarely invalidate the plan.
+  5. When unsure whether to split or merge: split when concerns change for different reasons; merge when split pieces always change together or the split creates more coordination overhead than it removes.
+- **Verification Strategy** — for each success criterion, define: what test/check to run, what command to execute, what result means "pass". Write to plan.md `Verification Strategy` section. Plans with no testable criteria → write "N/A — manual review only" (proves you checked). See `references/file-formats.md` for template.
+- **Assumptions** — bullet list in plan.md: what you assume, which finding grounds it, which steps depend on it. On surprise discovery during EXECUTE → check this list first. See `references/planning-rigor.md`.
+- **Failure Mode Analysis** — for each external dependency or integration point in the plan, answer: what if slow? returns garbage? is down? What's the blast radius? Write to plan.md `Failure Modes` section. No dependencies → write "None identified" (proves you checked).
+- **Pre-Mortem & Falsification Signals** — assume the plan failed. 2-3 scenarios with concrete STOP IF triggers. If a trigger fires during EXECUTE → stop and REFLECT. Covers approach validity (distinct from Failure Modes which cover dependencies, and Autonomy Leash which covers step failure). See `references/planning-rigor.md`.
+- Write `decisions.md`: log chosen approach + why (mandatory even for first plan). **Trade-off rule** — phrase every decision as **"X at the cost of Y"**. Never recommend without stating what it costs.
+- Read then write `verification.md` with initial template (criteria table populated from success criteria, methods from verification strategy, results pending).
+- Read then write `state.md` + `progress.md`.
+- List **every file** to modify/create. Can't list them → go back to EXPLORE.
+- Only recommended approach in plan. Alternatives → `decisions.md`.
+- Wait for explicit user approval. Before requesting approval, emit **PC-PLAN** (Plan Presentation contract — see `references/file-formats.md` "Presentation Contracts"): the orchestrator renders `plan.md` verbatim per the floor (Steps, Success Criteria, Verification Strategy, Failure Modes, Assumptions). Same contract on re-presentation after revisions.
+
