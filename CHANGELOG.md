@@ -4,6 +4,19 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.28.0] - 2026-06-11
+
+### Added
+- `src/SKILL.md` YAML frontmatter now includes `version:`, `released:`, and `commit:` placeholder keys; `make build` / `build.ps1 build` substitutes live values (version, UTC date, short git hash) into the built artifact via `sed -i` / PowerShell `-replace`. Source file retains placeholders.
+
+### Fixed
+- `bootstrap.mjs` `cmdResetAttempts` and `cmdCloseInner`: rewrites of `state.md` are now atomic (`.tmp` + `renameSync`), matching the convention used by all other source-mutating paths.
+
+### Docs
+- README "Running tests" code block and validation checklist now include `check-readme-parity.test.mjs` and show correct test count (273).
+- README project structure tree now lists `check-readme-parity.mjs` and `check-readme-parity.test.mjs`.
+- CLAUDE.md validation checklist now includes a bullet for `check-readme-parity.mjs`.
+
 ## [2.27.0] - 2026-06-11
 
 Second-generation deep-dive review fixes (`plans/plan_2026-06-11_8e311f61/`): three latent correctness bugs in `bootstrap.mjs`, two protocol-consistency gaps (orchestrator EXPLORE dispatch, File Lifecycle Matrix), four test-coverage additions (check-doc-parity reverse direction, blast-radius hist signal, validate-plan "at the cost of" check + test), two documentation cleanups, and a new executable parity gate for README version/test-count drift. Test suite grows 266 → 273; 7 test files.
