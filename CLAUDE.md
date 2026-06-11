@@ -40,7 +40,7 @@ iterative-planner/
     │   ├── check-doc-parity.test.mjs # Test suite (node:test)
     │   ├── emit-state.mjs            # Per-state rule router; emits scripts/modules/state-<s>.md on demand (used by SKILL.md per-state pointers / orchestrator dispatch; Node.js 18+)
     │   ├── emit-state.test.mjs       # Test suite (node:test)
-    │   ├── emit-template.mjs         # Per-template slicer; emits one plan-file template sliced from references/file-formats.md via --name <slug> (used by agents/modules to fetch a single template instead of the 987-line file; Node.js 18+)
+    │   ├── emit-template.mjs         # Per-template slicer; emits one plan-file template sliced from references/file-formats.md via --name <slug> (used by agents/modules to fetch a single template instead of the full file-formats.md file; Node.js 18+)
     │   ├── emit-template.test.mjs    # Test suite (node:test)
     │   ├── modules/                  # Verbatim per-state rule bodies, emitted on demand by emit-state.mjs
     │   │   ├── state-explore.md      # EXPLORE per-state rules

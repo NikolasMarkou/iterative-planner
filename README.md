@@ -1,8 +1,8 @@
 # Iterative Planner
 
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Skill](https://img.shields.io/badge/Skill-v2.21.0-green.svg)](CHANGELOG.md)
-[![Tests](https://img.shields.io/badge/tests-225%20passing-brightgreen.svg)](src/scripts/bootstrap.test.mjs)
+[![Skill](https://img.shields.io/badge/Skill-v2.26.0-green.svg)](CHANGELOG.md)
+[![Tests](https://img.shields.io/badge/tests-266%20passing-brightgreen.svg)](src/scripts/bootstrap.test.mjs)
 [![Sponsored by Electi](https://img.shields.io/badge/Sponsored%20by-Electi-red.svg)](https://www.electiconsulting.com)
 
 A [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skill that turns ad-hoc agent runs into structured, recoverable, evidence-driven work.
@@ -499,8 +499,11 @@ The test suite covers bootstrap operations, state transitions, consolidated file
 ```bash
 node --test src/scripts/bootstrap.test.mjs \
             src/scripts/validate-plan.test.mjs \
-            src/scripts/blast-radius.test.mjs
-# 225 tests total: bootstrap 172, validate-plan 39, blast-radius 14
+            src/scripts/blast-radius.test.mjs \
+            src/scripts/check-doc-parity.test.mjs \
+            src/scripts/emit-state.test.mjs \
+            src/scripts/emit-template.test.mjs
+# 266 tests total: bootstrap 176, validate-plan 43, blast-radius 22, check-doc-parity 3, emit-state 12, emit-template 10
 ```
 
 ### Build and package
@@ -540,7 +543,7 @@ make help
 Before submitting changes:
 
 - [ ] `make validate` (or `.\build.ps1 validate`) passes
-- [ ] `node --test src/scripts/bootstrap.test.mjs src/scripts/validate-plan.test.mjs src/scripts/blast-radius.test.mjs` passes (225 tests)
+- [ ] `node --test src/scripts/bootstrap.test.mjs src/scripts/validate-plan.test.mjs src/scripts/blast-radius.test.mjs src/scripts/check-doc-parity.test.mjs src/scripts/emit-state.test.mjs src/scripts/emit-template.test.mjs` passes (266 tests)
 - [ ] `src/SKILL.md` has `name:` and `description:` in YAML frontmatter
 - [ ] All cross-references in `src/SKILL.md` point to existing files in `src/references/`
 - [ ] State machine diagram matches transition rules table
@@ -577,9 +580,14 @@ iterative-planner/
     │   ├── validate-plan.mjs       # protocol compliance validator (+ `--pre-step` gate, exit 2)
     │   ├── validate-plan.test.mjs  # validator test suite
     │   ├── blast-radius.mjs        # deterministic per-file blast-radius scorer (spawnSync argv — no shell)
-    │   ├── blast-radius.test.mjs   # blast-radius test suite (225 tests total across 3 files)
+    │   ├── blast-radius.test.mjs   # blast-radius test suite (266 tests total across 6 files)
+    │   ├── check-doc-parity.mjs    # README<->SKILL.md File Ownership parity gate (run via make validate)
+    │   ├── check-doc-parity.test.mjs # doc-parity test suite (node:test)
     │   ├── emit-state.mjs          # per-state rule router; emits scripts/modules/state-<s>.md on demand
     │   ├── emit-state.test.mjs     # emit-state test suite (node:test)
+    │   ├── emit-template.mjs       # per-template slicer; emits one plan-file template from references/file-formats.md via --name <slug>
+    │   ├── emit-template.test.mjs  # emit-template test suite (node:test)
+    │   ├── shared.mjs              # shared helpers (field extraction, changelog field split, compression markers)
     │   └── modules/                # verbatim per-state rule bodies (EXPLORE/PLAN/EXECUTE/REFLECT/PIVOT), emitted on demand
     └── references/
         ├── file-formats.md         # templates for every plan directory file + Presentation Contracts
