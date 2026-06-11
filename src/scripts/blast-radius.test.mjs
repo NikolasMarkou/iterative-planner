@@ -240,3 +240,135 @@ describe("blast-radius.mjs — H2: signal scoring", () => {
     } finally { removeTempDir(cwd); }
   });
 });
+
+// #9 — the tier mapping (blast-radius.mjs:263 `score <= 2 ? "LOW" : score <= 5
+// ? "MED" : "HIGH"`) and the deps/tests signals were untested: a scoring
+// regression could feed the executor a wrong tier and bypass blast-radius
+// review. The tier mapping is an inline ternary (not an importable function),
+// so each boundary is exercised by composing signals whose total score lands
+// exactly on the boundary, then asserting the `tier` field via --json.
+//
+// Boundary thresholds confirmed from source: LOW for score <= 2, MED for
+// 3 <= score <= 5, HIGH for score >= 6. Boundary scores tested: 2->LOW (upper
+// edge of LOW), 3->MED (lower edge of MED), 5->MED (upper edge of MED),
+// 6->HIGH (lower edge of HIGH). Signal building blocks used (all deterministic
+// in an isolated temp repo with no plans/ dir, so loc=0 and hist=0):
+//   shared = 2  when the file path is under lib/ (sharedPath)
+//   api    = 2  when the working-tree diff adds an `export` line (publicApiTouch)
+//   deps   = 1  when 1..5 other files import the file's basename (reverseDeps)
+describe("blast-radius.mjs — #9: tier-boundary mapping (LOW<=2, MED 3-5, HIGH>=6)", () => {
+  it("score 2 -> LOW (upper edge of LOW): api=2 alone", () => {
+    const cwd = makeTempDir();
+    try {
+      writeFileSync(join(cwd, "mod.js"), "var a=1;\n");
+      commitAll(cwd);
+      writeFileSync(join(cwd, "mod.js"), "var a=1;\nexport function foo(){}\n"); // unstaged: api=2
+      const o = JSON.parse(run(cwd, "mod.js", "--json").stdout.trim());
+      assert.equal(o.score, 2, JSON.stringify(o.signals));
+      assert.equal(o.tier, "LOW", JSON.stringify(o));
+    } finally { removeTempDir(cwd); }
+  });
+
+  it("score 3 -> MED (lower edge of MED): shared=2 + deps=1", () => {
+    const cwd = makeTempDir();
+    try {
+      mkdirSync(join(cwd, "lib"));
+      writeFileSync(join(cwd, "lib", "a.js"), "export const a=1;\n"); // shared=2 (lib/)
+      writeFileSync(join(cwd, "one.js"), 'import { a } from "./lib/a.js";\n'); // deps=1
+      commitAll(cwd);
+      const o = JSON.parse(run(cwd, join("lib", "a.js"), "--json").stdout.trim());
+      assert.equal(o.signals.shared.score, 2);
+      assert.equal(o.signals.deps.score, 1, JSON.stringify(o.signals.deps));
+      assert.equal(o.score, 3, JSON.stringify(o.signals));
+      assert.equal(o.tier, "MED", JSON.stringify(o));
+    } finally { removeTempDir(cwd); }
+  });
+
+  it("score 5 -> MED (upper edge of MED): shared=2 + api=2 + deps=1", () => {
+    const cwd = makeTempDir();
+    try {
+      mkdirSync(join(cwd, "lib"));
+      writeFileSync(join(cwd, "lib", "b.js"), "export const b=1;\n");
+      writeFileSync(join(cwd, "oneb.js"), 'import { b } from "./lib/b.js";\n'); // deps=1
+      commitAll(cwd);
+      writeFileSync(join(cwd, "lib", "b.js"), "export const b=1;\nexport function f(){}\n"); // api=2 (unstaged)
+      const o = JSON.parse(run(cwd, join("lib", "b.js"), "--json").stdout.trim());
+      assert.equal(o.signals.shared.score, 2);
+      assert.equal(o.signals.api.score, 2);
+      assert.equal(o.signals.deps.score, 1, JSON.stringify(o.signals.deps));
+      assert.equal(o.score, 5, JSON.stringify(o.signals));
+      assert.equal(o.tier, "MED", JSON.stringify(o));
+    } finally { removeTempDir(cwd); }
+  });
+
+  it("score 6 -> HIGH (lower edge of HIGH): shared=2 + api=2 + deps=2", () => {
+    const cwd = makeTempDir();
+    try {
+      mkdirSync(join(cwd, "lib"));
+      writeFileSync(join(cwd, "lib", "core.js"), "export const c=1;\n");
+      for (let i = 1; i <= 6; i++) {
+        writeFileSync(join(cwd, `u${i}.js`), 'import { c } from "./lib/core.js";\n'); // 6 importers -> deps=2
+      }
+      commitAll(cwd);
+      writeFileSync(join(cwd, "lib", "core.js"), "export const c=1;\nexport function more(){}\n"); // api=2
+      const o = JSON.parse(run(cwd, join("lib", "core.js"), "--json").stdout.trim());
+      assert.equal(o.signals.deps.score, 2, JSON.stringify(o.signals.deps)); // count 6 in [6,20]
+      assert.equal(o.score, 6, JSON.stringify(o.signals));
+      assert.equal(o.tier, "HIGH", JSON.stringify(o));
+    } finally { removeTempDir(cwd); }
+  });
+});
+
+// #9 — deps (reverseDeps) and tests (testDelta) signal contributions were
+// untested. Assert each contributes its expected non-zero score via --json on
+// the minimal fixture that triggers it.
+describe("blast-radius.mjs — #9: deps + tests signal contributions", () => {
+  it("deps signal: a single importer contributes deps.score=1 (count=1)", () => {
+    const cwd = makeTempDir();
+    try {
+      writeFileSync(join(cwd, "dep.js"), "export const x=1;\n");
+      writeFileSync(join(cwd, "user.js"), 'import { x } from "./dep.js";\n');
+      commitAll(cwd);
+      const o = JSON.parse(run(cwd, "dep.js", "--json").stdout.trim());
+      assert.equal(o.signals.deps.count, 1, JSON.stringify(o.signals.deps));
+      assert.equal(o.signals.deps.score, 1, JSON.stringify(o.signals.deps));
+    } finally { removeTempDir(cwd); }
+  });
+
+  it("deps signal: no importer contributes deps.score=0 (count=0)", () => {
+    const cwd = makeTempDir();
+    try {
+      writeFileSync(join(cwd, "lonely.js"), "export const z=1;\n");
+      commitAll(cwd);
+      const o = JSON.parse(run(cwd, "lonely.js", "--json").stdout.trim());
+      assert.equal(o.signals.deps.count, 0, JSON.stringify(o.signals.deps));
+      assert.equal(o.signals.deps.score, 0);
+    } finally { removeTempDir(cwd); }
+  });
+
+  it("tests signal: a changed test referencing the file contributes tests.score=-1", () => {
+    const cwd = makeTempDir();
+    try {
+      writeFileSync(join(cwd, "widget.js"), "export const y=1;\n");
+      commitAll(cwd);
+      mkdirSync(join(cwd, "test"));
+      // Staged (changed vs HEAD) test file under test/ referencing the basename.
+      writeFileSync(join(cwd, "test", "widget.test.js"), "import { y } from \"../widget.js\";\n// widget test\n");
+      git(cwd, "add", "-A");
+      const o = JSON.parse(run(cwd, "widget.js", "--json").stdout.trim());
+      assert.equal(o.signals.tests.hit, true, JSON.stringify(o.signals.tests));
+      assert.equal(o.signals.tests.score, -1, JSON.stringify(o.signals.tests));
+    } finally { removeTempDir(cwd); }
+  });
+
+  it("tests signal: no related test change contributes tests.score=0", () => {
+    const cwd = makeTempDir();
+    try {
+      writeFileSync(join(cwd, "solo.js"), "export const s=1;\n");
+      commitAll(cwd);
+      const o = JSON.parse(run(cwd, "solo.js", "--json").stdout.trim());
+      assert.equal(o.signals.tests.hit, false);
+      assert.equal(o.signals.tests.score, 0);
+    } finally { removeTempDir(cwd); }
+  });
+});
