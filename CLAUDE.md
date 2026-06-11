@@ -177,7 +177,7 @@ make help                    # Show available targets
 - [ ] src/SKILL.md does not duplicate ip-orchestrator.md dispatch sequencing (pointer only — "Dispatch Rules by State" is a pointer, not a per-state spawn narrative)
 - [ ] README.md and src/SKILL.md File Ownership tables agree (same co-ownership for `plan.md` and `changelog.md`); full row parity between the two File Ownership tables is now enforced automatically by `node src/scripts/check-doc-parity.mjs` (run via `make validate`)
 - [ ] Skill-bundled `~/.claude/skills/iterative-planner/agents/` mirrors `src/agents/` (`diff -rq --exclude='.claude' src/agents ~/.claude/skills/iterative-planner/agents` empty) — kept in sync by "Updating Local Skill"
-- [ ] `node src/scripts/emit-state.mjs --state <explore|plan|execute|reflect|pivot>` emits the verbatim per-state rule body (round-trip fidelity vs the SKILL.md "Per-State Rules" bodies before extraction); unknown/missing `--state` exits non-zero
+- [ ] `node src/scripts/emit-state.mjs --state <explore|plan|execute|reflect|pivot>` emits the verbatim per-state rule body for each state; unknown/missing `--state` exits non-zero
 - [ ] `node src/scripts/emit-template.mjs --name <slug>` emits the byte-faithful template slice from references/file-formats.md for each of the 16 slugs; unknown/missing `--name` exits non-zero (2 for missing, 1 for unknown)
 - [ ] `src/scripts/modules/` is synced into the skill bundle (`diff -rq --exclude='.claude' src/scripts/modules ~/.claude/skills/iterative-planner/scripts/modules` empty) and re-inlined by `make build-combined` (each of the 5 module bodies present in the combined output)
 
