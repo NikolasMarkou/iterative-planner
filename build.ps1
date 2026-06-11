@@ -121,6 +121,7 @@ function Invoke-BuildCombined {
         '`references/decision-anchoring.md`' = 'the Decision Anchoring Reference section below'
         '`references/file-formats.md`' = 'the File Formats Reference section below'
         '`references/planning-rigor.md`' = 'the Planning Rigor Reference section below'
+        '`references/python-software.md`' = 'the Python / Software-Engineering Caveat section below'
         '`src/references/blast-radius.md`' = 'the Blast Radius Reference section below'
         '`src/references/code-hygiene.md`' = 'the Code Hygiene Reference section below'
         '`src/references/complexity-control.md`' = 'the Complexity Control Reference section below'
@@ -128,6 +129,7 @@ function Invoke-BuildCombined {
         '`src/references/decision-anchoring.md`' = 'the Decision Anchoring Reference section below'
         '`src/references/file-formats.md`' = 'the File Formats Reference section below'
         '`src/references/planning-rigor.md`' = 'the Planning Rigor Reference section below'
+        '`src/references/python-software.md`' = 'the Python / Software-Engineering Caveat section below'
     }
     foreach ($key in $refMap.Keys) {
         $content = $content.Replace($key, $refMap[$key])
