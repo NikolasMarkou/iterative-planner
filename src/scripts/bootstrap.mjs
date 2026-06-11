@@ -1743,8 +1743,8 @@ function cmdResetAttempts() {
   }
   const headingLineEnd = state.indexOf("\n", hIdx);
   const bodyStart = headingLineEnd < 0 ? state.length : headingLineEnd + 1;
-  let sectionEnd = state.indexOf("\n## ", bodyStart);
-  if (sectionEnd < 0) sectionEnd = state.length;
+  const relEnd = state.slice(bodyStart).search(/\n## [^#]/);
+  let sectionEnd = relEnd < 0 ? state.length : bodyStart + relEnd;
   const tail = state.slice(sectionEnd);
   const updated = state.slice(0, bodyStart) + "- (none yet for current step)" + (tail || "\n");
   writeFileSync(statePath, updated);
