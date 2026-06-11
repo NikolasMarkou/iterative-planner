@@ -4,6 +4,23 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.23.0] - 2026-06-11
+
+Moves the five per-state rule bodies out of `src/SKILL.md` into on-demand emitted modules (`plans/plan_2026-06-11_f2637f3b/`, the LIGHTER variant of a script-emission migration). SKILL.md keeps its spine — state machine, transition rules, File Ownership table, autonomy leash, complexity control — and the per-state rule text is relocated **verbatim** behind a router, fidelity-proven byte-for-byte. This is a content-conserving structural change, not a protocol behavior change; `check-doc-parity` is unaffected because the File Ownership table stays in SKILL.md.
+
+### Added
+- **`src/scripts/emit-state.mjs` per-state rule router.** Emits `scripts/modules/state-<state>.md` on demand via `--state explore|plan|execute|reflect|pivot`; unknown / `close` / missing state → stderr message + exit 1. Module resolution is `import.meta.url`-relative, and an `isEntryPoint` dual-mode guard lets the file serve as both CLI and importable API.
+- **`src/scripts/modules/state-*.md`.** Five new module files holding the per-state rule bodies excised from SKILL.md verbatim.
+- **`src/scripts/emit-state.test.mjs`.** node:test suite covering the API surface, CLI byte-fidelity against the module files, and the error paths; registered in the `lint`/`test` lists of both the `Makefile` and `build.ps1`.
+
+### Changed
+- **`src/SKILL.md` "Per-State Rules" reduced to summaries + pointers (504→397 lines).** Each per-state block is now a one-line summary plus an `emit-state --state <s>` pointer; the spine is unchanged.
+- **State-entry wiring.** `agents/orchestrator.md` and the SKILL.md mode-3 monolithic fallback now invoke the router on entering each state.
+- **Combined build re-inlines the modules.** `make build-combined` / `build.ps1` re-inline the five module bodies under a `# Bundled State Modules` section so the single-file distribution stays self-contained.
+
+### Docs
+- `CLAUDE.md` Repository Structure tree, "Updating Local Skill" procedure, and Validation Checklist document `scripts/modules/` + `emit-state.mjs`; README Project Structure tree updated to match (File Ownership table untouched).
+
 ## [2.22.0] - 2026-06-01
 
 Resolves five findings from an epistemic-deconstructor audit double-check (`plans/plan_2026-06-01_dfe2202a/`): two contract-path footguns in the Node scripts (F1, F2), a doc-ownership-table gap (F4), and a new executable parity gate (MF-1/F3) plus a CLAUDE.md nit. Riskiest/contract-sensitive fixes landed first; F4 (README rows) landed before the parity gate so the gate is green at introduction.
