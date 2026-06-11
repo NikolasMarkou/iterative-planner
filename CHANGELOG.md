@@ -4,6 +4,19 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.24.0] - 2026-06-11
+
+Adds a second script-emission router, `emit-template.mjs`, extending the "script provides the instructions" pattern to the plan-file templates. Chosen after an explicit net-positive audit (`plans/plan_2026-06-11_5f128570/`) that rejected five other candidate surfaces as pattern-for-its-own-sake; this one clears the bar because `references/file-formats.md` is genuinely large (987 lines) and only one ~20-50 line template is needed per fetch. Unlike the per-state migration, this router is a **slicer over the canonical file** — it does NOT extract content into modules, so file-formats.md remains the single source of truth and no build-combined re-inline is needed. The change is purely additive with a graceful fallback: every rewired pointer keeps its file-formats.md reference, so if the router fails or a pointer is missed, agents read the file exactly as before (no hard failure mode).
+
+### Added
+- **`src/scripts/emit-template.mjs` per-template router.** `--name <slug>` emits one template, byte-faithfully sliced from `references/file-formats.md` between `<!-- TEMPLATE:<slug> -->` boundary markers (16 slugs: state, plan, decisions, findings, progress, verification, checkpoints, findings-consolidated, decisions-consolidated, lessons, system, index, lessons-snapshot, changelog, summary, presentation-contracts). Buffer-level slicing preserves multibyte content exactly. Exports `VALID_TEMPLATES` and a pure `resolveTemplate(slug, fileFormatsUrl?)` DI tagged-result seam, mirroring emit-state's `resolveModuleBody`. Exit-code contract matches emit-state v2.23.1: missing/absent `--name` → 2 (USAGE); unknown slug / unreadable file / missing marker / empty slice → 1 (diagnostic); valid → 0.
+- **`src/scripts/emit-template.test.mjs`.** node:test suite: 16-slug registry, marker completeness, per-slug sentinels, CLI byte-fidelity against the marker-delimited file region, exit-code contract, and `resolveTemplate` failure paths via injected temp fixtures. Registered in lint + test of BOTH Makefile and build.ps1.
+- **16 `<!-- TEMPLATE:<slug> -->` boundary markers + 1 `<!-- TEMPLATE:END -->` terminator in `references/file-formats.md`** (HTML comments, invisible in rendered Markdown; template text byte-unchanged).
+
+### Changed
+- **Additive emit-template pointers at 7 template-fetch sites** (state-plan/reflect/execute modules; ip-plan-writer/executor/archivist/explorer agents): each now points to `emit-template --name <slug>` for a single template AND keeps its `references/file-formats.md` reference as the canonical fallback. Presentation-Contracts and intra-plan-compression pointers untouched.
+- **`CLAUDE.md`** Repository Structure tree + validation checklist document the new router.
+
 ## [2.23.1] - 2026-06-11
 
 Patch hardening of the script-emission layer's error paths, found in a post-refactor audit of the v2.23.0 migration (`plans/plan_2026-06-11_26c6bdc6/`). No behavior change on the happy path — all five states still emit byte-identically; only failure modes and one fallback-mode doc clause changed. The audit otherwise confirmed the migration correct and complete (byte-faithful modules, all pointers resolve, build/validate green).
