@@ -4,6 +4,26 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.26.0] - 2026-06-11
+
+Fixes the actionable findings from a comprehensive deep-dive review of the codebase (`plans/plan_2026-06-11_4ecd09f7/`): four latent code bugs, one protocol-drift omission, the highest-value test-coverage gaps, and stale documentation. All edits are surgical and pattern-mirroring — no new scripts, test files, or abstractions. Test suite grows 255 → 266; all green.
+
+### Fixed
+- **`validate-plan.mjs` is now import-safe (#1).** The CLI dispatch block (arg parsing, `--help`/`--pre-step` handlers, and all `process.exit` calls) was running at module scope, so any `import` of the module fired the CLI logic and could kill the host process. Wrapped it in the `isEntryPoint` IIFE guard already used by `bootstrap.mjs`/`emit-state.mjs`/`emit-template.mjs`. CLI exit-code contract (0/1/2, `--pre-step`, `--help`) is byte-unchanged. Anchored `# DECISION .../D-002` at the guard.
+- **`checkVerificationVerdict` order-check no longer swallowed (#5).** An `else if (orderBroken)` meant a Verdict section with both missing bullets AND wrong ordering reported only the "missing" error; the order violation is now an independent `if` so both report.
+- **`checkStateTransitions` no longer false-ERRORs on `STATE → PLAN(ts)` (#6).** The destination capture `\S+` swallowed trailing punctuation; tightened to a state-token capture (`[A-Za-z_]+`). The canonical spaced `STATE → STATE (reason)` form still validates.
+- **`cmdRetire` writes source files atomically (#4).** Replaced a bare `writeFileSync` on source paths with the `.tmp`+`renameSync` idiom used everywhere else in `bootstrap.mjs`, so a kill mid-write cannot corrupt source.
+- **`parseChangelogFile` compression-detection window widened (#10).** The metadata-block scan stopped at a fixed `header+8` line budget, missing a block pushed to line 13+ and triggering a redundant re-compression pass. Now scans to the first changelog entry / `## ` heading (the real structural boundary), preserving idempotency.
+- **`state-pivot.md` PIVOT module gains the `reset-attempts` step (#2).** The operative module body that monolithic mode follows was missing the `bootstrap.mjs reset-attempts` step that `ip-orchestrator.md` PIVOT dispatch already had; without it the leash counter carried across a pivot and HARD-failed the pre-step gate (`leash-cap`) on the first post-pivot step.
+- **`check-doc-parity.mjs` `isEntryPoint` aligned to the IIFE try/catch pattern (#11)** used by the other four CLI scripts (cosmetic uniformity; behavior unchanged).
+
+### Added
+- **blast-radius tier-boundary + signal tests (#9).** `blast-radius.test.mjs` gains 8 cases covering the tier mapping at its exact boundaries (score 2→LOW, 3→MED, 5→MED, 6→HIGH) and non-zero `deps`/`tests` signal contributions via `--json` — previously the scorer's tier thresholds had no test, so a regression could silently feed a wrong tier to the executor.
+- **Error-path tests (#12).** `reset-attempts` with no `## Fix Attempts` section (exit 1), `retire` with no plan-id (exit 1), and validator iteration=5 emitting a WARN (not ERROR) `[iteration]`.
+
+### Changed
+- **Documentation sync (#3, #7).** `README.md` badges → v2.26.0 / 266 tests; Contributing command, checklist, and Project Structure tree now list all 6 test files and the previously-omitted scripts (`check-doc-parity`, `emit-template`, `shared`). `CLAUDE.md`'s "987-line file-formats.md" phrase made count-agnostic so it does not re-stale as the file grows. (Review finding #8 — a stale `orchestrator.md` name in the gitignored `plans/SYSTEM.md` atlas — is reconciled by the CLOSE archivist rewrite, not a source edit.)
+
 ## [2.25.0] - 2026-06-11
 
 Renames `src/agents/orchestrator.md` → `src/agents/ip-orchestrator.md` so the orchestrator definition follows the same `ip-*` filename convention as the other six sub-agents (`ip-explorer`, `ip-plan-writer`, `ip-executor`, `ip-verifier`, `ip-reviewer`, `ip-archivist`). Purely an organizational/file-layout change: the agent's frontmatter `name:` stays `iterative-planner-orchestrator` (agents register by `name:`, not filename), so `claude --agent iterative-planner-orchestrator` and the SKILL.md "Orchestrator Role Assumption" identity are unchanged. Build scripts bundle `src/agents/*.md` by glob, so packaging picks up the new filename automatically with no Makefile/build.ps1 edits.
