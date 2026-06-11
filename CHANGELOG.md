@@ -4,6 +4,15 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.25.0] - 2026-06-11
+
+Renames `src/agents/orchestrator.md` → `src/agents/ip-orchestrator.md` so the orchestrator definition follows the same `ip-*` filename convention as the other six sub-agents (`ip-explorer`, `ip-plan-writer`, `ip-executor`, `ip-verifier`, `ip-reviewer`, `ip-archivist`). Purely an organizational/file-layout change: the agent's frontmatter `name:` stays `iterative-planner-orchestrator` (agents register by `name:`, not filename), so `claude --agent iterative-planner-orchestrator` and the SKILL.md "Orchestrator Role Assumption" identity are unchanged. Build scripts bundle `src/agents/*.md` by glob, so packaging picks up the new filename automatically with no Makefile/build.ps1 edits.
+
+### Changed
+- **File rename** `src/agents/orchestrator.md` → `src/agents/ip-orchestrator.md` (via `git mv`; content byte-unchanged — no self-referential paths inside the file).
+- **Path-reference propagation.** Updated every `agents/orchestrator.md` / `orchestrator.md` file-path reference to `ip-orchestrator.md` across `src/SKILL.md` (9), `src/references/file-formats.md` (3), `src/scripts/modules/state-plan.md` (1), `CLAUDE.md` (3, incl. Repository Structure tree + validation checklist), and `README.md` (2, incl. tree). Tree-diagram comment alignment preserved.
+- **Untouched (intentionally):** prior CHANGELOG entries retain the historical `orchestrator.md` filename (rewriting them would falsify release history); `.mjs` scripts and the other `ip-*.md` agents reference "orchestrator" only as a role word, not the file path; `Makefile` / `build.ps1` use the `src/agents/*.md` glob.
+
 ## [2.24.0] - 2026-06-11
 
 Adds a second script-emission router, `emit-template.mjs`, extending the "script provides the instructions" pattern to the plan-file templates. Chosen after an explicit net-positive audit (`plans/plan_2026-06-11_5f128570/`) that rejected five other candidate surfaces as pattern-for-its-own-sake; this one clears the bar because `references/file-formats.md` is genuinely large (987 lines) and only one ~20-50 line template is needed per fetch. Unlike the per-state migration, this router is a **slicer over the canonical file** — it does NOT extract content into modules, so file-formats.md remains the single source of truth and no build-combined re-inline is needed. The change is purely additive with a graceful fallback: every rewired pointer keeps its file-formats.md reference, so if the router fails or a pointer is missed, agents read the file exactly as before (no hard failure mode).

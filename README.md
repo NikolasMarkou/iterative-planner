@@ -375,7 +375,7 @@ When `close` merges per-plan files into `plans/FINDINGS.md` and `plans/DECISIONS
 
 The orchestrator coordinates seven specialized agents. Sub-agents cannot spawn other sub-agents — the orchestrator is the sole coordinator. Sub-agents are **optional**: if their definitions are not installed under `~/.claude/agents/`, the monolithic skill works as before.
 
-When the skill activates and the agent definitions are installed, the conversation assumes the orchestrator role **in-thread** (it reads `agents/orchestrator.md` and adopts it — it does not spawn a separate orchestrator); when they are not installed, the same conversation runs the full protocol single-threaded. See SKILL.md "Orchestrator Role Assumption".
+When the skill activates and the agent definitions are installed, the conversation assumes the orchestrator role **in-thread** (it reads `agents/ip-orchestrator.md` and adopts it — it does not spawn a separate orchestrator); when they are not installed, the same conversation runs the full protocol single-threaded. See SKILL.md "Orchestrator Role Assumption".
 
 | Agent | Role | Tools | Model |
 |-------|------|-------|-------|
@@ -564,7 +564,7 @@ iterative-planner/
 └── src/
     ├── SKILL.md                    # core protocol — the complete skill specification
     ├── agents/                     # sub-agent definitions (optional, install to ~/.claude/agents/)
-    │   ├── orchestrator.md         # state machine owner, spawns all other agents
+    │   ├── ip-orchestrator.md      # state machine owner, spawns all other agents
     │   ├── ip-explorer.md          # read-only codebase research (EXPLORE)
     │   ├── ip-plan-writer.md       # plan generation (PLAN)
     │   ├── ip-executor.md          # code execution (EXECUTE)

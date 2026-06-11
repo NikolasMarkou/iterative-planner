@@ -242,7 +242,7 @@ Complexity Assessment mandatory for all PIVOT entries.
 
 Mirrors the cross-plan `<!-- COMPRESSED-SUMMARY -->` pattern (see `SKILL.md` "Consolidated File Management"). Cross-plan files use a 4-plan sliding window to stay bounded; intra-plan `decisions.md` has no such window, so a threshold-triggered compression runs mid-plan.
 
-- **Trigger**: file >300 lines, evaluated at PLAN gate-in. Orchestrator dispatch is wired in step 10 of plan_2026-05-15_71ab18dd (see `agents/orchestrator.md` PLAN State Dispatch).
+- **Trigger**: file >300 lines, evaluated at PLAN gate-in. Orchestrator dispatch is wired in step 10 of plan_2026-05-15_71ab18dd (see `agents/ip-orchestrator.md` PLAN State Dispatch).
 - **Implementation**: `maybeCompressDecisions(planDir, { threshold, dryRun })` exported from `src/scripts/bootstrap.mjs`. Mechanical layer only — parses raw `## D-NNN` entries and emits a lookup-table block. Never invents content.
 - **Insertion position**: after the leading schema-example HTML comment block (if present) and the `*Plan: <plan-id>*` preamble, BEFORE the first `## D-NNN` entry. When an existing block is found, it is REPLACED in-place (never summarize a summary — failsafe mirrors the cross-plan rule).
 - **Append-only safety**: raw `## D-NNN` entries below the block are NEVER touched. Compression only writes the metadata block above them.
@@ -914,7 +914,7 @@ cookie fallback for legacy clients.
 
 Each contract specifies: **name**, **when emitted**, **required content** (numbered, ordered), **fidelity** (verbatim vs digest), **minimum sections** (the floor — must always render even when token cost is high).
 
-Agent files (`agents/orchestrator.md` and contributing sub-agent files) inline these minimum-content lists at the point of dispatch — proximate instructions are followed more reliably than indirect references. This file is the canonical definition; agent files mirror the floor.
+Agent files (`agents/ip-orchestrator.md` and contributing sub-agent files) inline these minimum-content lists at the point of dispatch — proximate instructions are followed more reliably than indirect references. This file is the canonical definition; agent files mirror the floor.
 
 ### PC-EXPLORE — Findings Digest
 
@@ -995,7 +995,7 @@ Agent files (`agents/orchestrator.md` and contributing sub-agent files) inline t
 
 ### Cross-references
 
-- `agents/orchestrator.md` — inlines the minimum-content list of each contract at the point of dispatch.
+- `agents/ip-orchestrator.md` — inlines the minimum-content list of each contract at the point of dispatch.
 - `agents/ip-plan-writer.md` — Output Format references PC-PLAN and PC-EXPLORE.
 - `agents/ip-verifier.md` — Relay Contract references PC-REFLECT item 3.
 - `agents/ip-reviewer.md` — Relay Contract references PC-REFLECT item 4.

@@ -22,7 +22,7 @@ iterative-planner/
 └── src/
     ├── SKILL.md                      # Core protocol (state machine, rules) - the main instruction set
     ├── agents/                       # Sub-agent definitions (installed to ~/.claude/agents/)
-    │   ├── orchestrator.md           # State machine owner, spawns all other agents
+    │   ├── ip-orchestrator.md        # State machine owner, spawns all other agents
     │   ├── ip-explorer.md            # Read-only codebase research (EXPLORE phase)
     │   ├── ip-plan-writer.md         # Plan generation (PLAN phase)
     │   ├── ip-executor.md            # Code execution (EXECUTE phase)
@@ -173,8 +173,8 @@ make help                    # Show available targets
 - [ ] All agent definitions in `src/agents/` have `name:`, `description:`, and `tools:` in YAML frontmatter
 - [ ] Agent definitions in src/SKILL.md "Sub-Agent Architecture" section match files in `src/agents/`
 - [ ] File Ownership Model table in src/SKILL.md matches agent tool permissions
-- [ ] src/SKILL.md "Orchestrator Role Assumption" section names `iterative-planner-orchestrator` and matches `src/agents/orchestrator.md` frontmatter `name:`
-- [ ] src/SKILL.md does not duplicate orchestrator.md dispatch sequencing (pointer only — "Dispatch Rules by State" is a pointer, not a per-state spawn narrative)
+- [ ] src/SKILL.md "Orchestrator Role Assumption" section names `iterative-planner-orchestrator` and matches `src/agents/ip-orchestrator.md` frontmatter `name:`
+- [ ] src/SKILL.md does not duplicate ip-orchestrator.md dispatch sequencing (pointer only — "Dispatch Rules by State" is a pointer, not a per-state spawn narrative)
 - [ ] README.md and src/SKILL.md File Ownership tables agree (same co-ownership for `plan.md` and `changelog.md`); full row parity between the two File Ownership tables is now enforced automatically by `node src/scripts/check-doc-parity.mjs` (run via `make validate`)
 - [ ] Skill-bundled `~/.claude/skills/iterative-planner/agents/` mirrors `src/agents/` (`diff -rq --exclude='.claude' src/agents ~/.claude/skills/iterative-planner/agents` empty) — kept in sync by "Updating Local Skill"
 - [ ] `node src/scripts/emit-state.mjs --state <explore|plan|execute|reflect|pivot>` emits the verbatim per-state rule body (round-trip fidelity vs the SKILL.md "Per-State Rules" bodies before extraction); unknown/missing `--state` exits non-zero
