@@ -1003,4 +1003,22 @@ Agent files (`agents/ip-orchestrator.md` and contributing sub-agent files) inlin
 - `agents/ip-reviewer.md` — Relay Contract references PC-REFLECT item 4.
 - `agents/ip-executor.md` — Output Format references PC-EXECUTE-STEP and PC-EXECUTE-LEASH.
 - `SKILL.md` — User Interaction table cell references the contract by name.
+
+<!-- TEMPLATE:lessons-synthesis -->
+## lessons-synthesis.md
+
+*Structured CLOSE-time reflection. The archivist fills this to promote recurring per-plan findings/decisions into plans/LESSONS.md. Each entry carries an `[I:N]` importance tag (1-5; see the LESSONS.md template). This is a synthesis GUIDE — its output feeds the LESSONS.md rewrite; persisting the filled form is optional.*
+
+### Recurring Patterns
+- <pattern seen across ≥2 plans> [I:N]
+
+### Failed Approaches (+ why)
+- <approach that failed and the reason it failed> [I:N]
+
+### Successful Strategies
+- <strategy that worked and is worth repeating> [I:N]
+
+### Codebase Gotchas
+- <surprising constraint / sharp edge discovered> [I:N]
+
 <!-- TEMPLATE:END -->
