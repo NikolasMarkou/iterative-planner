@@ -5,6 +5,9 @@ dist/
 # Claude Code
 .claude/
 
+# JetBrains IDE
+.idea/
+
 # Iterative Planner
 plans/
 
