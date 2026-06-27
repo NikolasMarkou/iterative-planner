@@ -9,7 +9,7 @@
 // Read-only — reports issues but changes nothing.
 // Requires Node.js 18+.
 
-import { readFileSync, existsSync, readdirSync, statSync } from "fs";
+import { readFileSync, existsSync, readdirSync } from "fs";
 import { join, extname, relative } from "path";
 import { fileURLToPath } from "url";
 import {

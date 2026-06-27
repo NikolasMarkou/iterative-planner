@@ -17,7 +17,7 @@
 
 import { existsSync, readFileSync, statSync, readdirSync } from "fs";
 import { spawnSync } from "child_process";
-import { join, extname, basename, dirname, relative, resolve, sep } from "path";
+import { join, extname, basename, relative, resolve } from "path";
 
 const args = process.argv.slice(2);
 const verbose = args.includes("--verbose");
