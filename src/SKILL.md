@@ -229,7 +229,7 @@ Gather context: read-only research (code, grep, glob, subagents), flush findings
 → Operative rules: `node <skill-path>/scripts/emit-state.mjs --state explore` (module: `scripts/modules/state-explore.md`).
 
 ### PLAN
-Design the approach: pass the gate check + compression gate, write Problem Statement first, then `plan.md` with all 11 validator-required sections (decomposition, verification strategy, assumptions, failure modes, pre-mortem), log `decisions.md` as "X at the cost of Y", seed `verification.md`/`state.md`/`progress.md`, then emit PC-PLAN and wait for explicit user approval.
+Design the approach: pass the gate check + compression gate, write Problem Statement first, then `plan.md` with all 11 validator-required sections (Steps, verification strategy, assumptions, failure modes, pre-mortem), log `decisions.md` as "X at the cost of Y", seed `verification.md`/`state.md`/`progress.md`, then emit PC-PLAN and wait for explicit user approval.
 → Operative rules: `node <skill-path>/scripts/emit-state.mjs --state plan` (module: `scripts/modules/state-plan.md`).
 
 ### EXECUTE
