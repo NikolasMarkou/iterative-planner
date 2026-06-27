@@ -32,7 +32,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-export const VALID_TEMPLATES = ["state","plan","decisions","findings","progress","verification","checkpoints","findings-consolidated","decisions-consolidated","lessons","system","index","lessons-snapshot","changelog","summary","presentation-contracts"];
+export const VALID_TEMPLATES = ["state","plan","decisions","findings","progress","verification","checkpoints","findings-consolidated","decisions-consolidated","lessons","system","index","lessons-snapshot","changelog","summary","presentation-contracts","lessons-synthesis"];
 
 const USAGE = "Usage: node emit-template.mjs --name <" + VALID_TEMPLATES.join("|") + ">";
 

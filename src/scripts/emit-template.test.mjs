@@ -19,7 +19,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const emitTemplatePath = join(here, "emit-template.mjs");
 const fileFormatsPath = join(here, "..", "references", "file-formats.md");
 
-// Canonical 16 slugs, in file order.
+// Canonical 17 slugs, in file order.
 const CANONICAL = [
   "state",
   "plan",
@@ -37,6 +37,7 @@ const CANONICAL = [
   "changelog",
   "summary",
   "presentation-contracts",
+  "lessons-synthesis",
 ];
 
 // Template-specific sentinel substring proving the right slice was emitted.
@@ -58,6 +59,7 @@ const SENTINELS = {
   changelog: "Intra-plan compression",
   summary: "Decision Anchors Registry",
   "presentation-contracts": "PC-EXPLORE",
+  "lessons-synthesis": "Failed Approaches",
 };
 
 // Compute the expected byte slice for a slug using the SAME definition as
@@ -76,7 +78,7 @@ function expectedSlice(buf, slug) {
 
 // --- Module API ---------------------------------------------------------------
 
-test("VALID_TEMPLATES is the canonical 16-slug list", () => {
+test("VALID_TEMPLATES is the canonical 17-slug list", () => {
   assert.deepEqual(VALID_TEMPLATES, CANONICAL);
 });
 
