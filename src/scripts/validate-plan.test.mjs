@@ -371,6 +371,16 @@ describe("validate-plan.mjs standard-path plan-dir resolution", () => {
     assert.match(r.stderr, new RegExp(missing.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), `error should report the resolved abs path, got:\n${r.stderr}`);
     assert.doesNotMatch(r.stderr, /plans\/no-such-plan-dir-xyz/, `must not prepend plans/ to an absolute path, got:\n${r.stderr}`);
   });
+
+  it("checkPlanIdPreamble accepts plans/<id> prefixed path form (no false preamble-mismatch)", () => {
+    const cwd = getTempDir();
+    const { planId } = writePlan(cwd);
+    // CLI arg carries the `plans/` prefix; the decisions.md preamble stores the
+    // bare plan-id. The logical plan-id must be basename-normalized so the two match.
+    const r = run(cwd, `plans/${planId}`);
+    assert.doesNotMatch(r.stderr, /Plan directory not found/, `prefixed form should resolve, got:\n${r.stderr}`);
+    assert.doesNotMatch(r.stdout, /preamble-mismatch/, `prefixed form must not raise a false preamble-mismatch, got:\n${r.stdout}`);
+  });
 });
 
 // ---------------------------------------------------------------------------

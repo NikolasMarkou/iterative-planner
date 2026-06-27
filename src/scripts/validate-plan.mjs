@@ -10,7 +10,7 @@
 // Requires Node.js 18+.
 
 import { readFileSync, existsSync, readdirSync } from "fs";
-import { join, extname, relative } from "path";
+import { join, extname, relative, basename } from "path";
 import { fileURLToPath } from "url";
 import {
   extractField,
@@ -1462,6 +1462,11 @@ function checkPresentationContractLog(planDir, issues) {
 
 function validate(planDirName) {
   const planDir = (planDirName.includes("/") || planDirName.startsWith(".")) ? planDirName : join(plansDir, planDirName);
+  // Identity comparisons use the bare plan-id, NOT the filesystem path: a CLI arg
+  // like `plans/plan_XXX` must still match a `*Plan: plan_XXX*` preamble and bare
+  // `plan_XXX/D-NNN` anchors. Keep planDir (filesystem path) raw; basename only the
+  // identity var, never the path (preserves absolute/nonexistent-path behavior; plan inv #4).
+  const planId = basename(planDirName);
 
   if (!existsSync(planDir)) {
     console.error(`ERROR: Plan directory not found: ${planDir}`);
@@ -1489,14 +1494,14 @@ function validate(planDirName) {
   checkDecisionsSchema(planDir, issues);
   checkVerificationVerdict(planDir, issues);
   checkFindingsIndexLinks(planDir, issues);
-  checkReverseAnchors(planDir, planDirName, issues, cwd);
+  checkReverseAnchors(planDir, planId, issues, cwd);
   checkVerificationEvidence(planDir, issues);
   checkFindingsTopicSections(planDir, issues);
   checkExplorationConfidence(planDir, issues);
   // v2.14.0 — plan-qualified anchors, plan-id preamble, gated Anchor-Refs.
-  checkPlanIdPreamble(planDir, planDirName, issues);
-  checkAnchorRefsRequired(planDir, planDirName, issues, cwd);
-  checkAnchorRefsValidity(planDir, planDirName, issues, cwd);
+  checkPlanIdPreamble(planDir, planId, issues);
+  checkAnchorRefsRequired(planDir, planId, issues, cwd);
+  checkAnchorRefsValidity(planDir, planId, issues, cwd);
   // v2.15.0 — per-edit changelog (informational; never blocks CLOSE).
   checkChangelogFormat(planDir, issues);
   // v2.17.0 — Presentation Contract advisory (best-effort, WARN-only).
