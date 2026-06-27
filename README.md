@@ -1,8 +1,8 @@
 # Iterative Planner
 
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Skill](https://img.shields.io/badge/Skill-v2.29.0-green.svg)](CHANGELOG.md)
-[![Tests](https://img.shields.io/badge/tests-273%20passing-brightgreen.svg)](src/scripts/bootstrap.test.mjs)
+[![Skill](https://img.shields.io/badge/Skill-v2.30.0-green.svg)](CHANGELOG.md)
+[![Tests](https://img.shields.io/badge/tests-295%20passing-brightgreen.svg)](src/scripts/bootstrap.test.mjs)
 [![Sponsored by Electi](https://img.shields.io/badge/Sponsored%20by-Electi-red.svg)](https://www.electiconsulting.com)
 
 A [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skill that turns ad-hoc agent runs into structured, recoverable, evidence-driven work.
@@ -424,8 +424,9 @@ node --test src/scripts/bootstrap.test.mjs \
             src/scripts/check-doc-parity.test.mjs \
             src/scripts/emit-state.test.mjs \
             src/scripts/emit-template.test.mjs \
-            src/scripts/check-readme-parity.test.mjs
-# 273 tests total: bootstrap 176, validate-plan 43, blast-radius 22, check-doc-parity 3, emit-state 12, emit-template 10, check-readme-parity 7
+            src/scripts/check-readme-parity.test.mjs \
+            src/scripts/shared.test.mjs
+# 295 tests total: bootstrap 176, validate-plan 45, blast-radius 23, check-doc-parity 4, emit-state 12, emit-template 10, check-readme-parity 4, shared 21
 ```
 
 ### Build and package

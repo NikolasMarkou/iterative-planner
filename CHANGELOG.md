@@ -4,6 +4,25 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.30.0] - 2026-06-27
+
+Fixes the confirmed-real defects from a re-verified audit of the repo source (`plans/plan_2026-06-27_e830e67d/`): two dead imports, an inverted `--help` string, a path-normalization bug, stale docs/tree, a missing `.gitignore` entry, missing build/release gates, and an untested `shared.mjs`. Test suite grows 273 → 295; 8 test files. The audit's import-linter recommendation was deliberately dropped as infeasible — the repo is dependency-free (no `package.json`, all-builtin imports), so a manual fix plus a documenting `lint:` comment is the proportionate remedy.
+
+### Fixed
+- **Dead imports removed.** `blast-radius.mjs` dropped unused `dirname, sep`; `validate-plan.mjs` dropped unused `statSync` (no call sites).
+- **`--help` iteration-cap text corrected.** The help string said `Iteration < 6` while the enforcing code uses `iter >= 6`; the string now reads `>= 6`.
+- **`validate-plan.mjs` path normalization.** A `plans/plan_XXX`-form CLI argument no longer produces a false `preamble-mismatch`: the logical plan-id used for identity comparison is now `basename()`-normalized while the filesystem path is preserved intact. Added a regression test.
+
+### Added
+- **`src/scripts/shared.test.mjs`** — `node:test` coverage of `shared.mjs`'s exports (`extractField`, `splitChangelogFields`, `blankCompressedSummaryBlock`, and the `COMPRESSED_SUMMARY_OPEN`/`COMPRESSED_SUMMARY_CLOSE`/`CHANGELOG_COMPRESSED_INLINE_RE` markers); 21 tests, total 273 → 295.
+- **Build/release gates.** `package`, `package-tar`, and `package-combined` now run `validate` first (Makefile prerequisite + `Invoke-Validate` in build.ps1). Added an opt-in `sync-skill` target/function mirroring the CLAUDE.md "Updating Local Skill" copy sequence (not run automatically). A `lint:` comment documents that unused-import detection is intentionally not automated (dependency-free repo).
+
+### Docs
+- README combined-build note now discloses that `src/agents/*.md` (not just `bootstrap.mjs`) are absent from the single-file build; matching disclosure added to the generated combined-build footer.
+- `.gitignore` now ignores `.idea/`.
+- CLAUDE.md Repository Structure tree lists `check-readme-parity.{mjs,test.mjs}`; SKILL.md validator-sections parenthetical names the real plan section "Steps" (was "decomposition").
+- README test-count badge, version badge, and per-file breakdown reconciled to the measured suite (295: bootstrap 176, validate-plan 45, blast-radius 23, check-doc-parity 4, emit-state 12, emit-template 10, check-readme-parity 4, shared 21).
+
 ## [2.29.0] - 2026-06-11
 
 ### Added
