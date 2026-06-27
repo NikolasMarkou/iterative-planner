@@ -106,9 +106,10 @@ function Invoke-BuildCombined {
     }
 
     $content += "`n---`n`n"
-    $content += "> **Note**: This combined file does not include ``bootstrap.mjs``. Bootstrap commands`n"
-    $content += "> referenced in the protocol require the full package. Plan directories must be`n"
-    $content += "> created manually or by using the zip/tarball distribution.`n"
+    $content += "> **Note**: This combined file does not include ``bootstrap.mjs`` or the sub-agent`n"
+    $content += "> definitions (``src/agents/*.md``) — it runs in SKILL.md's single-thread monolithic-fallback`n"
+    $content += "> mode. Bootstrap commands referenced in the protocol require the full package. Plan`n"
+    $content += "> directories must be created manually or by using the zip/tarball distribution.`n"
 
     # Rewrite references/ cross-references to anchor links (content is inlined above).
     # Keys are SINGLE-quoted, so backticks are literal — they must use SINGLE

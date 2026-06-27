@@ -84,9 +84,10 @@ build-combined:
 	@echo "" >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	@echo "---" >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	@echo "" >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md
-	@echo "> **Note**: This combined file does not include \`bootstrap.mjs\`. Bootstrap commands" >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md
-	@echo "> referenced in the protocol require the full package. Plan directories must be" >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md
-	@echo "> created manually or by using the zip/tarball distribution." >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@echo "> **Note**: This combined file does not include \`bootstrap.mjs\` or the sub-agent" >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@echo "> definitions (\`src/agents/*.md\`) — it runs in SKILL.md's single-thread monolithic-fallback" >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@echo "> mode. Bootstrap commands referenced in the protocol require the full package. Plan" >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@echo "> directories must be created manually or by using the zip/tarball distribution." >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	@# Rewrite references/ cross-references to anchor links (content is inlined above)
 	@sed -i 's|`references/blast-radius\.md`|the Blast Radius Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	@sed -i 's|`references/code-hygiene\.md`|the Code Hygiene Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
