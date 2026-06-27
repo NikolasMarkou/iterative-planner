@@ -182,7 +182,7 @@ make help                    # Show available targets
 - [ ] README.md version badge and test count match `VERSION` and `TEST_COUNT` files (enforced by `node src/scripts/check-readme-parity.mjs`, run via `make validate`)
 - [ ] Skill-bundled `~/.claude/skills/iterative-planner/agents/` mirrors `src/agents/` (`diff -rq --exclude='.claude' src/agents ~/.claude/skills/iterative-planner/agents` empty) — kept in sync by "Updating Local Skill"
 - [ ] `node src/scripts/emit-state.mjs --state <explore|plan|execute|reflect|pivot>` emits the verbatim per-state rule body for each state; unknown/missing `--state` exits non-zero
-- [ ] `node src/scripts/emit-template.mjs --name <slug>` emits the byte-faithful template slice from references/file-formats.md for each of the 16 slugs; unknown/missing `--name` exits non-zero (2 for missing, 1 for unknown)
+- [ ] `node src/scripts/emit-template.mjs --name <slug>` emits the byte-faithful template slice from references/file-formats.md for each of the 17 slugs (incl. `lessons-synthesis`, the CLOSE structure guide for LESSONS.md synthesis); unknown/missing `--name` exits non-zero (2 for missing, 1 for unknown)
 - [ ] `src/scripts/modules/` is synced into the skill bundle (`diff -rq --exclude='.claude' src/scripts/modules ~/.claude/skills/iterative-planner/scripts/modules` empty) and re-inlined by `make build-combined` (each of the 5 module bodies present in the combined output)
 
 ## Updating Local Skill

@@ -26,6 +26,7 @@ CLOSE-phase archivist for the iterative planning protocol. Complete all housekee
 
 3. **Update plans/LESSONS.md**:
    - Read current file
+   - Before rewriting, run `node <skill-path>/scripts/emit-template.mjs --name lessons-synthesis` and use its output as the STRUCTURE GUIDE for synthesizing this plan's recurring findings/decisions into LESSONS.md entries (Recurring Patterns / Failed Approaches / Successful Strategies / Codebase Gotchas, each tagged `[I:N]`). This is a synthesis guide only — persisting a filled `lessons-synthesis.md` into the plan dir is OPTIONAL, never a required artifact (keeps validate-plan clean).
    - Integrate significant lessons from this plan
    - REWRITE entire file (don't append) — max 200 lines
    - Focus on: patterns that work, what to avoid, codebase gotchas, recurring traps
