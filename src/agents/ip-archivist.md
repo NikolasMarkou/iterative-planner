@@ -29,6 +29,8 @@ CLOSE-phase archivist for the iterative planning protocol. Complete all housekee
    - Integrate significant lessons from this plan
    - REWRITE entire file (don't append) — max 200 lines
    - Focus on: patterns that work, what to avoid, codebase gotchas, recurring traps
+   - **Importance scoring**: assign each retained/new lesson an inline `[I:N]` tag (1-5; 5=critical/caused a failure, 3=default useful pattern, 1=one-off). An untagged legacy entry is treated as implicit `[I:3]` — score it when you rewrite it.
+   - **Over-cap trim = importance then recency**: when the rewrite would exceed 200 lines, drop lowest-`[I:N]` entries first, and within the same importance tier drop oldest first. Never drop an `[I:5]` entry — tighten or merge wording instead. (Distinct from SYSTEM.md's demote-by-staleness in Step 5.)
 
 4. **Check consolidated files**: post-`bootstrap.mjs close`, if FINDINGS.md or DECISIONS.md > 500 lines → add `<!-- COMPRESSED-SUMMARY -->` block (max 100 lines; focus: outcomes, constraints, failed approaches).
 

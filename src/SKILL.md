@@ -54,7 +54,7 @@ stateDiagram-v2
 | EXECUTE | Implement step-by-step | Edit files, run commands, write code. |
 | REFLECT | Evaluate results | Read outputs, run tests, review diffs. Update verification.md, decisions.md. |
 | PIVOT | Revise direction | Log pivot in decisions.md. Do NOT write plan.md yet. |
-| CLOSE | Finalize | Write summary.md. Audit decision anchors. Merge findings/decisions. Rewrite LESSONS.md + SYSTEM.md atlas (demote-by-staleness — see ip-archivist Step 5). Compress consolidated files if needed. Caps: Lifecycle Matrix. |
+| CLOSE | Finalize | Write summary.md. Audit decision anchors. Merge findings/decisions. Rewrite LESSONS.md (trim by importance-then-recency, never drop `[I:5]` — see ip-archivist Step 3) + SYSTEM.md atlas (demote-by-staleness — see ip-archivist Step 5). Compress consolidated files if needed. Caps: Lifecycle Matrix. |
 
 ### Transitions
 
@@ -214,7 +214,7 @@ R = read only | W = update (implicit read + write) | R+W = distinct read and wri
 Institutional memory across plans. Unlike FINDINGS.md / DECISIONS.md (append+merge), LESSONS.md is **rewritten** every CLOSE; cap in Lifecycle Matrix.
 
 - **Read**: EXPLORE start, before PLAN, before PIVOT.
-- **Update** (CLOSE, before `bootstrap.mjs close`): read current, integrate significant lessons, rewrite. If update would exceed cap → consolidate aggressively (merge related, drop low-value, tighten).
+- **Update** (CLOSE, before `bootstrap.mjs close`): read current, integrate significant lessons, rewrite. Each lesson carries an inline `[I:N]` importance tag (1-5; untagged = implicit `[I:3]`). If update would exceed cap → consolidate aggressively (merge related, tighten) and trim by **importance then recency**: drop lowest-`[I:N]` entries first, oldest first within a tier, never dropping an `[I:5]`.
 - **Rewrite, don't append.** No "added on date X" markers.
 - **Keep**: recurring patterns, failed approaches + why, successful strategies, codebase gotchas, surprising constraints.
 - **Drop**: one-off findings (→ FINDINGS.md), decision reasoning (→ DECISIONS.md), plan-specific detail.
