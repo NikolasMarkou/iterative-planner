@@ -38,6 +38,8 @@ iterative-planner/
     │   ├── blast-radius.test.mjs     # Test suite (node:test)
     │   ├── check-doc-parity.mjs      # README<->SKILL.md File Ownership table parity gate (used by make/build.ps1 validate; Node.js 18+)
     │   ├── check-doc-parity.test.mjs # Test suite (node:test)
+    │   ├── check-readme-parity.mjs   # README version badge + TEST_COUNT parity gate (used by make/build.ps1 validate; Node.js 18+)
+    │   ├── check-readme-parity.test.mjs # Test suite (node:test)
     │   ├── emit-state.mjs            # Per-state rule router; emits scripts/modules/state-<s>.md on demand (used by SKILL.md per-state pointers / orchestrator dispatch; Node.js 18+)
     │   ├── emit-state.test.mjs       # Test suite (node:test)
     │   ├── emit-template.mjs         # Per-template slicer; emits one plan-file template sliced from references/file-formats.md via --name <slug> (used by agents/modules to fetch a single template instead of the full file-formats.md file; Node.js 18+)
