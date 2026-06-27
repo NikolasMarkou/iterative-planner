@@ -6,6 +6,10 @@ VERSION := $(shell cat VERSION)
 BUILD_DIR := build
 DIST_DIR := dist
 
+# Local install destinations for the opt-in sync-skill target (writes to $HOME)
+SKILL_INSTALL_DIR := $(HOME)/.claude/skills/$(SKILL_NAME)
+AGENTS_INSTALL_DIR := $(HOME)/.claude/agents
+
 # Files to include in the skill package
 SKILL_FILE := src/SKILL.md
 REFERENCE_FILES := $(sort $(wildcard src/references/*.md))
@@ -107,7 +111,7 @@ build-combined:
 
 # Package as zip for distribution
 .PHONY: package
-package: build
+package: validate build
 	@echo "Packaging skill as zip..."
 	mkdir -p $(DIST_DIR)
 	cd $(BUILD_DIR) && zip -r ../$(DIST_DIR)/$(SKILL_NAME)-v$(VERSION).zip $(SKILL_NAME)
@@ -115,14 +119,14 @@ package: build
 
 # Package combined single-file version
 .PHONY: package-combined
-package-combined: build-combined
+package-combined: validate build-combined
 	mkdir -p $(DIST_DIR)
 	cp $(BUILD_DIR)/$(SKILL_NAME)-combined.md $(DIST_DIR)/
 	@echo "Combined skill copied to: $(DIST_DIR)/$(SKILL_NAME)-combined.md"
 
 # Create tarball
 .PHONY: package-tar
-package-tar: build
+package-tar: validate build
 	@echo "Packaging skill as tarball..."
 	mkdir -p $(DIST_DIR)
 	cd $(BUILD_DIR) && tar -czvf ../$(DIST_DIR)/$(SKILL_NAME)-v$(VERSION).tar.gz $(SKILL_NAME)
@@ -200,6 +204,10 @@ validate:
 # Check script syntax
 .PHONY: lint
 lint:
+	@# NOTE: unused-import detection is intentionally NOT performed here. The repo is dependency-free
+	@# (all imports are Node builtins or ./shared.mjs); a real import linter would require an npm
+	@# dependency, violating the dependency-free invariant. Syntax-only by design — do NOT add an
+	@# import-linter or any npm tooling.
 	@echo "Checking script syntax..."
 	node --check src/scripts/bootstrap.mjs
 	node --check src/scripts/validate-plan.mjs
@@ -232,6 +240,24 @@ list: build
 	@echo "Package contents:"
 	@find $(BUILD_DIR)/$(SKILL_NAME) -type f | sort
 
+# Opt-in: deploy repo source to the local installed skill (writes to $HOME). Not a prereq of build/package.
+.PHONY: sync-skill
+sync-skill:
+	@echo "Syncing repo source to local installed skill: $(SKILL_INSTALL_DIR)"
+	mkdir -p $(SKILL_INSTALL_DIR)/references
+	mkdir -p $(SKILL_INSTALL_DIR)/scripts
+	mkdir -p $(SKILL_INSTALL_DIR)/scripts/modules
+	mkdir -p $(SKILL_INSTALL_DIR)/agents
+	mkdir -p $(AGENTS_INSTALL_DIR)
+	cp src/SKILL.md $(SKILL_INSTALL_DIR)/SKILL.md
+	cp src/scripts/*.mjs $(SKILL_INSTALL_DIR)/scripts/
+	cp src/scripts/modules/*.md $(SKILL_INSTALL_DIR)/scripts/modules/
+	cp src/references/*.md $(SKILL_INSTALL_DIR)/references/
+	cp README.md LICENSE CHANGELOG.md $(SKILL_INSTALL_DIR)/
+	cp src/agents/*.md $(SKILL_INSTALL_DIR)/agents/
+	cp src/agents/*.md $(AGENTS_INSTALL_DIR)/
+	diff -rq --exclude='.claude' src/agents $(SKILL_INSTALL_DIR)/agents && diff -rq --exclude='.claude' src/scripts/modules $(SKILL_INSTALL_DIR)/scripts/modules && echo "Sync verified." || (echo "ERROR: sync diff mismatch" && exit 1)
+
 # Help
 .PHONY: help
 help:
@@ -247,6 +273,7 @@ help:
 	@echo "  make test            - Run tests"
 	@echo "  make clean           - Remove build artifacts"
 	@echo "  make list            - Show package contents"
+	@echo "  make sync-skill      - Opt-in: deploy repo source to local installed skill (writes to \$$HOME)"
 	@echo "  make help            - Show this help"
 	@echo ""
 	@echo "Skill: $(SKILL_NAME) v$(VERSION)"

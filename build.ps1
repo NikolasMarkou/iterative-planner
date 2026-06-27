@@ -1,6 +1,6 @@
 # build.ps1 - PowerShell build script for Iterative Planner Claude Skill
 # Usage: .\build.ps1 [command]
-# Commands: build, build-combined, package, package-combined, package-tar, validate, lint, test, clean, list, help
+# Commands: build, build-combined, package, package-combined, package-tar, validate, lint, test, clean, list, sync-skill, help
 
 param(
     [Parameter(Position=0)]
@@ -28,6 +28,7 @@ function Show-Help {
     Write-Host "  test             - Run tests"
     Write-Host "  clean            - Remove build artifacts"
     Write-Host "  list             - Show package contents"
+    Write-Host "  sync-skill       - Opt-in: deploy repo source to local installed skill (writes to `$HOME)"
     Write-Host "  help             - Show this help"
     Write-Host ""
     Write-Host "Skill: $SkillName v$Version" -ForegroundColor Green
@@ -145,6 +146,7 @@ function Invoke-BuildCombined {
 }
 
 function Invoke-Package {
+    Invoke-Validate
     Invoke-Build
 
     Write-Host "Packaging skill as zip..." -ForegroundColor Yellow
@@ -179,6 +181,7 @@ function Invoke-Package {
 }
 
 function Invoke-PackageCombined {
+    Invoke-Validate
     Invoke-BuildCombined
 
     New-Item -ItemType Directory -Force -Path $DistDir | Out-Null
@@ -344,6 +347,7 @@ function Invoke-Lint {
 }
 
 function Invoke-PackageTar {
+    Invoke-Validate
     Invoke-Build
 
     Write-Host "Packaging skill as tarball..." -ForegroundColor Yellow
@@ -398,6 +402,32 @@ function Invoke-List {
         ForEach-Object { $_.FullName.Replace((Get-Location).Path + [IO.Path]::DirectorySeparatorChar, "") }
 }
 
+# Opt-in: deploy repo source to the local installed skill (writes to $HOME). Not a prereq of build/package.
+function Invoke-SyncSkill {
+    $skillInstallDir = Join-Path $HOME ".claude/skills/$SkillName"
+    $agentsInstallDir = Join-Path $HOME ".claude/agents"
+
+    Write-Host "Syncing repo source to local installed skill: $skillInstallDir" -ForegroundColor Yellow
+
+    New-Item -ItemType Directory -Force -Path "$skillInstallDir/references" | Out-Null
+    New-Item -ItemType Directory -Force -Path "$skillInstallDir/scripts" | Out-Null
+    New-Item -ItemType Directory -Force -Path "$skillInstallDir/scripts/modules" | Out-Null
+    New-Item -ItemType Directory -Force -Path "$skillInstallDir/agents" | Out-Null
+    New-Item -ItemType Directory -Force -Path $agentsInstallDir | Out-Null
+
+    Copy-Item "src/SKILL.md" "$skillInstallDir/SKILL.md"
+    Copy-Item "src/scripts/*.mjs" "$skillInstallDir/scripts/"
+    Copy-Item "src/scripts/modules/*.md" "$skillInstallDir/scripts/modules/"
+    Copy-Item "src/references/*.md" "$skillInstallDir/references/"
+    @("README.md", "LICENSE", "CHANGELOG.md") | ForEach-Object {
+        if (Test-Path $_) { Copy-Item $_ $skillInstallDir }
+    }
+    Copy-Item "src/agents/*.md" "$skillInstallDir/agents/"
+    Copy-Item "src/agents/*.md" $agentsInstallDir
+
+    Write-Host "Sync complete" -ForegroundColor Green
+}
+
 # Execute command
 switch ($Command.ToLower()) {
     "build"            { Invoke-Build }
@@ -410,6 +440,7 @@ switch ($Command.ToLower()) {
     "test"             { Invoke-Test }
     "clean"            { Invoke-Clean }
     "list"             { Invoke-List }
+    "sync-skill"       { Invoke-SyncSkill }
     "help"             { Show-Help }
     default            {
         Show-Help
