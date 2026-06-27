@@ -1616,7 +1616,7 @@ If no plan directory is specified, validates the active plan.
     1. plan dir + state.md readable      → GATE:FAIL [no-plan]
     2. Current State = EXECUTE           → GATE:FAIL [wrong-state]
     3. Fix Attempts >= 2                 → GATE:FAIL [leash-cap]
-    4. Iteration < 6                     → GATE:FAIL [iteration-cap]
+    4. Iteration >= 6                    → GATE:FAIL [iteration-cap]
   Output: single line on stdout — GATE:PASS or GATE:FAIL [slug] [...details].
 
 Checks:
