@@ -4,6 +4,17 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.31.0] - 2026-06-27
+
+Implements the F18 "3-stage agent memory" audit finding (`plans/plan_2026-06-27_c881d945/`) as two high-value, filesystem-backed memory-system upgrades: importance scoring on `plans/LESSONS.md` and an automatic synthesis-at-CLOSE template. Deeper machinery like vector search was deliberately left out of scope as over-engineering for a filesystem-backed design. Test suite stays at 295 (the new template slug is auto-covered by the existing emit-template loop tests; no new `test()` blocks).
+
+### Added
+- Importance scoring on `plans/LESSONS.md`: optional `[I:N]` tag (1-5; omitted = 3). The CLOSE archivist now trims the 200-line cap by importance-then-recency and never drops `[I:5]` lessons (was demote-by-staleness, which actually applied to SYSTEM.md).
+- New `lessons-synthesis` emit-template slug (16 → 17 templates): a structured CLOSE-time reflection guide (Recurring Patterns / Failed Approaches / Successful Strategies / Codebase Gotchas, each `[I:N]`-tagged) the archivist uses to promote recurring per-plan findings/decisions into LESSONS.md.
+
+### Fixed
+- Corrected SKILL.md File Lifecycle/CLOSE wording that conflated LESSONS.md trimming with SYSTEM.md's demote-by-staleness rule.
+
 ## [2.30.0] - 2026-06-27
 
 Fixes the confirmed-real defects from a re-verified audit of the repo source (`plans/plan_2026-06-27_e830e67d/`): two dead imports, an inverted `--help` string, a path-normalization bug, stale docs/tree, a missing `.gitignore` entry, missing build/release gates, and an untested `shared.mjs`. Test suite grows 273 → 295; 8 test files. The audit's import-linter recommendation was deliberately dropped as infeasible — the repo is dependency-free (no `package.json`, all-builtin imports), so a manual fix plus a documenting `lint:` comment is the proportionate remedy.
