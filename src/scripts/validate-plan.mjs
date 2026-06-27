@@ -1590,7 +1590,7 @@ function runPreStepGate(planDir) {
 // CLI Dispatch
 // ---------------------------------------------------------------------------
 
-// DECISION plan_2026-06-11_4ecd09f7/D-002 — CLI dispatch guarded behind isEntryPoint so the
+// DECISION plan_2026-06-11_4ecd09f7/D-002 [STALE] — CLI dispatch guarded behind isEntryPoint so the
 // module is import-safe (a test helper or future tooling can `import` validate-plan.mjs without
 // the arg-parsing + process.exit firing at module load). Standard Node.js ESM dual-mode pattern,
 // mirrors bootstrap.mjs:1831-1841. Do NOT move the process.exit calls or validate() back to
