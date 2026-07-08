@@ -4,7 +4,7 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [2.32.0] - 2026-07-08
+## [2.32.0] - 2026-07-09
 
 Closes a blind spot in which the anchor system could not see part of its own domain (`plans/plan_2026-07-08_32b9cfcf/`). Two orphan `DECISION` anchors sat in `src/agents/ip-orchestrator.md` citing deleted plan directories with no `[STALE]` marker — invisible to `validate-plan.mjs` and un-stampable by `bootstrap.mjs retire`, because `.md` was outside `ANCHOR_SOURCE_EXTS`. The HTML/Markdown row had been in the grammar table all along, simply unimplemented. This release retires the orphans, implements that row (HTML-comment opener form only), and tidies the pre-existing `[STALE]` anchors. Note the scanner change is **preventive**, not protective: after this release the repo contains zero anchors, so its value is guarding future anchors, not any live one.
 
@@ -20,7 +20,7 @@ Closes a blind spot in which the anchor system could not see part of its own dom
 - `.md` in `ANCHOR_SOURCE_EXTS` for both `validate-plan.mjs` and `bootstrap.mjs`. In Markdown, **only** the `<!-- DECISION … -->` opener form is recognized — fenced `#`/`//` examples remain prose.
 - `HTML_STYLE_EXTS`. The previously-unconditional `/* … */` block-comment scan is now **gated off** for HTML-style extensions, so Markdown block-comment delimiters in prose are not misread as anchors.
 - `cmdRetire` gains an HTML-scoped `.md` matcher, restoring the `bootstrap.mjs` invariant that `retire` stamps exactly the anchors the validator scans. The `.tmp` + `renameSync` atomicity is preserved.
-- 4 CLI-level tests (295 → 299), including a **negative fixture that scans the real `decision-anchoring.md`, `file-formats.md`, and `state-execute.md`** and asserts zero anchor findings — a live regression guard on future doc edits.
+- 7 CLI-level tests (295 → 302), including a **negative fixture that scans the real `decision-anchoring.md`, `file-formats.md`, and `state-execute.md`** and asserts zero anchor findings — a live regression guard on future doc edits — plus multi-anchor and unclosed-comment fixtures asserting that `validate-plan.mjs` and `bootstrap.mjs retire` agree.
 - A documented rule: anchor examples, in Markdown **or** in source comments, must use placeholder ids. A bare `D-` plus three digits inside any scanned comment becomes a real anchor. Discovered the hard way — `CHANGELOG.md:331`, a release note quoting an illustrative block comment that holds two bare three-digit decision ids, turned into a blocking `ERROR [anchor-orphan]` the instant `.md` entered scope, before the HTML-extension gate landed.
 
 ### Changed
