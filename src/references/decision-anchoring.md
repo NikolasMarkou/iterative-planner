@@ -85,6 +85,28 @@ The plan-id prefix is an **optional non-capturing group** in each regex. Capture
 
 Files outside this matrix are skipped by the reverse-anchor scan.
 
+### Markdown and HTML (implemented in v2.32.0)
+
+`.md` is inside the scanned-extension set (`ANCHOR_SOURCE_EXTS`) of **both** `src/scripts/validate-plan.mjs` and `src/scripts/bootstrap.mjs retire`. Before v2.32.0 the HTML / Markdown row of the grammar table above described a form that no tool implemented; Markdown was a blind spot in which an orphan anchor could sit indefinitely, invisible to the validator and unreachable by `retire`. Three consequences:
+
+- **Only the HTML-comment opener form is recognized in Markdown.** An anchor in a `.md` file must be an HTML comment whose first token after the opener is `DECISION`. Nothing else in a `.md` file is an anchor. A `#`- or `//`-style example inside a fenced code block — such as the Python and Ruby snippets under § Format above — is prose, not an anchor: the hash, slash, and SQL scans are extension-gated, and `.md` appears in none of their extension lists.
+- **The block-comment scan is gated off for HTML-style extensions** (`.md`, `.markdown`, `.mdx`, `.html`, `.htm`, via `HTML_STYLE_EXTS`). Block-comment delimiters occur as ordinary prose in Markdown, and that scan's inner regex has no comment-marker prefix — see the placeholder-id rule below.
+- **`retire` stamps exactly what the validator scans.** `bootstrap.mjs cmdRetire` selects an HTML-scoped matcher for `.md`, so bare-prose `DECISION <plan-id>/D-NNN` text in Markdown is left untouched by the irreversible `[STALE]` rewrite.
+
+## Writing About Anchors — Placeholder Ids Are Mandatory
+
+> **Rule.** Documentation examples of anchors — in Markdown **or** in source comments — MUST use placeholder ids (`<plan-id>`, `D-NNN`). A concrete `plan_YYYY-MM-DD_hex/D-NNN`, or a bare `D-` followed by three digits, inside a scanned comment becomes a **real, reportable anchor**.
+
+This rule is **not Markdown-specific**. It holds for every extension in `ANCHOR_SOURCE_EXTS`.
+
+**Why.** The block-comment scan's inner regex carries **no comment-marker prefix**: it matches the bare `DECISION` + id token sequence anywhere inside a block comment. A comment that *quotes* a block-comment example is therefore indistinguishable from the example itself.
+
+The canonical instance is `CHANGELOG.md:331` — the release note describing a previous fix to this very scanner, which quotes an illustrative block comment holding two bare three-digit decision ids, purely as prose about the bug being fixed. Before the HTML-extension gate landed, adding `.md` to the scanned set turned that line into an immediate `ERROR [anchor-orphan]` plus two `WARN [anchor-unqualified]`, exit 1: the repository failing its own gate on a sentence about the gate.
+
+The hazard is **not** confined to Markdown. The same trap fired inside `src/scripts/validate-plan.mjs` — a `.mjs` file, where the block scan correctly still runs — when a `NOTE:` comment reproduced that snippet verbatim. Describe block-comment delimiters in prose; do not reproduce a delimiter pair around a concrete id.
+
+Placeholder examples are inert **by construction**, not by exclusion list: `<plan-id>` fails the plan-id pattern `plan_\d{4}-\d{2}-\d{2}_[0-9a-f]+`, and `D-NNN` fails `D-\d{3}`. Neither can ever be reported.
+
 ## Multi-line Anchors
 
 Anchors may span multiple comment lines for longer rationale. Rules:

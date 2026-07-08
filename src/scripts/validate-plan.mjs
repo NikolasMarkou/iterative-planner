@@ -1580,7 +1580,7 @@ function validate(planDirName) {
 //   - emit WARN/exit 1 from this path: every check is binary PASS/FAIL.
 //     Exit 1 is reserved for future expansion.
 //   - re-use exit code 1 for HARD FAIL: that conflates leash trips with
-//     malformed-plan errors from the full validator. See decisions.md D-004.
+//     malformed-plan errors from the full validator. Exit 2 is reserved for leash trips.
 //   - print more than one line: stdout = single "GATE:*" token line.
 function runPreStepGate(planDir) {
   const statePath = join(planDir, "state.md");
@@ -1624,7 +1624,7 @@ function runPreStepGate(planDir) {
 // module is import-safe (a test helper or future tooling can `import` validate-plan.mjs without
 // the arg-parsing + process.exit firing at module load). Standard Node.js ESM dual-mode pattern,
 // mirrors bootstrap.mjs:1831-1841. Do NOT move the process.exit calls or validate() back to
-// module scope — that re-breaks import-safety. See decisions.md D-002.
+// module scope — that re-breaks import-safety.
 const isEntryPoint = (() => {
   try {
     return process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
