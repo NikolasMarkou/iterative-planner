@@ -59,7 +59,7 @@ The validator accepts bare anchors but emits `WARN [anchor-unqualified]` to nudg
 
 ## Formal Grammar
 
-The validator and any tooling MUST recognize anchors via these regex patterns. The leading comment marker is language-driven (extension dispatch). The token sequence after the marker is `DECISION`, an optional plan-id prefix `<plan_YYYY-MM-DD_XXXXXXXX>/`, then `D-` followed by exactly three digits, optionally followed by ` [STALE]`, then either end-of-line, whitespace, or `:`.
+The validator and any tooling MUST recognize anchors via these regex patterns. For the hash, slash, and SQL styles the leading comment marker is language-driven (extension dispatch) and forms part of the match. **The block-comment scan is the exception**: its inner match carries **no comment-marker prefix**, so there the `DECISION` token is recognized anywhere inside a `/* … */` block, not adjacent to the opener (see the Block-comment row and the note beneath the table). The token sequence after the marker is `DECISION`, an optional plan-id prefix `<plan_YYYY-MM-DD_XXXXXXXX>/`, then `D-` followed by exactly three digits, optionally followed by ` [STALE]`, then either end-of-line, whitespace, or `:`.
 
 The plan-id prefix matches `plan_\d{4}-\d{2}-\d{2}_[0-9a-f]+` (the bootstrap plan-directory format).
 
@@ -67,11 +67,15 @@ The plan-id prefix matches `plan_\d{4}-\d{2}-\d{2}_[0-9a-f]+` (the bootstrap pla
 |---|---|---|
 | Hash-comment (Python, Ruby, shell, YAML, TOML, R, Perl, Makefile) | `#` | `^\s*#\s+DECISION\s+(?:plan_\d{4}-\d{2}-\d{2}_[0-9a-f]+\/)?D-\d{3}(\s+\[STALE\])?(:|\s|$)` |
 | Slash-comment (JS, TS, Go, Rust, C, C++, Java, Swift, Kotlin, Scala, C#, PHP) | `//` | `^\s*//\s+DECISION\s+(?:plan_\d{4}-\d{2}-\d{2}_[0-9a-f]+\/)?D-\d{3}(\s+\[STALE\])?(:|\s|$)` |
-| Block-comment (C, C++, Java, JS, CSS, etc.) | `/* */` | `/\*\s*DECISION\s+(?:plan_\d{4}-\d{2}-\d{2}_[0-9a-f]+\/)?D-\d{3}(\s+\[STALE\])?.*?\*/` |
+| Block-comment (C, C++, Java, JS, CSS, etc.) — **two-stage; see note below** | `/* */` | outer delimiter-pair scan `/\*([\s\S]*?)\*/`, then a **marker-less** inner match `DECISION\s+(?:<plan-id>\/)?D-NNN(\s+\[STALE\])?` applied to the block body |
 | HTML / Markdown | `<!-- -->` | `<!--\s*DECISION\s+(?:plan_\d{4}-\d{2}-\d{2}_[0-9a-f]+\/)?D-\d{3}(\s+\[STALE\])?.*?-->` |
 | SQL | `--` | `^\s*--\s+DECISION\s+(?:plan_\d{4}-\d{2}-\d{2}_[0-9a-f]+\/)?D-\d{3}(\s+\[STALE\])?(:|\s|$)` |
 
 The plan-id prefix is an **optional non-capturing group** in each regex. Captured groups (in order): plan-id (if present, captured separately for resolution), STALE marker. Implementations may capture either or both as named groups.
+
+**The Block-comment row is two-stage and marker-less.** The scanner first locates a `/* … */` delimiter pair with the outer scan, then applies the inner regex — which has **no `/*` prefix** — to the block body. An anchor therefore matches **anywhere inside the block**, not only immediately after the opener: a comment of the shape `/* foo DECISION <plan-id>/D-NNN bar */` is an anchor even though `DECISION` sits mid-block. This is why a comment that merely *quotes* a block-comment example, in any scanned C-family file, is read as a real anchor — the mandatory placeholder-id rule below exists for exactly this reason.
+
+**The Block and HTML rows are mutually exclusive by file extension** (since v2.32.0). The block scan is gated off for `HTML_STYLE_EXTS` (`.md`, `.markdown`, `.mdx`, `.html`, `.htm`); in those files the only recognized form is the `<!-- DECISION … -->` HTML comment. The five styles are no longer peers applied uniformly to every file — a given file receives either the block scan or the HTML scan, never both.
 
 **Extension matrix** — validator dispatches by file extension:
 

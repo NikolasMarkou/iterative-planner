@@ -4,6 +4,26 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.32.0] - 2026-07-08
+
+Closes a blind spot in which the anchor system could not see part of its own domain (`plans/plan_2026-07-08_32b9cfcf/`). Two orphan `DECISION` anchors sat in `src/agents/ip-orchestrator.md` citing deleted plan directories with no `[STALE]` marker — invisible to `validate-plan.mjs` and un-stampable by `bootstrap.mjs retire`, because `.md` was outside `ANCHOR_SOURCE_EXTS`. The HTML/Markdown row had been in the grammar table all along, simply unimplemented. This release retires the orphans, implements that row (HTML-comment opener form only), and tidies the pre-existing `[STALE]` anchors. Note the scanner change is **preventive**, not protective: after this release the repo contains zero anchors, so its value is guarding future anchors, not any live one.
+
+### Fixed
+- Two orphan anchors in `src/agents/ip-orchestrator.md` (cited `plan_2026-05-15_9ae230f7/D-007` and `plan_2026-05-15_71ab18dd/D-004`, both deleted directories), plus two dead `decisions.md` prose pointers in the same file. Rationale preserved verbatim as `NOTE` text.
+- Two more dead pointers in `validate-plan.mjs` `NOTE:` comments that had begun resolving to **the wrong entries** (a live plan's real `D-002` / `D-004`) rather than merely dangling. Reworded to state the contract inline.
+- `README.md`'s test-verification line claimed 273 tests (actual 299) and omitted `shared.test.mjs` from its command — a drift no gate covered.
+- `src/references/decision-anchoring.md` § Formal Grammar: the Block-comment row misdescribed the scanner. Its inner match carries no `/*` marker; the anchor may appear anywhere inside the block, not adjacent to the opener. Corrected, and the sentence above the table qualified accordingly.
+
+### Added
+- `.md` in `ANCHOR_SOURCE_EXTS` for both `validate-plan.mjs` and `bootstrap.mjs`. In Markdown, **only** the `<!-- DECISION … -->` opener form is recognized — fenced `#`/`//` examples remain prose.
+- `HTML_STYLE_EXTS`. The previously-unconditional `/* … */` block-comment scan is now **gated off** for HTML-style extensions, so Markdown block-comment delimiters in prose are not misread as anchors.
+- `cmdRetire` gains an HTML-scoped `.md` matcher, restoring the `bootstrap.mjs` invariant that `retire` stamps exactly the anchors the validator scans. The `.tmp` + `renameSync` atomicity is preserved.
+- 4 CLI-level tests (295 → 299), including a **negative fixture that scans the real `decision-anchoring.md`, `file-formats.md`, and `state-execute.md`** and asserts zero anchor findings — a live regression guard on future doc edits.
+- A documented rule: anchor examples, in Markdown **or** in source comments, must use placeholder ids. A bare `D-` plus three digits inside any scanned comment becomes a real anchor. Discovered the hard way — `CHANGELOG.md:331`, a release note quoting an illustrative block comment that holds two bare three-digit decision ids, turned into a blocking `ERROR [anchor-orphan]` the instant `.md` entered scope, before the HTML-extension gate landed.
+
+### Changed
+- 13 `[STALE]` anchors in `src/scripts/*.mjs` converted to plain `// NOTE:` comments. Every rationale body is preserved byte-for-byte; only the dead `DECISION <plan-id>/D-NNN [STALE]` token was removed. Validator warnings dropped 24 → 11.
+
 ## [2.31.0] - 2026-06-27
 
 Implements the F18 "3-stage agent memory" audit finding (`plans/plan_2026-06-27_c881d945/`) as two high-value, filesystem-backed memory-system upgrades: importance scoring on `plans/LESSONS.md` and an automatic synthesis-at-CLOSE template. Deeper machinery like vector search was deliberately left out of scope as over-engineering for a filesystem-backed design. Test suite stays at 295 (the new template slug is auto-covered by the existing emit-template loop tests; no new `test()` blocks).
