@@ -89,9 +89,9 @@ Floor (always render verbatim, even on token-cost grounds): Steps, Success Crite
 
 **Dispatch**
 0. Emit rules: `node <skill-path>/scripts/emit-state.mjs --state plan` and follow its output.
-0.5. **Compression gate** (v2.18.0+, instrumented v2.18.2+): Before reading decisions.md / changelog.md for PLAN work and before spawning ip-plan-writer, invoke the intra-plan compression helpers exported from `bootstrap.mjs` (see `references/file-formats.md` § Intra-plan compression for the full spec, and decisions.md D-003 for the `isEntryPoint` dual-mode pattern that makes dynamic import safe).
+0.5. **Compression gate** (v2.18.0+, instrumented v2.18.2+): Before reading decisions.md / changelog.md for PLAN work and before spawning ip-plan-writer, invoke the intra-plan compression helpers exported from `bootstrap.mjs` (see `references/file-formats.md` § Intra-plan compression for the full spec; `bootstrap.mjs` guards its CLI dispatch behind an `isEntryPoint` check so a dynamic `import()` of the module does not execute the CLI).
 
-   **DECISION plan_2026-05-15_9ae230f7/D-007** (anchor logged textually per L-007 since `.md` is outside `ANCHOR_SOURCE_EXTS`; recorded in `summary.md` Decision Anchors Registry at CLOSE): the dispatch CAPTURES STDOUT JSON and appends a `- Compression: …` line to `{plan-dir}/state.md` Transition History. Pre-v2.18.2 the dispatch was failure-silent (no `.catch()`, no exit-code check, helpers return `{reason: "missing"}` on bad paths) — successes AND errors were invisible. Now both are observable.
+   **NOTE**: the dispatch CAPTURES STDOUT JSON and appends a `- Compression: …` line to `{plan-dir}/state.md` Transition History. Pre-v2.18.2 the dispatch was failure-silent (no `.catch()`, no exit-code check, helpers return `{reason: "missing"}` on bad paths) — successes AND errors were invisible. Now both are observable.
 
    ```bash
    COMPRESS_OUT=$(node -e "import('<skill-path>/scripts/bootstrap.mjs').then(m => Promise.all([m.maybeCompressDecisions('<plan-dir>'), m.maybeCompressChangelog('<plan-dir>')])).then(r => console.log(JSON.stringify({decisions: r[0], changelog: r[1]}))).catch(e => console.log(JSON.stringify({error: e.message})))")
@@ -129,12 +129,12 @@ After 2 failed fix attempts on the same step, BEFORE transitioning to REFLECT, e
 5. Explicit prompt for user direction (continue / pivot / rollback).
 Floor: all 5 items. None may be omitted.
 
-<!-- DECISION plan_2026-05-15_71ab18dd/D-004: pre-step gate is HARD via exit code 2 — do NOT downgrade to advisory/grep-stdout. Reserved exit code keeps shell-script orchestrators robust and bypasses the full validator pipeline for <50ms latency. See plans/plan_2026-05-15_71ab18dd/decisions.md D-004. -->
+<!-- NOTE: pre-step gate is HARD via exit code 2 — do NOT downgrade to advisory/grep-stdout. Reserved exit code keeps shell-script orchestrators robust and bypasses the full validator pipeline for <50ms latency. -->
 
 **Dispatch**
 0. Emit rules: `node <skill-path>/scripts/emit-state.mjs --state execute` and follow its output.
 1. Read plan.md, identify next step
-1.5. **Pre-step gate** (v2.18.0+): Run `node <skill-path>/scripts/validate-plan.mjs --pre-step`. Contract per decisions.md D-004 and `references/file-formats.md` § Presentation Contracts.
+1.5. **Pre-step gate** (v2.18.0+): Run `node <skill-path>/scripts/validate-plan.mjs --pre-step`. Contract: exit code 2 is HARD (see the NOTE above) and `references/file-formats.md` § Presentation Contracts.
    - **Exit 0** (`GATE:PASS`): proceed to spawn ip-executor.
    - **Exit 2** (`GATE:FAIL [slug] ...`): HALT EXECUTE. Do NOT spawn ip-executor. Actions, in order:
      1. Parse the slug from stdout (`leash-cap` / `wrong-state` / `iteration-cap` / `no-plan`).
