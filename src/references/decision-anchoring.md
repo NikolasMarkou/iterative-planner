@@ -19,17 +19,17 @@ Anchors carry the originating plan's directory name as a prefix on the decision 
 **Canonical form**: `# DECISION <plan-id>/D-NNN`
 
 ```python
-# DECISION plan_2026-01-15_a3f1b2c9/D-003: Using stateless tokens instead of dual-write.
-# Dual-write doubled Redis memory due to 30-day TTLs (see plan_2026-01-15_a3f1b2c9 D-002, D-003).
+# DECISION <plan-id>/D-NNN: Using stateless tokens instead of dual-write.
+# Dual-write doubled Redis memory due to 30-day TTLs (see <plan-id> D-NNN).
 # Do NOT switch back to session-store-based approach without addressing memory growth.
 def create_token(user):
     ...
 ```
 
 ```ruby
-# DECISION plan_2026-01-15_a3f1b2c9/D-005: Calling Redis directly, not through SessionStore.
+# DECISION <plan-id>/D-NNN: Calling Redis directly, not through SessionStore.
 # SessionStore#find deserializes into cookie format, which breaks token flow.
-# Three attempts to adapt SessionStore failed (see decisions.md D-003..D-005).
+# Three attempts to adapt SessionStore failed (see decisions.md D-NNN).
 def authenticate!(request)
   token = Redis.current.get("token:#{extract_token(request)}")
   ...
@@ -43,7 +43,7 @@ Short. Reference decision ID from the named plan's `decisions.md`. Enough to sto
 Pre-v2.14.0 anchors lacking the plan-id prefix:
 
 ```python
-# DECISION D-003: <legacy form, predates plan-id qualification>
+# DECISION D-NNN: <legacy form, predates plan-id qualification>
 ```
 
 The validator accepts bare anchors but emits `WARN [anchor-unqualified]` to nudge migration. Resolution falls back to the active plan's `decisions.md`. New anchors MUST be qualified.
@@ -68,7 +68,7 @@ The plan-id prefix matches `plan_\d{4}-\d{2}-\d{2}_[0-9a-f]+` (the bootstrap pla
 | Hash-comment (Python, Ruby, shell, YAML, TOML, R, Perl, Makefile) | `#` | `^\s*#\s+DECISION\s+(?:plan_\d{4}-\d{2}-\d{2}_[0-9a-f]+\/)?D-\d{3}(\s+\[STALE\])?(:|\s|$)` |
 | Slash-comment (JS, TS, Go, Rust, C, C++, Java, Swift, Kotlin, Scala, C#, PHP) | `//` | `^\s*//\s+DECISION\s+(?:plan_\d{4}-\d{2}-\d{2}_[0-9a-f]+\/)?D-\d{3}(\s+\[STALE\])?(:|\s|$)` |
 | Block-comment (C, C++, Java, JS, CSS, etc.) — **two-stage; see note below** | `/* */` | outer delimiter-pair scan `/\*([\s\S]*?)\*/`, then a **marker-less** inner match `DECISION\s+(?:<plan-id>\/)?D-NNN(\s+\[STALE\])?` applied to the block body |
-| HTML / Markdown | `<!-- -->` | `<!--\s*DECISION\s+(?:plan_\d{4}-\d{2}-\d{2}_[0-9a-f]+\/)?D-\d{3}(\s+\[STALE\])?.*?-->` |
+| HTML / Markdown — **two-stage; see note below** | `<!-- -->` | outer delimiter-pair scan `<!--([\s\S]*?)-->`, then a **marker-less** inner match `DECISION\s+(?:<plan-id>\/)?D-NNN(\s+\[STALE\])?` applied to the comment body |
 | SQL | `--` | `^\s*--\s+DECISION\s+(?:plan_\d{4}-\d{2}-\d{2}_[0-9a-f]+\/)?D-\d{3}(\s+\[STALE\])?(:|\s|$)` |
 
 The plan-id prefix is an **optional non-capturing group** in each regex. Captured groups (in order): plan-id (if present, captured separately for resolution), STALE marker. Implementations may capture either or both as named groups.
@@ -93,7 +93,7 @@ Files outside this matrix are skipped by the reverse-anchor scan.
 
 `.md` is inside the scanned-extension set (`ANCHOR_SOURCE_EXTS`) of **both** `src/scripts/validate-plan.mjs` and `src/scripts/bootstrap.mjs retire`. Before v2.32.0 the HTML / Markdown row of the grammar table above described a form that no tool implemented; Markdown was a blind spot in which an orphan anchor could sit indefinitely, invisible to the validator and unreachable by `retire`. Three consequences:
 
-- **Only the HTML-comment opener form is recognized in Markdown.** An anchor in a `.md` file must be an HTML comment whose first token after the opener is `DECISION`. Nothing else in a `.md` file is an anchor. A `#`- or `//`-style example inside a fenced code block — such as the Python and Ruby snippets under § Format above — is prose, not an anchor: the hash, slash, and SQL scans are extension-gated, and `.md` appears in none of their extension lists.
+- **Only the HTML-comment form is recognized in Markdown, and it is scanned two-stage (since v2.32.0).** An anchor in a `.md` file is a `DECISION … D-NNN` token appearing **anywhere inside a well-formed `<!-- … -->` comment span** — the same marker-less, two-stage model the block-comment scan uses for `/* … */`. The token need **not** be adjacent to the `<!--` opener, and a single comment may hold more than one anchor: **every** anchor in the span is found (before v2.32.0 the single-pass matcher stopped at the first). An **unclosed** `<!-- DECISION …` with no closing `-->` is an anchor to **neither** the validator nor `bootstrap.mjs retire` — the two tools agree it is not a valid anchor. Nothing else in a `.md` file is an anchor. A `#`- or `//`-style example inside a fenced code block — such as the Python and Ruby snippets under § Format above — is prose, not an anchor: the hash, slash, and SQL scans are extension-gated, and `.md` appears in none of their extension lists.
 - **The block-comment scan is gated off for HTML-style extensions** (`.md`, `.markdown`, `.mdx`, `.html`, `.htm`, via `HTML_STYLE_EXTS`). Block-comment delimiters occur as ordinary prose in Markdown, and that scan's inner regex has no comment-marker prefix — see the placeholder-id rule below.
 - **`retire` stamps exactly what the validator scans.** `bootstrap.mjs cmdRetire` selects an HTML-scoped matcher for `.md`, so bare-prose `DECISION <plan-id>/D-NNN` text in Markdown is left untouched by the irreversible `[STALE]` rewrite.
 
@@ -124,7 +124,7 @@ Anchors may span multiple comment lines for longer rationale. Rules:
 When code is reverted but the anchor cannot be removed in the same pass (e.g. during PIVOT triage when scope is being narrowed before commit), mark the anchor as `[STALE]`:
 
 ```python
-# DECISION plan_2026-01-15_a3f1b2c9/D-007 [STALE]: Reverted during PIVOT to approach C — see decisions.md D-009.
+# DECISION <plan-id>/D-NNN [STALE]: Reverted during PIVOT to approach C — see decisions.md D-NNN.
 ```
 
 - STALE anchors signal "this anchor's referenced code path no longer applies but the marker is preserved temporarily for traceability."
