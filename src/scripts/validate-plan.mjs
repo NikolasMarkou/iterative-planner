@@ -956,7 +956,6 @@ function findAnchorsInFile(file, projectRoot) {
   const slashRe = new RegExp(`(?:^|\\s)\\/\\/\\s+DECISION\\s+(?:(${PLAN_ID_PATTERN})\\/)?D-(\\d{3})(\\s+\\[STALE\\])?(?::|\\s|$)`);
   const sqlRe = new RegExp(`(?:^|\\s)--\\s+DECISION\\s+(?:(${PLAN_ID_PATTERN})\\/)?D-(\\d{3})(\\s+\\[STALE\\])?(?::|\\s|$)`);
   const blockInnerRe = new RegExp(`DECISION\\s+(?:(${PLAN_ID_PATTERN})\\/)?D-(\\d{3})(\\s+\\[STALE\\])?`);
-  const htmlRe = new RegExp(`<!--\\s*DECISION\\s+(?:(${PLAN_ID_PATTERN})\\/)?D-(\\d{3})(\\s+\\[STALE\\])?[\\s\\S]*?-->`, "g");
 
   function pushMatch(m, lineNum) {
     out.push({
@@ -1015,13 +1014,28 @@ function findAnchorsInFile(file, projectRoot) {
   }
 
   // HTML comment scan (multi-line) — the ONLY anchor form recognized in Markdown
-  // and HTML. `DECISION` must follow the `<!--` opener immediately; a `#`- or
-  // `//`-style example inside a fenced code block is prose, not an anchor.
+  // and HTML. Two-stage, mirroring the block-comment loop above so the two paths
+  // behave identically: the outer regex finds each well-formed (CLOSED) comment
+  // span; the inner marker-less loop — reusing blockInnerRe.source verbatim, NOT a
+  // second pattern — finds EVERY `DECISION … D-NNN` token in the comment body, not
+  // only the first. `DECISION` need NOT be adjacent to the `<!--` opener. An
+  // UNCLOSED `<!-- DECISION …` (no `-->`) is a comment span to neither this scan
+  // nor `retire`, so it is an anchor to NEITHER tool — the bootstrap.mjs "retire
+  // stamps exactly what the validator scans" contract holds on malformed input.
+  // A `#`- or `//`-style example inside a fenced code block is prose, not an anchor.
   if (HTML_STYLE_EXTS.has(ext)) {
-    let hm;
-    while ((hm = htmlRe.exec(text)) !== null) {
-      const lineNum = text.slice(0, hm.index).split("\n").length;
-      pushMatch(hm, lineNum);
+    const htmlCommentRe = /<!--([\s\S]*?)-->/g;
+    let cm;
+    while ((cm = htmlCommentRe.exec(text)) !== null) {
+      const body = cm[1];
+      const bodyOffset = cm.index + 4; // skip past "<!--" (4 chars; block loop uses +2 for "/*")
+      const innerRe = new RegExp(blockInnerRe.source, "g");
+      let dm;
+      while ((dm = innerRe.exec(body)) !== null) {
+        // Compute the line number of this specific match within the file.
+        const lineNum = text.slice(0, bodyOffset + dm.index).split("\n").length;
+        pushMatch(dm, lineNum);
+      }
     }
   }
 

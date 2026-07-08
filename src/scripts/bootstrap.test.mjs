@@ -1877,6 +1877,28 @@ describe("bootstrap.mjs", () => {
       assert.equal(r.exitCode, 1, "unknown plan in .md must exit non-zero");
     });
 
+    // W1 (iter 2): a single HTML comment holding TWO anchors must report BOTH.
+    // The pre-fix single-pass htmlRe stopped at the first `-->` and reported only
+    // the first — the exact "only the first was found" bug the block scan already
+    // fixed. The two-stage scan (outer span finder + inner /g loop) mirrors it.
+    it("md comment with two anchors reports BOTH (multi-anchor)", () => {
+      const dir = getTempDir();
+      run(dir, "new", "multi-anchor visible");
+      const planDir = getPointer(dir);
+      writeDecisionsWithEntry(dir, planDir);
+      mkdirSync(join(dir, "docs"), { recursive: true });
+      writeFileSync(
+        join(dir, "docs", "multi.md"),
+        `# Notes\n\n<!-- DECISION plan_2099-01-01_aaaaaaaa/D-001 first, DECISION plan_2099-01-01_bbbbbbbb/D-002 second -->\n`
+      );
+      const r = runValidate(dir);
+      assert.ok(r.stdout.includes("plan_2099-01-01_aaaaaaaa"), `first anchor must be reported, got:\n${r.stdout}`);
+      assert.ok(r.stdout.includes("plan_2099-01-01_bbbbbbbb"), `second anchor must be reported, got:\n${r.stdout}`);
+      const findings = r.stdout.split("\n").filter((l) => /\[anchor-[a-z-]+\]:/.test(l));
+      assert.equal(findings.length, 2, `exactly two anchor findings expected, got:\n${findings.join("\n")}`);
+      assert.equal(r.exitCode, 1, "two unknown-plan anchors must exit non-zero");
+    });
+
     // Negative fixture, scanned against the REAL doc files rather than a synthetic
     // string: these three define/illustrate the anchor grammar with `#`- and
     // `//`-style examples inside fences, and decision-anchoring.md's grammar table
@@ -3043,6 +3065,62 @@ describe("bootstrap.mjs retire", () => {
     assert.equal(r.exitCode, 0, `retire should succeed, got:\n${r.stdout}\n${r.stderr}`);
     assert.equal(readFileSync(md, "utf-8"), before, "md prose must be byte-identical after retire");
     assert.match(r.stdout, /Anchors marked \[STALE\]: 0 across 0 file\(s\)/, `nothing should be stamped, got:\n${r.stdout}`);
+  });
+
+  // W2 (iter 2): a single md comment holding two anchors from two plans. Each
+  // `retire <plan>` must stamp only its own anchor inside the shared span (the
+  // deleted anchorHtmlRe's `<!--\s*DECISION` adjacency missed the 2nd), and be
+  // idempotent. This is the retire half of the multi-anchor validator test.
+  it("stamps each anchor in a shared md comment independently (multi-anchor)", () => {
+    const dir = getTempDir();
+    run(dir, "new", "active work");
+    const A = "plan_2099-01-01_aaaaaaaa";
+    const B = "plan_2099-01-01_bbbbbbbb";
+    mkdirSync(join(dir, "docs"), { recursive: true });
+    const md = join(dir, "docs", "multi.md");
+    writeFileSync(md, `# Notes\n\n<!-- DECISION ${A}/D-001 first, DECISION ${B}/D-002 second -->\n`);
+    const r1 = run(dir, "retire", A);
+    assert.equal(r1.exitCode, 0, `retire A should succeed, got:\n${r1.stdout}\n${r1.stderr}`);
+    assert.match(r1.stdout, /Anchors marked \[STALE\]: 1 across 1 file\(s\)/, `only A stamped, got:\n${r1.stdout}`);
+    let after = readFileSync(md, "utf-8");
+    assert.match(after, /DECISION plan_2099-01-01_aaaaaaaa\/D-001 \[STALE\]/, `A must be [STALE], got:\n${after}`);
+    assert.ok(!/D-002 \[STALE\]/.test(after), `B must NOT be stamped by retire A, got:\n${after}`);
+    const r2 = run(dir, "retire", B);
+    assert.match(r2.stdout, /Anchors marked \[STALE\]: 1 across 1 file\(s\)/, `only B stamped, got:\n${r2.stdout}`);
+    after = readFileSync(md, "utf-8");
+    assert.match(after, /DECISION plan_2099-01-01_bbbbbbbb\/D-002 \[STALE\]/, `B must be [STALE], got:\n${after}`);
+    // Re-run both: idempotent, exactly two [STALE] markers total.
+    run(dir, "retire", A);
+    run(dir, "retire", B);
+    after = readFileSync(md, "utf-8");
+    assert.equal((after.match(/\[STALE\]/g) || []).length, 2, `exactly two [STALE] markers, got:\n${after}`);
+  });
+
+  // W2a (iter 2): an UNCLOSED `<!-- DECISION …` (no `-->`) is a malformed comment.
+  // The validator (span-scoped) reports nothing; retire (span-scoped) stamps
+  // nothing. The two agree on the same malformed input — the bootstrap.mjs
+  // "retire stamps exactly what the validator scans" contract. The pre-fix
+  // anchorHtmlRe had no `-->` requirement and irreversibly mutated this case.
+  it("unclosed md comment: validator and retire agree on NOTHING (agreement)", () => {
+    const dir = getTempDir();
+    run(dir, "new", "active work");
+    const Z = "plan_2099-01-01_cccccccc";
+    mkdirSync(join(dir, "docs"), { recursive: true });
+    const md = join(dir, "docs", "unclosed.md");
+    const before = `# Notes\n\n<!-- DECISION ${Z}/D-005 unclosed, no terminator\n\nmore text\n`;
+    writeFileSync(md, before);
+    // Validator half: zero anchor findings for the unclosed comment.
+    const VALIDATE = resolve(import.meta.dirname, "validate-plan.mjs");
+    let vout;
+    try {
+      vout = execFileSync("node", [VALIDATE], { cwd: dir, encoding: "utf-8", timeout: 15000, stdio: ["pipe", "pipe", "pipe"] });
+    } catch (err) { vout = (err.stdout || "") + (err.stderr || ""); }
+    const findings = vout.split("\n").filter((l) => /\[anchor-[a-z-]+\]:/.test(l));
+    assert.deepEqual(findings, [], `validator must report no anchor for an unclosed comment, got:\n${findings.join("\n")}`);
+    // Retire half: nothing stamped, file byte-identical.
+    const r = run(dir, "retire", Z);
+    assert.match(r.stdout, /Anchors marked \[STALE\]: 0 across 0 file\(s\)/, `retire must stamp nothing, got:\n${r.stdout}`);
+    assert.equal(readFileSync(md, "utf-8"), before, "unclosed comment must be byte-identical after retire");
   });
 
   it("refuses to retire the active plan", () => {

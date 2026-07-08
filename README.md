@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Skill](https://img.shields.io/badge/Skill-v2.32.0-green.svg)](CHANGELOG.md)
-[![Tests](https://img.shields.io/badge/tests-299%20passing-brightgreen.svg)](src/scripts/bootstrap.test.mjs)
+[![Tests](https://img.shields.io/badge/tests-302%20passing-brightgreen.svg)](src/scripts/bootstrap.test.mjs)
 [![Sponsored by Electi](https://img.shields.io/badge/Sponsored%20by-Electi-red.svg)](https://www.electiconsulting.com)
 
 A [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skill that turns ad-hoc agent runs into structured, recoverable, evidence-driven work.
@@ -453,7 +453,7 @@ node --test src/scripts/bootstrap.test.mjs \
             src/scripts/emit-template.test.mjs \
             src/scripts/check-readme-parity.test.mjs \
             src/scripts/shared.test.mjs
-# 299 tests total: bootstrap 180, validate-plan 45, blast-radius 23, check-doc-parity 4, emit-state 12, emit-template 10, check-readme-parity 4, shared 21
+# 302 tests total: bootstrap 183, validate-plan 45, blast-radius 23, check-doc-parity 4, emit-state 12, emit-template 10, check-readme-parity 4, shared 21
 ```
 
 </details>
@@ -501,7 +501,7 @@ make help
 <summary><strong>Before submitting changes</strong></summary>
 
 - [ ] `make validate` (or `.\build.ps1 validate`) passes
-- [ ] `node --test src/scripts/bootstrap.test.mjs src/scripts/validate-plan.test.mjs src/scripts/blast-radius.test.mjs src/scripts/check-doc-parity.test.mjs src/scripts/emit-state.test.mjs src/scripts/emit-template.test.mjs src/scripts/check-readme-parity.test.mjs src/scripts/shared.test.mjs` passes (299 tests)
+- [ ] `node --test src/scripts/bootstrap.test.mjs src/scripts/validate-plan.test.mjs src/scripts/blast-radius.test.mjs src/scripts/check-doc-parity.test.mjs src/scripts/emit-state.test.mjs src/scripts/emit-template.test.mjs src/scripts/check-readme-parity.test.mjs src/scripts/shared.test.mjs` passes (302 tests)
 - [ ] `src/SKILL.md` has `name:` and `description:` in YAML frontmatter
 - [ ] All cross-references in `src/SKILL.md` point to existing files in `src/references/`
 - [ ] State machine diagram matches transition rules table

@@ -1640,10 +1640,12 @@ function cmdList() {
 // Source-file walk parameters for anchor maintenance (cmdRetire). Kept in sync
 // with validate-plan.mjs ANCHOR_SOURCE_EXTS / SKIP_DIR_NAMES so `retire` stamps
 // exactly the anchors the validator scans. NOTE the `.md` exception: in Markdown
-// the validator recognizes ONLY the `<!-- DECISION … -->` HTML-comment form, so
-// cmdRetire uses a matching HTML-scoped regex there (see ANCHOR_HTML_EXTS below).
-// Without that scoping, `retire` would irreversibly stamp `[STALE]` into
-// documentation prose and doc examples the validator does not consider anchors.
+// an anchor is a `DECISION … D-NNN` token anywhere inside a CLOSED HTML comment
+// span, so for those extensions (see ANCHOR_HTML_EXTS below) cmdRetire scopes its
+// match to `<!-- … -->` spans — the same span-scoped model the validator's HTML
+// scan uses. Without that scoping, `retire` would irreversibly stamp `[STALE]`
+// into documentation prose, doc examples, and unclosed comments the validator
+// does not consider anchors.
 const ANCHOR_SOURCE_EXTS = new Set([
   ".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".rb", ".go", ".rs",
   ".c", ".h", ".cpp", ".hpp", ".java", ".kt", ".sql", ".md",
@@ -1678,14 +1680,14 @@ function cmdRetire(planId) {
   }
 
   // Match `DECISION <plan-id>/D-NNN` (any comment style) not already [STALE].
-  // The negative lookahead makes re-running retire idempotent.
-  // NOTE: `.md` is the exception — there an anchor is ONLY an HTML comment that
-  // opens with the DECISION token, so the HTML-scoped variant is used instead.
-  // The style-agnostic form would rewrite Markdown prose and doc examples, which
-  // validate-plan.mjs does not consider anchors, and the mutation is irreversible.
+  // The negative lookahead makes re-running retire idempotent. ONE regex serves
+  // both cases — there is no separate HTML matcher. For `.md` (ANCHOR_HTML_EXTS)
+  // the walk scopes this same regex to closed `<!-- … -->` comment spans, so a
+  // token in Markdown prose, in a doc example, or in an UNCLOSED comment (which
+  // the validator cannot see) is left untouched — stamping exactly the validator's
+  // widened HTML set. For every other extension the regex runs over the whole file.
   const escaped = planId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const anchorRe = new RegExp(`(DECISION\\s+${escaped}\\/D-\\d{3})(?!\\s+\\[STALE\\])`, "g");
-  const anchorHtmlRe = new RegExp(`(<!--\\s*DECISION\\s+${escaped}\\/D-\\d{3})(?!\\s+\\[STALE\\])`, "g");
 
   let stamped = 0;
   let filesChanged = 0;
@@ -1702,15 +1704,33 @@ function cmdRetire(planId) {
         let txt;
         try { txt = readFileSync(full, "utf-8"); } catch { continue; }
         if (!txt.includes(planId)) continue;
-        const re = ANCHOR_HTML_EXTS.has(extname(e.name)) ? anchorHtmlRe : anchorRe;
-        const matches = txt.match(re);
-        if (!matches) continue;
+        // Count the anchors we will actually write, so `stamped` agrees with the
+        // file byte-for-byte (the validator/retire "sees ⇔ stamps" contract).
+        let fileStamped = 0;
+        let next;
+        if (ANCHOR_HTML_EXTS.has(extname(e.name))) {
+          // `.md`: scope anchorRe to each CLOSED `<!-- … -->` span (the same model
+          // the validator's HTML scan uses). Prose, doc examples, and unclosed
+          // comments are outside any matched span and are left untouched.
+          // String.prototype.match/replace reset lastIndex per call, so reusing
+          // anchorRe inside the callback is safe.
+          next = txt.replace(/<!--[\s\S]*?-->/g, (span) => {
+            const hits = span.match(anchorRe);
+            if (hits) fileStamped += hits.length;
+            return span.replace(anchorRe, "$1 [STALE]");
+          });
+        } else {
+          const hits = txt.match(anchorRe);
+          fileStamped = hits ? hits.length : 0;
+          next = fileStamped ? txt.replace(anchorRe, "$1 [STALE]") : txt;
+        }
+        if (fileStamped === 0) continue;
         // Atomic write: mirror the `.tmp`+renameSync idiom used everywhere else
         // in this file (ensureGitignore ~144, maybeCompressChangelog ~986). A
         // process kill mid-write must not corrupt a SOURCE file permanently.
-        writeFileSync(full + ".tmp", txt.replace(re, "$1 [STALE]"));
+        writeFileSync(full + ".tmp", next);
         renameSync(full + ".tmp", full);
-        stamped += matches.length;
+        stamped += fileStamped;
         filesChanged++;
       }
     }
