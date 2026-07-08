@@ -1639,11 +1639,18 @@ function cmdList() {
 
 // Source-file walk parameters for anchor maintenance (cmdRetire). Kept in sync
 // with validate-plan.mjs ANCHOR_SOURCE_EXTS / SKIP_DIR_NAMES so `retire` stamps
-// exactly the anchors the validator scans.
+// exactly the anchors the validator scans. NOTE the `.md` exception: in Markdown
+// the validator recognizes ONLY the `<!-- DECISION … -->` HTML-comment form, so
+// cmdRetire uses a matching HTML-scoped regex there (see ANCHOR_HTML_EXTS below).
+// Without that scoping, `retire` would irreversibly stamp `[STALE]` into
+// documentation prose and doc examples the validator does not consider anchors.
 const ANCHOR_SOURCE_EXTS = new Set([
   ".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".rb", ".go", ".rs",
-  ".c", ".h", ".cpp", ".hpp", ".java", ".kt", ".sql",
+  ".c", ".h", ".cpp", ".hpp", ".java", ".kt", ".sql", ".md",
 ]);
+// NOTE: mirrors validate-plan.mjs HTML_STYLE_EXTS, narrowed to the extensions
+// this walk actually visits (ANCHOR_SOURCE_EXTS ∩ HTML_STYLE_EXTS).
+const ANCHOR_HTML_EXTS = new Set([".md"]);
 const ANCHOR_SKIP_DIRS = new Set([
   "node_modules", ".git", "dist", "build", "plans",
   "target", "__pycache__", ".cache", "vendor", "out",
@@ -1672,8 +1679,13 @@ function cmdRetire(planId) {
 
   // Match `DECISION <plan-id>/D-NNN` (any comment style) not already [STALE].
   // The negative lookahead makes re-running retire idempotent.
+  // NOTE: `.md` is the exception — there an anchor is ONLY an HTML comment that
+  // opens with the DECISION token, so the HTML-scoped variant is used instead.
+  // The style-agnostic form would rewrite Markdown prose and doc examples, which
+  // validate-plan.mjs does not consider anchors, and the mutation is irreversible.
   const escaped = planId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const anchorRe = new RegExp(`(DECISION\\s+${escaped}\\/D-\\d{3})(?!\\s+\\[STALE\\])`, "g");
+  const anchorHtmlRe = new RegExp(`(<!--\\s*DECISION\\s+${escaped}\\/D-\\d{3})(?!\\s+\\[STALE\\])`, "g");
 
   let stamped = 0;
   let filesChanged = 0;
@@ -1690,12 +1702,13 @@ function cmdRetire(planId) {
         let txt;
         try { txt = readFileSync(full, "utf-8"); } catch { continue; }
         if (!txt.includes(planId)) continue;
-        const matches = txt.match(anchorRe);
+        const re = ANCHOR_HTML_EXTS.has(extname(e.name)) ? anchorHtmlRe : anchorRe;
+        const matches = txt.match(re);
         if (!matches) continue;
         // Atomic write: mirror the `.tmp`+renameSync idiom used everywhere else
         // in this file (ensureGitignore ~144, maybeCompressChangelog ~986). A
         // process kill mid-write must not corrupt a SOURCE file permanently.
-        writeFileSync(full + ".tmp", txt.replace(anchorRe, "$1 [STALE]"));
+        writeFileSync(full + ".tmp", txt.replace(re, "$1 [STALE]"));
         renameSync(full + ".tmp", full);
         stamped += matches.length;
         filesChanged++;

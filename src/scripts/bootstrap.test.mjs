@@ -1856,6 +1856,54 @@ describe("bootstrap.mjs", () => {
       assert.equal(r.exitCode, 0, "STALE-only orphans should not fail validation");
     });
 
+    // `.md` joined ANCHOR_SOURCE_EXTS in 2.32.0. In Markdown the ONLY recognized
+    // anchor form is an HTML comment opening with the DECISION token. Without the
+    // positive block below the scanner change would be unfalsifiable.
+    it("md HTML-comment anchor naming unknown plan emits ERROR [anchor-unknown-plan]", () => {
+      const dir = getTempDir();
+      run(dir, "new", "md anchor visible");
+      const planDir = getPointer(dir);
+      writeDecisionsWithEntry(dir, planDir);
+      mkdirSync(join(dir, "docs"), { recursive: true });
+      writeFileSync(
+        join(dir, "docs", "note.md"),
+        `# Notes\n\n<!-- DECISION plan_2099-12-31_deadbeef/D-001: from a plan that doesn't exist -->\n\ntext\n`
+      );
+      const r = runValidate(dir);
+      assert.ok(r.stdout.includes("anchor-unknown-plan"), `md HTML anchor should be seen, got:\n${r.stdout}`);
+      assert.ok(r.stdout.includes("docs/note.md:3"), `should report the md file and line, got:\n${r.stdout}`);
+      const lines = r.stdout.split("\n").filter((l) => l.includes("anchor-unknown-plan"));
+      assert.ok(lines.every((l) => l.trim().startsWith("ERROR")), "un-STALE md orphan must be ERROR");
+      assert.equal(r.exitCode, 1, "unknown plan in .md must exit non-zero");
+    });
+
+    // Negative fixture, scanned against the REAL doc files rather than a synthetic
+    // string: these three define/illustrate the anchor grammar with `#`- and
+    // `//`-style examples inside fences, and decision-anchoring.md's grammar table
+    // row literally begins `<!--\s*DECISION`. None may ever be reported. This is a
+    // live regression guard on future edits to those docs.
+    it("real doc files with DECISION examples produce zero anchor findings", () => {
+      const dir = getTempDir();
+      run(dir, "new", "real doc negative fixture");
+      const fixtures = [
+        [resolve(import.meta.dirname, "..", "references", "decision-anchoring.md"), join("src", "references"), "decision-anchoring.md"],
+        [resolve(import.meta.dirname, "..", "references", "file-formats.md"), join("src", "references"), "file-formats.md"],
+        [resolve(import.meta.dirname, "modules", "state-execute.md"), join("src", "scripts", "modules"), "state-execute.md"],
+      ];
+      for (const [src, destDir, name] of fixtures) {
+        assert.ok(existsSync(src), `fixture source must exist: ${src}`);
+        mkdirSync(join(dir, destDir), { recursive: true });
+        writeFileSync(join(dir, destDir, name), readFileSync(src, "utf-8"));
+      }
+      const r = runValidate(dir);
+      const offending = r.stdout
+        .split("\n")
+        .filter((l) => l.includes("anchor-"))
+        .filter((l) => fixtures.some(([, , name]) => l.includes(name)));
+      assert.deepEqual(offending, [], `real doc files must not be reported as anchors, got:\n${offending.join("\n")}`);
+      assert.equal(r.exitCode, 0, `validator must stay clean with real docs present, got:\n${r.stdout}`);
+    });
+
     it("missing plan-id preamble: ERROR for post-cutover INIT", () => {
       const dir = getTempDir();
       run(dir, "new", "preamble strict");
@@ -2962,6 +3010,39 @@ describe("bootstrap.mjs retire", () => {
     const src = readFileSync(join(dir, "src", "main.js"), "utf-8");
     assert.ok(!/\[STALE\]\s+\[STALE\]/.test(src), `must not double-stamp, got:\n${src}`);
     assert.equal((src.match(/\[STALE\]/g) || []).length, 1, "exactly one [STALE] marker");
+  });
+
+  // `.md` joined ANCHOR_SOURCE_EXTS in 2.32.0. retire must stamp exactly what the
+  // validator scans: the `<!-- DECISION … -->` form, and nothing else.
+  it("stamps [STALE] on an md HTML-comment anchor, idempotently", () => {
+    const dir = getTempDir();
+    run(dir, "new", "active work");
+    mkdirSync(join(dir, "docs"), { recursive: true });
+    const md = join(dir, "docs", "note.md");
+    writeFileSync(md, `# Notes\n\n<!-- DECISION ${OTHER}/D-001: keep retry budget at 3 -->\n`);
+    const r = run(dir, "retire", OTHER);
+    assert.equal(r.exitCode, 0, `retire should succeed, got:\n${r.stdout}\n${r.stderr}`);
+    const after = readFileSync(md, "utf-8");
+    assert.match(after, /<!-- DECISION plan_2026-03-01_cccccccc\/D-001 \[STALE\]: keep retry budget at 3 -->/,
+      `md HTML anchor should be marked [STALE], got:\n${after}`);
+    run(dir, "retire", OTHER); // re-run must not double-stamp
+    const again = readFileSync(md, "utf-8");
+    assert.equal((again.match(/\[STALE\]/g) || []).length, 1, `exactly one [STALE] marker, got:\n${again}`);
+  });
+
+  // E6 — retire performs an irreversible source mutation. A style-agnostic matcher
+  // would rewrite documentation prose and doc examples that are not anchors.
+  it("does not rewrite bare-prose DECISION references in md", () => {
+    const dir = getTempDir();
+    run(dir, "new", "active work");
+    mkdirSync(join(dir, "docs"), { recursive: true });
+    const md = join(dir, "docs", "prose.md");
+    const before = `# Notes\n\n**DECISION ${OTHER}/D-001** was recorded textually.\n\nSee \`# DECISION ${OTHER}/D-002\` for the fenced example.\n`;
+    writeFileSync(md, before);
+    const r = run(dir, "retire", OTHER);
+    assert.equal(r.exitCode, 0, `retire should succeed, got:\n${r.stdout}\n${r.stderr}`);
+    assert.equal(readFileSync(md, "utf-8"), before, "md prose must be byte-identical after retire");
+    assert.match(r.stdout, /Anchors marked \[STALE\]: 0 across 0 file\(s\)/, `nothing should be stamped, got:\n${r.stdout}`);
   });
 
   it("refuses to retire the active plan", () => {

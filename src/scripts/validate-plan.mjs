@@ -889,8 +889,19 @@ function checkFindingsIndexLinks(planDir, issues) {
 
 const ANCHOR_SOURCE_EXTS = new Set([
   ".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".rb", ".go", ".rs",
-  ".c", ".h", ".cpp", ".hpp", ".java", ".kt", ".sql",
+  ".c", ".h", ".cpp", ".hpp", ".java", ".kt", ".sql", ".md",
 ]);
+
+// NOTE: extensions whose ONLY anchor form is the HTML comment `<!-- DECISION … -->`.
+// In these files the hash/slash/SQL/block scans are suppressed: Markdown prose and
+// fenced code blocks routinely contain `#`, `//`, `--` and C-style block-comment
+// delimiters as ordinary text (CHANGELOG.md:331 quotes an inline block comment
+// holding two bare `D-NNN` tokens, while describing this very scanner). Requiring
+// the `DECISION` token immediately after a `<!--` opener makes every doc example
+// inert by construction rather than by exclusion list.
+// Do NOT write a literal block-comment delimiter pair in this file's comments: the
+// block scan below has no marker prefix and would read it as a real anchor block.
+const HTML_STYLE_EXTS = new Set([".md", ".markdown", ".mdx", ".html", ".htm"]);
 
 const SKIP_DIR_NAMES = new Set([
   "node_modules", ".git", "dist", "build", "plans",
@@ -945,6 +956,7 @@ function findAnchorsInFile(file, projectRoot) {
   const slashRe = new RegExp(`(?:^|\\s)\\/\\/\\s+DECISION\\s+(?:(${PLAN_ID_PATTERN})\\/)?D-(\\d{3})(\\s+\\[STALE\\])?(?::|\\s|$)`);
   const sqlRe = new RegExp(`(?:^|\\s)--\\s+DECISION\\s+(?:(${PLAN_ID_PATTERN})\\/)?D-(\\d{3})(\\s+\\[STALE\\])?(?::|\\s|$)`);
   const blockInnerRe = new RegExp(`DECISION\\s+(?:(${PLAN_ID_PATTERN})\\/)?D-(\\d{3})(\\s+\\[STALE\\])?`);
+  const htmlRe = new RegExp(`<!--\\s*DECISION\\s+(?:(${PLAN_ID_PATTERN})\\/)?D-(\\d{3})(\\s+\\[STALE\\])?[\\s\\S]*?-->`, "g");
 
   function pushMatch(m, lineNum) {
     out.push({
@@ -981,17 +993,35 @@ function findAnchorsInFile(file, projectRoot) {
 
   // Block comment scan (multi-line) — applies to /* */ in C-family + CSS.
   // Loop over EVERY anchor in the block; previously only the first was found.
-  const blockRe = /\/\*([\s\S]*?)\*\//g;
-  let bm;
-  while ((bm = blockRe.exec(text)) !== null) {
-    const body = bm[1];
-    const bodyOffset = bm.index + 2; // skip past "/*"
-    const innerRe = new RegExp(blockInnerRe.source, "g");
-    let dm;
-    while ((dm = innerRe.exec(body)) !== null) {
-      // Compute the line number of this specific match within the file.
-      const lineNum = text.slice(0, bodyOffset + dm.index).split("\n").length;
-      pushMatch(dm, lineNum);
+  // NOTE: this scan has no comment-marker prefix on its inner regex, so it must
+  // NOT run on HTML-style files. Block-comment delimiters occur as ordinary prose
+  // there — CHANGELOG.md:331 quotes an inline block comment holding two bare
+  // `D-NNN` tokens — and both would be reported as anchors. Gate on the extension;
+  // do not exclude by path (that hides real anchors in a whole directory).
+  if (!HTML_STYLE_EXTS.has(ext)) {
+    const blockRe = /\/\*([\s\S]*?)\*\//g;
+    let bm;
+    while ((bm = blockRe.exec(text)) !== null) {
+      const body = bm[1];
+      const bodyOffset = bm.index + 2; // skip past "/*"
+      const innerRe = new RegExp(blockInnerRe.source, "g");
+      let dm;
+      while ((dm = innerRe.exec(body)) !== null) {
+        // Compute the line number of this specific match within the file.
+        const lineNum = text.slice(0, bodyOffset + dm.index).split("\n").length;
+        pushMatch(dm, lineNum);
+      }
+    }
+  }
+
+  // HTML comment scan (multi-line) — the ONLY anchor form recognized in Markdown
+  // and HTML. `DECISION` must follow the `<!--` opener immediately; a `#`- or
+  // `//`-style example inside a fenced code block is prose, not an anchor.
+  if (HTML_STYLE_EXTS.has(ext)) {
+    let hm;
+    while ((hm = htmlRe.exec(text)) !== null) {
+      const lineNum = text.slice(0, hm.index).split("\n").length;
+      pushMatch(hm, lineNum);
     }
   }
 
