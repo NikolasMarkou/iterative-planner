@@ -147,7 +147,7 @@ function isPlaceholder(text) {
 }
 
 function extractSection(content, heading) {
-  // DECISION plan_2026-05-15_71ab18dd/D-002 [STALE] — allow optional trailing
+  // NOTE: allow optional trailing
   // parenthetical (e.g. "## Fix Attempts (resets per plan step)" as written
   // by bootstrap.mjs). Without this, every callsite using a bootstrap-written
   // parenthetical heading silently returned null.
@@ -184,7 +184,7 @@ function normalizePhase(s) {
 // false-positives like `PIVOT-RECOVERY` / `PIVOT-PLAN` (bare hyphen = qualifier,
 // not transition).
 //
-// DECISION plan_2026-05-15_9ae230f7/D-002 [STALE] — pattern-discipline per LESSONS L-012:
+// NOTE: pattern-discipline per LESSONS L-012:
 // when a check operates on phase semantics, accept BOTH sides of the arrow.
 // The prior implementation only matched PIVOT as DESTINATION, missing
 // PIVOT-as-SOURCE (`PIVOT → PLAN`) which the state machine produces.
@@ -398,7 +398,7 @@ function checkLeashCount(planDir, issues) {
   }
 }
 
-// DECISION plan_2026-05-15_9ae230f7/D-005 [STALE] — derive iteration from Transition
+// NOTE: derive iteration from Transition
 // History (OBS-005). Pre-fix: `## Iteration: N` is agent-written, so an agent
 // (or sloppy fork) that forgets to bump it bypasses the 5/6 caps indefinitely.
 // Cross-check: each EXECUTE → REFLECT arrow in Transition History closes one
@@ -563,7 +563,7 @@ function checkCompressionMarkers(issues) {
     if (!existsSync(path)) continue;
     let content;
     try { content = readFileSync(path, "utf-8"); } catch { continue; }
-    // DECISION plan_2026-05-15_9ae230f7/D-006 [STALE] — OBS-010 line-anchored markers.
+    // NOTE: OBS-010 line-anchored markers.
     // Pre-fix: `content.indexOf(OPEN)` substring-matched prose mentions of
     // the marker (e.g. a finding's plain-English description of the
     // compression machinery wrapped in backticks). Result: false-positive
@@ -1566,7 +1566,7 @@ function validate(planDirName) {
 // Pre-step gate (--pre-step mode)
 // ---------------------------------------------------------------------------
 
-// DECISION plan_2026-05-15_71ab18dd/D-004 [STALE] — Pre-step Autonomy Leash gate.
+// NOTE: Pre-step Autonomy Leash gate.
 // Lightweight HARD gate the orchestrator MUST run before every ip-executor
 // spawn (between "identify next step" and "Spawn ip-executor"). Exits 2 on
 // any HARD FAIL — exit code 2 is reserved EXCLUSIVELY for this mode, so
@@ -1620,7 +1620,7 @@ function runPreStepGate(planDir) {
 // CLI Dispatch
 // ---------------------------------------------------------------------------
 
-// DECISION plan_2026-06-11_4ecd09f7/D-002 [STALE] — CLI dispatch guarded behind isEntryPoint so the
+// NOTE: CLI dispatch guarded behind isEntryPoint so the
 // module is import-safe (a test helper or future tooling can `import` validate-plan.mjs without
 // the arg-parsing + process.exit firing at module load). Standard Node.js ESM dual-mode pattern,
 // mirrors bootstrap.mjs:1831-1841. Do NOT move the process.exit calls or validate() back to
