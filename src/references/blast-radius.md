@@ -51,9 +51,9 @@ Tracked files keep the exact diff-driven path: their scores are unaffected by th
 
 CLI:
 ```
-node scripts/blast-radius.mjs <file>              # default — single line
-node scripts/blast-radius.mjs <file> --verbose    # add per-signal breakdown
-node scripts/blast-radius.mjs <file> --json       # machine-readable JSON
+node <skill-path>/scripts/blast-radius.mjs <file>              # default — single line
+node <skill-path>/scripts/blast-radius.mjs <file> --verbose    # add per-signal breakdown
+node <skill-path>/scripts/blast-radius.mjs <file> --json       # machine-readable JSON
 ```
 Stdout (default, single line, exit 0):
 ```

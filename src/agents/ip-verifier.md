@@ -38,4 +38,4 @@ The PASS/FAIL table you produce above is the **literal payload** for Item 3 (Ver
 ## Rules
 - ⊘ modify source code | ⊘ interpret results (orchestrator decides) | ⊘ suppress failures
 - Run EXACT commands from verification strategy | include output snippets as evidence
-- Run `validate-plan.mjs` if instructed
+- Run `node <skill-path>/scripts/validate-plan.mjs` if instructed
