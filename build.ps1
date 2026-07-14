@@ -337,7 +337,7 @@ function Invoke-Validate {
 
 function Invoke-Lint {
     Write-Host "Checking script syntax..." -ForegroundColor Yellow
-    foreach ($script in @("bootstrap.mjs", "validate-plan.mjs", "blast-radius.mjs", "shared.mjs", "check-doc-parity.mjs", "check-readme-parity.mjs", "emit-state.mjs", "emit-template.mjs")) {
+    foreach ($script in @("bootstrap.mjs", "validate-plan.mjs", "blast-radius.mjs", "shared.mjs", "check-doc-parity.mjs", "check-readme-parity.mjs", "check-test-count.mjs", "emit-state.mjs", "emit-template.mjs")) {
         node --check "src/scripts/$script"
         if ($LASTEXITCODE -ne 0) {
             Write-Host "Syntax check failed: $script" -ForegroundColor Red
@@ -367,14 +367,26 @@ function Invoke-PackageTar {
     Write-Host "Package created: $tarFile" -ForegroundColor Green
 }
 
+# NOTE: check-test-count.mjs is wired here and NOT into Invoke-Validate — it re-runs the
+# suite (defect #7: nothing compared TEST_COUNT against reality; README<->TEST_COUNT
+# parity passes when BOTH are stale). Validate must stay fast and suite-free.
+# Keep this function in lockstep with the Makefile's `test` target.
 function Invoke-Test {
     Invoke-Lint
 
     Write-Host "Running all test suites..." -ForegroundColor Yellow
 
-    node --test src/scripts/bootstrap.test.mjs src/scripts/validate-plan.test.mjs src/scripts/blast-radius.test.mjs src/scripts/check-doc-parity.test.mjs src/scripts/emit-state.test.mjs src/scripts/emit-template.test.mjs src/scripts/check-readme-parity.test.mjs src/scripts/shared.test.mjs
+    node --test src/scripts/bootstrap.test.mjs src/scripts/validate-plan.test.mjs src/scripts/blast-radius.test.mjs src/scripts/check-doc-parity.test.mjs src/scripts/emit-state.test.mjs src/scripts/emit-template.test.mjs src/scripts/check-readme-parity.test.mjs src/scripts/shared.test.mjs src/scripts/check-test-count.test.mjs
     if ($LASTEXITCODE -ne 0) {
         Write-Host "Tests failed!" -ForegroundColor Red
+        exit 1
+    }
+
+    Write-Host "Checking TEST_COUNT against the live suite result..." -ForegroundColor Yellow
+
+    node src/scripts/check-test-count.mjs
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "TEST_COUNT is out of sync with the live suite result!" -ForegroundColor Red
         exit 1
     }
 
