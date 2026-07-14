@@ -56,6 +56,35 @@ const plansDir = join(cwd, "plans");
 const pointerFile = join(plansDir, ".current_plan");
 const lockFile = join(plansDir, ".lock");
 
+const SKILL_VERSION_RE = /^\d+\.\d+\.\d+$/;
+
+// DECISION plan_2026-07-14_317362c4/D-004 — resolve the skill version by PROBING TWO LAYOUTS,
+// installed-first, and NEVER throw.
+//
+// Do NOT copy check-readme-parity.mjs's fixed `join(dirname(...), "..", "..", "VERSION")`. That
+// script only ever runs in the dev tree (src/scripts/ → repo root, 2 levels up). bootstrap.mjs
+// also ships INSIDE the package, where scripts live one level shallower
+// (~/.claude/skills/iterative-planner/scripts/) — the same 2-level path there resolves to
+// ~/.claude/skills/, i.e. some other skill's territory. So: <script>/../VERSION (installed) is
+// probed BEFORE <script>/../../VERSION (dev); first hit wins.
+//
+// Do NOT let a filesystem error escape. A missing/unreadable VERSION must degrade to the string
+// "unknown", never to an exception: an uncaught ENOENT here would crash `bootstrap.mjs new` on
+// every fresh install and the whole skill would be dead on arrival. Cosmetic metadata is not
+// worth a crash. Garbage content (empty, multi-line, "not-a-version") is treated the same way.
+// See decisions.md D-004.
+function resolveSkillVersion() {
+  for (const rel of ["../VERSION", "../../VERSION"]) {
+    try {
+      const raw = readFileSync(new URL(rel, import.meta.url), "utf-8").trim();
+      if (SKILL_VERSION_RE.test(raw)) return raw;
+    } catch {
+      // Unreadable at this layout — try the next probe, then fall through to "unknown".
+    }
+  }
+  return "unknown";
+}
+
 // NOTE: concurrent-new race fix (OBS-003).
 // Pre-fix: two parallel `bootstrap.mjs new` invocations both passed
 // `readPointer() === null`, both created plan dirs, last writer won the
@@ -1235,6 +1264,10 @@ function cmdNewInner(goal, force) {
   }
   const planDir = join(plansDir, planDirName);
 
+  // Stamp the skill version that minted this plan into state.md + decisions.md. Resolution
+  // never throws; a missing/garbage VERSION file degrades to "unknown" (D-004).
+  const skillVersion = resolveSkillVersion();
+
   // Check if consolidated files exist for cross-plan context seeding
   const hasConsolidated = existsSync(join(plansDir, "FINDINGS.md")) || existsSync(join(plansDir, "DECISIONS.md")) || existsSync(join(plansDir, "LESSONS.md"));
   const crossPlanNote = hasConsolidated ? "\n*Cross-plan context: see plans/FINDINGS.md, plans/DECISIONS.md, and plans/LESSONS.md*\n" : "";
@@ -1246,6 +1279,7 @@ function cmdNewInner(goal, force) {
     writeFileSync(
       join(planDir, "state.md"),
       `# Current State: EXPLORE
+*Skill: iterative-planner v${skillVersion}*
 ## Iteration: 0
 ## Current Plan Step: N/A
 ## Pre-Step Checklist (reset before each EXECUTE step)
@@ -1313,6 +1347,7 @@ ${goal}
       join(planDir, "decisions.md"),
       `# Decision Log
 *Plan: ${planDirName}*
+*Skill: iterative-planner v${skillVersion}*
 *Append-only. Never edit past entries.*
 ${crossPlanNote}
 <!-- Schema example — DO NOT REMOVE. Real entries follow this shape.

@@ -9,6 +9,7 @@ Single source of truth for "where am I?"
 
 ```markdown
 # Current State: EXECUTE
+*Skill: iterative-planner vX.Y.Z*
 ## Iteration: 3
 ## Current Plan Step: 2 of 5
 ## Pre-Step Checklist (reset before each EXECUTE step)
@@ -34,6 +35,8 @@ Single source of truth for "where am I?"
 ```
 
 Update on every state transition.
+
+**Skill-version stamp** *(emitted by bootstrap for plans created on or after v2.36.0)*: the second line, immediately below the H1, records the skill version that minted the plan — `*Skill: iterative-planner v2.36.0*`. `vX.Y.Z` above is a placeholder; bootstrap substitutes the real value read from the packaged `VERSION` file, or `unknown` if that file is missing or unparseable. Informational only: never required, never validated, never hand-edited. Plans created before v2.36.0 simply have no such line.
 
 **Fix Attempts**: tracks autonomous fixes on current step. After 2 fails → STOP. Resets on: user direction, new step, PIVOT. Leash hit example:
 
@@ -143,6 +146,8 @@ Every entry must include a **Trade-off** line: "X **at the cost of** Y".
 
 **Plan-id preamble** *(required for plans created on or after v2.14.0)*: the second line of the file, immediately following the `# Decision Log` H1, MUST be `*Plan: <plan-id>*` where `<plan-id>` is the plan directory name (e.g. `plan_2026-05-07_7556fb98`). The preamble lets the file self-identify after `plans/DECISIONS.md` sliding-window trim drops the wrapping `## <plan-id>` section. Bootstrap emits this line automatically. Validator: ERROR `[preamble-missing]` for plans whose `state.md` INIT timestamp is on or after the v2.14.0 release cutoff; WARN otherwise.
 
+**Skill-version stamp** *(emitted by bootstrap for plans created on or after v2.36.0)*: `*Skill: iterative-planner v2.36.0*` on its **own line** directly below the `*Plan: …*` preamble. `vX.Y.Z` in the example below is a placeholder; bootstrap substitutes the real value read from the packaged `VERSION` file, or `unknown` if that file is missing or unparseable. Never fold it *into* the `*Plan: …*` line or into a `## D-NNN | PHASE | YYYY-MM-DD` header — both are matched by strict positional regexes. Informational only: never required, never validated. Plans created before v2.36.0 have no such line.
+
 **Entry header rule**: every entry begins with `## D-NNN | PHASE | YYYY-MM-DD` where:
 - `D-NNN` is sequential per plan starting at D-001 (D-001, D-002, ..., no gaps). Each plan directory has its own counter.
 - `PHASE` is the originating state or transition (e.g. `EXPLORE → PLAN`, `REFLECT → PIVOT`, `REFLECT`, `PIVOT`).
@@ -177,6 +182,7 @@ Multiple file:line refs are comma-separated; ranges use `LL-MM`. Maintained at E
 ```markdown
 # Decision Log
 *Plan: plan_2026-01-15_a3f1b2c9*
+*Skill: iterative-planner vX.Y.Z*
 
 ## D-001 | EXPLORE → PLAN | 2025-01-15
 **Context**: Auth system uses 3 different session stores (Redis, DB, in-memory)

@@ -5,7 +5,7 @@
 
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, readFileSync, writeFileSync, existsSync, rmSync, readdirSync, unlinkSync, renameSync } from "fs";
+import { mkdirSync, readFileSync, writeFileSync, existsSync, rmSync, readdirSync, unlinkSync, renameSync, copyFileSync } from "fs";
 import { join, resolve } from "path";
 import { execFileSync, spawnSync } from "child_process";
 import { tmpdir } from "os";
@@ -3809,5 +3809,135 @@ describe("bootstrap.mjs: new-format plan-id generation", () => {
     // And the wrapper must recognize that code, or the lock leaks and the message is a stack trace.
     assert.ok(src.includes('err.code === "EBADPLANID"'),
       "cmdNew must handle EBADPLANID: release the lock, print the message, exit 1");
+  });
+});
+
+// ===========================================================================
+// Skill-version stamp (D-004): resolveSkillVersion() + the state.md/decisions.md stamp
+// ===========================================================================
+
+describe("bootstrap.mjs — skill version stamp", () => {
+  const VALIDATE = resolve(import.meta.dirname, "validate-plan.mjs");
+  let tempDirs = [];
+
+  function getTempDir() {
+    const dir = makeTempDir();
+    tempDirs.push(dir);
+    return dir;
+  }
+
+  afterEach(() => {
+    for (const dir of tempDirs) removeTempDir(dir);
+    tempDirs = [];
+  });
+
+  /** The real VERSION file content of this repo (the dev-layout expectation). */
+  const REAL_VERSION = readFileSync(resolve(import.meta.dirname, "..", "..", "VERSION"), "utf-8").trim();
+
+  /**
+   * Build a simulated INSTALLED package layout: <pkg>/scripts/{bootstrap,shared}.mjs and
+   * (optionally) <pkg>/VERSION — i.e. VERSION exactly ONE level above the script, which is
+   * where `make build` / `make sync-skill` put it. In the dev tree it is TWO levels above
+   * (src/scripts/ -> repo root). Returns the path to the installed bootstrap.mjs.
+   *
+   * This is the end-to-end proof of the installed-first probe: the copied script is run as a
+   * real subprocess from the fake package, so nothing about the repo's own VERSION can leak in.
+   */
+  function makeInstalledPkg({ version }) {
+    const pkg = join(getTempDir(), "iterative-planner");
+    mkdirSync(join(pkg, "scripts"), { recursive: true });
+    copyFileSync(BOOTSTRAP, join(pkg, "scripts", "bootstrap.mjs"));
+    copyFileSync(SHARED, join(pkg, "scripts", "shared.mjs"));
+    if (version !== null) writeFileSync(join(pkg, "VERSION"), version);
+    return join(pkg, "scripts", "bootstrap.mjs");
+  }
+
+  /** Run an arbitrary bootstrap.mjs copy in a project cwd. */
+  function runScript(script, cwd, ...args) {
+    const r = spawnSync("node", [script, ...args], {
+      cwd, encoding: "utf-8", timeout: 15000, stdio: ["pipe", "pipe", "pipe"],
+    });
+    return { stdout: r.stdout || "", stderr: r.stderr || "", exitCode: r.status ?? 1 };
+  }
+
+  function stampsOf(cwd) {
+    const plan = getPointer(cwd);
+    return {
+      state: readPlanFile(cwd, plan, "state.md"),
+      decisions: readPlanFile(cwd, plan, "decisions.md"),
+    };
+  }
+
+  it("DEV layout: a fresh plan stamps the repo's real VERSION into state.md and decisions.md", () => {
+    const dir = getTempDir();
+    const r = runFull(dir, "new", "version stamp");
+    assert.equal(r.exitCode, 0, `new must succeed, got:\n${r.stdout}${r.stderr}`);
+    const { state, decisions } = stampsOf(dir);
+    const expected = `*Skill: iterative-planner v${REAL_VERSION}*`;
+    assert.ok(state.includes(expected), `state.md must carry ${expected}, got:\n${state}`);
+    assert.ok(decisions.includes(expected), `decisions.md must carry ${expected}, got:\n${decisions}`);
+  });
+
+  it("the stamp sits on its OWN line — never folded into the H1 or the *Plan:* preamble", () => {
+    const dir = getTempDir();
+    runFull(dir, "new", "own line");
+    const { state, decisions } = stampsOf(dir);
+    const sLines = state.split("\n");
+    const dLines = decisions.split("\n");
+    // state.md: H1 first, stamp second, `## Iteration:` still present and unmangled.
+    assert.equal(sLines[0], "# Current State: EXPLORE");
+    assert.match(sLines[1], /^\*Skill: iterative-planner v\S+\*$/);
+    assert.ok(state.includes("## Iteration: 0"));
+    // decisions.md: H1, *Plan: <id>* (untouched — validate-plan.mjs matches it positionally),
+    // then the stamp on its own line.
+    assert.equal(dLines[0], "# Decision Log");
+    assert.equal(dLines[1], `*Plan: ${getPointer(dir)}*`);
+    assert.match(dLines[2], /^\*Skill: iterative-planner v\S+\*$/);
+  });
+
+  it("INSTALLED layout: VERSION one level above scripts/ resolves (the `..` probe, not `../..`)", () => {
+    const script = makeInstalledPkg({ version: "9.9.9\n" });
+    const proj = getTempDir();
+    const r = runScript(script, proj, "new", "installed layout");
+    assert.equal(r.exitCode, 0, `new must succeed in the installed layout, got:\n${r.stdout}${r.stderr}`);
+    const { state, decisions } = stampsOf(proj);
+    assert.ok(state.includes("*Skill: iterative-planner v9.9.9*"),
+      `installed-layout VERSION must win the probe, got:\n${state}`);
+    assert.ok(decisions.includes("*Skill: iterative-planner v9.9.9*"));
+  });
+
+  it("VERSION absent: bootstrap still exits 0 and stamps `unknown` (never crashes)", () => {
+    // The highest-consequence failure mode in this plan: an uncaught ENOENT here would kill
+    // `bootstrap.mjs new` on every fresh install, and the entire skill would be dead.
+    const script = makeInstalledPkg({ version: null });
+    const proj = getTempDir();
+    const r = runScript(script, proj, "new", "no version file");
+    assert.equal(r.exitCode, 0, `new must survive a missing VERSION, got:\n${r.stdout}${r.stderr}`);
+    assert.ok(!/ENOENT/.test(r.stderr), `no ENOENT may escape, got stderr:\n${r.stderr}`);
+    const { state, decisions } = stampsOf(proj);
+    assert.ok(state.includes("*Skill: iterative-planner vunknown*"), `got:\n${state}`);
+    assert.ok(decisions.includes("*Skill: iterative-planner vunknown*"), `got:\n${decisions}`);
+  });
+
+  it("VERSION garbage: unparseable content degrades to `unknown`, no crash", () => {
+    for (const garbage of ["not-a-version\n", "", "2.35\n", "v2.35.0\n"]) {
+      const script = makeInstalledPkg({ version: garbage });
+      const proj = getTempDir();
+      const r = runScript(script, proj, "new", "garbage version");
+      assert.equal(r.exitCode, 0, `new must survive VERSION=${JSON.stringify(garbage)}, got:\n${r.stderr}`);
+      const { state } = stampsOf(proj);
+      assert.ok(state.includes("*Skill: iterative-planner vunknown*"),
+        `VERSION=${JSON.stringify(garbage)} must degrade to unknown, got:\n${state}`);
+    }
+  });
+
+  it("a stamped plan still validates with 0 errors (the stamp breaks no positional regex)", () => {
+    const dir = getTempDir();
+    runFull(dir, "new", "stamped and valid");
+    const r = spawnSync("node", [VALIDATE], {
+      cwd: dir, encoding: "utf-8", timeout: 15000, stdio: ["pipe", "pipe", "pipe"],
+    });
+    const out = (r.stdout || "") + (r.stderr || "");
+    assert.ok(!/^ERROR/m.test(out), `stamped plan must produce no ERRORs, got:\n${out}`);
   });
 });
