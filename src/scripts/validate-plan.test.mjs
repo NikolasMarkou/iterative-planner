@@ -924,7 +924,9 @@ describe("validate-plan.mjs — M7: targeted check-function coverage", () => {
       "# Changelog\n*note*\nNOTATIME | iter-1/step-1 | abc1234 | f.js | EDIT(+1,-0) | radius:LOW(1) | - | a reason\n");
     const r = run(cwd);
     assert.match(r.stdout, /\[changelog-malformed\]/, `expected changelog-malformed, got:\n${r.stdout}`);
-    assert.match(r.stdout, /bad timestamp/);
+    // v2.33.0: the WORDING moved from the deleted inline TS regex ("bad timestamp") to schema.mjs's
+    // iso-datetime type. Same severity, same slug, same line — only the message got more specific.
+    assert.match(r.stdout, /attribute "ts" .*ISO-8601/);
   });
 
   it("checkChangelogFormat: well-formed line (pipe in reason) does NOT warn", () => {
@@ -1171,5 +1173,167 @@ describe("validate-plan.mjs accepts bootstrap compression + idempotent-close art
     const r = run(cwd);
     assert.doesNotMatch(r.stdout, /Invalid transition: CLOSE→CLOSE/,
       `CLOSE→CLOSE must be a valid (idempotent) transition, got:\n${r.stdout}`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// iter-1/step-11 — encoding-aware, schema-driven changelog validation (D-001)
+// ---------------------------------------------------------------------------
+// The six field regexes that used to live inline in checkChangelogFormat are DELETED; both
+// encodings now validate through schema.mjs's CHANGELOG_SPEC. These tests are the "did not weaken"
+// proof: every shape the six regexes rejected must still be rejected via the LEGACY markdown path,
+// and the new XML path must never be able to escalate past WARN.
+describe("validate-plan.mjs — changelog: encoding-aware + schema-driven", () => {
+  let tempDirs = [];
+  function getTempDir() { const d = makeTempDir(); tempDirs.push(d); return d; }
+  afterEach(() => { for (const d of tempDirs) removeTempDir(d); tempDirs = []; });
+
+  const GOOD_LINE = '2026-05-30T10:00:00Z | iter-1/step-1 | abc1234 | f.js | EDIT(+1,-0) | radius:LOW(1) | - | fix race: a | b';
+  const GOOD_XML = [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    "<changelog>",
+    '  <raw line="1"># Changelog</raw>',
+    '  <raw line="2"/>',
+    '  <entry ts="2026-05-30T10:00:00Z" step="iter-1/step-1" commit="abc1234" path="f.js" op="EDIT(+1,-0)" radius="radius:LOW(1)" dref="-" reason="fix race: a | b"/>',
+    '  <raw line="4"/>',
+    "</changelog>",
+    "",
+  ].join("\n");
+
+  const changelogLines = (stdout) => stdout.split("\n").filter((l) => /\[changelog-/.test(l));
+  /** writePlan() seeds a legacy changelog.md; drop it when the fixture is about the XML path. */
+  const dropMd = (planDir) => rmSync(join(planDir, "changelog.md"), { force: true });
+
+  it("changelog.xml present + valid → validates clean, no changelog WARNs", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    dropMd(planDir);
+    writeFileSync(join(planDir, "changelog.xml"), GOOD_XML);
+    const r = run(cwd);
+    assert.deepEqual(changelogLines(r.stdout), [], `valid changelog.xml must be silent, got:\n${r.stdout}`);
+    assert.notEqual(r.exitCode, 2);
+  });
+
+  it("changelog.xml malformed → exactly one WARN [changelog-unparseable], never ERROR, never exit 2", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    dropMd(planDir);
+    // Unclosed root — the exact corruption D-002 exists to prevent, and Pre-Mortem #1's tripwire.
+    writeFileSync(join(planDir, "changelog.xml"), '<?xml version="1.0"?>\n<changelog>\n  <entry ts="2026-05-30T10:00:00Z"\n');
+    const r = run(cwd);
+    const hits = r.stdout.split("\n").filter((l) => /\[changelog-unparseable\]/.test(l));
+    assert.equal(hits.length, 1, `expected exactly one [changelog-unparseable], got:\n${r.stdout}`);
+    assert.match(hits[0], /WARN/, `[changelog-unparseable] must be WARN, not ERROR: ${hits[0]}`);
+    assert.doesNotMatch(r.stdout, /ERROR.*\[changelog-/, `no changelog check may emit ERROR:\n${r.stdout}`);
+    assert.notEqual(r.exitCode, 2, "exit 2 is --pre-step-exclusive; a parser failure must never claim it");
+  });
+
+  it("changelog.xml with a schema-invalid entry → WARN [changelog-malformed] (not ERROR)", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    dropMd(planDir);
+    writeFileSync(join(planDir, "changelog.xml"), GOOD_XML.replace('op="EDIT(+1,-0)"', 'op="FROBNICATE"'));
+    const r = run(cwd);
+    const hits = r.stdout.split("\n").filter((l) => /\[changelog-malformed\]/.test(l));
+    assert.equal(hits.length, 1, `expected one [changelog-malformed], got:\n${r.stdout}`);
+    assert.match(hits[0], /WARN/);
+    assert.notEqual(r.exitCode, 2);
+  });
+
+  it("both encodings present → .xml wins + WARN [changelog-dual-encoding]", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    writeFileSync(join(planDir, "changelog.xml"), GOOD_XML);
+    // A markdown line that WOULD warn if the legacy path ran — it must not.
+    writeFileSync(join(planDir, "changelog.md"), "# Changelog\nNOTATIME | iter-1/step-1 | abc1234 | f.js | EDIT(+1,-0) | radius:LOW(1) | - | r\n");
+    const r = run(cwd);
+    assert.match(r.stdout, /WARN.*\[changelog-dual-encoding\]/, `expected dual-encoding WARN, got:\n${r.stdout}`);
+    assert.doesNotMatch(r.stdout, /\[changelog-malformed\]/, `.xml must win — the stale .md must not be validated:\n${r.stdout}`);
+    assert.notEqual(r.exitCode, 2);
+  });
+
+  it("neither encoding present → changelog is optional, zero changelog issues", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    dropMd(planDir);
+    const r = run(cwd);
+    assert.deepEqual(changelogLines(r.stdout), [], `absent changelog must be silent, got:\n${r.stdout}`);
+  });
+
+  it("legacy changelog.md, clean line → no changelog WARNs (unchanged verdict)", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    writeFileSync(join(planDir, "changelog.md"), `# Changelog\n*note*\n${GOOD_LINE}\n`);
+    const r = run(cwd);
+    assert.deepEqual(changelogLines(r.stdout), [], `clean legacy line must be silent, got:\n${r.stdout}`);
+  });
+
+  // C10 at the validator level: each of the SIX deleted regexes, one bad field at a time, through
+  // the legacy markdown path. If any of these stops firing, the port silently weakened validation.
+  const FIELD_CASES = [
+    ["timestamp (TS regex)", 0, "NOTATIME", /attribute "ts"/],
+    ["timestamp (calendar-impossible)", 0, "2026-13-45T99:99:99Z", /attribute "ts"/],
+    ["step (STEP regex)", 1, "step-1", /attribute "step"/],
+    ["commit (COMMIT regex)", 2, "xyz", /attribute "commit"/],
+    ["path (empty)", 3, "   ", /attribute "path"/],
+    ["op (OP regex)", 4, "MUTATE(+1)", /attribute "op"/],
+    ["op (unanchored tail)", 4, "EDIT(+1,-0)trailing", /attribute "op"/],
+    ["radius (RADIUS regex)", 5, "radius:HUGE(9)", /attribute "radius"/],
+    ["radius (unanchored tail)", 5, "radius:LOW(2)trailing", /attribute "radius"/],
+    ["decision-ref (DREF regex)", 6, "D-1", /attribute "dref"/],
+    // NOTE: the 7th old regex-adjacent rule (`!reason.trim()` → "empty reason") has no LEGACY
+    // fixture on purpose: the line is `.trim()`ed before splitting, so a trailing empty reason
+    // collapses the 8th field away and the line is caught by the field-COUNT rule instead. That
+    // was equally true of the deleted inline check — this is parity, not a weakening. The rule
+    // itself is still enforced, and is now reachable via the XML encoding (test below).
+  ];
+
+  for (const [label, idx, bad, messageRe] of FIELD_CASES) {
+    it(`legacy changelog.md: bad ${label} → WARN [changelog-malformed]`, () => {
+      const cwd = getTempDir();
+      const { planDir } = writePlan(cwd);
+      const fields = ["2026-05-30T10:00:00Z", "iter-1/step-1", "abc1234", "f.js", "EDIT(+1,-0)", "radius:LOW(1)", "-", "a reason"];
+      fields[idx] = bad;
+      writeFileSync(join(planDir, "changelog.md"), `# Changelog\n${fields.join(" | ")}\n`);
+      const r = run(cwd);
+      assert.match(r.stdout, /WARN.*\[changelog-malformed\]/, `bad ${label} must still be rejected, got:\n${r.stdout}`);
+      assert.match(r.stdout, messageRe, `expected the schema to name the offending field, got:\n${r.stdout}`);
+      assert.notEqual(r.exitCode, 2);
+    });
+  }
+
+  it("changelog.xml: empty reason → WARN [changelog-malformed] (the 7th rule, reachable in XML)", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    dropMd(planDir);
+    writeFileSync(join(planDir, "changelog.xml"), GOOD_XML.replace('reason="fix race: a | b"', 'reason="   "'));
+    const r = run(cwd);
+    assert.match(r.stdout, /WARN.*\[changelog-malformed\].*attribute "reason"/, `got:\n${r.stdout}`);
+  });
+
+  it("legacy changelog.md: wrong field count → WARN [changelog-malformed] (encoding rule, not a field rule)", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    writeFileSync(join(planDir, "changelog.md"), "# Changelog\n2026-05-30T10:00:00Z | iter-1/step-1 | abc1234\n");
+    const r = run(cwd);
+    assert.match(r.stdout, /WARN.*\[changelog-malformed\].*expected 8 pipe-separated fields, got 3/, `got:\n${r.stdout}`);
+  });
+
+  it("legacy changelog.md: D-1000 decision-ref is accepted (D-005 grammar, shared with the XML path)", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    writeFileSync(join(planDir, "changelog.md"),
+      "# Changelog\n2026-05-30T10:00:00Z | iter-1/step-1 | abc1234 | f.js | EDIT(+1,-0) | radius:LOW(1) | D-1000 | a reason\n");
+    const r = run(cwd);
+    assert.deepEqual(changelogLines(r.stdout), [], `D-1000 must parse, got:\n${r.stdout}`);
+  });
+
+  it("the six field regexes are DELETED from validate-plan.mjs (replaced, not duplicated)", () => {
+    const src = readFileSync(VALIDATOR, "utf-8");
+    for (const gone of ["const TS = ", "const STEP = ", "const COMMIT = ", "const OP = ", "const RADIUS = ", "const DREF = "]) {
+      assert.ok(!src.includes(gone), `field regex \`${gone}\` is back in validate-plan.mjs — the schema is the single source of truth (D-001)`);
+    }
+    assert.ok(!/radius:\(LOW\|MED\|HIGH\)/.test(src), "the RADIUS regex body reappeared in validate-plan.mjs");
+    assert.ok(!/CREATE\\\(\\\+/.test(src), "the OP regex body reappeared in validate-plan.mjs");
   });
 });

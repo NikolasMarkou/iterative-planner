@@ -22,6 +22,10 @@ import {
   PLAN_ID_RE,
   DECISION_ID_NUM_PATTERN,
 } from "./shared.mjs";
+// Changelog validation is schema-driven for BOTH encodings (see checkChangelogFormat / D-001).
+import { parse as parseXmlDoc } from "./xml.mjs";
+import { CHANGELOG_SPEC, validateDoc, validateElement } from "./schema.mjs";
+import { entryFromFields } from "./changelog.mjs";
 
 const cwd = process.cwd();
 const plansDir = join(cwd, "plans");
@@ -1490,26 +1494,73 @@ function checkAnchorRefsValidity(planDir, planDirName, issues, projectRoot) {
 // ---------------------------------------------------------------------------
 
 // v2.15.0 — per-edit changelog (informational checks, WARN-only)
+// v2.33.0 — encoding-aware + schema-driven.
 //
-// File: {plan-dir}/changelog.md
-// Format per line: UTC | iter-N/step-M | commit | path | OP(+N,-M) | radius:TIER(score) | D-NNN-or-dash | reason
-// All issues are WARN — never block CLOSE.
+// File: {plan-dir}/changelog.xml (authoritative) or the legacy {plan-dir}/changelog.md.
+// Legacy line format: UTC | iter-N/step-M | commit | path | OP(+N,-M) | radius:TIER(score) | D-NNN-or-dash | reason
+//
+// DECISION plan_2026-07-14_79ee0f59/D-001 — the SIX hand-maintained field regexes that used to live
+// right here (TS / STEP / COMMIT / OP / RADIUS / DREF) are GONE. They now exist exactly once, as
+// typed fields in schema.mjs's CHANGELOG_SPEC, and BOTH encodings are checked through them: the XML
+// path via validateDoc(), the legacy markdown path by building a synthetic <entry> node from
+// splitChangelogFields() and running it through validateElement(). One shape, two encodings.
+//
+// What NOT to do:
+//   - Do NOT reintroduce a changelog field regex here "just for the legacy path". Two copies of a
+//     field shape kept in lockstep by hand is the exact defect the XML migration exists to remove;
+//     the legacy path is not an excuse to keep one, it is the reason validateElement() is exported.
+//   - Do NOT promote [changelog-unparseable] or [changelog-malformed] to ERROR. The changelog is
+//     ADVISORY (file-formats.md: "Changelog issues are advisory only. Never blocks CLOSE.") and that
+//     invariant does not change just because the encoding did. A bug in our own hand-written parser
+//     must never be able to block a CLOSE. It is also what makes Pre-Mortem #1 observable: a
+//     [changelog-unparseable] WARN on a file the pipeline itself wrote is the stop signal — a
+//     signal you cannot see if the validator died on it.
+// See decisions.md D-001, D-002.
 function checkChangelogFormat(planDir, issues) {
-  const path = join(planDir, "changelog.md");
-  if (!existsSync(path)) return; // Optional file — older plans may lack it.
-  const content = readFile(path);
-  if (!content) return;
+  const xmlFile = join(planDir, "changelog.xml");
+  const mdFile = join(planDir, "changelog.md");
+  const hasXml = existsSync(xmlFile);
+  const hasMd = existsSync(mdFile);
+  if (!hasXml && !hasMd) return; // Optional file — older plans (and fresh dirs) may lack it.
 
-  const TS = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
-  const STEP = /^iter-\d+\/step-\d+$/;
-  const COMMIT = /^([0-9a-f]{7,40}|uncommitted)$/;
-  const OP = /^(CREATE\(\+\d+\)|EDIT\(\+\d+,-\d+\)|DELETE\(-\d+\)|RENAME\([^→]+→[^)]+\)|REVERT\([^)]+\))$/;
-  // Grouped alternation — without the outer group, ^ anchors only the first
-  // alternative and $ only the second, so e.g. `radius:LOW(2)trailing` passes.
-  const RADIUS = /^(radius:(LOW|MED|HIGH)\(-?\d+\)|radius:UNKNOWN\([^)]+\))$/;
-  // Decision-ref field: a decision id (D-NNN, 3-digit padding minimum — D-1000+ is
-  // legal) or `-`. Same shared grammar as the decisions.md headers it points at.
-  const DREF = new RegExp(`^(D-${DECISION_ID_NUM_PATTERN}|-)$`);
+  if (hasXml) {
+    // Precedence: .xml wins. A leftover .md is a half-finished migration, not a fatal condition.
+    if (hasMd) {
+      issues.push({
+        severity: "WARN",
+        check: "changelog-dual-encoding",
+        message: "both changelog.xml and changelog.md exist — changelog.xml is authoritative; the legacy changelog.md is stale and should be removed once `changelog.mjs import` has been verified",
+      });
+    }
+    checkChangelogXml(xmlFile, issues);
+    return;
+  }
+  checkChangelogMarkdown(mdFile, issues);
+}
+
+function checkChangelogXml(file, issues) {
+  const content = readFile(file);
+  if (content === null || content.trim() === "") return;
+  let doc;
+  try {
+    doc = parseXmlDoc(content);
+  } catch (e) {
+    // WARN, never ERROR — see the anchor above. xml.mjs reports line:column in e.message.
+    issues.push({
+      severity: "WARN",
+      check: "changelog-unparseable",
+      message: `changelog.xml: ${e.message}`,
+    });
+    return;
+  }
+  for (const issue of validateDoc(doc, CHANGELOG_SPEC)) {
+    issues.push({ ...issue, message: `changelog.xml: ${issue.message}` });
+  }
+}
+
+function checkChangelogMarkdown(file, issues) {
+  const content = readFile(file);
+  if (!content) return;
 
   const lines = content.split("\n");
   let lineNo = 0;
@@ -1529,6 +1580,8 @@ function checkChangelogFormat(planDir, issues) {
     // bootstrap.mjs uses) — no longer reimplemented inline here.
     const fields = splitChangelogFields(line);
     if (fields.length !== 8) {
+      // The ONE rule that is about the legacy ENCODING (pipe framing), not about a field shape —
+      // so it stays here rather than in the spec. Everything below this line is schema-driven.
       issues.push({
         severity: "WARN",
         check: "changelog-malformed",
@@ -1536,15 +1589,12 @@ function checkChangelogFormat(planDir, issues) {
       });
       continue;
     }
-    const [ts, step, commit, _path, op, radius, dref, reason] = fields;
-    if (!TS.test(ts)) issues.push({ severity: "WARN", check: "changelog-malformed", message: `changelog.md:${lineNo}: bad timestamp "${ts}"` });
-    if (!STEP.test(step)) issues.push({ severity: "WARN", check: "changelog-malformed", message: `changelog.md:${lineNo}: bad step "${step}"` });
-    if (!COMMIT.test(commit)) issues.push({ severity: "WARN", check: "changelog-malformed", message: `changelog.md:${lineNo}: bad commit "${commit}"` });
-    if (!_path || _path.includes("|")) issues.push({ severity: "WARN", check: "changelog-malformed", message: `changelog.md:${lineNo}: bad path field` });
-    if (!OP.test(op)) issues.push({ severity: "WARN", check: "changelog-malformed", message: `changelog.md:${lineNo}: bad op "${op}"` });
-    if (!RADIUS.test(radius)) issues.push({ severity: "WARN", check: "changelog-malformed", message: `changelog.md:${lineNo}: bad radius "${radius}"` });
-    if (!DREF.test(dref)) issues.push({ severity: "WARN", check: "changelog-malformed", message: `changelog.md:${lineNo}: bad decision-ref "${dref}" (use D-NNN or -)` });
-    if (!reason || !reason.trim()) issues.push({ severity: "WARN", check: "changelog-malformed", message: `changelog.md:${lineNo}: empty reason` });
+    // The same <entry> the XML path validates, built from the markdown line. Same spec, same
+    // severity (WARN), same check slug (changelog-malformed) — the spec carries both.
+    const entry = entryFromFields(fields, false);
+    for (const issue of validateElement(entry, CHANGELOG_SPEC, `changelog.md:${lineNo}`)) {
+      issues.push(issue);
+    }
   }
 }
 

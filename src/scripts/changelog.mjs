@@ -190,7 +190,15 @@ export function renderDoc(doc) {
 // import — legacy markdown -> XML, losslessly
 // ---------------------------------------------------------------------------
 
-function entryFromFields(fields, validate = true) {
+/**
+ * A synthetic <entry> node from the 8 legacy pipe-delimited fields, in field order.
+ *
+ * Exported (with `validate: false`) so validate-plan.mjs's LEGACY markdown path can run a
+ * markdown line through the EXACT SAME schema field types as the XML path — one shape, two
+ * encodings. That is what let the six hand-maintained field regexes in checkChangelogFormat be
+ * DELETED rather than duplicated. Do not re-implement this shape anywhere else.
+ */
+export function entryFromFields(fields, validate = true) {
   const attrs = {};
   ENTRY_FIELDS.forEach((f, i) => { attrs[f] = fields[i]; });
   const e = el("entry", attrs);
