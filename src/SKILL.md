@@ -367,8 +367,8 @@ Each file has a clear owner. Only the owner writes. Others read. Co-ownership (m
 | `findings.md` (index) | Orchestrator | Plan-writer, Reviewer |
 | `findings/{topic}.md` | Explorer (one per file) | Orchestrator, Plan-writer |
 | `findings/review-iter-N.md` | Reviewer | Orchestrator |
-| `progress.md` | Orchestrator + Executor | All agents |
-| `verification.md` | Plan-writer (template) → Verifier (results) | Orchestrator, Reviewer |
+| `progress.md` | Orchestrator (Post-Step Gate) | All agents |
+| `verification.md` | Plan-writer (template) + Orchestrator (merges Verifier's returned results) | Orchestrator, Reviewer |
 | `changelog.md` | Executor (append per edit) + Orchestrator (Post-Step Gate: confirm one line per edited file) | Reviewer (REFLECT scan) |
 | `checkpoints/*` | Executor | Orchestrator (for PIVOT) |
 | `summary.md` | Archivist | — |

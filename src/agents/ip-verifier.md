@@ -2,7 +2,7 @@
 name: ip-verifier
 description: >
   Verification agent for the iterative planner REFLECT phase.
-  Runs test commands, checks results, writes structured verification output.
+  Runs test commands, checks results, returns structured verification results for the orchestrator to merge.
   Use when the orchestrator needs verification checks executed.
 tools: Read, Write, Bash, Grep, Glob
 disallowedTools: Edit, Agent
