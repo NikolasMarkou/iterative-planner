@@ -139,7 +139,7 @@ A complete cycle, condensed.
 
 > **You**: "I want to migrate our auth from session cookies to stateless JWTs. Plan this."
 
-**Claude (EXPLORE)** runs `bootstrap.mjs new "Migrate auth from session cookies to JWT"`, creates `plans/plan_2026-05-07_a3f1b2c9/`, then:
+**Claude (EXPLORE)** runs `bootstrap.mjs new "Migrate auth from session cookies to JWT"`, creates `plans/plan-2026-05-07T091743-a3f1b2c9/`, then:
 
 - Reads `plans/FINDINGS.md`, `plans/DECISIONS.md`, `plans/LESSONS.md`, `plans/SYSTEM.md` for cross-plan context.
 - Spawns 2-3 `ip-explorer` sub-agents in parallel: one maps the auth surface, one inventories existing JWT usage, one examines the test suite.
@@ -168,7 +168,7 @@ If a step fails: **revert uncommitted**, two fix attempts max, each constrained 
 
 **Claude (REFLECT)** runs the verifier. The PASS/FAIL table from `verification.md` is rendered **verbatim** in the **PC-REFLECT** block. If it is iteration 2+, an `ip-reviewer` sub-agent runs an adversarial review and its concerns are folded in verbatim. Claude recommends close, pivot, or explore. **You** decide.
 
-**Claude (CLOSE)** spawns `ip-archivist` to write `summary.md`, audit `# DECISION plan_2026-05-07_a3f1b2c9/D-NNN` anchors in source, rewrite `plans/LESSONS.md` (≤200 lines), and rewrite the `plans/SYSTEM.md` atlas (≤300 lines). Then `bootstrap.mjs close` merges per-plan findings and decisions into the consolidated cross-plan files (sliding window of the 4 most recent plans).
+**Claude (CLOSE)** spawns `ip-archivist` to write `summary.md`, audit `# DECISION plan-2026-05-07T091743-a3f1b2c9/D-NNN` anchors in source, rewrite `plans/LESSONS.md` (≤200 lines), and rewrite the `plans/SYSTEM.md` atlas (≤300 lines). Then `bootstrap.mjs close` merges per-plan findings and decisions into the consolidated cross-plan files (sliding window of the 4 most recent plans).
 
 The next plan starts with all of this on disk, available to read.
 
@@ -241,7 +241,7 @@ Three mechanisms keep the workspace honest, all visible on disk.
 <details>
 <summary><strong>The three mechanisms</strong></summary>
 
-- **Decision anchoring** — when code survives a failed alternative, the agent leaves a plan-qualified `# DECISION plan_YYYY-MM-DD_XXXXXXXX/D-NNN` comment at the point of impact, stating what *not* to do and why. The plan-id prefix stays resolvable even after the consolidated `plans/DECISIONS.md` sliding-window trim. The validator audits every anchor at CLOSE. (Details: [`src/references/decision-anchoring.md`](src/references/decision-anchoring.md).)
+- **Decision anchoring** — when code survives a failed alternative, the agent leaves a plan-qualified `# DECISION <plan-id>/D-NNN` comment at the point of impact, stating what *not* to do and why. The plan-id prefix stays resolvable even after the consolidated `plans/DECISIONS.md` sliding-window trim. The validator audits every anchor at CLOSE. (Details: [`src/references/decision-anchoring.md`](src/references/decision-anchoring.md).)
 - **Per-edit changelog + blast-radius scoring** — every file edit appends one line to `{plan-dir}/changelog.md` (timestamp, iter/step, commit, path, op, blast-radius tier, decision-ref, reason). A deterministic scorer tiers each edit LOW/MED/HIGH and surfaces "tiny edit, big radius" outliers that plan-level failure modes miss. Always advisory, never blocks CLOSE. (Details: [`src/references/blast-radius.md`](src/references/blast-radius.md).)
 - **Clean output hygiene** — every change is tracked in a manifest, failed steps revert immediately, and forbidden leftovers (TODOs, debug prints, commented-out code, orphan helpers) are flagged at REFLECT. The workspace is always known-good before new work begins.
 
@@ -259,7 +259,7 @@ plans/
 ├── LESSONS.md                     # cross-plan institutional memory (max 200 lines, rewritten on close)
 ├── SYSTEM.md                      # system atlas, domain-neutral map (max 300 lines, rewritten on close)
 ├── INDEX.md                       # topic-to-directory mapping (survives sliding-window trim)
-└── plan_2026-05-07_a3f1b2c9/
+└── plan-2026-05-07T091743-a3f1b2c9/
     ├── state.md                   # current state, iteration, step, change manifest, transition log
     ├── plan.md                    # the living plan (rewritten each iteration)
     ├── decisions.md               # append-only log of every decision and pivot
@@ -272,6 +272,8 @@ plans/
     ├── lessons_snapshot.md        # LESSONS.md snapshot at close (auto-created)
     └── summary.md                 # written at close
 ```
+
+**Directory naming** — a plan directory is `plan-YYYY-MM-DDTHHMMSS-XXXXXXXX` (UTC timestamp, colon-free so it is legal on Windows, plus an 8-char hex tail). Directories created before v2.36.0 use the legacy shape `plan_YYYY-MM-DD_XXXXXXXX`; that shape is **never generated again but is always still read** — the pointer, `retire`, the `# DECISION` anchor scan, the consolidated-file sections, and the sliding-window trim all accept both grammars, so old plans and the anchors they left in your source keep resolving.
 
 Templates for every file are in [`src/references/file-formats.md`](src/references/file-formats.md).
 
@@ -431,7 +433,7 @@ No. They are an optimization layer. Without them, the monolithic skill drives th
 Run `bootstrap.mjs resume`. It reconstructs the current state from disk and prints a summary. The agent never starts over — it picks up from `state.md`.
 
 **Why plan-qualified DECISION anchors?**
-The consolidated `plans/DECISIONS.md` uses a 4-plan sliding window. Bare `D-NNN` anchors become orphans once their plan is trimmed. Plan-qualified anchors (`# DECISION plan_YYYY-MM-DD_XXXXXXXX/D-NNN`) survive trim and resolve unambiguously.
+The consolidated `plans/DECISIONS.md` uses a 4-plan sliding window. Bare `D-NNN` anchors become orphans once their plan is trimmed. Plan-qualified anchors (`# DECISION <plan-id>/D-NNN`) survive trim and resolve unambiguously.
 
 ---
 

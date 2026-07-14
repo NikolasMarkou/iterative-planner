@@ -4,7 +4,7 @@ Code from failed iterations carries invisible context. Without anchors → someo
 
 ## When to Anchor
 
-Add `# DECISION plan_YYYY-MM-DD_XXXXXXXX/D-NNN` when ANY apply:
+Add `# DECISION <plan-id>/D-NNN` when ANY apply:
 
 - Code implements approach chosen **after a prior approach failed**
 - Implementation is **non-obvious** ("why not do X instead?")
@@ -51,27 +51,41 @@ The validator accepts bare anchors but emits `WARN [anchor-unqualified]` to nudg
 ## Rules
 
 - One comment block per decision, at point of impact.
-- Reference qualified decision ID (`plan_X/D-NNN`). Full story in that plan's `decisions.md`.
+- Reference qualified decision ID (`<plan-id>/D-NNN`). Full story in that plan's `decisions.md`.
 - State what NOT to do and why (prevent regression, not explain implementation).
 - Strip anchors for reverted code.
 - Don't anchor trivial choices.
-- Plan-id = active plan's directory name at anchor placement time (e.g. `plan_2026-05-07_7556fb98`); does not change if anchor is moved.
+- Plan-id = active plan's directory name at anchor placement time (e.g. `plan-2026-05-07T091743-7556fb98`); does not change if anchor is moved. Anchors written before v2.36.0 carry a **legacy** directory name (`plan_2026-05-07_7556fb98`); they stay valid and scannable forever — see § Plan-id Grammar below.
 
 ## Formal Grammar
 
-The validator and any tooling MUST recognize anchors via these regex patterns. For the hash, slash, and SQL styles the leading comment marker is language-driven (extension dispatch) and forms part of the match. **The block-comment scan is the exception**: its inner match carries **no comment-marker prefix**, so there the `DECISION` token is recognized anywhere inside a `/* … */` block, not adjacent to the opener (see the Block-comment row and the note beneath the table). The token sequence after the marker is `DECISION`, an optional plan-id prefix `<plan_YYYY-MM-DD_XXXXXXXX>/`, then `D-` followed by exactly three digits, optionally followed by ` [STALE]`, then either end-of-line, whitespace, or `:`.
+The validator and any tooling MUST recognize anchors via these regex patterns. For the hash, slash, and SQL styles the leading comment marker is language-driven (extension dispatch) and forms part of the match. **The block-comment scan is the exception**: its inner match carries **no comment-marker prefix**, so there the `DECISION` token is recognized anywhere inside a `/* … */` block, not adjacent to the opener (see the Block-comment row and the note beneath the table). The token sequence after the marker is `DECISION`, an optional plan-id prefix `<plan-id>/`, then `D-` followed by exactly three digits, optionally followed by ` [STALE]`, then either end-of-line, whitespace, or `:`.
 
-The plan-id prefix matches `plan_\d{4}-\d{2}-\d{2}_[0-9a-f]+` (the bootstrap plan-directory format).
+### Plan-id Grammar — one write grammar, one read union
+
+`<plan-id>` below is a **placeholder**, not a literal: it stands for the plan-id **read union**, which is the only grammar an anchor scanner may use.
+
+| | Shape | Used for |
+|---|---|---|
+| **Write** (current, v2.36.0+) | `plan-YYYY-MM-DDTHHMMSS-XXXXXXXX` (UTC, colon-free, 8 lowercase-hex tail) | The **only** shape bootstrap generates. Every new anchor carries it. |
+| **Legacy** (pre-v2.36.0) | `plan_YYYY-MM-DD_XXXXXXXX` | Never generated again. Still on disk, and still stamped into committed anchors. |
+| **Read union** = write \| legacy | non-capturing `(?: … \| … )` | What **every** scanner, validator, and `retire` invocation matches against. |
+
+Anchors written from v2.36.0 on carry the new-format id; **legacy-qualified anchors remain valid, scannable, and resolvable indefinitely**. A scanner that narrows to the write grammar alone does not turn legacy anchors into loud orphans — it makes them match *nothing at all*, silently deleting still-binding decisions from the audit net. Widen, never narrow.
+
+The union **must be non-capturing**. It is interpolated into the anchor regexes below, whose consumers read capture groups by *index*; a capture group inside the plan-id shifts them and mis-parses every anchor in the repo.
+
+**Single source of truth**: the executable definitions live in `src/scripts/shared.mjs` (`PLAN_ID_PATTERN`, `LEGACY_PLAN_ID_PATTERN`, `ANY_PLAN_ID_PATTERN`) and **nowhere else**. Do not re-declare a plan-id regex in a scanner, a test, or a doc — read it from there.
 
 | Style | Comment marker | Regex (anchor first line) |
 |---|---|---|
-| Hash-comment (Python, Ruby, shell, YAML, TOML, R, Perl, Makefile) | `#` | `^\s*#\s+DECISION\s+(?:plan_\d{4}-\d{2}-\d{2}_[0-9a-f]+\/)?D-\d{3}(\s+\[STALE\])?(:|\s|$)` |
-| Slash-comment (JS, TS, Go, Rust, C, C++, Java, Swift, Kotlin, Scala, C#, PHP) | `//` | `^\s*//\s+DECISION\s+(?:plan_\d{4}-\d{2}-\d{2}_[0-9a-f]+\/)?D-\d{3}(\s+\[STALE\])?(:|\s|$)` |
+| Hash-comment (Python, Ruby, shell, YAML, TOML, R, Perl, Makefile) | `#` | `^\s*#\s+DECISION\s+(?:<plan-id>\/)?D-\d{3}(\s+\[STALE\])?(:|\s|$)` |
+| Slash-comment (JS, TS, Go, Rust, C, C++, Java, Swift, Kotlin, Scala, C#, PHP) | `//` | `^\s*//\s+DECISION\s+(?:<plan-id>\/)?D-\d{3}(\s+\[STALE\])?(:|\s|$)` |
 | Block-comment (C, C++, Java, JS, CSS, etc.) — **two-stage; see note below** | `/* */` | outer delimiter-pair scan `/\*([\s\S]*?)\*/`, then a **marker-less** inner match `DECISION\s+(?:<plan-id>\/)?D-NNN(\s+\[STALE\])?` applied to the block body |
 | HTML / Markdown — **two-stage; see note below** | `<!-- -->` | outer delimiter-pair scan `<!--([\s\S]*?)-->`, then a **marker-less** inner match `DECISION\s+(?:<plan-id>\/)?D-NNN(\s+\[STALE\])?` applied to the comment body |
-| SQL | `--` | `^\s*--\s+DECISION\s+(?:plan_\d{4}-\d{2}-\d{2}_[0-9a-f]+\/)?D-\d{3}(\s+\[STALE\])?(:|\s|$)` |
+| SQL | `--` | `^\s*--\s+DECISION\s+(?:<plan-id>\/)?D-\d{3}(\s+\[STALE\])?(:|\s|$)` |
 
-The plan-id prefix is an **optional non-capturing group** in each regex. Captured groups (in order): plan-id (if present, captured separately for resolution), STALE marker. Implementations may capture either or both as named groups.
+The plan-id prefix is an **optional non-capturing group** in each regex — `(?:<plan-id>\/)?`, with `<plan-id>` expanded to the read union above. Captured groups (in order): plan-id (if present, captured separately for resolution), STALE marker. Implementations may capture either or both as named groups.
 
 **The Block-comment row is two-stage and marker-less.** The scanner first locates a `/* … */` delimiter pair with the outer scan, then applies the inner regex — which has **no `/*` prefix** — to the block body. An anchor therefore matches **anywhere inside the block**, not only immediately after the opener: a comment of the shape `/* foo DECISION <plan-id>/D-NNN bar */` is an anchor even though `DECISION` sits mid-block. This is why a comment that merely *quotes* a block-comment example, in any scanned C-family file, is read as a real anchor — the mandatory placeholder-id rule below exists for exactly this reason.
 
@@ -99,7 +113,7 @@ Files outside this matrix are skipped by the reverse-anchor scan.
 
 ## Writing About Anchors — Placeholder Ids Are Mandatory
 
-> **Rule.** Documentation examples of anchors — in Markdown **or** in source comments — MUST use placeholder ids (`<plan-id>`, `D-NNN`). A concrete `plan_YYYY-MM-DD_hex/D-NNN`, or a bare `D-` followed by three digits, inside a scanned comment becomes a **real, reportable anchor**.
+> **Rule.** Documentation examples of anchors — in Markdown **or** in source comments — MUST use placeholder ids (`<plan-id>`, `D-NNN`). A concrete plan-id in **either** grammar, followed by `/D-` and three digits — or a bare `D-` followed by three digits — inside a scanned comment becomes a **real, reportable anchor**.
 
 This rule is **not Markdown-specific**. It holds for every extension in `ANCHOR_SOURCE_EXTS`.
 
@@ -109,7 +123,7 @@ The canonical instance is `CHANGELOG.md:331` — the release note describing a p
 
 The hazard is **not** confined to Markdown. The same trap fired inside `src/scripts/validate-plan.mjs` — a `.mjs` file, where the block scan correctly still runs — when a `NOTE:` comment reproduced that snippet verbatim. Describe block-comment delimiters in prose; do not reproduce a delimiter pair around a concrete id.
 
-Placeholder examples are inert **by construction**, not by exclusion list: `<plan-id>` fails the plan-id pattern `plan_\d{4}-\d{2}-\d{2}_[0-9a-f]+`, and `D-NNN` fails `D-\d{3}`. Neither can ever be reported.
+Placeholder examples are inert **by construction**, not by exclusion list: `<plan-id>` fails **both** halves of the read union (the date digits and the hex tail are letters), and `D-NNN` fails `D-\d{3}`. Neither can ever be reported. The same holds for the shape placeholders `plan-YYYY-MM-DDTHHMMSS-XXXXXXXX` and `plan_YYYY-MM-DD_XXXXXXXX` used throughout this file.
 
 ## Multi-line Anchors
 

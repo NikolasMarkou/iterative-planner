@@ -144,7 +144,7 @@ approaches v1 (in-place migration) and v2 (dual-write) were abandoned.
 Append-only. **Never edit or delete past entries.**
 Every entry must include a **Trade-off** line: "X **at the cost of** Y".
 
-**Plan-id preamble** *(required for plans created on or after v2.14.0)*: the second line of the file, immediately following the `# Decision Log` H1, MUST be `*Plan: <plan-id>*` where `<plan-id>` is the plan directory name (e.g. `plan_2026-05-07_7556fb98`). The preamble lets the file self-identify after `plans/DECISIONS.md` sliding-window trim drops the wrapping `## <plan-id>` section. Bootstrap emits this line automatically. Validator: ERROR `[preamble-missing]` for plans whose `state.md` INIT timestamp is on or after the v2.14.0 release cutoff; WARN otherwise.
+**Plan-id preamble** *(required for plans created on or after v2.14.0)*: the second line of the file, immediately following the `# Decision Log` H1, MUST be `*Plan: <plan-id>*` where `<plan-id>` is the plan directory name (e.g. `plan-2026-05-07T091743-7556fb98`, or a legacy `plan_2026-05-07_7556fb98` for a plan created before v2.36.0 — both are accepted on read). The preamble lets the file self-identify after `plans/DECISIONS.md` sliding-window trim drops the wrapping `## <plan-id>` section. Bootstrap emits this line automatically. Validator: ERROR `[preamble-missing]` for plans whose `state.md` INIT timestamp is on or after the v2.14.0 release cutoff; WARN otherwise.
 
 **Skill-version stamp** *(emitted by bootstrap for plans created on or after v2.36.0)*: `*Skill: iterative-planner v2.36.0*` on its **own line** directly below the `*Plan: …*` preamble. `vX.Y.Z` in the example below is a placeholder; bootstrap substitutes the real value read from the packaged `VERSION` file, or `unknown` if that file is missing or unparseable. Never fold it *into* the `*Plan: …*` line or into a `## D-NNN | PHASE | YYYY-MM-DD` header — both are matched by strict positional regexes. Informational only: never required, never validated. Plans created before v2.36.0 have no such line.
 
@@ -181,7 +181,7 @@ Multiple file:line refs are comma-separated; ranges use `LL-MM`. Maintained at E
 
 ```markdown
 # Decision Log
-*Plan: plan_2026-01-15_a3f1b2c9*
+*Plan: plan-2026-01-15T084512-a3f1b2c9*
 *Skill: iterative-planner vX.Y.Z*
 
 ## D-001 | EXPLORE → PLAN | 2025-01-15
@@ -228,7 +228,7 @@ Multiple file:line refs are comma-separated; ranges use `LL-MM`. Maintained at E
 **Anchor-Refs**: `app/middleware/auth.rb:23`, `lib/session/token_service.rb:1-15`
 ```
 
-When this entry's anchor is later read in source it appears as `# DECISION plan_2026-01-15_a3f1b2c9/D-003: ...` (the plan-id prefix matches the preamble line above).
+When this entry's anchor is later read in source it appears as `# DECISION plan-2026-01-15T084512-a3f1b2c9/D-003: ...` (the plan-id prefix matches the preamble line above).
 
 Complexity Assessment mandatory for all PIVOT entries.
 
@@ -541,11 +541,11 @@ npm ci                                       # or: cargo build / poetry install 
 <!-- TEMPLATE:findings-consolidated -->
 ## plans/FINDINGS.md (consolidated)
 
-Cross-plan findings archive. Entries merged from per-plan `findings.md` on close. Per-plan headings demoted one level (## → ###) and nested under a `## plan_YYYY-MM-DD_XXXXXXXX` section. Relative `findings/` links rewritten to `plan_YYYY-MM-DD_XXXXXXXX/findings/`.
+Cross-plan findings archive. Entries merged from per-plan `findings.md` on close. Per-plan headings demoted one level (## → ###) and nested under a `## <plan-id>` section. Relative `findings/` links rewritten to `<plan-id>/findings/`.
 
 **Newest first** — most recently closed plan appears at the top (after the header). This keeps the most relevant context immediately accessible without reading the entire file.
 
-**Sliding window**: Auto-trimmed to the **4 most recent** plan sections on each close. Old plan data remains in per-plan directories (`plans/plan_*/findings.md`). Keeps file naturally bounded at ~150-250 lines.
+**Sliding window**: Auto-trimmed to the **4 most recent** plan sections on each close. Old plan data remains in per-plan directories (`plans/<plan-id>/findings.md`). Keeps file naturally bounded at ~150-250 lines.
 
 **Read limit**: Always read with `limit: 600`. Compressed summary + recent plan sections fit within this.
 
@@ -559,15 +559,15 @@ Created automatically by bootstrap on first `new`. Updated on each `close`.
 # Consolidated Findings
 *Cross-plan findings archive. Entries merged from per-plan findings.md on close. Newest first.*
 
-## plan_2026-02-20_b4e2c3d0
+## plan-2026-02-20T141005-b4e2c3d0
 ### Index
-- [Database Schema](plan_2026-02-20_b4e2c3d0/findings/db-schema.md) — table relationships
+- [Database Schema](plan-2026-02-20T141005-b4e2c3d0/findings/db-schema.md) — table relationships
 ### Key Constraints
 - Foreign key constraints prevent cascade delete on users table
 
-## plan_2026-02-19_a3f1b2c9
+## plan-2026-02-19T092233-a3f1b2c9
 ### Index
-- [Auth System](plan_2026-02-19_a3f1b2c9/findings/auth-system.md) — entry points, session stores
+- [Auth System](plan-2026-02-19T092233-a3f1b2c9/findings/auth-system.md) — entry points, session stores
 ### Key Constraints
 - SessionSerializer shared between cookie middleware AND API auth
 ```
@@ -590,13 +590,13 @@ Created automatically by bootstrap on first `new`. Updated on each `close`.
 - No integration tests existed for session migration paths
 <!-- /COMPRESSED-SUMMARY -->
 
-## plan_2026-02-20_b4e2c3d0
+## plan-2026-02-20T141005-b4e2c3d0
 ### Index
-- [Database Schema](plan_2026-02-20_b4e2c3d0/findings/db-schema.md) — table relationships
+- [Database Schema](plan-2026-02-20T141005-b4e2c3d0/findings/db-schema.md) — table relationships
 ### Key Constraints
 - Foreign key constraints prevent cascade delete on users table
 
-## plan_2026-02-19_a3f1b2c9
+## plan-2026-02-19T092233-a3f1b2c9
 ### Index
 ...
 ```
@@ -605,7 +605,7 @@ Usage:
 - Read (limit: 600) at start of EXPLORE and during PLAN gate check for cross-plan context
 - Do not edit directly — content is merged automatically on `close`
 - Agent/user can curate (remove stale sections) manually if needed
-- When compressing: only summarize `## plan_*` sections, SKIP content between `<!-- COMPRESSED-SUMMARY -->` markers
+- When compressing: only summarize `## <plan-id>` sections, SKIP content between `<!-- COMPRESSED-SUMMARY -->` markers
 
 <!-- TEMPLATE:decisions-consolidated -->
 ## plans/DECISIONS.md (consolidated)
@@ -614,7 +614,7 @@ Cross-plan decision archive. Entries merged from per-plan `decisions.md` on clos
 
 **Newest first** — most recently closed plan appears at the top (after the header).
 
-**Sliding window**: Auto-trimmed to the **4 most recent** plan sections on each close. Old plan data remains in per-plan directories (`plans/plan_*/decisions.md`). Keeps file naturally bounded at ~150-250 lines.
+**Sliding window**: Auto-trimmed to the **4 most recent** plan sections on each close. Old plan data remains in per-plan directories (`plans/<plan-id>/decisions.md`). Keeps file naturally bounded at ~150-250 lines.
 
 **Read limit**: Always read with `limit: 600`. Compressed summary + recent plan sections fit within this.
 
@@ -628,13 +628,13 @@ Created automatically by bootstrap on first `new`. Updated on each `close`.
 # Consolidated Decisions
 *Cross-plan decision archive. Entries merged from per-plan decisions.md on close. Newest first.*
 
-## plan_2026-02-20_b4e2c3d0
+## plan-2026-02-20T141005-b4e2c3d0
 ### D-001 | EXPLORE → PLAN | 2025-01-20
 **Context**: Users table migration needed
 **Decision**: Use reversible migration with dual-column approach
 **Trade-off**: Zero-downtime migration **at the cost of** temporary schema complexity
 
-## plan_2026-02-19_a3f1b2c9
+## plan-2026-02-19T092233-a3f1b2c9
 ### D-001 | EXPLORE → PLAN | 2025-01-15
 **Context**: Auth system uses 3 different session stores
 **Decision**: Start with approach A (in-place migration)
@@ -663,7 +663,7 @@ Created automatically by bootstrap on first `new`. Updated on each `close`.
 - DO NOT: Dual-write sessions (30-day TTLs cause 2x memory)
 <!-- /COMPRESSED-SUMMARY -->
 
-## plan_2026-02-20_b4e2c3d0
+## plan-2026-02-20T141005-b4e2c3d0
 ### D-001 | EXPLORE → PLAN | 2025-01-20
 ...
 ```
@@ -672,7 +672,7 @@ Usage:
 - Read (limit: 600) at start of EXPLORE and during PLAN gate check — learn what was tried before
 - Do not edit directly — content is merged automatically on `close`
 - Decision IDs are scoped per plan section (each plan starts at D-001)
-- When compressing: only summarize `## plan_*` sections, SKIP content between `<!-- COMPRESSED-SUMMARY -->` markers
+- When compressing: only summarize `## <plan-id>` sections, SKIP content between `<!-- COMPRESSED-SUMMARY -->` markers
 
 <!-- TEMPLATE:lessons -->
 ## plans/LESSONS.md
@@ -737,7 +737,7 @@ Cross-plan **system atlas** — a curated map of *what the system being planned 
 
 ## Invariants
 - Properties that must always hold (security, data, contracts, performance budgets).
-- Each grounded in a finding-id or decision-id reference (e.g. `see plan_2026-05-07_xxxx/D-002`).
+- Each grounded in a finding-id or decision-id reference (e.g. `see <plan-id>/D-002`).
 
 ## Flows
 - 3-7 named end-to-end flows: trigger → path → terminus.
@@ -771,8 +771,8 @@ Topic-to-directory mapping. Updated automatically on `close`. Survives sliding w
 
 | Plan | Date | Goal | Key Topics |
 |------|------|------|------------|
-| plan_2026-02-20_b4e2c3d0 | 2026-02-20 | Database migration | db schema, foreign keys, cascade |
-| plan_2026-02-19_a3f1b2c9 | 2026-02-19 | Auth session migration | auth, sessions, redis, tokens |
+| plan-2026-02-20T141005-b4e2c3d0 | 2026-02-20 | Database migration | db schema, foreign keys, cascade |
+| plan-2026-02-19T092233-a3f1b2c9 | 2026-02-19 | Auth session migration | auth, sessions, redis, tokens |
 ```
 
 Usage:
@@ -884,7 +884,7 @@ Written at CLOSE.
 
 ```markdown
 # Summary: Auth Session Migration
-*Plan: plan_2026-01-15_a3f1b2c9*
+*Plan: plan-2026-01-15T084512-a3f1b2c9*
 
 ## Outcome
 Successfully migrated from cookie-based sessions to JWT tokens with
@@ -907,9 +907,9 @@ cookie fallback for legacy clients.
 - test/integration/token_auth_test.rb (new)
 
 ## Decision Anchors Registry
-- `app/middleware/auth.rb:23` — `plan_2026-01-15_a3f1b2c9/D-003` (token-based over cookie migration), `plan_2026-01-15_a3f1b2c9/D-005` (direct Redis call)
-- `lib/session/token_service.rb:1` — `plan_2026-01-15_a3f1b2c9/D-003` (stateless tokens over dual-write)
-- `lib/session/token_service.rb:15` — `plan_2026-01-15_a3f1b2c9/D-002`, `plan_2026-01-15_a3f1b2c9/D-003` (stateless over dual-write)
+- `app/middleware/auth.rb:23` — `plan-2026-01-15T084512-a3f1b2c9/D-003` (token-based over cookie migration), `plan-2026-01-15T084512-a3f1b2c9/D-005` (direct Redis call)
+- `lib/session/token_service.rb:1` — `plan-2026-01-15T084512-a3f1b2c9/D-003` (stateless tokens over dual-write)
+- `lib/session/token_service.rb:15` — `plan-2026-01-15T084512-a3f1b2c9/D-002`, `plan-2026-01-15T084512-a3f1b2c9/D-003` (stateless over dual-write)
 
 ## Lessons
 - Check format coupling before assuming storage changes are isolated

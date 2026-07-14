@@ -4,7 +4,7 @@ Guidance for working with the Iterative Planner codebase.
 
 ## Project Purpose
 
-Claude Code skill — state-machine driven iterative planning and execution. Cycle: Explore → Plan → Execute → Reflect → Pivot. Filesystem (`plans/plan_YYYY-MM-DD_XXXXXXXX/`) as persistent memory.
+Claude Code skill — state-machine driven iterative planning and execution. Cycle: Explore → Plan → Execute → Reflect → Pivot. Filesystem (`plans/plan-YYYY-MM-DDTHHMMSS-XXXXXXXX/`; legacy `plans/plan_YYYY-MM-DD_XXXXXXXX/` dirs are still read, never written) as persistent memory.
 
 Use cases: multi-file tasks, migrations, refactoring, failed tasks, debugging, anything 3+ files or 2+ systems.
 
@@ -30,7 +30,7 @@ iterative-planner/
     │   ├── ip-reviewer.md            # Adversarial review (REFLECT phase, iteration >= 2)
     │   └── ip-archivist.md           # CLOSE phase housekeeping
     ├── scripts/
-    │   ├── bootstrap.mjs             # Initializes plans/plan_YYYY-MM-DD_XXXXXXXX/ directory (Node.js 18+)
+    │   ├── bootstrap.mjs             # Initializes plans/plan-YYYY-MM-DDTHHMMSS-XXXXXXXX/ directory (Node.js 18+)
     │   ├── bootstrap.test.mjs        # Test suite (node:test)
     │   ├── validate-plan.mjs         # Protocol compliance validator (Node.js 18+)
     │   ├── validate-plan.test.mjs    # Test suite (node:test)
@@ -84,7 +84,7 @@ node <skill-path>/scripts/bootstrap.mjs retire <plan-id>     # Mark a removed pl
 node <skill-path>/scripts/bootstrap.mjs reset-attempts       # Clear active plan's Fix Attempts (unjam stale leash counter)
 ```
 
-`new` creates plan directory with all files + writes `plans/.current_plan` pointer. Creates `plans/FINDINGS.md`, `plans/DECISIONS.md`, `plans/LESSONS.md`, `plans/SYSTEM.md` (system atlas, max 300 lines, rewritten by ip-archivist at CLOSE), and `plans/INDEX.md` if they don't exist. Idempotent-safe: refuses if active plan exists.
+`new` creates plan directory (`plan-YYYY-MM-DDTHHMMSS-XXXXXXXX`, UTC, colon-free; the legacy `plan_YYYY-MM-DD_XXXXXXXX` shape is still accepted on every read path but never generated again) with all files + writes `plans/.current_plan` pointer. Creates `plans/FINDINGS.md`, `plans/DECISIONS.md`, `plans/LESSONS.md`, `plans/SYSTEM.md` (system atlas, max 300 lines, rewritten by ip-archivist at CLOSE), and `plans/INDEX.md` if they don't exist. Idempotent-safe: refuses if active plan exists.
 
 ### Activation Triggers
 
@@ -203,7 +203,7 @@ cp src/SKILL.md ~/.claude/skills/iterative-planner/SKILL.md
 cp src/scripts/*.mjs ~/.claude/skills/iterative-planner/scripts/
 mkdir -p ~/.claude/skills/iterative-planner/scripts/modules && cp src/scripts/modules/*.md ~/.claude/skills/iterative-planner/scripts/modules/   # the *.mjs glob does NOT copy the modules/ subdir — copy it explicitly
 cp src/references/*.md ~/.claude/skills/iterative-planner/references/
-cp README.md LICENSE CHANGELOG.md ~/.claude/skills/iterative-planner/
+cp README.md LICENSE CHANGELOG.md VERSION ~/.claude/skills/iterative-planner/   # VERSION is required at runtime: bootstrap.mjs stamps it into new plans
 
 # Install agent definitions (optional — skill works without them)
 mkdir -p ~/.claude/agents

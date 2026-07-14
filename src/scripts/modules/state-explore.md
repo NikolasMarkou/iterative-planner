@@ -1,5 +1,5 @@
 - Read `state.md`, `plans/FINDINGS.md` and `plans/DECISIONS.md` (limit: 600 lines), `plans/LESSONS.md`, and `plans/SYSTEM.md` at start of EXPLORE for cross-plan context. SYSTEM.md is the structural prior — what the target system looks like, distinct from goal-driven findings. **Do NOT eagerly load `plans/INDEX.md`** — it is read on demand only.
-- **On-demand INDEX.md read** — consult `plans/INDEX.md` (and then the specific per-plan `plans/plan_*/findings.md` it points to) when ANY of the following triggers fires:
+- **On-demand INDEX.md read** — consult `plans/INDEX.md` (and then the specific per-plan `plans/<plan-id>/findings.md` it points to) when ANY of the following triggers fires:
   1. The goal mentions a topic or domain that is absent from the recent FINDINGS.md window.
   2. A `[CORRECTED iter-N]` or other cross-reference in FINDINGS.md / LESSONS.md / SYSTEM.md points to a per-plan finding that is no longer in the sliding window.
   3. The user explicitly references prior work ("we tried this before", "the X migration plan", etc.).

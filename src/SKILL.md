@@ -14,7 +14,7 @@ commit: __SKILL_COMMIT__
 **Core Principle**: Context Window = RAM. Filesystem = Disk.
 Write to disk immediately. The context window will rot. The files won't.
 
-**`{plan-dir}`** = `plans/plan_YYYY-MM-DD_XXXXXXXX/` (active plan directory under project root).
+**`{plan-dir}`** = `plans/plan-YYYY-MM-DDTHHMMSS-XXXXXXXX/` (active plan directory under project root; UTC timestamp, colon-free, 8-hex tail). Directories created before v2.36.0 use the legacy shape `plans/plan_YYYY-MM-DD_XXXXXXXX/` — never generated again, but **always still read**: every id-recognizing path (pointer, `retire`, anchor scan, `## <plan-id>` sections, `*Plan:*` preamble, sliding-window trim, INDEX date) accepts the union of both grammars.
 **Discovery**: `plans/.current_plan` contains the plan directory name. One active plan at a time.
 **Cross-plan context**: `plans/FINDINGS.md`, `plans/DECISIONS.md` (merged on close), `plans/LESSONS.md` (rewritten on close), `plans/SYSTEM.md` (system atlas — domain-neutral map of the target system, rewritten on close), `plans/INDEX.md` (topic→directory map, survives sliding-window trim). Caps + R/W rules: File Lifecycle Matrix.
 
@@ -126,7 +126,7 @@ plans/
 ├── LESSONS.md                     # Cross-plan lessons learned (≤200 lines, rewritten on close)
 ├── SYSTEM.md                      # System atlas — domain-neutral map of the target system (≤300 lines, rewritten on close)
 ├── INDEX.md                       # Topic→directory mapping (updated on close, survives trim)
-└── plan_2026-02-14_a3f1b2c9/      # {plan-dir}
+└── plan-2026-02-14T103055-a3f1b2c9/   # {plan-dir} (legacy dirs: plan_2026-02-14_a3f1b2c9/)
     ├── state.md                   # Current state + transition log
     ├── plan.md                    # Living plan (rewritten each iteration)
     ├── decisions.md               # Append-only decision/pivot log
@@ -175,7 +175,7 @@ R = read only | W = update (implicit read + write) | R+W = distinct read and wri
 
 `plans/FINDINGS.md` and `plans/DECISIONS.md` grow across plans. Two mechanisms prevent context window bloat:
 
-**Sliding window**: Bootstrap automatically trims consolidated files to the **4 most recent** plan sections on each close. Old plan sections are removed from the consolidated file but remain in their per-plan directories (`plans/plan_*/findings.md`, `plans/plan_*/decisions.md`). Use `plans/INDEX.md` to locate trimmed plans by topic. This keeps files naturally bounded at ~150-250 lines.
+**Sliding window**: Bootstrap automatically trims consolidated files to the **4 most recent** plan sections on each close. Old plan sections are removed from the consolidated file but remain in their per-plan directories (`plans/<plan-id>/findings.md`, `plans/<plan-id>/decisions.md`). Use `plans/INDEX.md` to locate trimmed plans by topic. This keeps files naturally bounded at ~150-250 lines.
 
 **Read limit**: Always read consolidated files with `limit: 600`. The compressed summary + most recent plan sections fit within this.
 
@@ -187,7 +187,7 @@ R = read only | W = update (implicit read + write) | R+W = distinct read and wri
 2. If >500 and NO `<!-- COMPRESSED-SUMMARY -->` marker exists → create new summary.
 3. If >500 and marker already exists → REPLACE content between markers. Never summarize the old summary — read only the raw plan sections below the markers to write the new summary.
 
-**Format** — insert between H1 header and first `## plan_` section:
+**Format** — insert between H1 header and first `## <plan-id>` section:
 ```markdown
 <!-- COMPRESSED-SUMMARY -->
 ## Summary (compressed)
@@ -205,7 +205,7 @@ R = read only | W = update (implicit read + write) | R+W = distinct read and wri
 - Max 100 lines between markers (total, including section headers).
 - Focus on: outcomes, active constraints, things NOT to do (failed approaches), anchored decisions.
 - Drop: iteration details, timestamps, verbose reasoning — those survive in full content below.
-- **Failsafe**: when writing the summary, SKIP everything between `<!-- COMPRESSED-SUMMARY -->` and `<!-- /COMPRESSED-SUMMARY -->` markers. Only summarize the actual plan sections (`## plan_*`). This prevents summaries of summaries.
+- **Failsafe**: when writing the summary, SKIP everything between `<!-- COMPRESSED-SUMMARY -->` and `<!-- /COMPRESSED-SUMMARY -->` markers. Only summarize the actual plan sections (`## <plan-id>`). This prevents summaries of summaries.
 
 **Intra-plan compression** (v2.18.0+): per-plan `{plan-dir}/decisions.md` and `{plan-dir}/changelog.md` have their own compression triggered at PLAN gate-in (different thresholds, different shapes). See `references/file-formats.md` § Intra-plan compression (under each file's section).
 
@@ -289,7 +289,8 @@ When a plan is deleted or obsoleted while its qualified anchors still live in
 source, run `bootstrap.mjs retire <plan-id>` to mark those anchors `[STALE]`
 (orphan ERROR → WARN) instead of hand-editing each one — otherwise validate-plan
 ERRORs on the orphan and blocks the *current* plan's REFLECT→CLOSE gate.
-The plan-id prefix (e.g. `plan_2026-05-07_7556fb98`) makes the anchor globally
+The plan-id prefix (e.g. `plan-2026-05-07T091743-7556fb98`, or a legacy
+`plan_2026-05-07_7556fb98` — both scan) makes the anchor globally
 unambiguous and resolvable after `plans/DECISIONS.md` sliding-window trim.
 See `references/decision-anchoring.md`.
 
@@ -301,7 +302,7 @@ See `references/decision-anchoring.md`.
 
 ## Recovery from Context Loss
 
-0. If `plans/.current_plan` is missing or corrupted: run `bootstrap.mjs list` to find plan directories, then recreate the pointer: `echo "plan_YYYY-MM-DD_XXXXXXXX" > plans/.current_plan` (substitute actual directory name).
+0. If `plans/.current_plan` is missing or corrupted: run `bootstrap.mjs list` to find plan directories, then recreate the pointer: `echo "plan-YYYY-MM-DDTHHMMSS-XXXXXXXX" > plans/.current_plan` (substitute the actual directory name — a legacy `plan_YYYY-MM-DD_XXXXXXXX` name is equally valid here).
 1. `plans/.current_plan` → plan dir name
 2. `state.md` → where you are
 3. `plan.md` → current plan
