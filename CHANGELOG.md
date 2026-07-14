@@ -4,6 +4,39 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.34.0] - 2026-07-14
+
+Three **CRITICAL** fixes, all found by an adversarial review of v2.33.0 (`plans/plan_2026-07-14_79ee0f59/`, iteration 2) and all reproduced live before being fixed. Every one of them was a **silent** failure in a mechanism the protocol treats as safety-critical: the evidence ledger, the iteration hard cap, and the decision-schema check. Two of the three were affirmatively claimed correct in shipped in-source decision anchors — those anchors were false, and are corrected in-source here rather than left to mislead. Suite 584 → 640, 0 failures. Zero new runtime dependencies, zero new files, zero new abstractions.
+
+### Fixed
+
+- **CRITICAL — concurrent `changelog.mjs append` lost entries and could corrupt `changelog.xml`.** `append` is a read-modify-write of the whole document (parse → splice → re-serialize → rename), and it was unlocked. Under concurrency, N writers all read the same document and the last rename wins. **Measured pre-fix: 16 parallel appends against a 3000-entry ledger recorded 1 of 16, in 8 of 8 trials — with every process exiting 0.** Silent, total data loss on an append-only evidence ledger. On top of that, `writeDocAtomic` shared a fixed `${file}.tmp` across writers, so two writers interleaved bytes into the same temp file and `renameSync` published whichever half-written document happened to be on disk — which is how a pipeline-written `changelog.xml` ended up unparseable.
+
+  **This was a regression introduced in v2.33.0.** The legacy markdown path appended a single line (effectively atomic under `O_APPEND`); the XML rewrite turned that O(1) line append into an O(file) read-modify-write. And it is on the *normal* path: `ip-executor.md` mandates an append after EACH edit, and parallel tool calls are the encouraged pattern.
+
+  Fixed with an O_EXCL lock (`openSync(lock, "wx")`) wrapping the entire read-modify-write, plus a per-writer temp path (`${file}.${pid}.${n}.tmp`). Both are required; neither alone closes the bug — the unique temp name stops writers corrupting each other's *bytes*, the lock stops them losing each other's *entries*. Degradation is loud and non-fatal: a bounded ~2 s wait with backoff + jitter, then stderr `entry NOT recorded` and a non-zero exit, which `ip-executor.md`'s existing non-fatal rule turns into "log and proceed". EXECUTE never stalls on a changelog write. A lock whose **mtime** is stale (>10 s) is broken and retried, so a crashed writer cannot wedge the ledger. Post-fix: 16/16 recorded, no `.lock` or `.tmp` residue. `bootstrap.mjs`'s XML compression pass — the only *other* writer of `changelog.xml` — takes the same lock; a contended pass returns the existing 5-key shape with the new no-op `reason: "locked"` and simply re-runs at the next PLAN gate.
+
+- **CRITICAL — the iteration hard cap failed OPEN.** `stripHtmlComments`'s documented fail-safe ("an unterminated `<!--` is left untouched, so the cap can only over-count") was **false**. Bootstrap's own `state.md` template ends every file with a guidance HTML comment that supplies a `-->`, so a stray opener is never unterminated — it pairs with the template's trailer and blanks every real transition record in between. **Measured: the cap derived 0 from real `EXECUTE → REFLECT` records.** The safety mechanism did not fire late; it disappeared, silently.
+
+  Fixed by relocating the fail-safe from the stripper to the consumer that needs it: `deriveIterationFromHistory` now counts on the **raw** history block (`max(raw, stripped)`, and raw ≥ stripped always), so it is *structurally incapable* of under-counting for any comment shape. Over-counting remains possible and is the safe direction — it is loud, recoverable, and now explained by a new advisory `WARN [state-comment-anomaly]` (see below). Advisory scanners still read the stripped block, where a false WARN costs nothing.
+
+- **CRITICAL — the decisions validator failed OPEN.** `checkDecisionsSchema` scrubbed HTML comments with `.replace(/<!--[\s\S]*?-->/g, "")` — a regex that is blind to markdown code spans and **removes** lines instead of blanking them. Two consequences. Cosmetic: every reported line number was offset by the size of any stripped comment (the validator said "D-007 (line 59)"; D-007 was at line 69). Serious: a decision entry that merely *discusses* HTML comments supplies a phantom opener inside a backtick span, which pairs with any `-->` downstream and swallows everything between — producing **false ERRORs** and, in the same motion, **silently hiding real ones**. In this repo's own plan directory it was hiding two genuinely-malformed entries (both missing their mandatory `**Complexity Assessment**` block) while reporting two errors that did not exist.
+
+  Fixed by unifying all five `.md` comment scanners onto one code-span-aware, line-count-preserving primitive: a delimiter written inside backticks or a fenced block is prose and can neither open nor close a comment, and stripping never changes the line count, so every reported line number is exact by construction.
+
+- **This was the third occurrence of comment-blindness in this codebase** — v2.32.0's `.md` anchor scanner, v2.33.0's `state.md` transition scanners, and now the decisions parser. Three occurrences is a pattern, not three coincidences, and the trigger is unforgiving: the bug fires whenever someone *documents comment handling*. The fix therefore collapses the scanners onto a **single definition of "where the comments are"** rather than fixing a fourth regex, so there is no fourth occurrence to have.
+
+- Two false in-source DECISION anchors (the `stripHtmlComments` fail-safe claim and the `writeDocAtomic` "atomic" docstring, which was only ever true for a single writer) are **corrected**, not deleted. An invariant asserted in a comment that no test ever tried to break is not an invariant.
+
+### Added
+
+- **`WARN [state-comment-anomaly]`** (advisory; never ERROR, never `--pre-step` exit 2). Fires when `state.md`'s comment markers are unbalanced **or** when the raw and stripped `EXECUTE → REFLECT` counts diverge. The OR is load-bearing: a stray opener that pairs with the template trailer *balances perfectly* and is caught only by the count divergence, while a genuinely unterminated opener is caught only by the balance probe. It is silent on a fresh `bootstrap.mjs new` plan dir and on a well-formed plan.
+- Compression gains one no-op return reason: `locked` (XML only). The 5-key return shape the PLAN gate depends on is unchanged.
+
+### Changed
+
+- `TEST_COUNT` 584 → **640** (live). README badge and test-file table updated to match.
+
 ## [2.33.0] - 2026-07-14
 
 Two halves, both from `plans/plan_2026-07-14_79ee0f59/`. First: **8 defect fixes** from a script audit (7 found by reading the scripts, 1 found by running the validator against its own plan directory). Second: the **XML artifact foundation** — a zero-dependency parser, a declarative schema, and a write-through CLI — with exactly one artifact migrated end-to-end (`changelog.md` → `changelog.xml`) as the de-risking proof for a later full migration. Suite 302 → 584, 0 failures. Zero new runtime dependencies.
