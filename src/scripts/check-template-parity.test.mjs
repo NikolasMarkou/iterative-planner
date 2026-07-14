@@ -14,6 +14,7 @@ import {
   report,
   DOC_REL,
   SRC_REL,
+  EXPECTED_SLUGS,
 } from "./check-template-parity.mjs";
 import { PLAN_TEMPLATES } from "./bootstrap.mjs";
 import { resolveTemplate } from "./emit-template.mjs";
@@ -30,6 +31,10 @@ const region = (slug, ...bodyLines) =>
 // Two templates, two matching regions. Bodies carry the trailing "\n" every template has.
 const TEMPLATES = { alpha: "# Alpha\n- one\n", beta: "# Beta\n" };
 const DOC_OK = doc(region("alpha", "# Alpha", "- one"), region("beta", "# Beta"));
+
+// The fixtures carry 2 templates, so they declare their own coverage floor. The REAL floor
+// (EXPECTED_SLUGS = 12) is exercised by the vacuous-pass test and the LIVE test at the bottom.
+const FIXTURE_FLOOR = 2;
 
 const rules = (issues) => issues.map((i) => i.rule);
 const msgs = (issues) => issues.map((i) => i.message).join(" | ");
@@ -78,14 +83,14 @@ test("locateTemplateKey finds both bare and quoted PLAN_TEMPLATES keys", () => {
 // --- (a) parity -------------------------------------------------------------
 
 test("(a) identical maps pass, and the report names how many slugs were compared", () => {
-  const { issues, compared } = checkParity(TEMPLATES, DOC_OK);
+  const { issues, compared } = checkParity(TEMPLATES, DOC_OK, "", FIXTURE_FLOOR);
   assert.deepEqual(issues, []);
   assert.equal(compared, 2);
 });
 
 test("(a) THE DEFECT: a one-character drift in a template body is CAUGHT", () => {
   const drifted = { ...TEMPLATES, alpha: "# Alpha\n- onE\n" };
-  const { issues } = checkParity(drifted, DOC_OK);
+  const { issues } = checkParity(drifted, DOC_OK, "", FIXTURE_FLOOR);
   assert.equal(issues.length, 1);
   assert.equal(issues[0].rule, "parity");
   assert.match(issues[0].message, /alpha/);
@@ -94,7 +99,7 @@ test("(a) THE DEFECT: a one-character drift in a template body is CAUGHT", () =>
 
 test("(a) THE SUBTLE ONE: a trailing-newline-only difference is CAUGHT", () => {
   const drifted = { ...TEMPLATES, beta: "# Beta" }; // lost its trailing newline
-  const { issues } = checkParity(drifted, DOC_OK);
+  const { issues } = checkParity(drifted, DOC_OK, "", FIXTURE_FLOOR);
   assert.equal(issues.length, 1);
   assert.equal(issues[0].rule, "parity");
   assert.match(issues[0].message, /beta/);
@@ -102,13 +107,13 @@ test("(a) THE SUBTLE ONE: a trailing-newline-only difference is CAUGHT", () => {
 
 test("(a) a whitespace-only difference is CAUGHT (trailing space is not invisible to a gate)", () => {
   const drifted = { ...TEMPLATES, alpha: "# Alpha\n- one \n" };
-  const { issues } = checkParity(drifted, DOC_OK);
+  const { issues } = checkParity(drifted, DOC_OK, "", FIXTURE_FLOOR);
   assert.deepEqual(rules(issues), ["parity"]);
 });
 
 test("(a) a parity failure points at a real line in the doc, so the failure names a place", () => {
   const drifted = { ...TEMPLATES, alpha: "# Alpha\n- two\n" };
-  const { issues } = checkParity(drifted, DOC_OK);
+  const { issues } = checkParity(drifted, DOC_OK, "", FIXTURE_FLOOR);
   const lines = DOC_OK.split("\n");
   assert.equal(issues[0].file, DOC_REL);
   assert.equal(lines[issues[0].line - 1], "- one"); // the cited line IS the divergent one
@@ -116,15 +121,16 @@ test("(a) a parity failure points at a real line in the doc, so the failure name
 
 test("(a) `compared` counts only slugs actually byte-compared — a gate that compares nothing is the defect", () => {
   // Doc has one region; the other template is unregioned and therefore uncompared.
-  const { compared } = checkParity(TEMPLATES, doc(region("alpha", "# Alpha", "- one")));
+  const { compared } = checkParity(TEMPLATES, doc(region("alpha", "# Alpha", "- one")), "", FIXTURE_FLOOR);
   assert.equal(compared, 1);
 });
 
 // --- (b) completeness -------------------------------------------------------
 
 test("(b) a template with no SKELETON region is CAUGHT", () => {
-  const { issues } = checkParity(TEMPLATES, doc(region("alpha", "# Alpha", "- one")));
-  assert.deepEqual(rules(issues), ["completeness"]);
+  const { issues } = checkParity(TEMPLATES, doc(region("alpha", "# Alpha", "- one")), "", FIXTURE_FLOOR);
+  // An unregioned template is also an UNCOMPARED one, so the coverage floor fires alongside.
+  assert.deepEqual(rules(issues), ["completeness", "coverage"]);
   assert.match(issues[0].message, /beta/);
   assert.equal(issues[0].file, DOC_REL);
 });
@@ -135,30 +141,30 @@ test("(b) a SKELETON region with no template is CAUGHT (orphans fail in BOTH dir
     region("beta", "# Beta"),
     region("ghost", "# Ghost"),
   );
-  const { issues } = checkParity(TEMPLATES, withGhost);
+  const { issues } = checkParity(TEMPLATES, withGhost, "", FIXTURE_FLOOR);
   assert.deepEqual(rules(issues), ["completeness"]);
   assert.match(issues[0].message, /ghost/);
 });
 
 test("(b) a region whose marker lost its fenced block fails loudly instead of skipping silently", () => {
   const broken = doc(region("alpha", "# Alpha", "- one"), "<!-- SKELETON:beta -->", "# Beta", "");
-  const { issues, compared } = checkParity(TEMPLATES, broken);
-  assert.deepEqual(rules(issues), ["completeness"]);
+  const { issues, compared } = checkParity(TEMPLATES, broken, "", FIXTURE_FLOOR);
+  assert.deepEqual(rules(issues), ["completeness", "coverage"]);
   assert.match(issues[0].message, /beta/);
   assert.equal(compared, 1);
 });
 
 test("(b) an empty doc fails every slug rather than passing vacuously", () => {
-  const { issues, compared } = checkParity(TEMPLATES, "");
+  const { issues, compared } = checkParity(TEMPLATES, "", "", FIXTURE_FLOOR);
   assert.equal(compared, 0);
-  assert.deepEqual(rules(issues), ["completeness", "completeness"]);
+  assert.deepEqual(rules(issues), ["completeness", "completeness", "coverage"]);
 });
 
 // --- (c) encodability -------------------------------------------------------
 
 test("(c) a template containing a triple-backtick fence is CAUGHT (it would close its region early)", () => {
   const bad = { ...TEMPLATES, alpha: "# Alpha\n```js\ncode\n```\n" };
-  const { issues } = checkParity(bad, DOC_OK, "export const PLAN_TEMPLATES = {\n  alpha: `x`,");
+  const { issues } = checkParity(bad, DOC_OK, "export const PLAN_TEMPLATES = {\n  alpha: `x`,", FIXTURE_FLOOR);
   assert.ok(rules(issues).includes("encodability"));
   const enc = issues.find((i) => i.rule === "encodability");
   assert.match(enc.message, /alpha/);
@@ -168,16 +174,75 @@ test("(c) a template containing a triple-backtick fence is CAUGHT (it would clos
 
 test("(c) a template containing the literal <!-- TEMPLATE: is CAUGHT (it would truncate emit-template's last slice)", () => {
   const bad = { ...TEMPLATES, beta: "# Beta\n<!-- TEMPLATE:beta -->\n" };
-  const { issues } = checkParity(bad, DOC_OK);
+  const { issues } = checkParity(bad, DOC_OK, "", FIXTURE_FLOOR);
   const enc = issues.filter((i) => i.rule === "encodability");
   assert.equal(enc.length, 1);
   assert.match(enc[0].message, /beta/);
 });
 
+// --- (d) typing / (e) line-endings / (f) duplicate-region / (g) coverage -----
+// The four ways the reviewer got this gate to pass while comparing garbage, or nothing at all.
+
+test("(f) THE SHADOWED REGION: a duplicate SKELETON marker is CAUGHT, naming BOTH lines", () => {
+  // The reviewer's fixture. Two `SKELETON:alpha` regions; the FIRST — the one a human reading
+  // the doc actually reads — is garbage. Last-wins silently compared the second and reported
+  // issues=0. First-wins + a duplicate report means neither copy can hide.
+  const shadowed = doc(
+    region("alpha", "TOTAL GARBAGE"),
+    region("beta", "# Beta"),
+    region("alpha", "# Alpha", "- one"),
+  );
+  const { issues } = checkParity(TEMPLATES, shadowed, "", FIXTURE_FLOOR);
+  const dup = issues.find((i) => i.rule === "duplicate-region");
+  assert.ok(dup, `expected a duplicate-region issue, got: ${rules(issues).join(",")}`);
+  assert.match(dup.message, /alpha/);
+  const lines = shadowed.split("\n");
+  const markers = lines.reduce((a, l, i) => (l === "<!-- SKELETON:alpha -->" ? [...a, i + 1] : a), []);
+  assert.equal(markers.length, 2);
+  assert.match(dup.message, new RegExp(`${markers[0]} and ${markers[1]}`)); // both lines named
+  // And the garbage first region is what got compared, so parity fails too — it cannot hide.
+  assert.ok(rules(issues).includes("parity"));
+});
+
+test("(g) THE VACUOUS PASS: checkParity({}, \"\") compares nothing and must FAIL on coverage", () => {
+  // This returned issues=0, compared=0 and PASSED. `make validate` runs the CLI, not the suite,
+  // so the floor has to live in the gate — an assertion here would have left it to a human.
+  const { issues, compared } = checkParity({}, "");
+  assert.equal(compared, 0);
+  assert.deepEqual(rules(issues), ["coverage"]);
+  assert.match(issues[0].message, /0 of 12/);
+});
+
+test("(g) EXPECTED_SLUGS is the real floor: the live template count must not drop below it", () => {
+  assert.equal(EXPECTED_SLUGS, 12);
+  assert.ok(Object.keys(PLAN_TEMPLATES).length >= EXPECTED_SLUGS);
+});
+
+test("(d) a non-string template is REPORTED, not thrown on", () => {
+  const bad = { ...TEMPLATES, beta: 42 };
+  let out;
+  assert.doesNotThrow(() => {
+    out = checkParity(bad, DOC_OK, "export const PLAN_TEMPLATES = {\n  beta: 42,", FIXTURE_FLOOR);
+  }, "a non-string template used to blow up with a raw TypeError");
+  const typing = out.issues.find((i) => i.rule === "typing");
+  assert.ok(typing);
+  assert.match(typing.message, /beta is number/);
+  assert.equal(typing.file, SRC_REL);
+  assert.equal(out.compared, 1); // beta's byte rules skipped; alpha still compared
+});
+
+test("(e) a CRLF doc emits ONE line-endings hint instead of a wall of unexplained parity failures", () => {
+  const { issues } = checkParity(TEMPLATES, DOC_OK.replace(/\n/g, "\r\n"), "", FIXTURE_FLOOR);
+  const hint = issues.filter((i) => i.rule === "line-endings");
+  assert.equal(hint.length, 1);
+  assert.equal(hint[0].line, 1);
+  assert.match(hint[0].message, /CRLF/);
+});
+
 // --- report -----------------------------------------------------------------
 
 test("report renders the house failure format: two-space indent, file:line, [rule], message", () => {
-  const { issues } = checkParity({ ...TEMPLATES, beta: "# BETA\n" }, DOC_OK);
+  const { issues } = checkParity({ ...TEMPLATES, beta: "# BETA\n" }, DOC_OK, "", FIXTURE_FLOOR);
   assert.match(report(issues), /^ {2}src\/references\/file-formats\.md:\d+ \[parity\] /);
 });
 
