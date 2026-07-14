@@ -13,7 +13,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
-import { resolveTemplate, VALID_TEMPLATES } from "./emit-template.mjs";
+import { resolveTemplate, servedRegionEnd, VALID_TEMPLATES, TEMPLATE_MARKER } from "./emit-template.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const emitTemplatePath = join(here, "emit-template.mjs");
@@ -207,4 +207,81 @@ test("resolveTemplate returns ok:false for unknown slug (default base)", () => {
   const r = resolveTemplate("bogus");
   assert.equal(r.ok, false);
   assert.match(r.message, /unknown template/);
+});
+
+// --- servedRegionEnd: the shared served-region boundary (D-008) ----------------
+// servedRegionEnd OWNS "where does the half emit-template serves to agents end". The checker
+// IMPORTS it (see check-template-parity.mjs) instead of re-deriving the boundary with an exact-line
+// END match — so the two consumers cannot disagree. These tests pin the properties CLAUDE.md's
+// "may only widen" clause depends on.
+
+test("servedRegionEnd(realDoc) is the <!-- TEMPLATE:END --> line, not the prose substrings after it", () => {
+  const text = readFileSync(fileFormatsPath, "utf8");
+  const lines = text.split("\n");
+  const end = servedRegionEnd(text); // 0-based line index
+  // It lands on the standalone END terminator — the terminator of the LAST valid slug.
+  assert.equal(lines[end].trim(), "<!-- TEMPLATE:END -->");
+  // And NOT on the last `<!-- TEMPLATE:` SUBSTRING in the doc: the skeleton-half prose below END
+  // contains that substring (the 1029/1031 landmine). A naive last-substring definition would land
+  // there and widen the scan into the skeletons. Prove those substrings sit AFTER the boundary.
+  let lastSubstringLine = -1;
+  for (let i = 0; i < lines.length; i++) if (lines[i].includes(TEMPLATE_MARKER)) lastSubstringLine = i;
+  assert.ok(lastSubstringLine > end, "prose `<!-- TEMPLATE:` substrings must sit AFTER the boundary");
+});
+
+test("servedRegionEnd: renaming END + an early decoy END does NOT move the boundary earlier", () => {
+  const baseline = [
+    "<!-- TEMPLATE:state -->",
+    "state body",
+    "<!-- TEMPLATE:index -->",
+    "index body",
+    "<!-- TEMPLATE:END -->",
+    "skeleton half",
+  ].join("\n");
+  assert.equal(servedRegionEnd(baseline), 4); // END, terminator of the last slug `index`
+
+  // Reviewer 4's exact move: rename the real terminator, insert a fresh decoy END BEFORE the last slug.
+  const exploit = [
+    "<!-- TEMPLATE:state -->",
+    "state body",
+    "<!-- TEMPLATE:END -->",         // decoy inserted early (line 2)
+    "<!-- TEMPLATE:index -->",       // last valid slug (line 3)
+    "poison line below the decoy",   // (line 4)
+    "<!-- TEMPLATE:END-OF-LIST -->", // real terminator renamed (line 5)
+    "skeleton half",
+  ].join("\n");
+  const moved = servedRegionEnd(exploit);
+  // Anchored to the last slug's terminator (line 5), NOT the early decoy (line 2). The poison at
+  // line 4 stays INSIDE the served region — the exploit cannot hide it by shrinking the boundary.
+  assert.equal(moved, 5);
+  assert.ok(moved > 4);
+});
+
+test("servedRegionEnd: a later valid-slug marker only widens the boundary", () => {
+  const before = [
+    "<!-- TEMPLATE:state -->",
+    "state body",
+    "<!-- TEMPLATE:END -->",
+    "skeleton",
+  ].join("\n");
+  assert.equal(servedRegionEnd(before), 2); // END, terminator of `state`
+
+  const widened = [
+    "<!-- TEMPLATE:state -->",
+    "state body",
+    "<!-- TEMPLATE:END -->",
+    "skeleton",
+    "<!-- TEMPLATE:index -->", // a real slug added later (line 4)
+    "index body",
+    "<!-- TEMPLATE:END -->",   // its terminator (line 6)
+  ].join("\n");
+  const after = servedRegionEnd(widened);
+  assert.equal(after, 6);
+  assert.ok(after > 2, "a later slug moves the last-slug terminator later — widen only");
+});
+
+test("servedRegionEnd: no slug marker at all → end of doc (fail-closed, scan everything)", () => {
+  assert.equal(servedRegionEnd(""), 1); // "".split("\n") === [""]
+  const noMarkers = "line one\nline two\nline three";
+  assert.equal(servedRegionEnd(noMarkers), noMarkers.split("\n").length);
 });

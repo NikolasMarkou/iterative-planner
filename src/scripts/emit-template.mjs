@@ -34,6 +34,44 @@ import { fileURLToPath } from "node:url";
 
 export const VALID_TEMPLATES = ["state","plan","decisions","findings","progress","verification","checkpoints","findings-consolidated","decisions-consolidated","lessons","system","index","lessons-snapshot","changelog","summary","presentation-contracts","lessons-synthesis"];
 
+// DECISION plan-2026-07-14T141152-113d5b92/D-008: the single owner of the marker grammar.
+// This literal governs BOTH resolveTemplate's per-slice terminator scan AND servedRegionEnd's
+// served-region boundary. Do NOT re-declare "<!-- TEMPLATE:" anywhere else (esp. NOT in the
+// checker) — the whole failure class this fixes is two hand-maintained copies of one grammar
+// diverging. One definition, imported by every consumer.
+export const TEMPLATE_MARKER = "<!-- TEMPLATE:";
+
+// DECISION plan-2026-07-14T141152-113d5b92/D-008: the boundary between the half emit-template
+// serves to agents and the skeleton half, under emit-template's OWN terminator grammar. The
+// checker IMPORTS this and uses it for its scan `stop` — it must NOT re-derive the boundary with
+// an exact-line `<!-- TEMPLATE:END -->` match (that hand-derivation diverged from this substring
+// grammar four times; Reviewer 4 renamed the terminator + planted an early decoy END to shrink
+// the checker's scan while this served region stayed put).
+//
+// Definition: the point past which no slug slice extends = the terminator of the LAST valid slug.
+// That terminator is the FIRST line containing TEMPLATE_MARKER strictly AFTER the last-positioned
+// `<!-- TEMPLATE:<slug> -->` marker with slug ∈ VALID_TEMPLATES. Anchoring to the last SLUG's
+// terminator (not "the last TEMPLATE_MARKER substring in the doc") is load-bearing: in the real
+// doc the terminator `<!-- TEMPLATE:END -->` (line 1016) is followed by prose lines that also
+// contain the substring `<!-- TEMPLATE:` (~1029/1031); a naive last-substring definition would
+// land there and widen the scan into the skeleton regions (false positives). Returns a 0-BASED
+// LINE INDEX the checker assigns directly to `stop`. No slug marker at all → end-of-doc
+// (fail-closed: scan everything).
+const SLUG_MARKER_RE = /^<!-- TEMPLATE:([A-Za-z-]+) -->$/;
+export function servedRegionEnd(text) {
+  const lines = (text || "").split("\n");
+  let lastSlugLine = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const m = SLUG_MARKER_RE.exec(lines[i].trim());
+    if (m && VALID_TEMPLATES.includes(m[1])) lastSlugLine = i;
+  }
+  if (lastSlugLine === -1) return lines.length;
+  for (let i = lastSlugLine + 1; i < lines.length; i++) {
+    if (lines[i].includes(TEMPLATE_MARKER)) return i;
+  }
+  return lines.length;
+}
+
 const USAGE = "Usage: node emit-template.mjs --name <" + VALID_TEMPLATES.join("|") + ">";
 
 // Pure, injectable seam: resolve and validate a template slice, returning a tagged
@@ -60,7 +98,7 @@ export function resolveTemplate(slug, fileFormatsUrl = new URL("../references/fi
   let start = buf.indexOf(0x0a, mIdx);
   start = start === -1 ? buf.length : start + 1;
   // Slice ends at the start of the NEXT marker (END terminator guarantees one exists).
-  const nextIdx = buf.indexOf(Buffer.from("<!-- TEMPLATE:"), start);
+  const nextIdx = buf.indexOf(Buffer.from(TEMPLATE_MARKER), start);
   const end = nextIdx === -1 ? buf.length : nextIdx;
   const body = buf.subarray(start, end);
   if (body.length === 0 || body.toString().trim() === "") {
