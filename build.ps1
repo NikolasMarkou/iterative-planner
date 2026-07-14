@@ -428,6 +428,18 @@ function Invoke-SyncSkill {
     New-Item -ItemType Directory -Force -Path "$skillInstallDir/agents" | Out-Null
     New-Item -ItemType Directory -Force -Path $agentsInstallDir | Out-Null
 
+    # Prune before copy: Copy-Item alone cannot remove a file that was DELETED from the repo, so a
+    # copy-only sync leaves orphans behind forever (v2.35.0 removed xml.mjs/changelog.mjs; a
+    # copy-only sync would have left both live in the install). Prune by glob, per directory.
+    # The four dirs below are wholly owned by this skill, so a glob prune is safe there.
+    Remove-Item "$skillInstallDir/scripts/*.mjs" -Force -ErrorAction SilentlyContinue
+    Remove-Item "$skillInstallDir/scripts/modules/*.md" -Force -ErrorAction SilentlyContinue
+    Remove-Item "$skillInstallDir/references/*.md" -Force -ErrorAction SilentlyContinue
+    Remove-Item "$skillInstallDir/agents/*.md" -Force -ErrorAction SilentlyContinue
+    # $agentsInstallDir is SHARED with every other installed skill. Prune ONLY our own ip-*.md
+    # agents here — a glob prune would delete other skills' agent definitions.
+    Remove-Item (Join-Path $agentsInstallDir "ip-*.md") -Force -ErrorAction SilentlyContinue
+
     Copy-Item "src/SKILL.md" "$skillInstallDir/SKILL.md"
     Copy-Item "src/scripts/*.mjs" "$skillInstallDir/scripts/"
     Copy-Item "src/scripts/modules/*.md" "$skillInstallDir/scripts/modules/"
@@ -438,7 +450,46 @@ function Invoke-SyncSkill {
     Copy-Item "src/agents/*.md" "$skillInstallDir/agents/"
     Copy-Item "src/agents/*.md" $agentsInstallDir
 
-    Write-Host "Sync complete" -ForegroundColor Green
+    # Verify every synced tree. The Makefile checked only agents+modules and build.ps1 checked
+    # nothing at all, so a stale script or reference could survive a clean-looking sync.
+    $pairs = @(
+        @{ Src = "src/scripts";         Dst = "$skillInstallDir/scripts";         Filter = "*.mjs" },
+        @{ Src = "src/scripts/modules"; Dst = "$skillInstallDir/scripts/modules"; Filter = "*.md"  },
+        @{ Src = "src/references";      Dst = "$skillInstallDir/references";       Filter = "*.md"  },
+        @{ Src = "src/agents";          Dst = "$skillInstallDir/agents";           Filter = "*.md"  }
+    )
+    $mismatch = $false
+    foreach ($p in $pairs) {
+        $srcNames = @(Get-ChildItem -Path $p.Src -Filter $p.Filter -File | Select-Object -ExpandProperty Name | Sort-Object)
+        $dstNames = @(Get-ChildItem -Path $p.Dst -Filter $p.Filter -File | Select-Object -ExpandProperty Name | Sort-Object)
+        $delta = Compare-Object -ReferenceObject $srcNames -DifferenceObject $dstNames
+        if ($delta) {
+            Write-Host "ERROR: sync mismatch in $($p.Dst)" -ForegroundColor Red
+            $delta | ForEach-Object {
+                $side = if ($_.SideIndicator -eq '<=') { "missing from install" } else { "orphan in install" }
+                Write-Host "  $($_.InputObject) — $side" -ForegroundColor Red
+            }
+            $mismatch = $true
+            continue
+        }
+        foreach ($n in $srcNames) {
+            $a = (Get-FileHash (Join-Path $p.Src $n) -Algorithm SHA256).Hash
+            $b = (Get-FileHash (Join-Path $p.Dst $n) -Algorithm SHA256).Hash
+            if ($a -ne $b) {
+                Write-Host "ERROR: content differs: $n in $($p.Dst)" -ForegroundColor Red
+                $mismatch = $true
+            }
+        }
+    }
+    $skillSrcHash = (Get-FileHash "src/SKILL.md" -Algorithm SHA256).Hash
+    $skillDstHash = (Get-FileHash "$skillInstallDir/SKILL.md" -Algorithm SHA256).Hash
+    if ($skillSrcHash -ne $skillDstHash) {
+        Write-Host "ERROR: content differs: SKILL.md" -ForegroundColor Red
+        $mismatch = $true
+    }
+    if ($mismatch) { exit 1 }
+
+    Write-Host "Sync verified (scripts, references, agents, modules, SKILL.md)." -ForegroundColor Green
 }
 
 # Execute command

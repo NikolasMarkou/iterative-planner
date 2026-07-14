@@ -258,6 +258,17 @@ sync-skill:
 	mkdir -p $(SKILL_INSTALL_DIR)/scripts/modules
 	mkdir -p $(SKILL_INSTALL_DIR)/agents
 	mkdir -p $(AGENTS_INSTALL_DIR)
+# Prune before copy: `cp` alone cannot remove a file that was DELETED from the repo, so a
+# copy-only sync leaves orphans behind forever (v2.35.0 removed xml.mjs/changelog.mjs; a
+# copy-only sync would have left both live in the install). Prune by glob, per directory.
+# The four dirs below are wholly owned by this skill, so a glob prune is safe there.
+	rm -f $(SKILL_INSTALL_DIR)/scripts/*.mjs
+	rm -f $(SKILL_INSTALL_DIR)/scripts/modules/*.md
+	rm -f $(SKILL_INSTALL_DIR)/references/*.md
+	rm -f $(SKILL_INSTALL_DIR)/agents/*.md
+# $(AGENTS_INSTALL_DIR) is SHARED with every other installed skill. Prune ONLY our own
+# ip-*.md agents here — a glob prune would delete other skills' agent definitions.
+	rm -f $(AGENTS_INSTALL_DIR)/ip-*.md
 	cp src/SKILL.md $(SKILL_INSTALL_DIR)/SKILL.md
 	cp src/scripts/*.mjs $(SKILL_INSTALL_DIR)/scripts/
 	cp src/scripts/modules/*.md $(SKILL_INSTALL_DIR)/scripts/modules/
@@ -265,7 +276,15 @@ sync-skill:
 	cp README.md LICENSE CHANGELOG.md $(SKILL_INSTALL_DIR)/
 	cp src/agents/*.md $(SKILL_INSTALL_DIR)/agents/
 	cp src/agents/*.md $(AGENTS_INSTALL_DIR)/
-	diff -rq --exclude='.claude' src/agents $(SKILL_INSTALL_DIR)/agents && diff -rq --exclude='.claude' src/scripts/modules $(SKILL_INSTALL_DIR)/scripts/modules && echo "Sync verified." || (echo "ERROR: sync diff mismatch" && exit 1)
+# Verify ALL synced trees, not just agents+modules. The old check diffed only those two, so a
+# stale script or reference could survive a "Sync verified." with no complaint.
+	@diff -rq --exclude='.claude' src/scripts $(SKILL_INSTALL_DIR)/scripts \
+	  && diff -rq --exclude='.claude' src/references $(SKILL_INSTALL_DIR)/references \
+	  && diff -rq --exclude='.claude' src/agents $(SKILL_INSTALL_DIR)/agents \
+	  && diff -rq --exclude='.claude' src/scripts/modules $(SKILL_INSTALL_DIR)/scripts/modules \
+	  && diff -q src/SKILL.md $(SKILL_INSTALL_DIR)/SKILL.md \
+	  && echo "Sync verified (scripts, references, agents, modules, SKILL.md)." \
+	  || (echo "ERROR: sync diff mismatch" && exit 1)
 
 # Help
 .PHONY: help
