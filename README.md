@@ -281,13 +281,13 @@ Templates for every file are in [`src/references/file-formats.md`](src/reference
 
 ### File ownership
 
-Each file has a single owner. Only the owner writes; others read. This prevents concurrent-write conflicts when sub-agents run in parallel. Co-ownership is permitted where writes are disjoint and never concurrent (the orchestrator sequences them); the orchestrator's co-owned writes are confined to Post-Step Gate cursor/ledger updates.
+Each file has a single owner. Only the owner writes; others read. This prevents concurrent-write conflicts when sub-agents run in parallel. Co-ownership is permitted where writes are disjoint and never concurrent (the orchestrator sequences the writers), and each co-owner's scope is named in the table. Usually the orchestrator is the non-authoring co-writer, confined to Post-Step Gate cursor/ledger updates. `decisions.md` inverts this — the Orchestrator and Plan-writer author the entries, while the Executor writes into entries it did not author (back-filling `Anchor-Refs`, recording DRY exceptions) inside its own step's commit.
 
 | File | Owner | Readers |
 |------|-------|---------|
 | `state.md` | Orchestrator | All agents |
 | `plan.md` | Plan-writer (full rewrite) + Orchestrator (Post-Step Gate) | Executor, Verifier |
-| `decisions.md` | Orchestrator + Plan-writer | All agents |
+| `decisions.md` | Orchestrator + Plan-writer (author entries) + Executor (back-fills `Anchor-Refs` on anchored entries, records DRY exceptions) | All agents |
 | `findings.md` (index) | Orchestrator | Plan-writer, Reviewer |
 | `findings/{topic}.md` | Explorer (one file per explorer) | Orchestrator, Plan-writer |
 | `findings/review-iter-N.md` | Reviewer | Orchestrator |

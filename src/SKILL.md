@@ -161,7 +161,7 @@ R = read only | W = update (implicit read + write) | R+W = distinct read and wri
 |------|---------|------|---------|---------|---------|-------|
 | state.md | W | W | R+W | W | W | W |
 | plan.md | — | W | R+W | R | R | R |
-| decisions.md | — | R+W* | R | R+W | R+W | R |
+| decisions.md | — | R+W* | R+W | R+W | R+W | R |
 | findings.md | W | R | — | R | R+W | R |
 | findings/* | W | R | — | R | R+W | R |
 | progress.md | — | W | R+W | R+W | W | R |
@@ -366,13 +366,13 @@ The iterative planner supports **optional** specialized sub-agents that parallel
 
 ### File Ownership Model
 
-Each file has a clear owner. Only the owner writes. Others read. Co-ownership (multiple writers) is permitted where the writes are disjoint in scope and never concurrent — the orchestrator sequences them. The orchestrator's co-owned writes are confined to Post-Step Gate cursor/ledger updates; the named content owner does all authoring.
+Each file has a clear owner. Only the owner writes. Others read. Co-ownership (multiple writers) is permitted where the writes are disjoint in scope and never concurrent — the orchestrator sequences the writers, and each co-owner's scope is named in the table below. In most co-owned files the orchestrator is the *non-authoring* co-writer: its writes are confined to Post-Step Gate cursor/ledger updates, and the named content owner does all authoring. `decisions.md` inverts this — the Orchestrator and Plan-writer author the entries, while the Executor writes into entries it did not author (back-filling `**Anchor-Refs**:`, recording DRY exceptions) inside its own step's commit rather than at a Post-Step Gate.
 
 | File | Owner (Writes) | Readers |
 |------|----------------|---------|
 | `state.md` | Orchestrator | All agents |
 | `plan.md` | Plan-writer (full rewrite) + Orchestrator (Post-Step Gate: step checkbox, marker, complexity budget) | Executor, Verifier |
-| `decisions.md` | Orchestrator + Plan-writer | All agents |
+| `decisions.md` | Orchestrator + Plan-writer (author entries) + Executor (back-fills `Anchor-Refs` on anchored entries, records DRY exceptions) | All agents |
 | `findings.md` (index) | Orchestrator | Plan-writer, Reviewer |
 | `findings/{topic}.md` | Explorer (one per file) | Orchestrator, Plan-writer |
 | `findings/review-iter-N.md` | Reviewer | Orchestrator |
