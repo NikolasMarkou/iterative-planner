@@ -62,6 +62,61 @@ function isGitRepo() {
   return tryExecArgs("git", ["rev-parse", "--is-inside-work-tree"]) === "true";
 }
 
+// NOTE: every diff-reading signal below used to call `git diff HEAD`, which by
+// design excludes untracked files. A brand-new file therefore scored 0 on LOC
+// churn, public-API touch and test delta — i.e. the CREATE case (the very case
+// the changelog `OP=CREATE(+N)` field exists for, and the riskiest kind of edit)
+// got the LOWEST possible radius. Reproduced pre-fix: a 500-line unstaged new
+// file scored `radius:LOW(0)`; `git add` alone — zero content change — scored
+// `radius:MED(3)`. Executors score a file right after writing it, before staging,
+// so this was the common path, not an edge case.
+//
+// Fix: probe tracked-ness explicitly and, for an untracked-but-existing file,
+// synthesize the CREATE diff from the file BODY (added = line count, removed = 0;
+// the public-API scan runs over the body instead of over diff `+` lines; testDelta
+// unions the untracked entries from `git status --porcelain`).
+//
+// Do NOT "fix" this by teaching the signals to `git add` the file — the scorer is
+// advisory and must never mutate the index. Tracked files keep the exact
+// diff-driven path they had before: their scores must not move.
+function isTracked(p) {
+  return tryExecArgs("git", ["ls-files", "--error-unmatch", "--", p]) !== null;
+}
+
+// Lines of the target file when it is an untracked-but-existing regular file,
+// else null (tracked, deleted, or unreadable → callers use the real diff).
+// Memoized: up to three signals ask for it, and each ask is a git subprocess.
+let untrackedLinesCache; // undefined = not yet computed
+function untrackedLines() {
+  if (untrackedLinesCache !== undefined) return untrackedLinesCache;
+  untrackedLinesCache = null;
+  try {
+    if (existsSync(filePath) && statSync(filePath).isFile() && !isTracked(repoRel)) {
+      const content = readFileSync(filePath, "utf-8");
+      // Trailing newline is a terminator, not a line: `seq 500 > f` is 500 lines,
+      // which is exactly what `git diff --numstat` reports once the file is added.
+      untrackedLinesCache = content === "" ? [] : content.replace(/\r?\n$/, "").split("\n");
+    }
+  } catch {
+    untrackedLinesCache = null;
+  }
+  return untrackedLinesCache;
+}
+
+// Untracked paths per `git status --porcelain` (`?? path`), repo-root-relative —
+// the same frame `git diff --name-only` reports in.
+function untrackedPaths() {
+  const out = tryExecArgs("git", ["status", "--porcelain", "--untracked-files=all"]);
+  if (out == null) return [];
+  return out
+    .split("\n")
+    .filter((l) => l.startsWith("?? "))
+    .map((l) => l.slice(3).trim())
+    // git quotes paths containing special characters (core.quotePath).
+    .map((p) => (p.startsWith('"') && p.endsWith('"') ? p.slice(1, -1) : p))
+    .filter((p) => p.length > 0);
+}
+
 function isBinary(p) {
   try {
     const buf = readFileSync(p, { encoding: null });
@@ -78,7 +133,20 @@ function isBinary(p) {
 // Range 0..3, threshold per references/blast-radius.md.
 // -----------------------------------------------------------------------------
 
+function locScore(total) {
+  if (total <= 20) return 0;
+  if (total <= 80) return 1;
+  if (total <= 200) return 2;
+  return 3;
+}
+
 function locChurn() {
+  // Untracked file → synthesize the CREATE diff from content (see NOTE above).
+  const created = untrackedLines();
+  if (created !== null) {
+    const added = created.length;
+    return { score: locScore(added), added, removed: 0 };
+  }
   // Try staged + unstaged together against HEAD; fall back to working-tree only.
   const numstat =
     tryExecArgs("git", ["diff", "HEAD", "--numstat", "--", repoRel]) ??
@@ -89,13 +157,7 @@ function locChurn() {
   const [a, r] = line.split(/\s+/);
   const added = a === "-" ? 0 : parseInt(a, 10) || 0;
   const removed = r === "-" ? 0 : parseInt(r, 10) || 0;
-  const total = added + removed;
-  let score = 0;
-  if (total <= 20) score = 0;
-  else if (total <= 80) score = 1;
-  else if (total <= 200) score = 2;
-  else score = 3;
-  return { score, added, removed };
+  return { score: locScore(added + removed), added, removed };
 }
 
 // -----------------------------------------------------------------------------
@@ -153,16 +215,27 @@ const CODE_EXTS = new Set([
   ".c", ".h", ".cpp", ".hpp", ".cc", ".php",
 ]);
 
+const PUBLIC_API_RE = /^\+\s*(export\b|pub\s|public\s|def\s+[a-z]|func\s+[A-Z])/;
+
 function publicApiTouch() {
   if (!CODE_EXTS.has(extname(repoRel))) return { score: 0, hits: 0 };
-  const diff =
-    tryExecArgs("git", ["diff", "HEAD", "--", repoRel]) ??
-    tryExecArgs("git", ["diff", "--", repoRel]);
-  if (!diff) return { score: 0, hits: 0 };
-  const adds = diff.split("\n").filter((l) => l.startsWith("+") && !l.startsWith("+++"));
+  let adds;
+  const created = untrackedLines();
+  if (created !== null) {
+    // No diff exists for an untracked file, so scan the BODY. Every line of a new
+    // file is an added line; prefixing with "+" lets the single PUBLIC_API_RE above
+    // stay the one definition of "public symbol" across both paths.
+    adds = created.map((l) => "+" + l);
+  } else {
+    const diff =
+      tryExecArgs("git", ["diff", "HEAD", "--", repoRel]) ??
+      tryExecArgs("git", ["diff", "--", repoRel]);
+    if (!diff) return { score: 0, hits: 0 };
+    adds = diff.split("\n").filter((l) => l.startsWith("+") && !l.startsWith("+++"));
+  }
   let hits = 0;
   for (const l of adds) {
-    if (/^\+\s*(export\b|pub\s|public\s|def\s+[a-z]|func\s+[A-Z])/.test(l)) hits++;
+    if (PUBLIC_API_RE.test(l)) hits++;
   }
   return { score: hits > 0 ? 2 : 0, hits };
 }
@@ -178,12 +251,19 @@ function testDelta() {
   const ext = extname(repoRel);
   const base = basename(repoRel, ext);
   if (!base) return { score: 0, hit: false };
+  // Union the diff with the untracked entries: a brand-new test file is invisible
+  // to `git diff` until it is staged, which is the same blind spot as the CREATE
+  // case above — a fresh test written alongside a fresh module must still count.
   const changed =
     tryExecArgs("git", ["diff", "HEAD", "--name-only"]) ??
     tryExecArgs("git", ["diff", "--name-only"]);
-  if (!changed) return { score: 0, hit: false };
+  const candidates = new Set([
+    ...(changed ? changed.split("\n") : []),
+    ...untrackedPaths(),
+  ]);
+  if (candidates.size === 0) return { score: 0, hit: false };
   const escaped = base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  for (const f of changed.split("\n")) {
+  for (const f of candidates) {
     if (!f) continue;
     if (f === repoRel) continue;
     if (!/(^|\/)(tests?|specs?|__tests__)\//i.test(f) && !/\.(test|spec)\./.test(f)) continue;

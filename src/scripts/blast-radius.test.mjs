@@ -405,3 +405,148 @@ describe("blast-radius.mjs — #9: deps + tests signal contributions", () => {
     } finally { removeTempDir(cwd); }
   });
 });
+
+// Defect #1 — untracked/new files scored LOW(0). Every signal that read the diff
+// called `git diff HEAD`, which by design excludes untracked files, so a brand-new
+// file (the `OP=CREATE` case, and typically the riskiest edit) got the LOWEST
+// possible radius. This had ZERO coverage precisely because every test above stages
+// or commits its fixture first. These tests score files WITHOUT `git add`.
+//
+// Pre-fix repro (500-line new file): unstaged → `radius:LOW(0) loc=0(+0,-0)`;
+// after `git add` with zero content change → `radius:MED(3) loc=3(+500,-0)`.
+describe("blast-radius.mjs — defect #1: untracked (CREATE) files are scored from content", () => {
+  it("500-line UNTRACKED file: loc.added=500, loc.score=3, total score > 0, exit 0", () => {
+    const cwd = makeTempDir();
+    try {
+      const body = Array.from({ length: 500 }, (_, i) => `line${i}`).join("\n") + "\n";
+      writeFileSync(join(cwd, "big.js"), body); // NOT staged, NOT committed
+      const r = run(cwd, "big.js", "--json");
+      assert.equal(r.exitCode, 0, "blast-radius must always exit 0");
+      const o = JSON.parse(r.stdout.trim());
+      assert.equal(o.signals.loc.added, 500,
+        `untracked file must be scored by content; got ${JSON.stringify(o.signals.loc)}`);
+      assert.equal(o.signals.loc.removed, 0);
+      assert.equal(o.signals.loc.score, 3, JSON.stringify(o.signals.loc));
+      assert.ok(o.score > 0, `expected score > 0 for a 500-line new file, got ${o.score}`);
+      assert.notEqual(o.tier, "UNKNOWN");
+    } finally { removeTempDir(cwd); }
+  });
+
+  it("staging an untracked file changes nothing (the pre-fix LOW(0) -> MED(3) jump is gone)", () => {
+    const cwd = makeTempDir();
+    try {
+      const body = Array.from({ length: 500 }, (_, i) => `line${i}`).join("\n") + "\n";
+      writeFileSync(join(cwd, "big.js"), body);
+      const before = JSON.parse(run(cwd, "big.js", "--json").stdout.trim());
+      git(cwd, "add", "big.js"); // zero content change
+      const after = JSON.parse(run(cwd, "big.js", "--json").stdout.trim());
+      assert.deepEqual(before.signals.loc, after.signals.loc,
+        `git add alone must not move the score: ${JSON.stringify(before.signals.loc)} vs ${JSON.stringify(after.signals.loc)}`);
+      assert.equal(before.score, after.score);
+      assert.equal(before.tier, after.tier);
+    } finally { removeTempDir(cwd); }
+  });
+
+  it("UNTRACKED file exporting a public symbol scores api=2 (body scanned, no diff exists)", () => {
+    const cwd = makeTempDir();
+    try {
+      writeFileSync(join(cwd, "newapi.js"), "const priv = 1;\nexport function foo() {}\n"); // untracked
+      const r = run(cwd, "newapi.js", "--json");
+      assert.equal(r.exitCode, 0);
+      const o = JSON.parse(r.stdout.trim());
+      assert.equal(o.signals.api.score, 2, JSON.stringify(o.signals.api));
+      assert.equal(o.signals.api.hits, 1, JSON.stringify(o.signals.api));
+    } finally { removeTempDir(cwd); }
+  });
+
+  it("UNTRACKED test file is seen by testDelta (tests.score=-1) for an untracked module", () => {
+    const cwd = makeTempDir();
+    try {
+      writeFileSync(join(cwd, "widget.js"), "export const w = 1;\n"); // untracked module
+      mkdirSync(join(cwd, "test"));
+      writeFileSync(join(cwd, "test", "widget.test.js"), 'import { w } from "../widget.js";\n'); // untracked test
+      const o = JSON.parse(run(cwd, "widget.js", "--json").stdout.trim());
+      assert.equal(o.signals.tests.hit, true, JSON.stringify(o.signals.tests));
+      assert.equal(o.signals.tests.score, -1, JSON.stringify(o.signals.tests));
+    } finally { removeTempDir(cwd); }
+  });
+
+  it("empty UNTRACKED file scores loc.added=0 and stays LOW (no off-by-one from the trailing newline)", () => {
+    const cwd = makeTempDir();
+    try {
+      writeFileSync(join(cwd, "empty.js"), "");
+      const r = run(cwd, "empty.js", "--json");
+      assert.equal(r.exitCode, 0);
+      const o = JSON.parse(r.stdout.trim());
+      assert.equal(o.signals.loc.added, 0, JSON.stringify(o.signals.loc));
+      assert.equal(o.signals.loc.score, 0);
+    } finally { removeTempDir(cwd); }
+  });
+
+  it("REGRESSION PIN: tracked-file scores are unchanged by the untracked-file fix", () => {
+    // Same three fixtures the tier-boundary suite pins, re-asserted with exact
+    // pre-fix values. If the CREATE synthesis ever leaks into the tracked path,
+    // these move.
+    const cwd = makeTempDir();
+    try {
+      // (a) committed, unmodified file -> everything 0 -> LOW(0)
+      writeFileSync(join(cwd, "quiet.js"), "var a = 1;\n");
+      commitAll(cwd);
+      const quiet = JSON.parse(run(cwd, "quiet.js", "--json").stdout.trim());
+      assert.deepEqual(
+        { loc: quiet.signals.loc.score, added: quiet.signals.loc.added, api: quiet.signals.api.score, score: quiet.score, tier: quiet.tier },
+        { loc: 0, added: 0, api: 0, score: 0, tier: "LOW" }, JSON.stringify(quiet));
+
+      // (b) committed file, unstaged 30-line append -> loc=1, added=30
+      writeFileSync(join(cwd, "churn.js"), "x\n");
+      commitAll(cwd);
+      writeFileSync(join(cwd, "churn.js"), "x\n" + Array.from({ length: 30 }, (_, i) => `l${i}`).join("\n") + "\n");
+      const churn = JSON.parse(run(cwd, "churn.js", "--json").stdout.trim());
+      assert.equal(churn.signals.loc.added, 30, JSON.stringify(churn.signals.loc));
+      assert.equal(churn.signals.loc.removed, 0);
+      assert.equal(churn.signals.loc.score, 1, JSON.stringify(churn.signals.loc));
+
+      // (c) committed file, unstaged export added -> api=2 via the DIFF path
+      //     (only the added line counts — the pre-existing export must NOT be
+      //     re-counted, which is exactly what a body scan on a tracked file would do)
+      writeFileSync(join(cwd, "api.js"), "export const old = 1;\n");
+      commitAll(cwd);
+      writeFileSync(join(cwd, "api.js"), "export const old = 1;\nexport function added() {}\n");
+      const api = JSON.parse(run(cwd, "api.js", "--json").stdout.trim());
+      assert.equal(api.signals.api.hits, 1,
+        `tracked file must be scored from the diff, not the body; got ${JSON.stringify(api.signals.api)}`);
+      assert.equal(api.signals.api.score, 2);
+    } finally { removeTempDir(cwd); }
+  });
+
+  it("UNTRACKED binary file still emits UNKNOWN(unreadable), exit 0", () => {
+    const cwd = makeTempDir();
+    try {
+      writeFileSync(join(cwd, "blob.js"), Buffer.from([0x61, 0x00, 0x62, 0x00]));
+      const r = run(cwd, "blob.js");
+      assert.equal(r.exitCode, 0);
+      assert.match(r.stdout.trim(), /^radius:UNKNOWN\(unreadable\)$/);
+    } finally { removeTempDir(cwd); }
+  });
+
+  it("nonexistent path still emits UNKNOWN(not-tracked), exit 0 (guard preserved)", () => {
+    const cwd = makeTempDir();
+    try {
+      const r = run(cwd, "nope.js", "--json");
+      assert.equal(r.exitCode, 0);
+      const o = JSON.parse(r.stdout.trim());
+      assert.equal(o.tier, "UNKNOWN");
+      assert.equal(o.reason, "not-tracked");
+    } finally { removeTempDir(cwd); }
+  });
+
+  it("untracked file outside a git repo still emits UNKNOWN(no-git), exit 0 (guard preserved)", () => {
+    const dir = makeNonGitDir();
+    try {
+      writeFileSync(join(dir, "loose.js"), "export const q = 1;\n");
+      const r = run(dir, "loose.js");
+      assert.equal(r.exitCode, 0);
+      assert.match(r.stdout.trim(), /^radius:UNKNOWN\(no-git\)$/);
+    } finally { removeTempDir(dir); }
+  });
+});

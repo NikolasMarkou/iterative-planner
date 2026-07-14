@@ -30,6 +30,23 @@ A small change in a shared module can ripple to dozens of callers. A large chang
 
 Signals are intentionally cheap. No AST, no language server, no LLM. False negatives on dynamic dispatch are accepted.
 
+## Untracked / new files (the `CREATE` case)
+
+**A file does not need to be staged or committed to be scored.** Score a file the moment you write it; the result is identical to the score after `git add`.
+
+`git diff HEAD` excludes untracked files by design, so the diff-driven signals would report `0` for a brand-new file — the `OP=CREATE(+N)` case, and usually the riskiest edit. The scorer therefore probes tracked-ness (`git ls-files --error-unmatch`) and, for an untracked-but-existing file, **synthesizes the CREATE diff from the file's content**:
+
+| Signal | Untracked (new file) behavior |
+|---|---|
+| LOC churn | `added` = the file's line count, `removed` = 0 (a trailing newline is a terminator, not a line; an empty file is `added = 0`). Same 0–3 thresholds. |
+| Public-API touch | Scans the file **body** instead of diff `+` lines — every line of a new file is an added line. Same pattern, same 0-or-2 score. |
+| Test coverage delta | The changed-file set unions `git diff --name-only` with the untracked entries of `git status --porcelain`, so a **new** test file written alongside a new module still counts. |
+| Reverse-dep / shared-path / iteration-history | Unchanged — none of them read the diff. |
+
+Tracked files keep the exact diff-driven path: their scores are unaffected by this synthesis (pinned by a regression test). Untracked files that are binary, a directory, or nonexistent still fall through to the `UNKNOWN(...)` guards below.
+
+**Do not** `git add` a file just to score it — the scorer is advisory and never mutates the index.
+
 ## Output format
 
 CLI:
@@ -53,7 +70,7 @@ Field 1 (`radius:TIER(score)`) is what the executor pastes into changelog.md fie
 Failure modes (all exit 0; informational):
 - No git in tree → `radius:UNKNOWN(no-git)`
 - Binary / unreadable → `radius:UNKNOWN(unreadable)`
-- File not in repo (deleted prior, untracked, and no diff) → `radius:UNKNOWN(not-tracked)`
+- File not on disk and not in the diff (deleted prior, never existed) → `radius:UNKNOWN(not-tracked)`
 - Target path is a directory → `radius:UNKNOWN(is-directory)`
 - No file argument supplied → `radius:UNKNOWN(no-file-arg)`
 
