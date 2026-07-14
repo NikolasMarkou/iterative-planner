@@ -180,23 +180,45 @@ describe("bootstrap.mjs", () => {
       }
       // Optional codebase section is present in skeleton (becomes optional only after first archivist rewrite).
       assert.ok(system.includes("## Codebase Specialization"), "should have optional Codebase Specialization section");
-      // The skeleton is the canonical schema from references/file-formats.md ## plans/SYSTEM.md, which is a
-      // BULLET LIST, not italic placeholder paragraphs. These six content bullets were silently missing from
-      // the skeleton until the schema was re-synced; pin them so the omission cannot come back.
+      // The skeleton carries the doc's BULLET-LIST schema, not italic placeholder paragraphs. These
+      // content bullets were silently missing from the skeleton until the schema was re-synced; pin
+      // them so the omission cannot come back. They are ITALIC — every bullet in a fresh atlas is a
+      // schema hint, not an established fact (see the unpopulated-marking test below).
       for (const bullet of [
-        "- In scope vs out of scope.",
-        "- External dependencies (services, APIs, files).",
-        "- Boundary inputs the planner reads but does not own (e.g. CLAUDE.md, config files).",
-        "- Each grounded in a finding-id or decision-id reference",
-        "- Module map: top-level directories and their purpose.",
-        "- Key files (by frequency-of-relevance).",
-        "- Build / test / run commands.",
+        "- *In scope vs out of scope.*",
+        "- *External dependencies (services, APIs, files).*",
+        "- *Boundary inputs the planner reads but does not own (e.g. CLAUDE.md, config files).*",
+        "- *Each grounded in a finding-id or decision-id reference",
+        "- *Module map: top-level directories and their purpose.*",
+        "- *Key files (by frequency-of-relevance).*",
+        "- *Build / test / run commands.*",
       ]) {
         assert.ok(system.includes(bullet), `skeleton should carry the doc's schema bullet: ${bullet}`);
       }
       // Skeleton must be well under the 300-line hard cap.
       const lineCount = system.split("\n").length;
       assert.ok(lineCount < 100, `skeleton should be under 100 lines (got ${lineCount})`);
+    });
+
+    // THE DEFECT: SYSTEM.md is read at the START of EXPLORE and PLAN. A fresh one is EMPTY, but its
+    // bullets are content-shaped ("Top-level building blocks. 5-15 entries."), so an agent mines them
+    // as established system facts. It was the only bootstrap-written file whose empty state was
+    // textually indistinguishable from a populated one. The marking is mechanical, not vibes: the
+    // banner is present AND no bullet is un-italicized.
+    it("a fresh SYSTEM.md reads as UNPOPULATED — banner present, zero un-italicized content bullets", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Test goal");
+      const system = readFileSync(join(dir, "plans", "SYSTEM.md"), "utf-8");
+      assert.ok(
+        system.includes("*UNPOPULATED SKELETON — every bullet below is a schema hint, not an established fact."),
+        "a fresh atlas must announce itself as an unpopulated skeleton",
+      );
+      const bare = system.split("\n").filter((l) => /^- (?!\*)/.test(l));
+      assert.deepEqual(
+        bare,
+        [],
+        `every schema hint must be italicized so it cannot be read as an asserted fact; bare: ${bare.join(" // ")}`,
+      );
     });
 
     it("state.md starts in EXPLORE with iteration 0", () => {

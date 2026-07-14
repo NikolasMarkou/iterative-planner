@@ -1222,33 +1222,34 @@ See references/planning-rigor.md for definitions. -->
 # System Atlas
 *Last refreshed: (none yet) | (no plan closed yet)*
 *Domain-neutral system map. Rewritten at CLOSE — max 300 lines. Read before PLAN/EXPLORE.*
+*UNPOPULATED SKELETON — every bullet below is a schema hint, not an established fact. Rewritten wholesale by ip-archivist at first CLOSE.*
 
 ## Identity
-- What the system is (1-2 sentences). Domain (codebase / research / ops / strategy / other).
+- *What the system is (1-2 sentences). Domain (codebase / research / ops / strategy / other).*
 
 ## Components
-- Top-level building blocks. 5-15 entries. One line each: `name` — role.
+- *Top-level building blocks. 5-15 entries. One line each: `name` — role.*
 
 ## Boundaries
-- In scope vs out of scope.
-- External dependencies (services, APIs, files).
-- Boundary inputs the planner reads but does not own (e.g. CLAUDE.md, config files).
+- *In scope vs out of scope.*
+- *External dependencies (services, APIs, files).*
+- *Boundary inputs the planner reads but does not own (e.g. CLAUDE.md, config files).*
 
 ## Invariants
-- Properties that must always hold (security, data, contracts, performance budgets).
-- Each grounded in a finding-id or decision-id reference (e.g. `see <plan-id>/D-002`).
+- *Properties that must always hold (security, data, contracts, performance budgets).*
+- *Each grounded in a finding-id or decision-id reference (e.g. `see <plan-id>/D-002`).*
 
 ## Flows
-- 3-7 named end-to-end flows: trigger → path → terminus.
+- *3-7 named end-to-end flows: trigger → path → terminus.*
 
 ## Known Patterns
-- Architectural archetypes the system instantiates (e.g. "stateless HTTP API + Redis cache", "FSM-driven CLI", "compiler", "research pipeline", "agent workflow").
+- *Architectural archetypes the system instantiates (e.g. "stateless HTTP API + Redis cache", "FSM-driven CLI", "compiler", "research pipeline", "agent workflow").*
 
 ## Codebase Specialization
 *Optional — present only when domain=codebase. Omit entirely for non-code systems.*
-- Module map: top-level directories and their purpose.
-- Key files (by frequency-of-relevance).
-- Build / test / run commands.
+- *Module map: top-level directories and their purpose.*
+- *Key files (by frequency-of-relevance).*
+- *Build / test / run commands.*
 ```
 
 <!-- SKELETON:findings-consolidated -->

@@ -421,42 +421,47 @@ See references/planning-rigor.md for definitions. -->
 *See references/blast-radius.md for radius scoring. Decision-ref optional — \`-\` means no \`# DECISION\` anchor governs this edit.*
 `,
 
-  // Body is references/file-formats.md ## plans/SYSTEM.md's fenced schema, byte-for-byte, with ONE
-  // deliberate divergence: the `*Last refreshed:*` line. The doc's ## plans/SYSTEM.md section shows
-  // `<plan-id> | <YYYY-MM-DD>`, which describes the POPULATED state; bootstrap writes a file that has
-  // never been populated, so it keeps the "(none yet)" sentinel instead. Every other line adopts the
-  // doc verbatim. That sentinel is NOT a drift: the bytes below are pinned against the doc's
-  // `<!-- SKELETON:system -->` region (which carries the sentinel), not against ## plans/SYSTEM.md.
+  // Pinned against the doc's `<!-- SKELETON:system -->` region — NOT against its `## plans/SYSTEM.md`
+  // section. check-template-parity.mjs enforces that pairing byte-for-byte; nothing enforces the other.
+  // The two doc artifacts describe different states and are DELIBERATELY unequal, in two classes:
+  //   (1) `*Last refreshed:*` — the section shows the POPULATED form (`<plan-id> | <YYYY-MM-DD>`);
+  //       a fresh file was never populated, so it carries the "(none yet)" sentinel.
+  //   (2) unpopulated marking — the UNPOPULATED banner + italicized hint bullets below. The section
+  //       states the schema an ip-archivist FILLS at CLOSE; a fresh file must be readable as empty.
+  //       Un-italicizing a bullet re-creates the defect: SKILL.md has agents read SYSTEM.md at the
+  //       start of EXPLORE and PLAN, where a content-shaped bullet gets mined as an established fact.
+  // Neither divergence is drift. Keep every bullet italic and keep the banner.
   system: `# System Atlas
 *Last refreshed: (none yet) | (no plan closed yet)*
 *Domain-neutral system map. Rewritten at CLOSE — max 300 lines. Read before PLAN/EXPLORE.*
+*UNPOPULATED SKELETON — every bullet below is a schema hint, not an established fact. Rewritten wholesale by ip-archivist at first CLOSE.*
 
 ## Identity
-- What the system is (1-2 sentences). Domain (codebase / research / ops / strategy / other).
+- *What the system is (1-2 sentences). Domain (codebase / research / ops / strategy / other).*
 
 ## Components
-- Top-level building blocks. 5-15 entries. One line each: \`name\` — role.
+- *Top-level building blocks. 5-15 entries. One line each: \`name\` — role.*
 
 ## Boundaries
-- In scope vs out of scope.
-- External dependencies (services, APIs, files).
-- Boundary inputs the planner reads but does not own (e.g. CLAUDE.md, config files).
+- *In scope vs out of scope.*
+- *External dependencies (services, APIs, files).*
+- *Boundary inputs the planner reads but does not own (e.g. CLAUDE.md, config files).*
 
 ## Invariants
-- Properties that must always hold (security, data, contracts, performance budgets).
-- Each grounded in a finding-id or decision-id reference (e.g. \`see <plan-id>/D-002\`).
+- *Properties that must always hold (security, data, contracts, performance budgets).*
+- *Each grounded in a finding-id or decision-id reference (e.g. \`see <plan-id>/D-002\`).*
 
 ## Flows
-- 3-7 named end-to-end flows: trigger → path → terminus.
+- *3-7 named end-to-end flows: trigger → path → terminus.*
 
 ## Known Patterns
-- Architectural archetypes the system instantiates (e.g. "stateless HTTP API + Redis cache", "FSM-driven CLI", "compiler", "research pipeline", "agent workflow").
+- *Architectural archetypes the system instantiates (e.g. "stateless HTTP API + Redis cache", "FSM-driven CLI", "compiler", "research pipeline", "agent workflow").*
 
 ## Codebase Specialization
 *Optional — present only when domain=codebase. Omit entirely for non-code systems.*
-- Module map: top-level directories and their purpose.
-- Key files (by frequency-of-relevance).
-- Build / test / run commands.
+- *Module map: top-level directories and their purpose.*
+- *Key files (by frequency-of-relevance).*
+- *Build / test / run commands.*
 `,
 
   "findings-consolidated": `# Consolidated Findings
