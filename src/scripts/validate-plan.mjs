@@ -22,7 +22,7 @@ import {
   unterminatedCommentOpener,
   ANY_PLAN_ID_PATTERN,
   ANY_PLAN_ID_RE,
-  PLAN_SECTION_RE,
+  PLAN_SECTION_PATTERN,
   DECISION_ID_NUM_PATTERN,
 } from "./shared.mjs";
 // Changelog field shapes are schema-driven (see checkChangelogFormat / D-001).
@@ -800,10 +800,9 @@ function checkCompressionMarkers(issues) {
       continue;
     }
     // One pair: verify it sits before the first `## <plan-id>` section (BOTH
-    // grammars — shared.mjs PLAN_SECTION_RE). `String.search` is lastIndex-safe on
-    // a global regex (it saves/restores it); `.test()` / `.exec()` are NOT — never
-    // call those on PLAN_SECTION_RE.
-    const firstPlanSection = content.search(PLAN_SECTION_RE);
+    // grammars — shared.mjs PLAN_SECTION_PATTERN, a string; this instance is local,
+    // so it shares no `lastIndex` with anyone).
+    const firstPlanSection = content.search(new RegExp(PLAN_SECTION_PATTERN, "gm"));
     if (firstPlanSection !== -1 && opens[0] > firstPlanSection) {
       issues.push({
         severity: "WARN",

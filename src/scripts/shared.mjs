@@ -444,15 +444,17 @@ export const PLAN_DIR_PREFIX_RE = /^plan[-_]/;
 
 /**
  * `## <plan-id>` section header in a consolidated file (plans/FINDINGS.md,
- * plans/DECISIONS.md, …), both grammars. Line-anchored via `m`, global so callers can
- * enumerate every section position in one pass.
+ * plans/DECISIONS.md, …), both grammars. Line-anchored, so it also matches a section at
+ * byte 0 — build it with the `m` flag, and with `g` when enumerating every position.
  *
- * `g` makes this regex STATEFUL: use it only with `String.prototype.search` (which saves
- * and restores lastIndex) or `String.prototype.matchAll` (which clones the regex). Do NOT
- * call `.test()` / `.exec()` on it directly — a shared module-level `g` regex carries
- * lastIndex across calls and will skip matches on the second call.
+ * Exported as a STRING, not a RegExp, and deliberately so: a shared module-level `g`
+ * regex is stateful (`lastIndex`), and `matchAll` does NOT rescue it — it clones the
+ * regex *including* `lastIndex`. Two stray `.test()` calls anywhere would then make
+ * `matchAll` return `[]`, and the consolidated sliding-window trim would silently stop
+ * trimming forever. A string cannot carry state: every call site does
+ * `new RegExp(PLAN_SECTION_PATTERN, "gm")` and owns its own instance.
  */
-export const PLAN_SECTION_RE = /^## plan[-_]/gm;
+export const PLAN_SECTION_PATTERN = "^## plan[-_]";
 
 /**
  * Extract `YYYY-MM-DD` from a plan-id of either grammar. Returns null when the input is

@@ -31,7 +31,7 @@ import {
   PLAN_ID_RE,
   ANY_PLAN_ID_RE,
   PLAN_DIR_PREFIX_RE,
-  PLAN_SECTION_RE,
+  PLAN_SECTION_PATTERN,
   planDateFromId,
   DECISION_ID_NUM_PATTERN,
 } from "./shared.mjs";
@@ -402,15 +402,16 @@ function trimConsolidatedWindow(filePath) {
   let content;
   try { content = readFileSync(filePath, "utf-8"); } catch { return; }
   // Find all `## <plan-id>` section positions, BOTH grammars (shared.mjs
-  // PLAN_SECTION_RE). It is line-anchored (`m`), so it also catches a section
+  // PLAN_SECTION_PATTERN). It is line-anchored (`m`), so it also catches a section
   // that begins at byte 0 with no preceding newline — the pathological
   // consolidated file that lacks the boilerplate H1 header. Each match.index is
   // already AT the heading, so slicing to `positions[N]` cleanly truncates
   // before the Nth section.
   //
-  // PLAN_SECTION_RE is a module-level GLOBAL regex: `matchAll` is lastIndex-safe
-  // (it clones the regex); `.exec()` / `.test()` are NOT — do not use them here.
-  const positions = [...content.matchAll(PLAN_SECTION_RE)].map((m) => m.index);
+  // The pattern is a STRING; this instance is local and freshly built, so no
+  // `lastIndex` can be shared with any other caller. Keep it that way.
+  const sectionRe = new RegExp(PLAN_SECTION_PATTERN, "gm");
+  const positions = [...content.matchAll(sectionRe)].map((m) => m.index);
   if (positions.length <= MAX_CONSOLIDATED_PLANS) return;
   // Truncate after the Nth section (keep first N, they're the newest)
   const cutoff = positions[MAX_CONSOLIDATED_PLANS];

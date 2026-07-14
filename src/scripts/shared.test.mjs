@@ -9,6 +9,10 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "fs";
+import { resolve } from "path";
+
+const SHARED = resolve(import.meta.dirname, "shared.mjs");
 
 import {
   extractField,
@@ -27,7 +31,7 @@ import {
   ANY_PLAN_ID_PATTERN,
   ANY_PLAN_ID_RE,
   PLAN_DIR_PREFIX_RE,
-  PLAN_SECTION_RE,
+  PLAN_SECTION_PATTERN,
   planDateFromId,
   DECISION_ID_NUM_PATTERN,
 } from "./shared.mjs";
@@ -589,19 +593,43 @@ test("PLAN_DIR_PREFIX_RE: cheap prefix filter matches both grammars", () => {
   assert.ok(!PLAN_DIR_PREFIX_RE.test(".current_plan"));
 });
 
-test("PLAN_SECTION_RE: finds `## <plan-id>` section headers of both grammars", () => {
+test("PLAN_SECTION_PATTERN: finds `## <plan-id>` section headers of both grammars", () => {
+  const re = () => new RegExp(PLAN_SECTION_PATTERN, "gm");
   const content = `# Findings\n\n## ${LEGACY_ID}\nold\n\n## ${NEW_ID}\nnew\n`;
-  // matchAll clones the regex, so the module-level `g` regex stays stateless.
-  const hits = [...content.matchAll(PLAN_SECTION_RE)];
-  assert.equal(hits.length, 2);
-  // `search` also saves/restores lastIndex — the two consumer idioms.
-  assert.equal(content.search(PLAN_SECTION_RE), content.indexOf(`## ${LEGACY_ID}`));
-  // Repeat: proves no lastIndex leakage across calls.
-  assert.equal([...content.matchAll(PLAN_SECTION_RE)].length, 2);
+  assert.equal([...content.matchAll(re())].length, 2);
+  assert.equal(content.search(re()), content.indexOf(`## ${LEGACY_ID}`));
   // A section at offset 0 (no leading newline) is still found — `m` flag, not `\n##`.
-  assert.equal(`## ${NEW_ID}\nx`.search(PLAN_SECTION_RE), 0);
+  assert.equal(`## ${NEW_ID}\nx`.search(re()), 0);
   // Non-section headings are not plan sections.
-  assert.equal("## Index\n## Notes\n".search(PLAN_SECTION_RE), -1);
+  assert.equal("## Index\n## Notes\n".search(re()), -1);
+});
+
+// The hazard this export exists to prevent: a module-level `/gm` regex is stateful, and
+// `matchAll` does NOT rescue it — it clones the regex *with* `lastIndex`. Under the old
+// `PLAN_SECTION_RE` export, two `.test()` calls before a `matchAll` returned `[]`, and
+// `trimConsolidatedWindow` then silently stopped trimming forever. A string pattern
+// cannot carry state, so the failure is structurally unreachable rather than
+// prose-guarded. This test would have FAILED against the old export.
+test("PLAN_SECTION_PATTERN: is a string — no shared lastIndex to poison", () => {
+  assert.equal(typeof PLAN_SECTION_PATTERN, "string");
+  assert.ok(!("lastIndex" in Object(PLAN_SECTION_PATTERN)), "a string has no lastIndex");
+
+  const content = `# Findings\n\n## ${LEGACY_ID}\nold\n\n## ${NEW_ID}\nnew\n`;
+  // Hostile idiom: exhaust a `g` instance built from the pattern, THEN scan. Under a
+  // shared instance this poisoned every later consumer; here it cannot escape the caller.
+  const hostile = new RegExp(PLAN_SECTION_PATTERN, "gm");
+  assert.ok(hostile.test(content));
+  assert.ok(hostile.test(content));
+  assert.ok(hostile.lastIndex > 0, "the local instance IS stateful — that is the point");
+  assert.equal([...content.matchAll(new RegExp(PLAN_SECTION_PATTERN, "gm"))].length, 2);
+  assert.equal(content.search(new RegExp(PLAN_SECTION_PATTERN, "gm")), content.indexOf(`## ${LEGACY_ID}`));
+});
+
+test("PLAN_SECTION_RE: the stateful shared instance is gone (not re-exported)", async () => {
+  const mod = await import("./shared.mjs");
+  assert.equal(mod.PLAN_SECTION_RE, undefined, "a shared `g` regex must not be re-introduced");
+  const src = readFileSync(SHARED, "utf-8");
+  assert.ok(!/export const PLAN_SECTION_RE\b/.test(src), "no shared PLAN_SECTION_RE export");
 });
 
 test("planDateFromId: extracts YYYY-MM-DD from both grammars", () => {
