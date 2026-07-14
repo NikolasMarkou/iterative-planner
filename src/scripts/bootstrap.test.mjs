@@ -180,6 +180,20 @@ describe("bootstrap.mjs", () => {
       }
       // Optional codebase section is present in skeleton (becomes optional only after first archivist rewrite).
       assert.ok(system.includes("## Codebase Specialization"), "should have optional Codebase Specialization section");
+      // The skeleton is the canonical schema from references/file-formats.md ## plans/SYSTEM.md, which is a
+      // BULLET LIST, not italic placeholder paragraphs. These six content bullets were silently missing from
+      // the skeleton until the schema was re-synced; pin them so the omission cannot come back.
+      for (const bullet of [
+        "- In scope vs out of scope.",
+        "- External dependencies (services, APIs, files).",
+        "- Boundary inputs the planner reads but does not own (e.g. CLAUDE.md, config files).",
+        "- Each grounded in a finding-id or decision-id reference",
+        "- Module map: top-level directories and their purpose.",
+        "- Key files (by frequency-of-relevance).",
+        "- Build / test / run commands.",
+      ]) {
+        assert.ok(system.includes(bullet), `skeleton should carry the doc's schema bullet: ${bullet}`);
+      }
       // Skeleton must be well under the 300-line hard cap.
       const lineCount = system.split("\n").length;
       assert.ok(lineCount < 100, `skeleton should be under 100 lines (got ${lineCount})`);
