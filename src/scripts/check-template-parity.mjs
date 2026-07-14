@@ -26,12 +26,15 @@
 //                      A gate that cannot fail vacuously must enforce its own floor: `make
 //                      validate` runs this CLI, not the suite, so an assertion in the tests
 //                      would have left the floor to a human reading stdout.
-//   (h) byte-claim   — no prose BEFORE `<!-- TEMPLATE:END -->` may claim to show what bootstrap
-//                      or the executor writes. That half is what `emit-template` serves to
-//                      agents; the SKELETON half is what this gate compares. A byte claim over
-//                      there is a SECOND, UN-GATED copy — free to drift, and served to every
-//                      agent when it does (the exploit that forced iteration 2). Bootstrap's
-//                      bytes are stated ONCE, in the half the gate enforces.
+//   (h) header-copy  — no run of 2+ consecutive lines of any template's HEADER (its leading
+//                      lines up to its first blank line) may appear BEFORE `<!-- TEMPLATE:END -->`.
+//                      That half is what `emit-template` serves to agents; the SKELETON half is
+//                      what this gate compares. A restatement over there is a SECOND, UN-GATED
+//                      copy — free to drift, and served to every agent when it does. This
+//                      COMPARES BYTES against PLAN_TEMPLATES; it does not classify prose. Its
+//                      predecessor was a 4-phrase prose set, and it fell to the first synonym
+//                      tried: a phrase list guesses at intent, and a guess is evadable. It was
+//                      DELETED, not extended — a successful synonym proves the category is wrong.
 //
 // Region<->bytes contract: a body is the lines strictly between the opening ```markdown fence
 // and its closing fence, joined with "\n", plus a trailing "\n". A marker NOT followed by a
@@ -59,14 +62,20 @@ const BANNED = [FENCE, "<!-- TEMPLATE:"];
 // stdout (`make validate` does not run the suite). Bump it when a template is added.
 export const EXPECTED_SLUGS = 12;
 
-// Rule (h)'s phrase set. A SET, not a comparison — deliberately not an allowlist of "which
-// fenced block in which region is byte-claiming", which is the design D-003 rejected (a per-slug
-// allowlist is how check-doc-parity rotted into diffing nothing while its cells lied).
-// THE INVARIANT: if this list ever needs a 5th phrase, a per-slug exception, or an ignore-list to
-// suppress a false positive, DELETE THE RULE — do not grow it. A phrase list that needs
-// exceptions IS an allowlist. The suite assertion pinning the deleted changelog block is the
-// floor, and it is sufficient on its own.
-export const BYTE_CLAIM_PHRASES = ["written by bootstrap", "must match exactly", "update in lockstep", "written by the executor"];
+// A template's HEADER: its leading lines up to (not including) its first blank line. This is the
+// run bootstrap writes and agents never populate — they append BELOW it. It is therefore the only
+// part of a plan file that can exist twice, drift, and lie: a truthful populated example reuses a
+// skeleton's structure (a table header, a `## Completed` heading) but never its header.
+// Contains no blank line by construction, so rule (h) needs no blank-line special case.
+export function header(text) {
+  const lines = (text || "").split("\n");
+  const blank = lines.findIndex((l) => l.trim() === "");
+  return lines.slice(0, blank === -1 ? lines.length : blank);
+}
+
+// The rule's unit of comparison: the adjacent line-pair starting at i. Threshold 2, not 1 — a
+// 1-line run would fire on every `# Progress` heading in the doc.
+const pair = (lines, i) => `${lines[i]}\n${lines[i + 1]}`;
 
 // Scan a doc for `<!-- SKELETON:<slug> -->` regions.
 // Returns { regions: Map<slug, {body, bodyLine, markerLine}>, endLine, duplicates } — 1-based lines.
@@ -135,17 +144,29 @@ export function checkParity(templates, docText, srcText = "", expectedSlugs = EX
       `${DOC_REL} has CRLF line endings; parity compares bytes. Normalize to LF (\`core.autocrlf=input\`).`);
   }
 
-  // (h) byte-claim — the worked-example half (before `<!-- TEMPLATE:END -->`) is what
-  // emit-template serves to agents; the SKELETON half is what this gate compares. Prose claiming
-  // bootstrap's/the executor's exact bytes over there is a second, un-gated copy. No TEMPLATE:END
-  // marker => no provable boundary => scan the whole doc (fail closed).
+  // (h) header-copy — bootstrap's header bytes, compared. Every adjacent line-pair of every
+  // header is a key; any such pair reappearing before `<!-- TEMPLATE:END -->` is an un-gated
+  // second copy. Threshold 2, not 1: a 1-line run would fire on every `# Progress` heading in the
+  // doc. That cost is NAMED, not hidden — `plan` and `progress` have 1-line headers and sit below
+  // it (CLAUDE.md says so). No TEMPLATE:END marker => no provable boundary => scan the whole doc
+  // (fail closed). No allowlist, no exception, no skip: if this fires on something the doc cannot
+  // give up, the RULE's scope is wrong — re-scope it, never exempt the line.
+  const pairs = new Map(); // "<lineA>\n<lineB>" -> slug, over every header of length >= 2
+  for (const slug of slugs.filter((s) => typeof templates[s] === "string")) {
+    const h = header(templates[slug]);
+    for (let i = 0; i + 1 < h.length; i++) if (!pairs.has(pair(h, i))) pairs.set(pair(h, i), slug);
+  }
   const lines = (docText || "").split("\n");
   const tplEnd = lines.findIndex((l) => l.trim() === "<!-- TEMPLATE:END -->");
-  for (let i = 0; i < (tplEnd === -1 ? lines.length : tplEnd); i++) {
-    const hit = BYTE_CLAIM_PHRASES.find((p) => lines[i].includes(p));
-    if (hit) push(DOC_REL, i + 1, "byte-claim",
-      `"${hit}" appears before <!-- TEMPLATE:END --> — bootstrap's bytes may be claimed ONLY in ` +
-      `the <!-- SKELETON:* --> half, the one copy this gate enforces. State them there, point here.`);
+  const stop = tplEnd === -1 ? lines.length : tplEnd;
+  for (let i = 0; i + 1 < stop; i++) {
+    const slug = pairs.get(pair(lines, i));
+    // A 3+-line header overlaps its own windows: report each run once, at its first line.
+    if (!slug || (i > 0 && pairs.get(pair(lines, i - 1)) === slug)) continue;
+    push(DOC_REL, i + 1, "header-copy",
+      `lines ${i + 1}-${i + 2} restate PLAN_TEMPLATES.${slug}'s header bytes before <!-- TEMPLATE:END --> — ` +
+      `an un-gated second copy, and emit-template serves THAT half to agents. State bootstrap's bytes ` +
+      `only in the <!-- SKELETON:${slug} --> region; point here instead.`);
   }
 
   // (f) duplicate-region — a repeated marker means the doc a human reads and the region a

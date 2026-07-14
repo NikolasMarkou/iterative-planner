@@ -10,21 +10,24 @@ import {
   parseSkeletons,
   firstDiffLine,
   locateTemplateKey,
+  header,
   checkParity,
   report,
   DOC_REL,
   SRC_REL,
   EXPECTED_SLUGS,
-  BYTE_CLAIM_PHRASES,
 } from "./check-template-parity.mjs";
 import { PLAN_TEMPLATES } from "./bootstrap.mjs";
 import { resolveTemplate } from "./emit-template.mjs";
 
 // --- fixtures ---------------------------------------------------------------
 
-// A minimal doc in the real shape: prose, then SKELETON regions, then the END terminator.
+// A minimal doc in the real shape: worked-example prose, the TEMPLATE:END boundary, then the
+// SKELETON regions, then the END terminator. The boundary is part of the shape, not decoration:
+// rule (h) forbids bootstrap's header bytes BEFORE it and requires them AFTER it, so a fixture
+// without it is not a model of the doc (and, fail-closed, its own regions would trip the rule).
 const doc = (...regions) =>
-  ["# Formats", "", ...regions, "<!-- SKELETON:END -->", ""].join("\n");
+  ["# Formats", "", "<!-- TEMPLATE:END -->", "", ...regions, "<!-- SKELETON:END -->", ""].join("\n");
 
 const region = (slug, ...bodyLines) =>
   [`<!-- SKELETON:${slug} -->`, "```markdown", ...bodyLines, "```", ""].join("\n");
@@ -47,9 +50,9 @@ test("parseSkeletons lifts each region body as bytes, with a 1-based doc line fo
   assert.deepEqual([...regions.keys()], ["alpha", "beta"]);
   assert.equal(regions.get("alpha").body, "# Alpha\n- one\n");
   assert.equal(regions.get("beta").body, "# Beta\n");
-  // "# Formats"=1, ""=2, marker=3, fence=4, first body line=5.
-  assert.equal(regions.get("alpha").bodyLine, 5);
-  assert.equal(regions.get("alpha").markerLine, 3);
+  // "# Formats"=1, ""=2, TEMPLATE:END=3, ""=4, marker=5, fence=6, first body line=7.
+  assert.equal(regions.get("alpha").bodyLine, 7);
+  assert.equal(regions.get("alpha").markerLine, 5);
   assert.ok(endLine > regions.get("beta").markerLine);
 });
 
@@ -240,64 +243,145 @@ test("(e) a CRLF doc emits ONE line-endings hint instead of a wall of unexplaine
   assert.match(hint[0].message, /CRLF/);
 });
 
-// --- (h) byte-claim ---------------------------------------------------------
-// The mechanical form of this iteration's thesis: bootstrap's bytes are claimed ONLY in the
-// half the gate compares. A phrase set, not a comparison — no allowlist, no per-slug exception.
+// --- (h) header-copy --------------------------------------------------------
+// The predecessor rule classified PROSE (a 4-phrase set) and fell to the first synonym tried.
+// This one COMPARES BYTES against PLAN_TEMPLATES' headers, so there is nothing to reword around.
+// It was deleted, not extended: a successful synonym proves the whole CATEGORY was wrong.
 
-test("(h) byte-claiming prose in the worked-example half is CAUGHT, naming the phrase and the line", () => {
-  // The reviewer's move, generalized: re-introduce the deleted intro line, anywhere before END.
-  const withClaim = [
-    "# Formats",
-    "",
-    "Header (written by bootstrap on plan creation, or by executor on first append if missing):",
-    "",
-    "<!-- TEMPLATE:END -->",
-    "",
-    region("alpha", "# Alpha", "- one"),
-    region("beta", "# Beta"),
-    "<!-- SKELETON:END -->",
-    "",
-  ].join("\n");
-  const { issues } = checkParity(TEMPLATES, withClaim, "", FIXTURE_FLOOR);
-  const claim = issues.filter((i) => i.rule === "byte-claim");
-  assert.equal(claim.length, 1);
-  assert.equal(claim[0].line, 3); // the offending line, 1-based
-  assert.match(claim[0].message, /written by bootstrap/);
-  assert.equal(claim[0].file, DOC_REL);
+test("(h) header returns the leading run up to the first blank line, and nothing below it", () => {
+  assert.deepEqual(header("# A\n*sub*\n\n## Body\n"), ["# A", "*sub*"]);
+  assert.deepEqual(header("# Only\n"), ["# Only"]); // a 1-line header — below the threshold, by design
+  assert.deepEqual(header(""), []);
 });
 
-test("(h) the SAME phrase AFTER <!-- TEMPLATE:END --> does NOT trip it — that half is the gated one", () => {
-  // The whole point: the skeleton half is where bootstrap's bytes are SUPPOSED to be claimed.
-  // A rule that fired there would forbid the one copy the gate exists to enforce.
-  const claimInSkeletonHalf = [
+test("(h) a template's header lines restated in the worked-example half are CAUGHT, naming the slug", () => {
+  const withCopy = [
     "# Formats",
     "",
-    "<!-- TEMPLATE:END -->",
+    "# Alpha",
+    "- one",
     "",
-    "These regions are written by bootstrap and must match exactly — update in lockstep.",
+    "<!-- TEMPLATE:END -->",
     "",
     region("alpha", "# Alpha", "- one"),
     region("beta", "# Beta"),
     "<!-- SKELETON:END -->",
     "",
   ].join("\n");
-  const { issues } = checkParity(TEMPLATES, claimInSkeletonHalf, "", FIXTURE_FLOOR);
+  const { issues } = checkParity(TEMPLATES, withCopy, "", FIXTURE_FLOOR);
+  const copy = issues.filter((i) => i.rule === "header-copy");
+  assert.equal(copy.length, 1);
+  assert.equal(copy[0].line, 3); // the first line of the offending run, 1-based
+  assert.match(copy[0].message, /PLAN_TEMPLATES\.alpha/);
+  assert.match(copy[0].message, /SKELETON:alpha/); // the message says where the bytes DO belong
+  assert.equal(copy[0].file, DOC_REL);
+});
+
+test("(h) the SAME bytes AFTER <!-- TEMPLATE:END --> do NOT trip it — that half is the gated one", () => {
+  // The whole point: the skeleton half is where bootstrap's bytes are SUPPOSED to be stated (every
+  // region body IS a header). A rule that fired there would forbid the one copy the gate enforces.
+  const { issues } = checkParity(TEMPLATES, DOC_OK, "", FIXTURE_FLOOR);
   assert.deepEqual(rules(issues), []);
 });
 
-test("(h) all four phrases are live, and the set stays at four (a 5th phrase means DELETE the rule)", () => {
-  // Pre-Mortem Scenario 2: a phrase list that starts needing exceptions IS an allowlist.
-  // This pins the cap. If a future phrase is genuinely needed, that is the signal to remove
-  // rule (h) and fall back to the suite assertion — not to grow the set.
-  assert.equal(BYTE_CLAIM_PHRASES.length, 4);
-  for (const phrase of BYTE_CLAIM_PHRASES) {
-    const d = ["# Formats", "", `prose that is ${phrase} somewhere`, "", "<!-- TEMPLATE:END -->", ""].join("\n");
-    const { issues } = checkParity(TEMPLATES, d, "", FIXTURE_FLOOR);
+test("(h) a 1-line header does NOT fire — the named gap, pinned so it cannot be silently closed", () => {
+  // `beta` (like the real `plan`/`progress`) has a 1-line header. Lowering the threshold to 1
+  // would fire on every `# Progress` heading in the doc. The gap is declared in CLAUDE.md and in
+  // the Region<->bytes contract; this test is here so a future maintainer meets it deliberately.
+  const withBeta = [
+    "# Formats", "", "# Beta", "", "<!-- TEMPLATE:END -->", "",
+    region("alpha", "# Alpha", "- one"), region("beta", "# Beta"), "<!-- SKELETON:END -->", "",
+  ].join("\n");
+  assert.deepEqual(rules(checkParity(TEMPLATES, withBeta, "", FIXTURE_FLOOR).issues), []);
+});
+
+// --- (h) against the REAL doc and the REAL templates ------------------------
+// D-006: a criterion that names a specific defect tests that defect; only a criterion that
+// quantifies over all instances tests the property. Iterations 1 and 2 both shipped green boards
+// over a false property because their criteria named `changelog` and `lessons`. These name no slug.
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+const REAL_DOC = readFileSync(join(ROOT, DOC_REL), "utf8");
+const REAL_SRC = readFileSync(join(ROOT, SRC_REL), "utf8");
+
+// Splice payload lines into the worked-example half, immediately after a TEMPLATE region marker.
+const injectAfter = (docText, marker, payload) => {
+  const lines = docText.split("\n");
+  const at = lines.findIndex((l) => l.trim() === marker);
+  assert.notEqual(at, -1, `fixture marker not found in the real doc: ${marker}`);
+  lines.splice(at + 1, 0, "", ...payload, "");
+  return lines.join("\n");
+};
+
+const headerCopies = (docText) =>
+  checkParity(PLAN_TEMPLATES, docText, REAL_SRC).issues.filter((i) => i.rule === "header-copy");
+
+test("(S1) THE INVARIANT: no slug's header bytes appear before TEMPLATE:END in the real doc", () => {
+  // Quantified over every template — it names no slug. This is the property iterations 1 and 2
+  // never tested: not "is the changelog block gone?" but "does the doc restate bootstrap ANYWHERE
+  // un-gated?". If a future edit reintroduces ANY header copy, for ANY slug, this goes red.
+  assert.deepEqual(headerCopies(REAL_DOC), [], "the worked-example half restates bootstrap's bytes");
+  assert.equal(Object.keys(PLAN_TEMPLATES).length, EXPECTED_SLUGS);
+});
+
+test("(S2) THE GATE IS NOT VACUOUS: injecting ANY slug's header pair FAILs, for EVERY such slug", () => {
+  // Pre-Mortem Scenario 2, killed: a rule proven to fire for ONE slug is what iteration 2 shipped.
+  // Loop over every slug with a >=2-line header and demand a failure naming THAT slug.
+  const multi = Object.keys(PLAN_TEMPLATES).filter((s) => header(PLAN_TEMPLATES[s]).length >= 2);
+  const single = Object.keys(PLAN_TEMPLATES).filter((s) => header(PLAN_TEMPLATES[s]).length < 2);
+  assert.deepEqual(single, ["plan", "progress"]); // the 1-line-header gap, enumerated not assumed
+  assert.equal(multi.length, 10);
+  for (const slug of multi) {
+    const pair = header(PLAN_TEMPLATES[slug]).slice(0, 2);
+    const hits = headerCopies(injectAfter(REAL_DOC, "<!-- TEMPLATE:progress -->", pair));
     assert.ok(
-      issues.some((i) => i.rule === "byte-claim" && i.message.includes(phrase)),
-      `phrase "${phrase}" is in the set but does not actually fire`,
+      hits.some((i) => i.message.includes(`PLAN_TEMPLATES.${slug}`)),
+      `rule (h) does not fire for slug "${slug}" — a rule that cannot be shown to fire is not a rule`,
     );
   }
+});
+
+test("(S3) the reviewer's iter-2 evasion is DEAD — the synonym rule (h) missed is now a byte match", () => {
+  // The exact payload that walked through the 4-phrase set: a synonym no phrase list contains,
+  // followed by bootstrap's real changelog header and a planted lie. The prose is now irrelevant —
+  // the HEADER BYTES are the match, and there is no way to write them that is not them.
+  const payload = [
+    "The freshly created file emitted by bootstrap contains exactly:",
+    "",
+    "```markdown",
+    ...header(PLAN_TEMPLATES.changelog),
+    "*THIS LINE IS A LIE BOOTSTRAP NEVER WRITES*",
+    "```",
+  ];
+  const hits = headerCopies(injectAfter(REAL_DOC, "<!-- TEMPLATE:progress -->", payload));
+  assert.ok(hits.some((i) => i.message.includes("PLAN_TEMPLATES.changelog")), "the iter-2 evasion still works");
+});
+
+test("(S4) LIVE BUG #2's shape is DEAD — a STALE SUBSET of a header (2 of 4 lines) FAILs", () => {
+  // The original bug was never a whole copy: the doc restated 2 of bootstrap's 4 changelog header
+  // lines and dropped the rest. A rule matching only whole headers would have sailed past it.
+  const subset = header(PLAN_TEMPLATES.changelog).slice(0, 2);
+  assert.equal(header(PLAN_TEMPLATES.changelog).length, 4); // it IS a subset, not the whole header
+  const hits = headerCopies(injectAfter(REAL_DOC, "<!-- TEMPLATE:findings -->", subset));
+  assert.ok(hits.some((i) => i.message.includes("PLAN_TEMPLATES.changelog")));
+});
+
+test("(S5) NO FALSE POSITIVES: an example reusing skeleton structure BELOW the header PASSES", () => {
+  // The test that stops a future maintainer from "fixing" a false positive with an allowlist.
+  // A truthful populated example genuinely reuses a skeleton's structure — a table header + its
+  // divider, a `## Completed` heading. Those live below the first blank line, outside HEADER, and
+  // must not fire. If this ever goes red, the RULE's scope is wrong: re-scope it, never exempt.
+  const t = { gamma: "# Gamma\n*subtitle*\n\n| Plan | Date |\n|------|------|\n## Completed\n" };
+  const worked = ["# Formats", "", "| Plan | Date |", "|------|------|", "## Completed", "- [x] done", ""];
+  const d = [
+    ...worked,
+    "<!-- TEMPLATE:END -->",
+    "",
+    region("gamma", "# Gamma", "*subtitle*", "", "| Plan | Date |", "|------|------|", "## Completed"),
+    "<!-- SKELETON:END -->",
+    "",
+  ].join("\n");
+  assert.deepEqual(rules(checkParity(t, d, "", 1).issues), []);
 });
 
 // --- report -----------------------------------------------------------------
@@ -309,38 +393,29 @@ test("report renders the house failure format: two-space indent, file:line, [rul
 
 // --- the real repo (this is the gate itself, run against live inputs) --------
 
-// THE REVIEWER'S EXPLOIT, pinned dead. The gate above compares bootstrap only to the
-// SKELETON regions; `emit-template` serves agents the TEMPLATE (worked-example) regions.
-// So a byte-claim restated in the worked example is an UNGATED copy: the reviewer edited
-// the changelog header there, the gate still printed PASS, and `emit-template --name
-// changelog` served the lie. The fix was to delete that copy, not to gate a third one —
-// which is why this is a suite assertion (one literal, no allowlist) and not a checker rule.
-test("the changelog TEMPLATE region restates NO bootstrap bytes — it points at the gated skeleton", () => {
-  const region = resolveTemplate("changelog");
-  assert.equal(region.ok, true);
-  const text = region.body.toString();
-  // The deleted block's distinctive literal. Re-inserting it (the reviewer's exact move)
-  // turns this red. Do NOT grow this into a per-slug list — that is the rejected design.
-  assert.equal(
-    text.includes("*Append-only per-edit ledger."),
-    false,
-    "the changelog worked example restates bootstrap's header bytes again — an ungated copy " +
-      "emit-template serves to agents. Delete it; the bytes belong only in <!-- SKELETON:changelog -->.",
-  );
-  assert.ok(text.includes("<!-- SKELETON:changelog -->"), "the pointer to the gated copy is gone");
+// The elision has a cost, and this is the guard on it: eliding a header must not gut the
+// example. What agents are served is the POPULATED body — the part a skeleton cannot show them.
+// (The invariant itself — no header bytes anywhere in the worked half — is S1's job, and S1
+// names no slug. This test is about the examples remaining USEFUL, not about the gate.)
+test("the elided worked examples still serve agents their populated bodies", () => {
+  const index = resolveTemplate("index").body.toString();
+  assert.match(index, /\| Plan \| Date \| Goal \| Key Topics \|/); // table header
+  assert.match(index, /\|------\|------\|------\|------------\|/); // divider
+  assert.equal((index.match(/\| plan-2026-02-\d\d/g) || []).length, 2); // both rows survive
+  const lessons = resolveTemplate("lessons").body.toString();
+  for (const s of ["## Patterns That Work", "## What To Avoid", "## Codebase Gotchas", "## Recurring Traps"]) {
+    assert.ok(lessons.includes(s), `lessons lost its ${s} section to the elision`);
+  }
+  for (const slug of ["findings-consolidated", "decisions-consolidated"]) {
+    const t = resolveTemplate(slug).body.toString();
+    assert.match(t, /## plan-2026-02-20T141005-b4e2c3d0/); // the per-plan sections survive
+    assert.match(t, /<!-- COMPRESSED-SUMMARY -->/); // and the compression structure
+  }
 });
 
 test("the LIVE bootstrap templates byte-match the LIVE file-formats.md skeletons — 12 slugs", () => {
-  const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-  const docText = readFileSync(join(root, DOC_REL), "utf8");
-  const srcText = readFileSync(join(root, SRC_REL), "utf8");
-  const { issues, compared } = checkParity(PLAN_TEMPLATES, docText, srcText);
+  const { issues, compared } = checkParity(PLAN_TEMPLATES, REAL_DOC, REAL_SRC);
   assert.deepEqual(issues, [], report(issues));
   assert.equal(compared, 12);
   assert.equal(Object.keys(PLAN_TEMPLATES).length, 12);
-  // Rule (h)'s zero-false-positive cap, asserted against the LIVE doc rather than a fixture:
-  // the real prose (e.g. "Created by bootstrap on first `new`", the presentation-contracts
-  // "single-source-of-truth definition") must not trip the phrase set. `single-source` is
-  // EXCLUDED from the set precisely because it would.
-  assert.deepEqual(issues.filter((i) => i.rule === "byte-claim"), []);
 });

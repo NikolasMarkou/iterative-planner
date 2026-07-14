@@ -50,11 +50,15 @@ const SENTINELS = {
   progress: "In Progress",
   verification: "Criteria Verification",
   checkpoints: "When to Checkpoint",
-  "findings-consolidated": "Consolidated Findings",
-  "decisions-consolidated": "Consolidated Decisions",
+  // These three sentinels are the SECTION HEADINGS, not the files' H1s: an H1 like
+  // "# Consolidated Findings" is part of bootstrap's HEADER, and rule (h) [header-copy] forbids
+  // those bytes before <!-- TEMPLATE:END -->. A sentinel must key on content the worked example
+  // legitimately owns — keying it on bootstrap's bytes is the coupling the gate exists to break.
+  "findings-consolidated": "plans/FINDINGS.md (consolidated)",
+  "decisions-consolidated": "plans/DECISIONS.md (consolidated)",
   lessons: "Patterns That Work",
   system: "System Atlas",
-  index: "Plan Index",
+  index: "plans/INDEX.md",
   "lessons-snapshot": "Automatic snapshot of",
   changelog: "Intra-plan compression",
   summary: "Decision Anchors Registry",

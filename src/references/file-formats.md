@@ -553,12 +553,11 @@ Cross-plan findings archive. Entries merged from per-plan `findings.md` on close
 
 Created automatically by bootstrap on first `new`. Updated on each `close`.
 
+*Both examples below show the file **below its header** — the header lines are elided. Bootstrap's header bytes are stated exactly once, in the `<!-- SKELETON:findings-consolidated -->` region under "Bootstrap Skeletons (machine-checked)". Restating them here would be a second, un-gated copy (gate rule `[header-copy]`).*
+
 ### Without compression (<500 lines)
 
 ```markdown
-# Consolidated Findings
-*Cross-plan findings archive. Entries merged from per-plan findings.md on close. Newest first.*
-
 ## plan-2026-02-20T141005-b4e2c3d0
 ### Index
 - [Database Schema](plan-2026-02-20T141005-b4e2c3d0/findings/db-schema.md) — table relationships
@@ -575,9 +574,6 @@ Created automatically by bootstrap on first `new`. Updated on each `close`.
 ### With compression (>500 lines)
 
 ```markdown
-# Consolidated Findings
-*Cross-plan findings archive. Entries merged from per-plan findings.md on close. Newest first.*
-
 <!-- COMPRESSED-SUMMARY -->
 ## Summary (compressed)
 *Auto-compressed from 847 lines. Read full content below line 600 if needed.*
@@ -622,12 +618,11 @@ Cross-plan decision archive. Entries merged from per-plan `decisions.md` on clos
 
 Created automatically by bootstrap on first `new`. Updated on each `close`.
 
+*Both examples below show the file **below its header** — the header lines are elided. Bootstrap's header bytes are stated exactly once, in the `<!-- SKELETON:decisions-consolidated -->` region under "Bootstrap Skeletons (machine-checked)". Restating them here would be a second, un-gated copy (gate rule `[header-copy]`).*
+
 ### Without compression (<500 lines)
 
 ```markdown
-# Consolidated Decisions
-*Cross-plan decision archive. Entries merged from per-plan decisions.md on close. Newest first.*
-
 ## plan-2026-02-20T141005-b4e2c3d0
 ### D-001 | EXPLORE → PLAN | 2025-01-20
 **Context**: Users table migration needed
@@ -649,9 +644,6 @@ Created automatically by bootstrap on first `new`. Updated on each `close`.
 ### With compression (>500 lines)
 
 ```markdown
-# Consolidated Decisions
-*Cross-plan decision archive. Entries merged from per-plan decisions.md on close. Newest first.*
-
 <!-- COMPRESSED-SUMMARY -->
 ## Summary (compressed)
 *Auto-compressed from 623 lines. Read full content below line 600 if needed.*
@@ -679,11 +671,9 @@ Usage:
 
 Cross-plan institutional memory. **Rewritten** (not appended) at CLOSE to stay ≤200 lines. Read before PLAN.
 
-```markdown
-# Lessons Learned
-*Cross-plan lessons. Updated and consolidated on close. Max 200 lines — rewrite, don't append forever.*
-*Read before any PLAN state. This is institutional memory.*
+*The example below shows the file **below its header** — the header lines are elided. Bootstrap's header bytes are stated exactly once, in the `<!-- SKELETON:lessons -->` region under "Bootstrap Skeletons (machine-checked)". Restating them here would be a second, un-gated copy (gate rule `[header-copy]`).*
 
+```markdown
 ## Patterns That Work
 - Token-based auth is simpler than session migration — prefer stateless when possible [I:3]
 - Always check format coupling before assuming storage changes are isolated [I:4]
@@ -765,10 +755,9 @@ Usage:
 
 Topic-to-directory mapping. Updated automatically on `close`. Survives sliding window trim — use this to locate old findings when they've been removed from consolidated files.
 
-```markdown
-# Plan Index
-*Topic-to-directory mapping. Updated on close. Survives sliding window trim.*
+*The example below shows the file **below its header** — the header lines are elided. Bootstrap's header bytes are stated exactly once, in the `<!-- SKELETON:index -->` region under "Bootstrap Skeletons (machine-checked)". Restating them here would be a second, un-gated copy (gate rule `[header-copy]`).*
 
+```markdown
 | Plan | Date | Goal | Key Topics |
 |------|------|------|------------|
 | plan-2026-02-20T141005-b4e2c3d0 | 2026-02-20 | Database migration | db schema, foreign keys, cascade |
@@ -1039,6 +1028,7 @@ The regions below are the **exact bytes `bootstrap.mjs` writes** for each plan f
 - `{{TOKEN}}` placeholders are content. Leave them literal — they are substituted at plan-creation time by `renderTemplate()`, never here.
 - No skeleton body may contain a triple-backtick fence (it would close the block early) or the literal `<!-- TEMPLATE:` (it would truncate the last template slice emitted by `emit-template.mjs`). The checker enforces both.
 - The set is terminated by `<!-- SKELETON:END -->`. Nothing between the markers is prose — a region is bytes, not documentation.
+- **A template's HEADER belongs to this half alone.** HEADER = a template's leading lines up to its first blank line (the run bootstrap writes and agents never populate — they append below it). Rule `[header-copy]` FAILs the build if **any 2 consecutive header lines** reappear anywhere **before `<!-- TEMPLATE:END -->`**, in prose or in a fenced block: that would be a second, un-gated copy of bootstrap's bytes, and `emit-template` serves *that* half to agents. Worked examples therefore show each file **below its header** and point here. It is a byte comparison against `PLAN_TEMPLATES`, so there is no phrase to reword around — and no allowlist: if it fires on something a worked example genuinely needs, the rule's scope is wrong, not the line. Two gaps are known and deliberate: structural lines *below* a header (a table header, a `## Completed` heading) are legitimately reused and are **not** gated, and `plan`/`progress` have 1-line headers, below the 2-line threshold.
 
 <!-- SKELETON:state -->
 ```markdown
