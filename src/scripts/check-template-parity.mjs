@@ -18,9 +18,10 @@
 //                      emit-template.mjs's last slice). This keeps rule (a) expressible.
 //   (d) typing       — a non-string template is REPORTED, not thrown on.
 //   (e) line-endings — one CRLF hint instead of 12 byte-parity failures with no stated cause.
-//   (f) duplicate-region — a repeated `<!-- SKELETON:x -->` marker. Silently last-wins meant a
-//                      garbage first region (the one a HUMAN reads) could hide behind a clean
-//                      second one, and the gate still printed PASS.
+//   (f) duplicate-region — a repeated load-bearing marker, in EITHER family. For `<!-- SKELETON:x -->`,
+//                      silently last-wins meant a garbage first region (the one a HUMAN reads) could
+//                      hide behind a clean second one, and the gate still printed PASS. For
+//                      `<!-- TEMPLATE:END -->`, a duplicate moves rule (h)'s scan boundary — see (h).
 //   (g) coverage     — the gate must compare at least EXPECTED_SLUGS slugs. Without this,
 //                      checkParity({}, "") reports issues=0 and PASSES, comparing nothing.
 //                      A gate that cannot fail vacuously must enforce its own floor: `make
@@ -35,6 +36,14 @@
 //                      predecessor was a 4-phrase prose set, and it fell to the first synonym
 //                      tried: a phrase list guesses at intent, and a guess is evadable. It was
 //                      DELETED, not extended — a successful synonym proves the category is wrong.
+//                      THE BOUNDARY IS PART OF THE RULE. No TEMPLATE:END marker => no provable
+//                      boundary => scan the whole doc. MORE than one => the doc is ambiguous: rule
+//                      (f) FAILs it, and the scan stops at the LAST one, never the first. Taking the
+//                      first was a hole: a decoy `<!-- TEMPLATE:END -->` inserted early truncated no
+//                      slice (emit-template splits on ANY `<!-- TEMPLATE:` marker) and shrank this
+//                      scan to nothing, so bootstrap's header bytes plus a fabricated line could sit
+//                      in a worked example with the whole board green. A boundary an attacker can
+//                      move must only ever WIDEN the scan. Fail closed in both directions.
 //
 // Region<->bytes contract: a body is the lines strictly between the opening ```markdown fence
 // and its closing fence, joined with "\n", plus a trailing "\n". A marker NOT followed by a
@@ -56,6 +65,7 @@ export const SRC_REL = "src/scripts/bootstrap.mjs";
 const MARKER_RE = /^<!-- SKELETON:([A-Za-z-]+) -->$/;
 const FENCE = "```";
 const BANNED = [FENCE, "<!-- TEMPLATE:"];
+const TEMPLATE_END = "<!-- TEMPLATE:END -->";
 
 // The floor. A gate that PASSES having compared fewer slugs than exist is the defect this
 // script exists to prevent, so the expected count is enforced here, not by a human reading
@@ -148,17 +158,24 @@ export function checkParity(templates, docText, srcText = "", expectedSlugs = EX
   // header is a key; any such pair reappearing before `<!-- TEMPLATE:END -->` is an un-gated
   // second copy. Threshold 2, not 1: a 1-line run would fire on every `# Progress` heading in the
   // doc. That cost is NAMED, not hidden — `plan` and `progress` have 1-line headers and sit below
-  // it (CLAUDE.md says so). No TEMPLATE:END marker => no provable boundary => scan the whole doc
-  // (fail closed). No allowlist, no exception, no skip: if this fires on something the doc cannot
-  // give up, the RULE's scope is wrong — re-scope it, never exempt the line.
+  // it (CLAUDE.md says so). No allowlist, no exception, no skip: if this fires on something the doc
+  // cannot give up, the RULE's scope is wrong — re-scope it, never exempt the line.
   const pairs = new Map(); // "<lineA>\n<lineB>" -> slug, over every header of length >= 2
   for (const slug of slugs.filter((s) => typeof templates[s] === "string")) {
     const h = header(templates[slug]);
     for (let i = 0; i + 1 < h.length; i++) if (!pairs.has(pair(h, i))) pairs.set(pair(h, i), slug);
   }
+  // The boundary. Take the LAST TEMPLATE:END, never the first: a decoy inserted early must only be
+  // able to WIDEN this scan, never shrink it. Taking the first let one inserted line hide the rest
+  // of the doc from this rule while truncating no emit-template slice. Duplicates FAIL via (f).
   const lines = (docText || "").split("\n");
-  const tplEnd = lines.findIndex((l) => l.trim() === "<!-- TEMPLATE:END -->");
-  const stop = tplEnd === -1 ? lines.length : tplEnd;
+  const ends = lines.reduce((a, l, i) => (l.trim() === TEMPLATE_END ? [...a, i] : a), []);
+  for (const dup of ends.slice(1)) {
+    push(DOC_REL, dup + 1, "duplicate-region",
+      `${TEMPLATE_END} appears twice (lines ${ends[0] + 1} and ${dup + 1}) — it is the boundary of ` +
+      `the half emit-template serves to agents, and rule [header-copy] scans up to it; only one may exist`);
+  }
+  const stop = ends.length === 0 ? lines.length : ends[ends.length - 1];
   for (let i = 0; i + 1 < stop; i++) {
     const slug = pairs.get(pair(lines, i));
     // A 3+-line header overlaps its own windows: report each run once, at its first line.

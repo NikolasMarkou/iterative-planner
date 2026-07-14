@@ -295,6 +295,56 @@ test("(h) a 1-line header does NOT fire — the named gap, pinned so it cannot b
   assert.deepEqual(rules(checkParity(TEMPLATES, withBeta, "", FIXTURE_FLOOR).issues), []);
 });
 
+// --- (f)+(h) the SCAN BOUNDARY ----------------------------------------------
+// Every (h) test above asks what the rule does INSIDE its window. These ask where the window ENDS
+// — which is where the hole was. `<!-- TEMPLATE:END -->` is load-bearing for two consumers with
+// different parse rules, and the doc's marker grammar was unowned: nothing checked it was unique.
+
+test("(f) THE MOVED BOUNDARY: a duplicate <!-- TEMPLATE:END --> is CAUGHT, naming BOTH lines", () => {
+  const d = [
+    "# Formats",             // 1
+    "",                      // 2
+    "<!-- TEMPLATE:END -->", // 3 — a decoy
+    "",                      // 4
+    "<!-- TEMPLATE:END -->", // 5 — the real boundary
+    "",
+    region("alpha", "# Alpha", "- one"),
+    region("beta", "# Beta"),
+    "<!-- SKELETON:END -->",
+    "",
+  ].join("\n");
+  const dup = checkParity(TEMPLATES, d, "", FIXTURE_FLOOR).issues.filter((i) => i.rule === "duplicate-region");
+  assert.equal(dup.length, 1);
+  assert.equal(dup[0].line, 5);
+  assert.match(dup[0].message, /lines 3 and 5/); // both, so the reader can see which one moved
+});
+
+test("(h) THE SHRUNK WINDOW: a header copy after a decoy END but before the real one is CAUGHT", () => {
+  // The last-END semantics, pinned. Taking the FIRST end would stop the scan at line 3 and never
+  // see the bytes on lines 5-6. A boundary an attacker can move must only ever WIDEN the scan.
+  const d = [
+    "# Formats",             // 1
+    "",                      // 2
+    "<!-- TEMPLATE:END -->", // 3 — the decoy: a first-match scan stops here
+    "",                      // 4
+    "# Alpha",               // 5 — bootstrap's bytes, in the half emit-template serves
+    "- one",                 // 6
+    "",                      // 7
+    "<!-- TEMPLATE:END -->", // 8 — the real boundary
+    "",
+    region("alpha", "# Alpha", "- one"),
+    region("beta", "# Beta"),
+    "<!-- SKELETON:END -->",
+    "",
+  ].join("\n");
+  const { issues } = checkParity(TEMPLATES, d, "", FIXTURE_FLOOR);
+  const copy = issues.filter((i) => i.rule === "header-copy");
+  assert.equal(copy.length, 1);
+  assert.equal(copy[0].line, 5);
+  assert.match(copy[0].message, /PLAN_TEMPLATES\.alpha/);
+  assert.equal(issues.filter((i) => i.rule === "duplicate-region").length, 1); // and the decoy itself
+});
+
 // --- (h) against the REAL doc and the REAL templates ------------------------
 // D-006: a criterion that names a specific defect tests that defect; only a criterion that
 // quantifies over all instances tests the property. Iterations 1 and 2 both shipped green boards
@@ -382,6 +432,41 @@ test("(S5) NO FALSE POSITIVES: an example reusing skeleton structure BELOW the h
     "",
   ].join("\n");
   assert.deepEqual(rules(checkParity(t, d, "", 1).issues), []);
+});
+
+test("(A6) THE ATTACKER-CONTROLLED BOUNDARY: a decoy TEMPLATE:END hiding a planted header copy is CAUGHT", () => {
+  // The iteration-3 reviewer's exploit, verbatim — the third consecutive guard to fall to the first
+  // reviewer who attacked it, and the only one caught before it shipped. ONE inserted line, a
+  // `<!-- TEMPLATE:END -->` above an existing TEMPLATE marker, truncated NO emit-template slice (that
+  // parser splits on ANY `<!-- TEMPLATE:` marker, so the byte offset was already a slice boundary) but
+  // moved rule (h)'s stop from doc line 1016 to 541, leaving TEN worked examples unscanned. Bootstrap's
+  // exact `findings-consolidated` header plus a line bootstrap never writes then rode in with the whole
+  // board green — PASS, 604/604 — and `emit-template --name findings-consolidated` served it to agents.
+  const slug = "findings-consolidated";
+  const lines = REAL_DOC.split("\n");
+  const at = lines.findIndex((l) => l.trim() === `<!-- TEMPLATE:${slug} -->`);
+  assert.notEqual(at, -1, "fixture marker not found in the real doc");
+  lines.splice(at, 0, "<!-- TEMPLATE:END -->", ""); // the decoy boundary
+  const fence = lines.findIndex((l, i) => i > at && l.trim() === "```markdown");
+  lines.splice(fence + 1, 0, ...header(PLAN_TEMPLATES[slug]), "*A LINE BOOTSTRAP NEVER WRITES*");
+  const { issues } = checkParity(PLAN_TEMPLATES, lines.join("\n"), REAL_SRC);
+  assert.ok(
+    issues.some((i) => i.rule === "header-copy" && i.message.includes(`PLAN_TEMPLATES.${slug}`)),
+    "a decoy END shrinks rule (h)'s scan window — the planted header copy is invisible to the gate",
+  );
+  assert.ok(
+    issues.some((i) => i.rule === "duplicate-region" && i.message.includes("TEMPLATE:END")),
+    "the decoy boundary itself must be reported",
+  );
+});
+
+test("(A6) the real doc has EXACTLY ONE TEMPLATE:END — rule (h)'s boundary is unambiguous", () => {
+  // The other half of the fix: `stop` is the LAST end, so a decoy can only widen the scan. That is
+  // fail-closed but silent, and a doc with two boundaries is a doc nobody can reason about. Pin the
+  // count so the ambiguity itself stays red, not just its consequences.
+  const ends = REAL_DOC.split("\n").filter((l) => l.trim() === "<!-- TEMPLATE:END -->");
+  assert.equal(ends.length, 1);
+  assert.deepEqual(headerCopies(REAL_DOC), []);
 });
 
 // --- report -----------------------------------------------------------------
