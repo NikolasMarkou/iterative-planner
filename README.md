@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Skill](https://img.shields.io/badge/Skill-v2.35.0-green.svg)](CHANGELOG.md)
-[![Tests](https://img.shields.io/badge/tests-490%20passing-brightgreen.svg)](src/scripts/bootstrap.test.mjs)
+[![Tests](https://img.shields.io/badge/tests-502%20passing-brightgreen.svg)](src/scripts/bootstrap.test.mjs)
 [![Sponsored by Electi](https://img.shields.io/badge/Sponsored%20by-Electi-red.svg)](https://www.electiconsulting.com)
 
 A [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skill that turns ad-hoc agent runs into structured, recoverable, evidence-driven work.
@@ -455,7 +455,7 @@ node --test src/scripts/bootstrap.test.mjs \
             src/scripts/check-test-count.test.mjs \
             src/scripts/shared.test.mjs \
             src/scripts/schema.test.mjs
-# 490 tests total: bootstrap 201, validate-plan 100, shared 57, schema 48,
+# 502 tests total: bootstrap 201, validate-plan 100, shared 69, schema 48,
 #                  blast-radius 37, check-test-count 17, emit-state 12,
 #                  emit-template 10, check-doc-parity 4, check-readme-parity 4
 ```
@@ -507,7 +507,7 @@ make help
 <summary><strong>Before submitting changes</strong></summary>
 
 - [ ] `make validate` (or `.\build.ps1 validate`) passes
-- [ ] `node --test src/scripts/*.test.mjs` passes (490 tests, 0 failing) and `node src/scripts/check-test-count.mjs` exits 0
+- [ ] `node --test src/scripts/*.test.mjs` passes (502 tests, 0 failing) and `node src/scripts/check-test-count.mjs` exits 0
 - [ ] `src/SKILL.md` has `name:` and `description:` in YAML frontmatter
 - [ ] All cross-references in `src/SKILL.md` point to existing files in `src/references/`
 - [ ] State machine diagram matches transition rules table
