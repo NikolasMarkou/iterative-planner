@@ -15,6 +15,7 @@ import {
   DOC_REL,
   SRC_REL,
   EXPECTED_SLUGS,
+  BYTE_CLAIM_PHRASES,
 } from "./check-template-parity.mjs";
 import { PLAN_TEMPLATES } from "./bootstrap.mjs";
 import { resolveTemplate } from "./emit-template.mjs";
@@ -239,6 +240,66 @@ test("(e) a CRLF doc emits ONE line-endings hint instead of a wall of unexplaine
   assert.match(hint[0].message, /CRLF/);
 });
 
+// --- (h) byte-claim ---------------------------------------------------------
+// The mechanical form of this iteration's thesis: bootstrap's bytes are claimed ONLY in the
+// half the gate compares. A phrase set, not a comparison — no allowlist, no per-slug exception.
+
+test("(h) byte-claiming prose in the worked-example half is CAUGHT, naming the phrase and the line", () => {
+  // The reviewer's move, generalized: re-introduce the deleted intro line, anywhere before END.
+  const withClaim = [
+    "# Formats",
+    "",
+    "Header (written by bootstrap on plan creation, or by executor on first append if missing):",
+    "",
+    "<!-- TEMPLATE:END -->",
+    "",
+    region("alpha", "# Alpha", "- one"),
+    region("beta", "# Beta"),
+    "<!-- SKELETON:END -->",
+    "",
+  ].join("\n");
+  const { issues } = checkParity(TEMPLATES, withClaim, "", FIXTURE_FLOOR);
+  const claim = issues.filter((i) => i.rule === "byte-claim");
+  assert.equal(claim.length, 1);
+  assert.equal(claim[0].line, 3); // the offending line, 1-based
+  assert.match(claim[0].message, /written by bootstrap/);
+  assert.equal(claim[0].file, DOC_REL);
+});
+
+test("(h) the SAME phrase AFTER <!-- TEMPLATE:END --> does NOT trip it — that half is the gated one", () => {
+  // The whole point: the skeleton half is where bootstrap's bytes are SUPPOSED to be claimed.
+  // A rule that fired there would forbid the one copy the gate exists to enforce.
+  const claimInSkeletonHalf = [
+    "# Formats",
+    "",
+    "<!-- TEMPLATE:END -->",
+    "",
+    "These regions are written by bootstrap and must match exactly — update in lockstep.",
+    "",
+    region("alpha", "# Alpha", "- one"),
+    region("beta", "# Beta"),
+    "<!-- SKELETON:END -->",
+    "",
+  ].join("\n");
+  const { issues } = checkParity(TEMPLATES, claimInSkeletonHalf, "", FIXTURE_FLOOR);
+  assert.deepEqual(rules(issues), []);
+});
+
+test("(h) all four phrases are live, and the set stays at four (a 5th phrase means DELETE the rule)", () => {
+  // Pre-Mortem Scenario 2: a phrase list that starts needing exceptions IS an allowlist.
+  // This pins the cap. If a future phrase is genuinely needed, that is the signal to remove
+  // rule (h) and fall back to the suite assertion — not to grow the set.
+  assert.equal(BYTE_CLAIM_PHRASES.length, 4);
+  for (const phrase of BYTE_CLAIM_PHRASES) {
+    const d = ["# Formats", "", `prose that is ${phrase} somewhere`, "", "<!-- TEMPLATE:END -->", ""].join("\n");
+    const { issues } = checkParity(TEMPLATES, d, "", FIXTURE_FLOOR);
+    assert.ok(
+      issues.some((i) => i.rule === "byte-claim" && i.message.includes(phrase)),
+      `phrase "${phrase}" is in the set but does not actually fire`,
+    );
+  }
+});
+
 // --- report -----------------------------------------------------------------
 
 test("report renders the house failure format: two-space indent, file:line, [rule], message", () => {
@@ -277,4 +338,9 @@ test("the LIVE bootstrap templates byte-match the LIVE file-formats.md skeletons
   assert.deepEqual(issues, [], report(issues));
   assert.equal(compared, 12);
   assert.equal(Object.keys(PLAN_TEMPLATES).length, 12);
+  // Rule (h)'s zero-false-positive cap, asserted against the LIVE doc rather than a fixture:
+  // the real prose (e.g. "Created by bootstrap on first `new`", the presentation-contracts
+  // "single-source-of-truth definition") must not trip the phrase set. `single-source` is
+  // EXCLUDED from the set precisely because it would.
+  assert.deepEqual(issues.filter((i) => i.rule === "byte-claim"), []);
 });

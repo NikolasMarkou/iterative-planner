@@ -26,6 +26,12 @@
 //                      A gate that cannot fail vacuously must enforce its own floor: `make
 //                      validate` runs this CLI, not the suite, so an assertion in the tests
 //                      would have left the floor to a human reading stdout.
+//   (h) byte-claim   — no prose BEFORE `<!-- TEMPLATE:END -->` may claim to show what bootstrap
+//                      or the executor writes. That half is what `emit-template` serves to
+//                      agents; the SKELETON half is what this gate compares. A byte claim over
+//                      there is a SECOND, UN-GATED copy — free to drift, and served to every
+//                      agent when it does (the exploit that forced iteration 2). Bootstrap's
+//                      bytes are stated ONCE, in the half the gate enforces.
 //
 // Region<->bytes contract: a body is the lines strictly between the opening ```markdown fence
 // and its closing fence, joined with "\n", plus a trailing "\n". A marker NOT followed by a
@@ -52,6 +58,15 @@ const BANNED = [FENCE, "<!-- TEMPLATE:"];
 // script exists to prevent, so the expected count is enforced here, not by a human reading
 // stdout (`make validate` does not run the suite). Bump it when a template is added.
 export const EXPECTED_SLUGS = 12;
+
+// Rule (h)'s phrase set. A SET, not a comparison — deliberately not an allowlist of "which
+// fenced block in which region is byte-claiming", which is the design D-003 rejected (a per-slug
+// allowlist is how check-doc-parity rotted into diffing nothing while its cells lied).
+// THE INVARIANT: if this list ever needs a 5th phrase, a per-slug exception, or an ignore-list to
+// suppress a false positive, DELETE THE RULE — do not grow it. A phrase list that needs
+// exceptions IS an allowlist. The suite assertion pinning the deleted changelog block is the
+// floor, and it is sufficient on its own.
+export const BYTE_CLAIM_PHRASES = ["written by bootstrap", "must match exactly", "update in lockstep", "written by the executor"];
 
 // Scan a doc for `<!-- SKELETON:<slug> -->` regions.
 // Returns { regions: Map<slug, {body, bodyLine, markerLine}>, endLine, duplicates } — 1-based lines.
@@ -118,6 +133,19 @@ export function checkParity(templates, docText, srcText = "", expectedSlugs = EX
   if ((docText || "").includes("\r")) {
     push(DOC_REL, 1, "line-endings",
       `${DOC_REL} has CRLF line endings; parity compares bytes. Normalize to LF (\`core.autocrlf=input\`).`);
+  }
+
+  // (h) byte-claim — the worked-example half (before `<!-- TEMPLATE:END -->`) is what
+  // emit-template serves to agents; the SKELETON half is what this gate compares. Prose claiming
+  // bootstrap's/the executor's exact bytes over there is a second, un-gated copy. No TEMPLATE:END
+  // marker => no provable boundary => scan the whole doc (fail closed).
+  const lines = (docText || "").split("\n");
+  const tplEnd = lines.findIndex((l) => l.trim() === "<!-- TEMPLATE:END -->");
+  for (let i = 0; i < (tplEnd === -1 ? lines.length : tplEnd); i++) {
+    const hit = BYTE_CLAIM_PHRASES.find((p) => lines[i].includes(p));
+    if (hit) push(DOC_REL, i + 1, "byte-claim",
+      `"${hit}" appears before <!-- TEMPLATE:END --> — bootstrap's bytes may be claimed ONLY in ` +
+      `the <!-- SKELETON:* --> half, the one copy this gate enforces. State them there, point here.`);
   }
 
   // (f) duplicate-region — a repeated marker means the doc a human reads and the region a
