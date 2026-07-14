@@ -505,6 +505,13 @@ function checkCheckpoints(planDir, issues) {
   } catch { /* best-effort */ }
 }
 
+// Counted budget lines: only the two capped counters ("Files added",
+// "New abstractions"). Everything else in the section is prose or a target.
+// Group 1 = label, 2 = used (N), 3 = cap (M) from `<label>...: N/M max`.
+const COUNTED_BUDGET_RE = /^\s*(?:[-*+]\s*)?\**\s*(Files added|New abstractions)\b[^:\n]*:\s*\**\s*(\d+)\s*\/\s*(\d+)\s*max/i;
+// The escape hatch. Anywhere on the same line, bold/backticks/parens tolerated.
+const JUSTIFIED_RE = /\(\s*justified\s*:/i;
+
 function checkComplexityBudget(planDir, issues) {
   const plan = readFile(join(planDir, "plan.md"));
   if (!plan) return;
@@ -518,6 +525,40 @@ function checkComplexityBudget(planDir, issues) {
 
   if (isPlaceholder(budgetSection)) {
     issues.push({ severity: "WARN", check: "complexity", message: "Complexity Budget section still has placeholder content during EXECUTE+" });
+    // Placeholder text carries no numbers — nothing left to count.
+    return;
+  }
+
+  // NOTE: (v2.33.0, audit defect #5) Numeric budget enforcement.
+  // Before this, the check only tested for placeholder prose, so the protocol's
+  // documented cap ("Files added: N/M max") was never actually compared: a plan
+  // could declare `Files added: 9/3 max` and validate clean.
+  //
+  // Tolerances baked into COUNTED_BUDGET_RE, all observed in real plan.md files:
+  //   - list bullet (`- `), bold wrappers (`**Files added: 8/3 max**`)
+  //   - a parenthetical inside the label ("New abstractions (classes/modules/interfaces):")
+  //   - whitespace around the slash
+  // The "Lines added vs removed: +900/-150" line is deliberately NOT counted:
+  // it is a *target*, not a cap, and its N/M are signed deltas, not a ratio.
+  //
+  // WARN-only, by design. This is an authoring-quality signal, not a
+  // correctness gate. DO NOT promote it to ERROR and DO NOT wire it into the
+  // --pre-step gate (that path reads state.md only and reserves exit 2 for the
+  // four HARD-fail slugs). An over-budget plan that states WHY it is over
+  // budget is compliant — `(justified: …)` on the line suppresses the WARN.
+  for (const rawLine of budgetSection.split("\n")) {
+    const m = COUNTED_BUDGET_RE.exec(rawLine);
+    if (!m) continue;
+    const [, label, usedStr, capStr] = m;
+    const used = Number(usedStr);
+    const cap = Number(capStr);
+    if (!(used > cap)) continue;
+    if (JUSTIFIED_RE.test(rawLine)) continue;
+    issues.push({
+      severity: "WARN",
+      check: "budget-exceeded",
+      message: `Complexity Budget exceeded: ${label} ${used}/${cap} max (${used} > ${cap}) with no "(justified: ...)" rationale on the line`,
+    });
   }
 }
 

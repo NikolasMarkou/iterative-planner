@@ -918,6 +918,125 @@ describe("validate-plan.mjs — M7: targeted check-function coverage", () => {
     assert.match(r.stdout, /\[complexity\]/, `expected complexity WARN, got:\n${r.stdout}`);
   });
 
+  // -------------------------------------------------------------------------
+  // Defect #5 (iter-1/step-5): numeric Complexity Budget enforcement.
+  // WARN-only, suppressed by an explicit "(justified: ...)" suffix.
+  // -------------------------------------------------------------------------
+
+  /** Overwrite plan.md with a minimal plan carrying the given Complexity Budget body. */
+  function writeBudget(planDir, budgetBody) {
+    writeFileSync(join(planDir, "plan.md"),
+      `# Plan v1\n## Goal\nx\n## Success Criteria\n- SC1\n## Complexity Budget\n${budgetBody}\n`);
+  }
+
+  it("checkComplexityBudget: over budget without justification → WARN [budget-exceeded]", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    writeBudget(planDir, "- Files added: 7/3 max\n- New abstractions (classes/modules/interfaces): 1/2 max\n- Lines added vs removed: +45/-12 (target: net negative or neutral)");
+    const r = run(cwd);
+    const hits = (r.stdout.match(/\[budget-exceeded\]/g) || []).length;
+    assert.equal(hits, 1, `expected exactly one budget-exceeded WARN, got:\n${r.stdout}`);
+    assert.match(r.stdout, /WARN\s+\[budget-exceeded\]: Complexity Budget exceeded: Files added 7\/3 max/);
+  });
+
+  it("checkComplexityBudget: over budget WITH (justified: ...) → no WARN", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    writeBudget(planDir, "- Files added: 7/3 max (justified: reason here)");
+    const r = run(cwd);
+    assert.doesNotMatch(r.stdout, /\[budget-exceeded\]/, `justification must suppress the WARN, got:\n${r.stdout}`);
+  });
+
+  it("checkComplexityBudget: under budget → no WARN", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    writeBudget(planDir, "- Files added: 2/3 max\n- New abstractions (classes/modules/interfaces): 2/2 max");
+    const r = run(cwd);
+    assert.doesNotMatch(r.stdout, /\[budget-exceeded\]/, `2/3 and 2/2 are within budget, got:\n${r.stdout}`);
+  });
+
+  it("checkComplexityBudget: abstractions over budget → WARN [budget-exceeded]", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    writeBudget(planDir, "- Files added: 1/3 max\n- New abstractions (classes/modules/interfaces): 3/2 max");
+    const r = run(cwd);
+    assert.match(r.stdout, /\[budget-exceeded\]/, `expected abstractions WARN, got:\n${r.stdout}`);
+    assert.match(r.stdout, /New abstractions 3\/2 max/);
+  });
+
+  it("checkComplexityBudget: real-world bold + backticked-justification shape (this plan's own budget) → no WARN", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    // Byte-shape lifted from plans/plan_2026-07-14_79ee0f59/plan.md: bold label,
+    // em-dash, justification in backticks. Both lines must be parsed, neither must WARN.
+    writeBudget(planDir,
+      "- **Files added: 8/3 max** — `(justified: 4 source + 4 test — each with the repo-mandated sibling test file.)`\n" +
+      "- **New abstractions (classes/modules/interfaces): 2/2 max** — both earned under the >=2-call-site rule.\n" +
+      "- **Lines added vs removed: target +900/-150 (net +750)** — explicitly not net-neutral.");
+    const r = run(cwd);
+    assert.doesNotMatch(r.stdout, /\[budget-exceeded\]/, `justified 8/3 + at-cap 2/2 must be silent, got:\n${r.stdout}`);
+  });
+
+  it("checkComplexityBudget: bold over-budget line WITHOUT justification still WARNs", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    writeBudget(planDir, "- **Files added: 8/3 max** — because the plan is big.");
+    const r = run(cwd);
+    assert.match(r.stdout, /\[budget-exceeded\]/, `bold shape must still be parsed, got:\n${r.stdout}`);
+  });
+
+  it("checkComplexityBudget: malformed/absent budget lines → no crash, no WARN", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    writeBudget(planDir, "- Files added: many/few max\n- New abstractions: TBD\n- Lines added vs removed: +9999/-1\n- Files: 0/3");
+    const r = run(cwd);
+    assert.doesNotMatch(r.stdout, /\[budget-exceeded\]/, `unparseable numbers must be ignored, got:\n${r.stdout}`);
+    assert.ok(r.exitCode === 0 || r.exitCode === 1, `validator must not crash, exit=${r.exitCode}\n${r.stderr}`);
+  });
+
+  it("checkComplexityBudget: budget-exceeded is WARN-only — never an ERROR, never changes the exit code", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    // Baseline: same fixture, within budget.
+    writeBudget(planDir, "- Files added: 1/3 max");
+    const before = run(cwd);
+    assert.doesNotMatch(before.stdout, /\[budget-exceeded\]/);
+    // Only the budget numbers change.
+    writeBudget(planDir, "- Files added: 7/3 max");
+    const after = run(cwd);
+    assert.match(after.stdout, /WARN\s+\[budget-exceeded\]/);
+    assert.doesNotMatch(after.stdout, /ERROR \[budget-exceeded\]/, `must never be an ERROR, got:\n${after.stdout}`);
+    assert.equal(after.exitCode, before.exitCode,
+      `going over budget must not change the exit code (${before.exitCode} → ${after.exitCode}):\n${after.stdout}`);
+  });
+
+  it("checkComplexityBudget: --pre-step gate is unaffected by an over-budget plan", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    writeBudget(planDir, "- Files added: 99/3 max");
+    const r = run(cwd, "--pre-step");
+    assert.equal(r.exitCode, 0, `pre-step must stay PASS, got exit=${r.exitCode}:\n${r.stdout}`);
+    assert.match(r.stdout, /^GATE:PASS/m);
+    assert.doesNotMatch(r.stdout, /budget/i);
+  });
+
+  it("checkComplexityBudget: placeholder budget → [complexity] WARN only, never [budget-exceeded]", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    writeBudget(planDir, "*To be defined during PLAN.*");
+    const r = run(cwd);
+    assert.match(r.stdout, /\[complexity\]/, `placeholder check must still fire, got:\n${r.stdout}`);
+    assert.doesNotMatch(r.stdout, /\[budget-exceeded\]/);
+  });
+
+  it("checkComplexityBudget: PLAN state (pre-EXECUTE) → budget not yet enforced", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd, { state: "PLAN" });
+    writeBudget(planDir, "- Files added: 7/3 max");
+    const r = run(cwd);
+    assert.doesNotMatch(r.stdout, /\[budget-exceeded\]/, `budget is only enforced from EXECUTE onward, got:\n${r.stdout}`);
+  });
+
   it("checkVerificationEvidence: weak Evidence cell → WARN [evidence]", () => {
     const cwd = getTempDir();
     const { planDir } = writePlan(cwd);
