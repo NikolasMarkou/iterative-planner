@@ -247,8 +247,16 @@ function readPlanFile(planDirName, filename) {
 // Keys are emit-template.mjs's slugs. Raw strings (not functions) on purpose: only raw strings
 // are byte-diffable against a doc region, which is what lets a parity gate exist at all.
 //
-// The `system` skeleton's schema must match references/file-formats.md ## plans/SYSTEM.md exactly.
-// If you change the schema there, update this skeleton in lockstep.
+// DECISION plan-2026-07-14T141152-113d5b92/D-001: these literals stay HERE. Do NOT "DRY" them by
+// having bootstrap read the skeletons out of references/file-formats.md at run time. Bootstrap's
+// zero-file-dependency property is load-bearing: it is the one script whose failure mode is "no
+// plan can ever be created again," and a runtime read would couple it forever to a 59KB doc that
+// must then ship on every delivery path. The duplication is not unguarded — see below.
+//
+// Each entry is pinned BYTE-FOR-BYTE against its `<!-- SKELETON:<slug> -->` region in
+// references/file-formats.md by src/scripts/check-template-parity.mjs, which `make validate` runs.
+// Editing a template here without editing that region (or vice versa) FAILS the build, in both
+// directions. Two edits, mechanically enforced — not discipline.
 export const PLAN_TEMPLATES = {
   state: `# Current State: EXPLORE
 *Skill: iterative-planner v{{VERSION}}*
@@ -414,9 +422,11 @@ See references/planning-rigor.md for definitions. -->
 `,
 
   // Body is references/file-formats.md ## plans/SYSTEM.md's fenced schema, byte-for-byte, with ONE
-  // deliberate divergence: the `*Last refreshed:*` line. The doc shows `<plan-id> | <YYYY-MM-DD>`,
-  // which describes the POPULATED state; bootstrap writes a file that has never been populated, so
-  // it keeps the "(none yet)" sentinel instead. Every other line adopts the doc verbatim.
+  // deliberate divergence: the `*Last refreshed:*` line. The doc's ## plans/SYSTEM.md section shows
+  // `<plan-id> | <YYYY-MM-DD>`, which describes the POPULATED state; bootstrap writes a file that has
+  // never been populated, so it keeps the "(none yet)" sentinel instead. Every other line adopts the
+  // doc verbatim. That sentinel is NOT a drift: the bytes below are pinned against the doc's
+  // `<!-- SKELETON:system -->` region (which carries the sentinel), not against ## plans/SYSTEM.md.
   system: `# System Atlas
 *Last refreshed: (none yet) | (no plan closed yet)*
 *Domain-neutral system map. Rewritten at CLOSE — max 300 lines. Read before PLAN/EXPLORE.*

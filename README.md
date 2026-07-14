@@ -455,11 +455,14 @@ node --test src/scripts/bootstrap.test.mjs \
             src/scripts/emit-template.test.mjs \
             src/scripts/check-readme-parity.test.mjs \
             src/scripts/check-test-count.test.mjs \
+            src/scripts/check-agent-wiring.test.mjs \
+            src/scripts/check-template-parity.test.mjs \
             src/scripts/shared.test.mjs \
             src/scripts/schema.test.mjs
-# 531 tests total: bootstrap 225, validate-plan 103, shared 71, schema 48,
-#                  blast-radius 37, check-test-count 17, emit-state 12,
-#                  emit-template 10, check-doc-parity 4, check-readme-parity 4
+# 588 tests total: bootstrap 234, validate-plan 103, shared 71, schema 48,
+#                  blast-radius 37, check-agent-wiring 28, check-template-parity 20,
+#                  check-test-count 17, emit-state 12, emit-template 10,
+#                  check-doc-parity 4, check-readme-parity 4
 ```
 
 `node src/scripts/check-test-count.mjs` re-runs the suite and fails if the live pass count disagrees with the `TEST_COUNT` file. It runs as part of `make test` (not `make validate`, which stays suite-free and fast).
@@ -509,7 +512,7 @@ make help
 <summary><strong>Before submitting changes</strong></summary>
 
 - [ ] `make validate` (or `.\build.ps1 validate`) passes
-- [ ] `node --test src/scripts/*.test.mjs` passes (531 tests, 0 failing) and `node src/scripts/check-test-count.mjs` exits 0
+- [ ] `node --test src/scripts/*.test.mjs` passes (588 tests, 0 failing) and `node src/scripts/check-test-count.mjs` exits 0
 - [ ] `src/SKILL.md` has `name:` and `description:` in YAML frontmatter
 - [ ] All cross-references in `src/SKILL.md` point to existing files in `src/references/`
 - [ ] State machine diagram matches transition rules table
@@ -558,6 +561,10 @@ iterative-planner/
     │   ├── check-readme-parity.test.mjs    # Test suite (node:test)
     │   ├── check-test-count.mjs    # TEST_COUNT vs live `node --test` pass-count gate (run via make test)
     │   ├── check-test-count.test.mjs # check-test-count test suite (node:test)
+    │   ├── check-agent-wiring.mjs  # prose-layer gate: script paths, reference citations, section pointers (run via make validate)
+    │   ├── check-agent-wiring.test.mjs # agent-wiring test suite (node:test)
+    │   ├── check-template-parity.mjs # byte-parity gate: bootstrap.mjs's PLAN_TEMPLATES vs file-formats.md's `<!-- SKELETON:* -->` regions (run via make validate)
+    │   ├── check-template-parity.test.mjs # template-parity test suite (node:test)
     │   ├── schema.mjs              # CHANGELOG_SPEC — the one declarative definition of the changelog's field shapes (used by validate-plan.mjs)
     │   ├── schema.test.mjs         # schema test suite (node:test)
     │   ├── emit-state.mjs          # per-state rule router; emits scripts/modules/state-<s>.md on demand
