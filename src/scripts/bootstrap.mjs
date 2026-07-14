@@ -243,9 +243,177 @@ function readPlanFile(planDirName, filename) {
 
 // extractField now lives in ./shared.mjs (imported above).
 
-// System Atlas skeleton — schema must match references/file-formats.md ## plans/SYSTEM.md exactly.
+// The 12 plan-file skeletons bootstrap writes, as RAW strings with {{TOKEN}} placeholders.
+// Keys are emit-template.mjs's slugs. Raw strings (not functions) on purpose: only raw strings
+// are byte-diffable against a doc region, which is what lets a parity gate exist at all.
+//
+// The `system` skeleton's schema must match references/file-formats.md ## plans/SYSTEM.md exactly.
 // If you change the schema there, update this skeleton in lockstep.
-const SYSTEM_ATLAS_SKELETON = `# System Atlas
+export const PLAN_TEMPLATES = {
+  state: `# Current State: EXPLORE
+*Skill: iterative-planner v{{VERSION}}*
+## Iteration: 0
+## Current Plan Step: N/A
+## Pre-Step Checklist (reset before each EXECUTE step)
+- [ ] Re-read state.md (this file)
+- [ ] Re-read plan.md
+- [ ] Re-read progress.md
+- [ ] Re-read decisions.md (if fix attempt)
+- [ ] Checkpoint created (if risky step or irreversible op)
+## Fix Attempts (resets per plan step)
+- (none yet)
+## Change Manifest (current iteration)
+- (no changes yet)
+## Last Transition: INIT → EXPLORE ({{TIMESTAMP}})
+## Transition History:
+- INIT → EXPLORE (task started)
+<!-- When logging EXPLORE → PLAN, add Exploration Confidence on the line below the transition entry, e.g.:
+- EXPLORE → PLAN (gathered enough context, YYYY-MM-DDTHH:MM:SSZ)
+  - confidence: scope=deep|partial|shallow, solutions=adequate|thin, risks=clear|unclear
+See references/planning-rigor.md for definitions. -->
+`,
+
+  plan: `# Plan v0
+
+## Goal
+{{GOAL}}
+
+## Problem Statement
+*To be defined during PLAN. (1) Expected behavior, (2) invariants, (3) edge cases.*
+
+## Context
+*Pending EXPLORE phase. Findings will inform the approach.*
+
+## Files To Modify
+*To be determined after EXPLORE. List every file that will be touched.*
+
+## Steps
+*To be determined after EXPLORE. Annotate each with [RISK: low/medium/high] and [deps: N,M].*
+
+## Assumptions
+*To be populated during PLAN. Each: what you assume, which finding grounds it, which steps depend on it.*
+
+## Failure Modes
+*To be determined during PLAN. For each dependency/integration: what if slow, garbage, down?*
+
+## Pre-Mortem & Falsification Signals
+*To be determined during PLAN. Assume the plan failed — 2-3 scenarios with concrete STOP IF triggers.*
+
+## Success Criteria
+*To be defined before first EXECUTE.*
+
+## Verification Strategy
+*To be defined during PLAN. For each success criterion, define what check to run and what "pass" means.*
+
+## Complexity Budget
+- Files added: 0/3 max
+- New abstractions (classes/modules/interfaces): 0/2 max
+- Lines added vs removed: +0/-0 (target: net negative or neutral)
+`,
+
+  decisions: `# Decision Log
+*Plan: {{PLAN_ID}}*
+*Skill: iterative-planner v{{VERSION}}*
+*Append-only. Never edit past entries.*
+{{CROSS_PLAN_NOTE}}
+<!-- Schema example — DO NOT REMOVE. Real entries follow this shape.
+     See references/file-formats.md "Entry Schema by Type" for required fields per entry type.
+     In-code anchors carry the plan-id prefix: \`# DECISION {{PLAN_ID}}/D-NNN\` (see references/decision-anchoring.md).
+
+## D-001 | EXPLORE → PLAN | YYYY-MM-DD
+**Context**: <one-paragraph background — what was discovered in EXPLORE>
+**Decision**: <chosen approach in one sentence>
+**Trade-off**: <X> **at the cost of** <Y>
+**Reasoning**: <why this trade-off is acceptable; what alternatives were rejected>
+**Anchor-Refs**: \`path/to/file.ext:LL\`, \`other/file.ext:LL-MM\`  (required when a matching \`# DECISION {{PLAN_ID}}/D-NNN\` anchor exists in source)
+-->
+`,
+
+  findings: `# Findings
+*Summary and index of all findings. Detailed files go in findings/ directory.*
+{{CROSS_PLAN_NOTE}}
+## Index
+*To be populated during EXPLORE.*
+
+## Key Constraints
+*To be populated during EXPLORE.*
+
+## Corrections
+*Append [CORRECTED iter-N] entries here when earlier findings prove wrong. Reference the original finding file and what changed.*
+`,
+
+  progress: `# Progress
+
+## Completed
+*Nothing yet.*
+
+## In Progress
+- [ ] EXPLORE: Initial context gathering
+
+## Remaining
+*To be populated from plan.md after PLAN phase.*
+
+## Blocked
+*Nothing currently.*
+`,
+
+  verification: `# Verification Results
+*Populated during PLAN (template), updated during EXECUTE (per-step), completed during REFLECT (full pass).*
+*Rewritten each iteration — not append-only.*
+
+## Criteria Verification
+| # | Criterion (from plan.md) | Method | Command/Action | Result | Evidence |
+|---|--------------------------|--------|----------------|--------|----------|
+| 1 | *To be populated during PLAN* | - | - | PENDING | - |
+
+## Additional Checks
+*Required rows below are pre-populated every REFLECT cycle. Append optional rows (lint, type checks, behavioral diffs, smoke tests) as needed.*
+
+| Check | Command/Action | Result | Details |
+|-------|----------------|--------|---------|
+| Regression | *To be populated during REFLECT (re-run previously-passing tests)* | PENDING | - |
+| Scope drift | *To be populated during REFLECT (compare state.md manifest vs plan.md Files To Modify)* | PENDING | - |
+| Diff review | *To be populated during REFLECT (review git diff for debug artifacts, TODOs, commented-out code)* | PENDING | - |
+
+## Not Verified
+| What | Why |
+|------|-----|
+| *To be populated during REFLECT* | - |
+
+## Prediction Accuracy
+*Compare plan.md predictions against actual results during REFLECT.*
+
+| Predicted (from plan.md) | Actual | Delta |
+|--------------------------|--------|-------|
+| *To be populated during REFLECT* | - | - |
+
+## Convergence Metrics
+*EXTENDED — iteration 2+. First iteration: write "N/A — first iteration." See references/convergence-metrics.md.*
+
+| Metric | Previous | Current | Delta |
+|--------|----------|---------|-------|
+| Pass rate | - | - | - |
+| Scope (planned vs changed) | - | - | - |
+| New issues found | - | - | - |
+| **Convergence score** | - | - | - |
+
+## Verdict
+*To be completed during REFLECT. All 5 bullets required, in order. See references/file-formats.md.*
+
+- Criteria passed: PENDING (N/M)
+- Regressions: PENDING
+- Scope drift: PENDING
+- Simplification blockers: PENDING
+- Recommendation: PENDING (→ CLOSE / PIVOT / EXPLORE)
+`,
+
+  changelog: `# Changelog
+*Append-only per-edit ledger. One line per file edit. Owner: ip-executor (writes). Reader: ip-reviewer at REFLECT.*
+*Format: \`UTC | iter-N/step-M | commit | path | OP(+N,-M) | radius:TIER(score) | D-NNN-or-dash | reason\`*
+*See references/blast-radius.md for radius scoring. Decision-ref optional — \`-\` means no \`# DECISION\` anchor governs this edit.*
+`,
+
+  system: `# System Atlas
 *Last refreshed: (none yet) | (no plan closed yet)*
 *Domain-neutral system map. Rewritten by ip-archivist at CLOSE — max 300 lines. Read before PLAN/EXPLORE.*
 
@@ -269,40 +437,73 @@ const SYSTEM_ATLAS_SKELETON = `# System Atlas
 
 ## Codebase Specialization
 *Optional — present only when domain=codebase. Omit entirely for non-code systems.*
-`;
+`,
+
+  "findings-consolidated": `# Consolidated Findings
+*Cross-plan findings archive. Entries merged from per-plan findings.md on close. Newest first.*
+`,
+
+  "decisions-consolidated": `# Consolidated Decisions
+*Cross-plan decision archive. Entries merged from per-plan decisions.md on close. Newest first.*
+`,
+
+  lessons: `# Lessons Learned
+*Cross-plan lessons. Updated and consolidated on close. Max 200 lines — rewrite, don't append forever.*
+*Read before any PLAN state. This is institutional memory.*
+`,
+
+  index: `# Plan Index
+*Topic-to-directory mapping. Updated on close. Survives sliding window trim.*
+
+| Plan | Date | Goal | Key Topics |
+|------|------|------|------------|
+`,
+};
+
+const TOKEN_RE = /\{\{([A-Z_]+)\}\}/g;
+
+// Substitute {{TOKEN}} placeholders in a PLAN_TEMPLATES body.
+//
+// SINGLE PASS, by construction: String.prototype.replace(re, fn) scans the ORIGINAL string
+// left-to-right exactly once and never re-scans what it substituted in. Do NOT "improve" this
+// into a loop-until-stable or a chain of per-token .replace() calls — `goal` is unsanitized user
+// text (cmdNewInner takes it straight from argv), so a goal containing the literal characters
+// "{{VERSION}}" would be re-entered and rewritten on a second pass.
+//
+// An unknown token, or a known token with no value supplied, THROWS. Do not copy
+// resolveSkillVersion's degrade-to-"unknown" contract: that is right for a cosmetic version
+// string and wrong for a structural file body. The throw lands in cmdNewInner's try/catch,
+// which removes the partial plan dir and restores the previous pointer — a loud failure beats
+// a half-written plan.
+export function renderTemplate(str, values) {
+  return str.replace(TOKEN_RE, (match, token) => {
+    if (!Object.prototype.hasOwnProperty.call(values, token)) {
+      throw new Error(`ERROR: template placeholder ${match} has no value supplied.`);
+    }
+    return values[token];
+  });
+}
 
 function ensureConsolidatedFiles() {
   const findingsPath = join(plansDir, "FINDINGS.md");
   const decisionsPath = join(plansDir, "DECISIONS.md");
   const lessonsPath = join(plansDir, "LESSONS.md");
   if (!existsSync(findingsPath)) {
-    writeFileSync(findingsPath, `# Consolidated Findings
-*Cross-plan findings archive. Entries merged from per-plan findings.md on close. Newest first.*
-`);
+    writeFileSync(findingsPath, renderTemplate(PLAN_TEMPLATES["findings-consolidated"], {}));
   }
   if (!existsSync(decisionsPath)) {
-    writeFileSync(decisionsPath, `# Consolidated Decisions
-*Cross-plan decision archive. Entries merged from per-plan decisions.md on close. Newest first.*
-`);
+    writeFileSync(decisionsPath, renderTemplate(PLAN_TEMPLATES["decisions-consolidated"], {}));
   }
   if (!existsSync(lessonsPath)) {
-    writeFileSync(lessonsPath, `# Lessons Learned
-*Cross-plan lessons. Updated and consolidated on close. Max 200 lines — rewrite, don't append forever.*
-*Read before any PLAN state. This is institutional memory.*
-`);
+    writeFileSync(lessonsPath, renderTemplate(PLAN_TEMPLATES.lessons, {}));
   }
   const systemPath = join(plansDir, "SYSTEM.md");
   if (!existsSync(systemPath)) {
-    writeFileSync(systemPath, SYSTEM_ATLAS_SKELETON);
+    writeFileSync(systemPath, renderTemplate(PLAN_TEMPLATES.system, {}));
   }
   const indexPath = join(plansDir, "INDEX.md");
   if (!existsSync(indexPath)) {
-    writeFileSync(indexPath, `# Plan Index
-*Topic-to-directory mapping. Updated on close. Survives sliding window trim.*
-
-| Plan | Date | Goal | Key Topics |
-|------|------|------|------------|
-`);
+    writeFileSync(indexPath, renderTemplate(PLAN_TEMPLATES.index, {}));
   }
 }
 
@@ -1277,189 +1478,16 @@ function cmdNewInner(goal, force) {
     mkdirSync(join(planDir, "checkpoints"), { recursive: true });
     mkdirSync(join(planDir, "findings"), { recursive: true });
 
-    writeFileSync(
-      join(planDir, "state.md"),
-      `# Current State: EXPLORE
-*Skill: iterative-planner v${skillVersion}*
-## Iteration: 0
-## Current Plan Step: N/A
-## Pre-Step Checklist (reset before each EXECUTE step)
-- [ ] Re-read state.md (this file)
-- [ ] Re-read plan.md
-- [ ] Re-read progress.md
-- [ ] Re-read decisions.md (if fix attempt)
-- [ ] Checkpoint created (if risky step or irreversible op)
-## Fix Attempts (resets per plan step)
-- (none yet)
-## Change Manifest (current iteration)
-- (no changes yet)
-## Last Transition: INIT → EXPLORE (${timestamp})
-## Transition History:
-- INIT → EXPLORE (task started)
-<!-- When logging EXPLORE → PLAN, add Exploration Confidence on the line below the transition entry, e.g.:
-- EXPLORE → PLAN (gathered enough context, YYYY-MM-DDTHH:MM:SSZ)
-  - confidence: scope=deep|partial|shallow, solutions=adequate|thin, risks=clear|unclear
-See references/planning-rigor.md for definitions. -->
-`
-    );
-
-    writeFileSync(
-      join(planDir, "plan.md"),
-      `# Plan v0
-
-## Goal
-${goal}
-
-## Problem Statement
-*To be defined during PLAN. (1) Expected behavior, (2) invariants, (3) edge cases.*
-
-## Context
-*Pending EXPLORE phase. Findings will inform the approach.*
-
-## Files To Modify
-*To be determined after EXPLORE. List every file that will be touched.*
-
-## Steps
-*To be determined after EXPLORE. Annotate each with [RISK: low/medium/high] and [deps: N,M].*
-
-## Assumptions
-*To be populated during PLAN. Each: what you assume, which finding grounds it, which steps depend on it.*
-
-## Failure Modes
-*To be determined during PLAN. For each dependency/integration: what if slow, garbage, down?*
-
-## Pre-Mortem & Falsification Signals
-*To be determined during PLAN. Assume the plan failed — 2-3 scenarios with concrete STOP IF triggers.*
-
-## Success Criteria
-*To be defined before first EXECUTE.*
-
-## Verification Strategy
-*To be defined during PLAN. For each success criterion, define what check to run and what "pass" means.*
-
-## Complexity Budget
-- Files added: 0/3 max
-- New abstractions (classes/modules/interfaces): 0/2 max
-- Lines added vs removed: +0/-0 (target: net negative or neutral)
-`
-    );
-
-    writeFileSync(
-      join(planDir, "decisions.md"),
-      `# Decision Log
-*Plan: ${planDirName}*
-*Skill: iterative-planner v${skillVersion}*
-*Append-only. Never edit past entries.*
-${crossPlanNote}
-<!-- Schema example — DO NOT REMOVE. Real entries follow this shape.
-     See references/file-formats.md "Entry Schema by Type" for required fields per entry type.
-     In-code anchors carry the plan-id prefix: \`# DECISION ${planDirName}/D-NNN\` (see references/decision-anchoring.md).
-
-## D-001 | EXPLORE → PLAN | YYYY-MM-DD
-**Context**: <one-paragraph background — what was discovered in EXPLORE>
-**Decision**: <chosen approach in one sentence>
-**Trade-off**: <X> **at the cost of** <Y>
-**Reasoning**: <why this trade-off is acceptable; what alternatives were rejected>
-**Anchor-Refs**: \`path/to/file.ext:LL\`, \`other/file.ext:LL-MM\`  (required when a matching \`# DECISION ${planDirName}/D-NNN\` anchor exists in source)
--->
-`
-    );
-
-    writeFileSync(
-      join(planDir, "findings.md"),
-      `# Findings
-*Summary and index of all findings. Detailed files go in findings/ directory.*
-${crossPlanNote}
-## Index
-*To be populated during EXPLORE.*
-
-## Key Constraints
-*To be populated during EXPLORE.*
-
-## Corrections
-*Append [CORRECTED iter-N] entries here when earlier findings prove wrong. Reference the original finding file and what changed.*
-`
-    );
-
-    writeFileSync(
-      join(planDir, "progress.md"),
-      `# Progress
-
-## Completed
-*Nothing yet.*
-
-## In Progress
-- [ ] EXPLORE: Initial context gathering
-
-## Remaining
-*To be populated from plan.md after PLAN phase.*
-
-## Blocked
-*Nothing currently.*
-`
-    );
-
-    writeFileSync(
-      join(planDir, "verification.md"),
-      `# Verification Results
-*Populated during PLAN (template), updated during EXECUTE (per-step), completed during REFLECT (full pass).*
-*Rewritten each iteration — not append-only.*
-
-## Criteria Verification
-| # | Criterion (from plan.md) | Method | Command/Action | Result | Evidence |
-|---|--------------------------|--------|----------------|--------|----------|
-| 1 | *To be populated during PLAN* | - | - | PENDING | - |
-
-## Additional Checks
-*Required rows below are pre-populated every REFLECT cycle. Append optional rows (lint, type checks, behavioral diffs, smoke tests) as needed.*
-
-| Check | Command/Action | Result | Details |
-|-------|----------------|--------|---------|
-| Regression | *To be populated during REFLECT (re-run previously-passing tests)* | PENDING | - |
-| Scope drift | *To be populated during REFLECT (compare state.md manifest vs plan.md Files To Modify)* | PENDING | - |
-| Diff review | *To be populated during REFLECT (review git diff for debug artifacts, TODOs, commented-out code)* | PENDING | - |
-
-## Not Verified
-| What | Why |
-|------|-----|
-| *To be populated during REFLECT* | - |
-
-## Prediction Accuracy
-*Compare plan.md predictions against actual results during REFLECT.*
-
-| Predicted (from plan.md) | Actual | Delta |
-|--------------------------|--------|-------|
-| *To be populated during REFLECT* | - | - |
-
-## Convergence Metrics
-*EXTENDED — iteration 2+. First iteration: write "N/A — first iteration." See references/convergence-metrics.md.*
-
-| Metric | Previous | Current | Delta |
-|--------|----------|---------|-------|
-| Pass rate | - | - | - |
-| Scope (planned vs changed) | - | - | - |
-| New issues found | - | - | - |
-| **Convergence score** | - | - | - |
-
-## Verdict
-*To be completed during REFLECT. All 5 bullets required, in order. See references/file-formats.md.*
-
-- Criteria passed: PENDING (N/M)
-- Regressions: PENDING
-- Scope drift: PENDING
-- Simplification blockers: PENDING
-- Recommendation: PENDING (→ CLOSE / PIVOT / EXPLORE)
-`
-    );
-
-    writeFileSync(
-      join(planDir, "changelog.md"),
-      `# Changelog
-*Append-only per-edit ledger. One line per file edit. Owner: ip-executor (writes). Reader: ip-reviewer at REFLECT.*
-*Format: \`UTC | iter-N/step-M | commit | path | OP(+N,-M) | radius:TIER(score) | D-NNN-or-dash | reason\`*
-*See references/blast-radius.md for radius scoring. Decision-ref optional — \`-\` means no \`# DECISION\` anchor governs this edit.*
-`
-    );
+    const values = {
+      VERSION: skillVersion,
+      PLAN_ID: planDirName,
+      GOAL: goal,
+      TIMESTAMP: timestamp,
+      CROSS_PLAN_NOTE: crossPlanNote,
+    };
+    for (const slug of ["state", "plan", "decisions", "findings", "progress", "verification", "changelog"]) {
+      writeFileSync(join(planDir, `${slug}.md`), renderTemplate(PLAN_TEMPLATES[slug], values));
+    }
 
     // Ensure consolidated files exist at plans/ root
     ensureConsolidatedFiles();

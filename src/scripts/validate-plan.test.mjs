@@ -1076,9 +1076,13 @@ describe("validate-plan.mjs --pre-step gate", () => {
       `a code-span delimiter is PROSE, not a comment marker, got:\n${r2.stdout}`);
   });
 
-  it("(ad) D-009/B4: bootstrap's state.md template holds NO example EXECUTE → REFLECT (raw counting cannot over-count a fresh plan)", () => {
-    const template = readFileSync(BOOTSTRAP, "utf-8");
-    const m = /## Transition History:\n([\s\S]*?)\n`\n\s*\);/.exec(template);
+  it("(ad) D-009/B4: bootstrap's state.md template holds NO example EXECUTE → REFLECT (raw counting cannot over-count a fresh plan)", async () => {
+    // Read the template itself, not bootstrap's source shape: PLAN_TEMPLATES.state IS the
+    // state.md skeleton. (Pre-extraction this regexed the inline writeFileSync literal, so it
+    // broke the moment the literal moved — the template block is the thing under test, not
+    // the call site's punctuation.)
+    const { PLAN_TEMPLATES } = await import(`file://${BOOTSTRAP}`);
+    const m = /## Transition History:\n([\s\S]*)$/.exec(PLAN_TEMPLATES.state);
     assert.ok(m, "could not locate bootstrap's state.md Transition History template block");
     assert.ok(!/EXECUTE\s*(?:→|->)\s*REFLECT/.test(m[1]),
       `B4 FALSIFIED: bootstrap's state.md template now contains an example EXECUTE → REFLECT, so the raw-counting cap (D-009) would over-count on EVERY fresh plan. Fix the template or re-open D-009. Template block:\n${m[1]}`);

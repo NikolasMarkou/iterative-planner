@@ -4041,3 +4041,172 @@ describe("bootstrap.mjs — skill version stamp", () => {
     assert.ok(!/^ERROR/m.test(out), `stamped plan must produce no ERRORs, got:\n${out}`);
   });
 });
+
+// ---------------------------------------------------------------------------
+// PLAN_TEMPLATES + renderTemplate — the extracted plan-file skeletons.
+//
+// Golden-bytes: these tests pin every `bootstrap new` call site to its template. If someone
+// re-inlines a literal, or edits a template without the call site agreeing, the byte compare
+// below fails. Precedent: the maybeCompressChangelog byte-freeze test above.
+//
+// The in-process `import` is deliberate and depends on the isEntryPoint guard holding (see
+// "bootstrap.mjs as a library" above). Keep that test.
+// ---------------------------------------------------------------------------
+describe("bootstrap.mjs — PLAN_TEMPLATES + renderTemplate", () => {
+  let tempDirs = [];
+
+  function getTempDir() {
+    const dir = makeTempDir();
+    tempDirs.push(dir);
+    return dir;
+  }
+
+  afterEach(() => {
+    for (const dir of tempDirs) removeTempDir(dir);
+    tempDirs = [];
+  });
+
+  const REAL_VERSION = readFileSync(resolve(import.meta.dirname, "..", "..", "VERSION"), "utf-8").trim();
+  const CROSS_PLAN_NOTE = "\n*Cross-plan context: see plans/FINDINGS.md, plans/DECISIONS.md, and plans/LESSONS.md*\n";
+
+  /** The 7 per-plan slugs (written into {plan-dir}/) and the 5 plans/-root slugs. */
+  const PER_PLAN = ["state", "plan", "decisions", "findings", "progress", "verification", "changelog"];
+  const ROOT_FILES = {
+    "findings-consolidated": "FINDINGS.md",
+    "decisions-consolidated": "DECISIONS.md",
+    lessons: "LESSONS.md",
+    system: "SYSTEM.md",
+    index: "INDEX.md",
+  };
+
+  /** Import the module under test in-process (pure exports only — no CLI, per isEntryPoint). */
+  async function loadBootstrap() {
+    return import(`file://${BOOTSTRAP}`);
+  }
+
+  /** Pull the ISO timestamp bootstrap stamped into state.md, so the golden uses that run's own value. */
+  function timestampOf(stateMd) {
+    const m = stateMd.match(/## Last Transition: INIT → EXPLORE \((\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)\)/);
+    assert.ok(m, "state.md must carry an INIT → EXPLORE timestamp");
+    return m[1];
+  }
+
+  it("exports exactly 12 templates, named for emit-template.mjs's slugs", async () => {
+    const { PLAN_TEMPLATES } = await loadBootstrap();
+    const keys = Object.keys(PLAN_TEMPLATES);
+    assert.equal(keys.length, 12, `expected 12 templates, got ${keys.length}: ${keys.join(", ")}`);
+    assert.deepEqual(
+      [...keys].sort(),
+      [...PER_PLAN, ...Object.keys(ROOT_FILES)].sort(),
+      "template keys must be exactly the 12 slugs bootstrap writes"
+    );
+  });
+
+  it("every template is a raw string — no leftover ${...} interpolation survived the extraction", async () => {
+    const { PLAN_TEMPLATES } = await loadBootstrap();
+    for (const [slug, body] of Object.entries(PLAN_TEMPLATES)) {
+      assert.equal(typeof body, "string", `${slug} must be a raw string, not a function`);
+      assert.ok(!/\$\{/.test(body), `${slug} still contains a \${...} interpolation site`);
+    }
+  });
+
+  it("golden bytes: the 7 per-plan files equal renderTemplate(PLAN_TEMPLATES[slug], that run's values)", async () => {
+    const { PLAN_TEMPLATES, renderTemplate } = await loadBootstrap();
+    const dir = getTempDir();
+    const goal = "golden capture";
+    run(dir, "new", goal);
+    const planDir = getPointer(dir);
+    const stateMd = readPlanFile(dir, planDir, "state.md");
+
+    // First-ever plan in a virgin project: no consolidated files existed when the note was computed.
+    const values = {
+      VERSION: REAL_VERSION,
+      PLAN_ID: planDir,
+      GOAL: goal,
+      TIMESTAMP: timestampOf(stateMd),
+      CROSS_PLAN_NOTE: "",
+    };
+    for (const slug of PER_PLAN) {
+      const onDisk = readPlanFile(dir, planDir, `${slug}.md`);
+      assert.equal(onDisk, renderTemplate(PLAN_TEMPLATES[slug], values),
+        `${slug}.md on disk must be byte-identical to its rendered template`);
+    }
+  });
+
+  it("golden bytes: the 5 plans/-root files equal their templates (no tokens, no values)", async () => {
+    const { PLAN_TEMPLATES, renderTemplate } = await loadBootstrap();
+    const dir = getTempDir();
+    run(dir, "new", "golden capture");
+    for (const [slug, filename] of Object.entries(ROOT_FILES)) {
+      const onDisk = readFileSync(join(dir, "plans", filename), "utf-8");
+      assert.equal(onDisk, renderTemplate(PLAN_TEMPLATES[slug], {}),
+        `plans/${filename} must be byte-identical to PLAN_TEMPLATES.${slug}`);
+    }
+  });
+
+  it("golden bytes: a later plan (consolidated files exist) renders the CROSS_PLAN_NOTE branch", async () => {
+    const { PLAN_TEMPLATES, renderTemplate } = await loadBootstrap();
+    const dir = getTempDir();
+    run(dir, "new", "seed");   // creates plans/FINDINGS.md etc.
+    run(dir, "close");
+    const goal = "second plan";
+    run(dir, "new", goal);
+    const planDir = getPointer(dir);
+    const stateMd = readPlanFile(dir, planDir, "state.md");
+    const values = {
+      VERSION: REAL_VERSION,
+      PLAN_ID: planDir,
+      GOAL: goal,
+      TIMESTAMP: timestampOf(stateMd),
+      CROSS_PLAN_NOTE,
+    };
+    for (const slug of PER_PLAN) {
+      const onDisk = readPlanFile(dir, planDir, `${slug}.md`);
+      assert.equal(onDisk, renderTemplate(PLAN_TEMPLATES[slug], values),
+        `${slug}.md must be byte-identical with the cross-plan note branch rendered`);
+    }
+    assert.ok(readPlanFile(dir, planDir, "decisions.md").includes("*Cross-plan context:"),
+      "the note branch must actually be exercised — otherwise this test proves nothing");
+  });
+
+  it("both CROSS_PLAN_NOTE branches render: empty note collapses the line, present note inserts it", async () => {
+    const { PLAN_TEMPLATES, renderTemplate } = await loadBootstrap();
+    const empty = renderTemplate(PLAN_TEMPLATES.findings, { CROSS_PLAN_NOTE: "" });
+    const noted = renderTemplate(PLAN_TEMPLATES.findings, { CROSS_PLAN_NOTE });
+    assert.ok(!empty.includes("Cross-plan context"), "empty branch must carry no note");
+    assert.ok(noted.includes("*Cross-plan context: see plans/FINDINGS.md"), "note branch must carry the note");
+    // The note is the ONLY difference — both branches share the rest of the skeleton byte-for-byte.
+    assert.equal(noted.replace(CROSS_PLAN_NOTE, ""), empty,
+      "removing the note from the noted branch must reproduce the empty branch exactly");
+  });
+
+  it("renderTemplate substitutes in a SINGLE pass — a value containing {{TOKEN}} is not re-scanned", async () => {
+    const { renderTemplate } = await loadBootstrap();
+    // `goal` is unsanitized user text. A loop-until-stable implementation would re-enter this
+    // value and rewrite the {{VERSION}} inside it. A single left-to-right pass must not.
+    const out = renderTemplate("goal={{GOAL}} v={{VERSION}}", {
+      GOAL: "ship {{VERSION}} today",
+      VERSION: "2.37.0",
+    });
+    assert.equal(out, "goal=ship {{VERSION}} today v=2.37.0",
+      "the {{VERSION}} inside the substituted GOAL must survive verbatim");
+  });
+
+  it("renderTemplate THROWS on an unknown token (never silently leaves or blanks it)", async () => {
+    const { renderTemplate } = await loadBootstrap();
+    assert.throws(
+      () => renderTemplate("# x\n{{BOGUS}}\n", { VERSION: "2.37.0" }),
+      /\{\{BOGUS\}\} has no value supplied/,
+      "an unrecognized placeholder must be a loud failure, not a half-written file"
+    );
+  });
+
+  it("renderTemplate THROWS when a known token has no value supplied", async () => {
+    const { renderTemplate, PLAN_TEMPLATES } = await loadBootstrap();
+    assert.throws(
+      () => renderTemplate(PLAN_TEMPLATES.state, { VERSION: "2.37.0" }), // TIMESTAMP missing
+      /\{\{TIMESTAMP\}\} has no value supplied/,
+      "a missing value must throw so cmdNewInner's catch rolls the plan dir back"
+    );
+  });
+});
