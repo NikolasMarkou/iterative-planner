@@ -921,7 +921,7 @@ Legacy (`changelog.md`) rendering of the same two pieces, unchanged:
 - (compressed: 14 low-decision-impact edits, iter-1/step-3..iter-1/step-7, files: 4)
 ```
 
-No-op return reasons: `missing`, `empty`, `under-threshold`, `no-elidable-groups`, `no-new-entries`, `unparseable`. Compression returns `{ compressed, beforeLines, afterLines, elidedCount, reason }`.
+No-op return reasons: `missing`, `empty`, `under-threshold`, `no-elidable-groups`, `no-new-entries`, `unparseable` (XML only), `locked` (XML only — another writer holds the `changelog.xml` append lock; the pass is skipped and re-runs at the next PLAN gate). Compression returns `{ compressed, beforeLines, afterLines, elidedCount, reason }`.
 
 <!-- TEMPLATE:summary -->
 ## summary.md

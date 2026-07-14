@@ -40,6 +40,12 @@ import {
 // compression pass: it edits the parsed document and re-serializes; it never string-splices XML.
 // See decisions.md D-002.
 import {
+  // Aliased: bootstrap already has an acquireLock/releaseLock pair of its own (the plans-dir CLI
+  // lock, ~:111 — pid-based, whole-process). These two are the changelog.xml WRITER lock (O_EXCL,
+  // mtime-staleness). Different files, different lifetimes, different staleness rules. The alias is
+  // load-bearing: without it the two names collide and the CLI lock silently wins.
+  acquireLock as acquireChangelogLock,
+  releaseLock as releaseChangelogLock,
   el,
   elementsOf,
   emptyDoc,
@@ -937,11 +943,50 @@ function parseChangelogFile(content) {
  *
  * Returns { compressed, beforeLines, afterLines, elidedCount, reason }.
  *   reason ∈ { "missing", "empty", "under-threshold", "no-elidable-groups", "no-new-entries",
- *              "unparseable" (XML only), "compressed" }.
+ *              "unparseable" (XML only), "locked" (XML only), "compressed" }.
  */
+// DECISION plan_2026-07-14_79ee0f59/D-008 — THE COMPRESSOR IS THE SECOND WRITER, AND TAKES THE SAME LOCK.
+//
+// compressChangelogXml is a read-modify-write of changelog.xml (read -> re-splice elements ->
+// writeDocAtomic), i.e. exactly the shape that lost entries in changelog.mjs append. It is the ONLY
+// other writer of that file. Unlocked, a compression pass racing an executor's append drops the
+// append: both read the same document, the compressor's rename wins, and the entry is gone —
+// silently, from an append-only ledger.
+//
+// What NOT to do:
+//   - Do NOT rely on "compression only runs at the PLAN gate, when no executor is appending"
+//     (assumption B5). That is TRUE today only because the orchestrator happens to be serial. It is
+//     an assumption about a CALLER, not an invariant of this function, and it is exactly the kind of
+//     reasoning that left `append` unlocked in v2.33.0.
+//   - Do NOT invent a new return shape or a new error path for a failed acquire. The PLAN gate
+//     dispatches this by dynamic import and JSON-stringifies the result; the 5-key shape is a
+//     contract. A lock we cannot take means "skip this pass" — a no-op, like `under-threshold`.
+//     Compression is idempotent and re-runs at the next gate, so a skipped pass costs nothing.
+//   - Do NOT use changelog.mjs's `withLock` here, tempting as it is: it folds "could not acquire"
+//     and "fn threw" into one call, and this path must keep them apart. A throw from
+//     compressChangelogXml (a full disk mid-write) must still propagate as it always has; only a
+//     failed ACQUIRE degrades to reason:"locked". acquireLock/releaseLock keep that seam visible.
+//   - dryRun writes nothing, so it takes NO lock — mirroring `changelog.mjs append --dry-run`. A
+//     dry run under contention must still report metrics, not "locked".
+// See decisions.md D-008.
 export function maybeCompressChangelog(planDir, opts = {}) {
-  if (existsSync(xmlPath(planDir))) return compressChangelogXml(planDir, opts);
-  return compressChangelogMarkdown(planDir, opts);
+  const file = xmlPath(planDir);
+  if (!existsSync(file)) return compressChangelogMarkdown(planDir, opts);
+  if (opts.dryRun) return compressChangelogXml(planDir, opts);
+
+  // A throw here is a real fs error (EACCES on a read-only plan dir, ...), not contention. Treat it
+  // the same way: we could not take the lock, so we do not write. The XML path's "never throws"
+  // contract is what the PLAN gate leans on — the lock must not become the one thing that breaks it.
+  let lock = null;
+  try { lock = acquireChangelogLock(file); } catch { lock = null; }
+  if (lock === null) {
+    return { compressed: false, beforeLines: 0, afterLines: 0, elidedCount: 0, reason: "locked" };
+  }
+  try {
+    return compressChangelogXml(planDir, opts);
+  } finally {
+    releaseChangelogLock(lock);   // in a `finally`: a throw must never wedge every future append
+  }
 }
 
 /**

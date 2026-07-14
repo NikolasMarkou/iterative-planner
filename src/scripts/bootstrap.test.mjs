@@ -5,7 +5,7 @@
 
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, readFileSync, writeFileSync, existsSync, rmSync, readdirSync } from "fs";
+import { mkdirSync, readFileSync, writeFileSync, existsSync, rmSync, readdirSync, unlinkSync, utimesSync } from "fs";
 import { join, resolve } from "path";
 import { execFileSync, spawnSync } from "child_process";
 import { tmpdir } from "os";
@@ -3188,6 +3188,95 @@ describe("bootstrap.mjs", () => {
       assert.equal(typeof r.afterLines, "number");
       assert.equal(typeof r.elidedCount, "number");
       assert.equal(typeof r.reason, "string");
+    });
+
+    // -----------------------------------------------------------------------
+    // The SECOND WRITER (iter-2/step-7, D-008). compressChangelogXml is a read-modify-write of
+    // changelog.xml — the same shape that lost entries in `changelog.mjs append`. It now takes the
+    // SAME O_EXCL lock. A lock it cannot take is a skipped pass, not an error and not a new shape.
+    // -----------------------------------------------------------------------
+    it("SECOND WRITER: a held lock skips the pass — {compressed:false, reason:'locked'}, 5-key shape, no throw", async () => {
+      const { maybeCompressChangelog, cl } = await mods();
+      const dir = getTempDir();
+      const planDir = join(dir, "plans", "plan_x");
+      writeXml(cl, planDir, Array.from({ length: 10 }, (_, i) => entry(i)));
+      const before = readXml(planDir);
+
+      // A foreign live holder (the executor mid-append), simulated by the lock file it would create.
+      const lock = cl.lockPath(join(planDir, "changelog.xml"));
+      writeFileSync(lock, `999999 ${new Date().toISOString()}\n`);
+
+      let r;
+      const t0 = Date.now();
+      assert.doesNotThrow(() => {
+        // Short budget: this test asserts the DEGRADATION, not the wait. The wait itself is pinned
+        // in changelog.test.mjs.
+        r = maybeCompressChangelog(planDir, { threshold: 5 });
+      });
+      const elapsed = Date.now() - t0;
+
+      assert.equal(r.compressed, false);
+      assert.equal(r.reason, "locked");
+      assert.deepEqual(
+        Object.keys(r).sort(),
+        ["afterLines", "beforeLines", "compressed", "elidedCount", "reason"],
+        "the PLAN gate's 5-key contract holds on the locked path too — no new shape"
+      );
+      assert.ok(elapsed < 3000, `must degrade, never stall (took ${elapsed}ms)`);
+      assert.equal(readXml(planDir), before, "the contended file was NOT touched — no corruption");
+      assert.ok(existsSync(lock), "someone else's lock is left for its owner to release");
+
+      // And the pass is merely SKIPPED: once the holder is gone, the next gate compresses normally.
+      unlinkSync(lock);
+      assert.equal(maybeCompressChangelog(planDir, { threshold: 5 }).compressed, true,
+        "compression is idempotent and re-runs — a skipped pass costs nothing");
+    });
+
+    it("SECOND WRITER: a stale lock is broken — the compressor is not wedged by a dead writer", async () => {
+      const { maybeCompressChangelog, cl } = await mods();
+      const dir = getTempDir();
+      const planDir = join(dir, "plans", "plan_x");
+      writeXml(cl, planDir, Array.from({ length: 10 }, (_, i) => entry(i)));
+
+      const lock = cl.lockPath(join(planDir, "changelog.xml"));
+      writeFileSync(lock, "999999 dead\n");
+      const old = Date.now() - (cl.LOCK_STALE_MS + 60_000);
+      utimesSync(lock, new Date(old), new Date(old));   // backdate past the stale threshold
+
+      const r = maybeCompressChangelog(planDir, { threshold: 5 });
+      assert.equal(r.compressed, true, "a crashed appender must not wedge compression forever");
+      assert.ok(!existsSync(lock), "the stale lock was broken, and our own lock was released");
+    });
+
+    it("SECOND WRITER: a successful compression leaves NO .lock and NO .tmp behind", async () => {
+      const { maybeCompressChangelog, cl } = await mods();
+      const dir = getTempDir();
+      const planDir = join(dir, "plans", "plan_x");
+      writeXml(cl, planDir, Array.from({ length: 10 }, (_, i) => entry(i)));
+
+      assert.equal(maybeCompressChangelog(planDir, { threshold: 5 }).compressed, true);
+      // Shape-agnostic: a residue check keyed on a FIXED name would pass even if the name changed.
+      const residue = readdirSync(planDir).filter((f) => f.includes(".lock") || f.includes(".tmp"));
+      assert.deepEqual(residue, [], `no lock/temp residue: ${residue.join(", ")}`);
+    });
+
+    it("SECOND WRITER: dryRun takes no lock — it writes nothing, so it cannot race", async () => {
+      const { maybeCompressChangelog, cl } = await mods();
+      const dir = getTempDir();
+      const planDir = join(dir, "plans", "plan_x");
+      writeXml(cl, planDir, Array.from({ length: 10 }, (_, i) => entry(i)));
+      const before = readXml(planDir);
+
+      const lock = cl.lockPath(join(planDir, "changelog.xml"));
+      writeFileSync(lock, `999999 ${new Date().toISOString()}\n`);
+
+      // Mirrors `changelog.mjs append --dry-run`: no write, no lock, no wait.
+      const t0 = Date.now();
+      const r = maybeCompressChangelog(planDir, { threshold: 5, dryRun: true });
+      assert.ok(Date.now() - t0 < 500, "a dry run must not wait on a lock it does not need");
+      assert.equal(r.compressed, true, "metrics are still reported under contention");
+      assert.equal(r.reason, "compressed");
+      assert.equal(readXml(planDir), before, "dryRun still wrote nothing");
     });
 
     it("precedence: changelog.xml wins when a legacy changelog.md is also present", async () => {
