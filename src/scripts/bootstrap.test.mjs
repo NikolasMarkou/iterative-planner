@@ -137,10 +137,15 @@ describe("bootstrap.mjs", () => {
 
       // All expected files exist
       const base = join(dir, "plans", planDir);
-      for (const f of ["state.md", "plan.md", "decisions.md", "findings.md", "progress.md", "verification.md", "changelog.md"]) {
+      for (const f of ["state.md", "plan.md", "decisions.md", "findings.md", "progress.md", "verification.md", "changelog.xml"]) {
         assert.ok(existsSync(join(base, f)), `${f} should exist`);
       }
-      const changelog = readFileSync(join(base, "changelog.md"), "utf-8");
+      // v2.33.0+: the changelog is XML. Its human-readable form is `changelog.mjs render`, whose
+      // output must still carry the header the markdown file used to open with.
+      assert.ok(!existsSync(join(base, "changelog.md")), "no legacy changelog.md is created");
+      const changelog = readFileSync(join(base, "changelog.xml"), "utf-8");
+      assert.ok(changelog.startsWith("<?xml"), "changelog.xml should have an XML declaration");
+      assert.ok(changelog.includes("<changelog>"), "changelog.xml should have the changelog root");
       assert.ok(changelog.includes("# Changelog"), "changelog should have header");
       assert.ok(changelog.includes("Append-only per-edit ledger"), "changelog should describe purpose");
       assert.ok(changelog.includes("references/blast-radius.md"), "changelog should reference blast-radius doc");
@@ -2892,6 +2897,330 @@ describe("bootstrap.mjs", () => {
       const fields = splitChangelogFields(line);
       assert.equal(fields.length, 8);
       assert.equal(fields[7], "a | b | c");
+    });
+
+    // LEGACY-PATH FREEZE (step 12). The markdown compressor's output is pinned to exact bytes, so
+    // any future edit to bootstrap.mjs that perturbs it fails LOUDLY here rather than silently
+    // rewriting the ledger of every pre-v2.33.0 plan dir (A7: no forced migration).
+    it("LEGACY FREEZE: markdown compression output is byte-for-byte the pre-XML result", async () => {
+      const maybeCompressChangelog = await loadHelper();
+      const dir = getTempDir();
+      const planDir = join(dir, "plans", "plan_x");
+      mkdirSync(planDir, { recursive: true });
+      const e = (i, o = {}) =>
+        `2026-07-14T0${i}:00:00Z | iter-1/step-${i} | abc1234 | src/f${i}.mjs | ${o.op || "EDIT(+5,-2)"} | radius:${o.tier || "LOW"}(1) | ${o.dref || "-"} | r${i}`;
+      const body = [e(0, { tier: "HIGH" }), e(1), e(2), e(3), e(4), e(5), e(6), e(7, { dref: "D-001" }), e(8), e(9)];
+      writeFileSync(join(planDir, "changelog.md"), ["# Changelog", "*hdr2*", "*hdr3*", "*hdr4*", "", ...body].join("\n") + "\n");
+
+      const r = maybeCompressChangelog(planDir, { threshold: 10 });
+      assert.deepEqual(r, { compressed: true, beforeLines: 16, afterLines: 14, elidedCount: 1, reason: "compressed" });
+
+      // Golden bytes, captured from the v2.32.0 compressor BEFORE the XML path existed.
+      const GOLDEN =
+        "# Changelog\n*hdr2*\n*hdr3*\n*hdr4*\n" +
+        "<!-- COMPRESSED-SUMMARY -->\n<!-- entries-at-compress: 10 -->\n" +
+        "<!-- elided-groups: 1, elided-lines: 6 -->\n<!-- /COMPRESSED-SUMMARY -->\n" +
+        "2026-07-14T00:00:00Z | iter-1/step-0 | abc1234 | src/f0.mjs | EDIT(+5,-2) | radius:HIGH(1) | - | r0\n" +
+        "- (compressed: 6 low-decision-impact edits, iter-1/step-1..iter-1/step-6, files: 6)\n" +
+        "2026-07-14T07:00:00Z | iter-1/step-7 | abc1234 | src/f7.mjs | EDIT(+5,-2) | radius:LOW(1) | D-001 | r7\n" +
+        "2026-07-14T08:00:00Z | iter-1/step-8 | abc1234 | src/f8.mjs | EDIT(+5,-2) | radius:LOW(1) | - | r8\n" +
+        "2026-07-14T09:00:00Z | iter-1/step-9 | abc1234 | src/f9.mjs | EDIT(+5,-2) | radius:LOW(1) | - | r9\n";
+      assert.equal(readChangelog(planDir), GOLDEN, "legacy compressor output must not drift");
+    });
+
+    it("return shape (markdown) is exactly {compressed,beforeLines,afterLines,elidedCount,reason}", async () => {
+      const maybeCompressChangelog = await loadHelper();
+      const dir = getTempDir();
+      const planDir = join(dir, "plans", "plan_x");
+      writeChangelog(planDir, [entryLine()]);
+      const r = maybeCompressChangelog(planDir);
+      assert.deepEqual(
+        Object.keys(r).sort(),
+        ["afterLines", "beforeLines", "compressed", "elidedCount", "reason"],
+        "ip-orchestrator's PLAN gate JSON-stringifies this — the shape is a contract"
+      );
+    });
+  });
+
+  // =========================================================================
+  // maybeCompressChangelog — XML encoding (v2.33.0+, step 12)
+  //
+  // Same rules as the markdown path (elidable/preserve, 5+-consecutive groups, dual-count
+  // idempotency, identical return shape), expressed over <entry> elements.
+  // =========================================================================
+  describe("maybeCompressChangelog (changelog.xml)", () => {
+    const CHANGELOG = resolve(import.meta.dirname, "changelog.mjs");
+    const SCHEMA = resolve(import.meta.dirname, "schema.mjs");
+
+    async function mods() {
+      const boot = await import(`file://${BOOTSTRAP}`);
+      const cl = await import(`file://${CHANGELOG}`);
+      const sc = await import(`file://${SCHEMA}`);
+      return { maybeCompressChangelog: boot.maybeCompressChangelog, cl, sc };
+    }
+
+    /** Build a changelog.xml from entry field objects (via changelog.mjs — never hand-written). */
+    function writeXml(cl, planDir, entries) {
+      mkdirSync(planDir, { recursive: true });
+      const doc = cl.emptyDoc();
+      for (const f of entries) {
+        const { issues } = cl.appendEntry(doc, f);
+        assert.equal(issues.length, 0, `fixture entry rejected: ${JSON.stringify(issues)}`);
+      }
+      writeFileSync(join(planDir, "changelog.xml"), cl.serializeDoc(doc));
+      return doc;
+    }
+
+    const entry = (i, o = {}) => ({
+      ts: `2026-07-14T${String(i % 24).padStart(2, "0")}:00:00Z`,
+      step: `iter-1/step-${i}`,
+      commit: "abc1234",
+      path: `src/f${i}.mjs`,
+      op: "EDIT(+5,-2)",
+      radius: "radius:LOW(1)",
+      dref: "-",
+      reason: `r${i}`,
+      ...o,
+    });
+
+    const readXml = (planDir) => readFileSync(join(planDir, "changelog.xml"), "utf-8");
+
+    it("`new` creates a changelog.xml that parses, schema-validates, and renders", async () => {
+      const { cl, sc } = await mods();
+      const dir = getTempDir();
+      run(dir, "new", "xml changelog probe");
+      const planDir = join(dir, "plans", getPointer(dir));
+
+      const doc = cl.parseXml(readXml(planDir));            // parses
+      assert.deepEqual(sc.validateDoc(doc, sc.CHANGELOG_SPEC), [], "schema-validates clean");
+
+      const rendered = cl.renderDoc(doc);                    // renders to the legacy markdown
+      assert.ok(rendered.startsWith("# Changelog\n"), "render carries the header");
+      assert.ok(rendered.includes("*Format: `UTC | iter-N/step-M"), "render carries the format line");
+      assert.equal(cl.elementsOf(doc).filter((e) => e.name === "entry").length, 0, "fresh: no entries");
+    });
+
+    it("5+ consecutive elidable entries collapse into ONE <compressed> at their chronological position", async () => {
+      const { maybeCompressChangelog, cl, sc } = await mods();
+      const dir = getTempDir();
+      const planDir = join(dir, "plans", "plan_x");
+      // HIGH sentinel, 8 elidable, REVERT sentinel, 6 elidable, D-NNN sentinel, 3 elidable (< 5).
+      writeXml(cl, planDir, [
+        entry(0, { radius: "radius:HIGH(9)", reason: "core rewrite" }),
+        ...[1, 2, 3, 4, 5, 6, 7, 8].map((i) => entry(i)),
+        entry(9, { op: "REVERT(src/x.mjs)", reason: "revert botched edit" }),
+        ...[10, 11, 12, 13, 14, 15].map((i) => entry(i)),
+        entry(16, { dref: "D-007", reason: "anchored impl" }),
+        ...[17, 18, 19].map((i) => entry(i)),
+      ]);
+
+      const r = maybeCompressChangelog(planDir, { threshold: 5 });
+      assert.equal(r.compressed, true, JSON.stringify(r));
+      assert.equal(r.elidedCount, 2, "two runs >= 5; the trailing 3-run stays verbatim");
+
+      const doc = cl.parseXml(readXml(planDir));
+      assert.deepEqual(sc.validateDoc(doc, sc.CHANGELOG_SPEC), [], "compressed doc is schema-clean");
+      const names = cl.elementsOf(doc).map((e) => e.name);
+
+      // Preserve rules: HIGH, REVERT and D-NNN entries all survive as <entry>.
+      const entries = cl.elementsOf(doc).filter((e) => e.name === "entry");
+      assert.equal(entries.length, 6, "3 sentinels + the 3-entry sub-threshold run survive");
+      assert.ok(entries.some((e) => e.attrs.radius === "radius:HIGH(9)"), "HIGH preserved");
+      assert.ok(entries.some((e) => e.attrs.op === "REVERT(src/x.mjs)"), "REVERT preserved");
+      assert.ok(entries.some((e) => e.attrs.dref === "D-007"), "D-NNN-anchored preserved");
+      assert.ok(entries.some((e) => e.attrs.step === "iter-1/step-19"), "sub-threshold run preserved");
+
+      // <raw> is NEVER elided: the 4 header lines + blank + trailing sentinel all survive.
+      assert.equal(names.filter((n) => n === "raw").length, 6, "all <raw> elements survive");
+
+      // Chronological position: summary under the header, then HIGH, group, REVERT, group, D-007...
+      const compressed = cl.elementsOf(doc).filter((e) => e.name === "compressed");
+      assert.equal(compressed.length, 2);
+      assert.deepEqual(compressed.map((e) => e.attrs.count), ["8", "6"]);
+      assert.deepEqual(compressed.map((e) => e.attrs.from), ["iter-1/step-1", "iter-1/step-10"]);
+      assert.deepEqual(compressed.map((e) => e.attrs.to), ["iter-1/step-8", "iter-1/step-15"]);
+      assert.deepEqual(compressed.map((e) => e.attrs.files), ["8", "6"]);
+
+      const seq = names.filter((n) => n !== "raw");
+      assert.deepEqual(
+        seq,
+        ["compressed-summary", "entry", "compressed", "entry", "compressed", "entry", "entry", "entry", "entry"],
+        "each group sits AT its own position — not hoisted to the top"
+      );
+
+      // The top-of-file metadata element carries the dual count (20 entries seen this pass).
+      const summary = cl.elementsOf(doc).find((e) => e.name === "compressed-summary");
+      assert.equal(summary.attrs["entries-at-compress"], "20");
+      assert.equal(summary.attrs["elided-groups"], "2");
+      assert.equal(summary.attrs["elided-lines"], "14");
+
+      // The render is still the legacy markdown, in order.
+      const md = cl.renderDoc(doc);
+      assert.ok(md.includes("- (compressed: 8 low-decision-impact edits, iter-1/step-1..iter-1/step-8, files: 8)"));
+      assert.ok(md.indexOf("radius:HIGH(9)") < md.indexOf("- (compressed: 8"), "HIGH line precedes its group");
+      assert.ok(md.indexOf("- (compressed: 8") < md.indexOf("REVERT(src/x.mjs)"), "group precedes the REVERT");
+    });
+
+    it("IDEMPOTENT: second pass returns no-new-entries and leaves the file byte-unchanged", async () => {
+      const { maybeCompressChangelog, cl } = await mods();
+      const dir = getTempDir();
+      const planDir = join(dir, "plans", "plan_x");
+      writeXml(cl, planDir, Array.from({ length: 10 }, (_, i) => entry(i)));
+
+      const r1 = maybeCompressChangelog(planDir, { threshold: 5 });
+      assert.equal(r1.compressed, true, JSON.stringify(r1));
+      const after1 = readXml(planDir);
+
+      const r2 = maybeCompressChangelog(planDir, { threshold: 5 });
+      assert.equal(r2.compressed, false);
+      assert.equal(r2.reason, "no-new-entries", "the PLAN gate runs this on EVERY plan — it must no-op");
+      assert.equal(readXml(planDir), after1, "second pass wrote nothing");
+
+      // And a third, for good measure — compression must be a fixed point, not an oscillation.
+      assert.equal(maybeCompressChangelog(planDir, { threshold: 5 }).reason, "no-new-entries");
+      assert.equal(readXml(planDir), after1);
+    });
+
+    it("re-compression: new entries after a prior pass → dual count, one summary, prior <compressed> preserved", async () => {
+      const { maybeCompressChangelog, cl, sc } = await mods();
+      const dir = getTempDir();
+      const planDir = join(dir, "plans", "plan_x");
+      writeXml(cl, planDir, Array.from({ length: 8 }, (_, i) => entry(i)));
+      assert.equal(maybeCompressChangelog(planDir, { threshold: 5 }).compressed, true);
+
+      // Append 6 more elidable entries through the CLI library (D-002: never hand-written).
+      const doc1 = cl.parseXml(readXml(planDir));
+      for (let i = 20; i < 26; i++) {
+        const { issues } = cl.appendEntry(doc1, entry(i));
+        assert.equal(issues.length, 0);
+      }
+      writeFileSync(join(planDir, "changelog.xml"), cl.serializeDoc(doc1));
+
+      const r = maybeCompressChangelog(planDir, { threshold: 5 });
+      assert.equal(r.compressed, true, JSON.stringify(r));
+      const doc2 = cl.parseXml(readXml(planDir));
+      assert.deepEqual(sc.validateDoc(doc2, sc.CHANGELOG_SPEC), []);
+
+      const els = cl.elementsOf(doc2);
+      assert.equal(els.filter((e) => e.name === "compressed-summary").length, 1, "summary replaced, not duplicated");
+      const compressed = els.filter((e) => e.name === "compressed");
+      assert.deepEqual(compressed.map((e) => e.attrs.count), ["8", "6"], "prior group preserved; new group added");
+      // Dual count: 8 (from the prior <compressed>) + 6 new = 14.
+      assert.equal(els.find((e) => e.name === "compressed-summary").attrs["entries-at-compress"], "14");
+      assert.equal(els.filter((e) => e.name === "entry").length, 0, "all 14 entries now live in the 2 groups");
+    });
+
+    it("no-op reasons: missing / empty / under-threshold / no-elidable-groups", async () => {
+      const { maybeCompressChangelog, cl } = await mods();
+      const dir = getTempDir();
+
+      const missing = join(dir, "plans", "plan_missing");
+      mkdirSync(missing, { recursive: true });
+      assert.equal(maybeCompressChangelog(missing).reason, "missing");
+
+      const empty = join(dir, "plans", "plan_empty");
+      mkdirSync(empty, { recursive: true });
+      writeFileSync(join(empty, "changelog.xml"), "   \n");
+      assert.equal(maybeCompressChangelog(empty).reason, "empty");
+
+      const under = join(dir, "plans", "plan_under");
+      writeXml(cl, under, Array.from({ length: 6 }, (_, i) => entry(i)));
+      const u = maybeCompressChangelog(under);   // default threshold 200
+      assert.equal(u.reason, "under-threshold");
+      assert.equal(u.compressed, false);
+
+      const none = join(dir, "plans", "plan_none");
+      const before = writeXml(cl, none, Array.from({ length: 6 }, (_, i) => entry(i, { radius: "radius:HIGH(9)" })));
+      void before;
+      const bytes = readXml(none);
+      const n = maybeCompressChangelog(none, { threshold: 5 });
+      assert.equal(n.reason, "no-elidable-groups");
+      assert.equal(readXml(none), bytes, "file untouched");
+    });
+
+    it("corrupted changelog.xml does NOT throw — reason 'unparseable', file untouched", async () => {
+      const { maybeCompressChangelog } = await mods();
+      const dir = getTempDir();
+      const planDir = join(dir, "plans", "plan_x");
+      mkdirSync(planDir, { recursive: true });
+      // Truncated mid-append: an unclosed root. The PLAN gate must survive this.
+      const broken = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<changelog>\n" +
+        Array.from({ length: 250 }, (_, i) => `  <entry ts="2026-07-14T00:00:00Z" step="iter-1/step-${i}"/>`).join("\n") + "\n";
+      writeFileSync(join(planDir, "changelog.xml"), broken);
+
+      let r;
+      assert.doesNotThrow(() => { r = maybeCompressChangelog(planDir); });
+      assert.equal(r.compressed, false);
+      assert.equal(r.reason, "unparseable");
+      assert.deepEqual(
+        Object.keys(r).sort(),
+        ["afterLines", "beforeLines", "compressed", "elidedCount", "reason"],
+        "shape holds even on the failure path"
+      );
+      assert.equal(readFileSync(join(planDir, "changelog.xml"), "utf-8"), broken, "corrupt file left alone");
+    });
+
+    it("dryRun computes metrics without writing", async () => {
+      const { maybeCompressChangelog, cl } = await mods();
+      const dir = getTempDir();
+      const planDir = join(dir, "plans", "plan_x");
+      writeXml(cl, planDir, Array.from({ length: 10 }, (_, i) => entry(i)));
+      const before = readXml(planDir);
+      const r = maybeCompressChangelog(planDir, { threshold: 5, dryRun: true });
+      assert.equal(r.compressed, true);
+      assert.equal(r.elidedCount, 1);
+      assert.ok(r.afterLines < r.beforeLines, "metrics reflect the compression");
+      assert.equal(readXml(planDir), before, "dryRun did not write");
+    });
+
+    it("return shape (XML) is exactly {compressed,beforeLines,afterLines,elidedCount,reason}", async () => {
+      const { maybeCompressChangelog, cl } = await mods();
+      const dir = getTempDir();
+      const planDir = join(dir, "plans", "plan_x");
+      writeXml(cl, planDir, Array.from({ length: 10 }, (_, i) => entry(i)));
+      const r = maybeCompressChangelog(planDir, { threshold: 5 });
+      assert.deepEqual(
+        Object.keys(r).sort(),
+        ["afterLines", "beforeLines", "compressed", "elidedCount", "reason"]
+      );
+      assert.equal(typeof r.compressed, "boolean");
+      assert.equal(typeof r.beforeLines, "number");
+      assert.equal(typeof r.afterLines, "number");
+      assert.equal(typeof r.elidedCount, "number");
+      assert.equal(typeof r.reason, "string");
+    });
+
+    it("precedence: changelog.xml wins when a legacy changelog.md is also present", async () => {
+      const { maybeCompressChangelog, cl } = await mods();
+      const dir = getTempDir();
+      const planDir = join(dir, "plans", "plan_x");
+      writeXml(cl, planDir, Array.from({ length: 10 }, (_, i) => entry(i)));
+      const md = "# Changelog\n*h2*\n*h3*\n*h4*\n";
+      writeFileSync(join(planDir, "changelog.md"), md);
+
+      const r = maybeCompressChangelog(planDir, { threshold: 5 });
+      assert.equal(r.compressed, true, "the XML path ran (the .md alone would be under-threshold)");
+      assert.ok(readXml(planDir).includes("<compressed "), "the XML was compressed");
+      assert.equal(readFileSync(join(planDir, "changelog.md"), "utf-8"), md, "the legacy file was not touched");
+    });
+
+    // The PLAN gate imports bootstrap.mjs dynamically. If the isEntryPoint guard ever broke, that
+    // import would run the CLI (printing usage / exiting) on EVERY plan.
+    it("dynamic import of bootstrap.mjs does not run the CLI (isEntryPoint guard holds)", async () => {
+      const probe = [
+        `const m = await import(${JSON.stringify(`file://${BOOTSTRAP}`)});`,
+        `console.log(JSON.stringify({`,
+        `  compressFn: typeof m.maybeCompressChangelog,`,
+        `  decisionsFn: typeof m.maybeCompressDecisions,`,
+        `}));`,
+      ].join("\n");
+      const res = spawnSync("node", ["--input-type=module", "-e", probe], {
+        cwd: getTempDir(), encoding: "utf-8", timeout: 15000,
+      });
+      assert.equal(res.status, 0, `import must not exit non-zero. stderr: ${res.stderr}`);
+      assert.equal(res.stdout.trim(), '{"compressFn":"function","decisionsFn":"function"}',
+        "the CLI must print nothing — stdout carries only the probe's own JSON");
+      assert.ok(!/Usage:|Initialized plans\//.test(res.stdout), "no CLI output leaked");
     });
   });
 

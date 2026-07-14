@@ -81,7 +81,13 @@ const SUMMARY_ENTRIES_RE = /^<!-- entries-at-compress: (\d+) -->$/;
 const SUMMARY_ELIDED_RE = /^<!-- elided-groups: (\d+), elided-lines: (\d+) -->$/;
 
 const isElement = (n) => !!n && typeof n === "object" && (n.type === "element" || (!n.type && typeof n.name === "string"));
-const el = (name, attrs, children = []) => ({ type: "element", name, attrs, children });
+
+/**
+ * Build an element node. Exported so bootstrap.mjs's XML compression pass can construct
+ * <compressed> / <compressed-summary> nodes without re-deriving the node shape (D-002: the node
+ * shape has ONE definition; a second one drifts).
+ */
+export const el = (name, attrs, children = []) => ({ type: "element", name, attrs, children });
 
 // ---------------------------------------------------------------------------
 // Document shape
@@ -100,6 +106,22 @@ function setElements(root, elements) {
 export function elementsOf(doc) {
   const root = rootElement(doc);
   return (root?.children ?? []).filter(isElement);
+}
+
+/**
+ * Replace the root's element children IN PLACE, keeping everything else about the document (the
+ * XML declaration, doc-level text/comments) untouched. Two call sites: appendEntry() here, and
+ * bootstrap.mjs's XML compression pass.
+ *
+ * Do NOT "simplify" a caller to `makeDoc(newElements)` instead — that rebuilds the document from
+ * scratch and would DROP any doc-level node this pipeline did not write (a leading comment, a
+ * different decl). Compression must never lose data (plan.md invariant); it edits, it does not
+ * re-author.
+ */
+export function setElementsOf(doc, elements) {
+  const root = rootElement(doc);
+  if (root) setElements(root, elements);
+  return doc;
 }
 
 /** A document wrapping the given elements. */
@@ -284,8 +306,7 @@ export function appendEntry(doc, fields) {
   const last = elements[elements.length - 1];
   const at = last && last.name === "raw" && rawText(last) === "" ? elements.length - 1 : elements.length;
   elements.splice(at, 0, e);
-  const root = rootElement(doc);
-  if (root) setElements(root, elements);
+  setElementsOf(doc, elements);
   return { doc, issues: [] };
 }
 
