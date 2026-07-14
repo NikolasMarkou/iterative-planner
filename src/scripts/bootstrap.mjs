@@ -24,6 +24,8 @@ import {
   COMPRESSED_SUMMARY_OPEN,
   COMPRESSED_SUMMARY_CLOSE,
   CHANGELOG_COMPRESSED_INLINE_RE,
+  PLAN_ID_RE,
+  DECISION_ID_NUM_PATTERN,
 } from "./shared.mjs";
 // Re-exported so bootstrap.test.mjs can probe it via the bootstrap entrypoint.
 export { splitChangelogFields };
@@ -151,7 +153,20 @@ function ensureGitignore() {
 // corrupted .current_plan file containing path-traversal or arbitrary content
 // — existsSync alone is fail-safe in practice but doesn't reject paths like
 // `../etc/something` that happen to exist.
-const PLAN_ID_RE = /^plan_\d{4}-\d{2}-\d{2}_[0-9a-f]{8}$/;
+//
+// PLAN_ID_RE is imported from shared.mjs — the single definition, shared with
+// validate-plan.mjs. Do not re-declare it here (see shared.mjs D-005).
+
+// decisions.md entry headers: `## D-NNN | PHASE | YYYY-MM-DD`. Both forms are
+// built from the ONE shared digit grammar so the compressor recognizes exactly
+// the entries the validator's `checkDecisionsSchema` accepts. These used to be
+// hand-written `D-\d+`, which was a THIRD grammar — looser than the validator
+// (it accepted `D-1`), so bootstrap would happily compress an entry the validator
+// rejects as a bad header.
+const DECISION_HEADER_PREFIX_RE = new RegExp(`^## D-${DECISION_ID_NUM_PATTERN}\\s*\\|`);
+const DECISION_HEADER_PARSE_RE = new RegExp(
+  `^## (D-${DECISION_ID_NUM_PATTERN})\\s*\\|\\s*([^|]+?)\\s*\\|\\s*(\\S+)\\s*$`
+);
 
 function readPointer() {
   try {
@@ -489,7 +504,7 @@ function parseDecisionsFile(content) {
     if (line.includes(COMPRESSED_SUMMARY_OPEN)) inCompressedBlock = true;
     if (line.includes(COMPRESSED_SUMMARY_CLOSE)) { inCompressedBlock = false; continue; }
     if (inHtmlComment || inCompressedBlock) continue;
-    if (/^## D-\d+\s*\|/.test(line)) {
+    if (DECISION_HEADER_PREFIX_RE.test(line)) {
       firstEntryLine = i;
       break;
     }
@@ -513,7 +528,7 @@ function parseDecisionsFile(content) {
     if (line.includes(COMPRESSED_SUMMARY_CLOSE)) { inCompressedBlock = false; continue; }
     if (prevInHtmlComment || inHtmlComment || inCompressedBlock) continue;
 
-    const headerMatch = line.match(/^## (D-\d+)\s*\|\s*([^|]+?)\s*\|\s*(\S+)\s*$/);
+    const headerMatch = line.match(DECISION_HEADER_PARSE_RE);
     if (headerMatch) {
       if (current) { current.endLine = i - 1; entries.push(current); }
       current = {
@@ -1425,7 +1440,7 @@ function cmdResume() {
 
   // Print decision count
   if (decisions) {
-    const decisionCount = (decisions.match(/^## D-\d+/gm) || []).length;
+    const decisionCount = (decisions.match(new RegExp(`^## D-${DECISION_ID_NUM_PATTERN}`, "gm")) || []).length;
     if (decisionCount > 0) {
       console.log(`  Decisions:  ${decisionCount} logged`);
     }
@@ -1686,8 +1701,24 @@ function cmdRetire(planId) {
   // token in Markdown prose, in a doc example, or in an UNCLOSED comment (which
   // the validator cannot see) is left untouched — stamping exactly the validator's
   // widened HTML set. For every other extension the regex runs over the whole file.
+  //
+  // DECISION plan_2026-07-14_79ee0f59/D-005 — the digit grammar MUST come from
+  // shared.mjs (`\d{3,}(?!\d)`), never a local `\d{3}`/`\d+` literal. Two reasons,
+  // both load-bearing:
+  //  1. It has to stay identical to validate-plan.mjs's anchor scanner. If retire
+  //     stamps less than the validator scans, the orphan ERROR that retire exists to
+  //     clear survives the retire — a permanently jammed REFLECT→CLOSE gate. The old
+  //     `\d{3}` cap meant exactly that for any D-1000+ anchor.
+  //  2. This regex is the ONE consumer with no terminator after the id (it must match
+  //     `D-001:`, `D-001 `, and `D-001` at EOL alike), so it is the one where a greedy
+  //     variable-length digit run can backtrack past the `[STALE]` idempotency
+  //     lookahead and irreversibly corrupt the file. The shared pattern's trailing
+  //     `(?!\d)` is what prevents that — see the note on DECISION_ID_NUM_PATTERN.
   const escaped = planId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const anchorRe = new RegExp(`(DECISION\\s+${escaped}\\/D-\\d{3})(?!\\s+\\[STALE\\])`, "g");
+  const anchorRe = new RegExp(
+    `(DECISION\\s+${escaped}\\/D-${DECISION_ID_NUM_PATTERN})(?!\\s+\\[STALE\\])`,
+    "g"
+  );
 
   let stamped = 0;
   let filesChanged = 0;

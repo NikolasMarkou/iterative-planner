@@ -531,6 +531,50 @@ describe("validate-plan.mjs --pre-step gate", () => {
     assert.ok(schemaErrs.length >= 1, `expected ERROR for missing Complexity Assessment on REPLAN, got:\n${r.stdout}`);
   });
 
+  // Defect #6 (iter-1/step-6): the decisions header regex hard-capped ids at exactly
+  // 3 digits, so `## D-1000 | ... ` was reported as a NON-CONFORMING HEADER — a plan
+  // that logged 1000 decisions could no longer log a valid one. 3-digit padding is a
+  // MINIMUM now, not a cap (shared.mjs DECISION_ID_NUM_PATTERN).
+  it("(l2) #6: ## D-1000 | ... parses as a conforming header (3-digit padding is a minimum, not a cap)", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd, { state: "EXECUTE", iteration: 1 });
+    writeFileSync(join(planDir, "decisions.md"),
+`# Decision Log
+*Plan: plan_2026-05-15_aaaabbbb*
+
+## D-1000 | EXECUTE | 2026-05-15
+**Context**: ctx
+**Decision**: past the old 3-digit ceiling
+**Trade-off**: a at the cost of b
+**Reasoning**: r
+**Anchor-Refs**: (none yet)
+`);
+    const r = run(cwd);
+    const badHeader = r.stdout.split("\n").filter((l) => /non-conforming entry header/.test(l));
+    assert.deepEqual(badHeader, [], `D-1000 must parse as a conforming header, got:\n${r.stdout}`);
+  });
+
+  // The padding MINIMUM survives the widening: `D-1` is still a bad header, so `D-1`
+  // and `D-001` can never coexist as two names for the same decision.
+  it("(l3) #6: ## D-1 | ... is STILL a non-conforming header (padding minimum preserved)", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd, { state: "EXECUTE", iteration: 1 });
+    writeFileSync(join(planDir, "decisions.md"),
+`# Decision Log
+*Plan: plan_2026-05-15_aaaabbbb*
+
+## D-1 | EXECUTE | 2026-05-15
+**Context**: ctx
+**Decision**: under-padded id
+**Trade-off**: a at the cost of b
+**Reasoning**: r
+**Anchor-Refs**: (none yet)
+`);
+    const r = run(cwd);
+    const badHeader = r.stdout.split("\n").filter((l) => /non-conforming entry header/.test(l));
+    assert.ok(badHeader.length >= 1, `D-1 must remain a non-conforming header, got:\n${r.stdout}`);
+  });
+
   // F5 — substring false-positive: PIVOT-RECOVERY is NOT a real PIVOT.
   it("(m) F5: ## D-NNN | PIVOT-RECOVERY | ... without Complexity Assessment → NO ERROR [decisions-schema] Complexity Assessment", () => {
     const cwd = getTempDir();

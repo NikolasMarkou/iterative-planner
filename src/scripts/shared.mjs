@@ -132,3 +132,49 @@ export function stripHtmlComments(content) {
   }
   return cursor === 0 ? content : out + content.slice(cursor);
 }
+
+// ---------------------------------------------------------------------------
+// Identifier grammars: plan-id and decision-id.
+//
+// DECISION plan_2026-07-14_79ee0f59/D-005 — these are the ONLY definitions of the
+// two id grammars in the codebase. Do NOT re-declare `PLAN_ID_RE` (or an inline
+// `plan_\d{4}-...` / `D-\d{3}` pattern) in bootstrap.mjs or validate-plan.mjs:
+// they diverged exactly that way once (bootstrap enforced 8 hex, the validator
+// accepted any hex tail "for forward compatibility"), which is a one-sided
+// migration hazard — the producer and the checker disagreeing about what a legal
+// id even is. Do NOT re-loosen the hex tail to `+` for "forward compatibility":
+// there is no other producer, and a permissive checker cannot catch a corrupt
+// pointer or a hand-typo'd anchor. If the id shape ever really changes, change it
+// HERE and both consumers move together. See decisions.md D-005.
+// ---------------------------------------------------------------------------
+
+/**
+ * Plan-id grammar: `plan_YYYY-MM-DD_XXXXXXXX`, where the tail is exactly 8
+ * lowercase-hex chars — precisely what bootstrap.mjs's `randomBytes(4).toString("hex")`
+ * emits. Exported as a *string* pattern because the anchor scanners embed it inside
+ * larger `new RegExp(...)` compositions; `PLAN_ID_RE` is the anchored form.
+ */
+export const PLAN_ID_PATTERN = "plan_\\d{4}-\\d{2}-\\d{2}_[0-9a-f]{8}";
+export const PLAN_ID_RE = new RegExp(`^${PLAN_ID_PATTERN}$`);
+
+/**
+ * Decision-id digit grammar: 3-digit zero-padding is the MINIMUM, not the maximum.
+ * `D-001` stays canonical; `D-1` / `D-99` stay invalid (padding is still enforced);
+ * `D-1000` and beyond now parse and are stamped by `bootstrap.mjs retire`. Embedded
+ * in every decision-id regex (decisions.md headers, the 4 anchor comment styles, the
+ * consolidated DECISIONS.md scan, the changelog decision-ref field, retire's stamper).
+ *
+ * DECISION plan_2026-07-14_79ee0f59/D-005 — the trailing `(?!\d)` is LOAD-BEARING.
+ * Do NOT "simplify" this to a bare `\d{3,}`. Once the id length is variable, a greedy
+ * digit run can BACKTRACK to a shorter prefix to make the rest of an enclosing regex
+ * match. The live casualty is `bootstrap.mjs retire`, whose stamper has no terminator
+ * after the id (it must match `D-001:`, `D-001 `, and `D-001` at EOL alike): on an
+ * already-stamped `D-1000 [STALE]` it matched just `D-100` — the next char is `0`, not
+ * ` [STALE]`, so its idempotency lookahead passed — and re-stamped the file into the
+ * corrupt `D-100 [STALE]0 [STALE]`. That is an irreversible source mutation. Pinning the
+ * digit run to be MAXIMAL here makes every consumer boundary-safe by construction,
+ * instead of each one having to re-derive that its own trailing `\|` / ` ` / `\b` / `$`
+ * happens to forbid a digit. Zero-width, so capture groups still yield just the digits.
+ * See decisions.md D-005.
+ */
+export const DECISION_ID_NUM_PATTERN = "\\d{3,}(?!\\d)";

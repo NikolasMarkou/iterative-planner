@@ -18,6 +18,9 @@ import {
   COMPRESSED_SUMMARY_OPEN,
   COMPRESSED_SUMMARY_CLOSE,
   CHANGELOG_COMPRESSED_INLINE_RE,
+  PLAN_ID_PATTERN,
+  PLAN_ID_RE,
+  DECISION_ID_NUM_PATTERN,
 } from "./shared.mjs";
 
 // ---------------------------------------------------------------------------
@@ -278,4 +281,67 @@ test("stripHtmlComments: falsy content is returned as-is", () => {
   assert.equal(stripHtmlComments(""), "");
   assert.equal(stripHtmlComments(null), null);
   assert.equal(stripHtmlComments(undefined), undefined);
+});
+
+// ---------------------------------------------------------------------------
+// PLAN_ID_RE / PLAN_ID_PATTERN (defect #4 — the grammar bootstrap.mjs and
+// validate-plan.mjs each used to define separately, with DIFFERENT hex tails)
+// ---------------------------------------------------------------------------
+
+test("PLAN_ID_RE: accepts the canonical shape bootstrap actually generates", () => {
+  // randomBytes(4).toString("hex") → exactly 8 lowercase-hex chars.
+  assert.ok(PLAN_ID_RE.test("plan_2026-07-14_79ee0f59"));
+  assert.ok(PLAN_ID_RE.test("plan_1999-01-01_deadbeef"));
+  assert.ok(PLAN_ID_RE.test("plan_2099-12-31_00000000"));
+});
+
+test("PLAN_ID_RE: rejects malformed plan-ids", () => {
+  const bad = [
+    "plan_2026-07-14_79ee0f5",      // 7 hex — too short
+    "plan_2026-07-14_79ee0f599",    // 9 hex — too long
+    "plan_2026-07-14_ZZZZZZZZ",     // not hex
+    "plan_2026-07-14_79EE0F59",     // uppercase hex
+    "plan_2026-7-14_79ee0f59",      // unpadded date
+    "plan_2026-07-14",              // no tail
+    "notaplan_2026-07-14_79ee0f59", // wrong prefix
+    "../etc/passwd",                // path traversal (the .current_plan guard)
+    "",
+  ];
+  for (const s of bad) assert.ok(!PLAN_ID_RE.test(s), `${JSON.stringify(s)} must be rejected`);
+});
+
+test("PLAN_ID_RE: is anchored — no substring match inside a longer string", () => {
+  assert.ok(!PLAN_ID_RE.test("x/plan_2026-07-14_79ee0f59"));
+  assert.ok(!PLAN_ID_RE.test("plan_2026-07-14_79ee0f59/D-001"));
+});
+
+test("PLAN_ID_PATTERN: is the unanchored source, embeddable in a larger regex", () => {
+  // The anchor scanners compose it into `(?:(<pattern>)\/)?D-...`.
+  const composed = new RegExp(`^# DECISION (?:(${PLAN_ID_PATTERN})\\/)?D-(\\d{3,})$`);
+  const m = composed.exec("# DECISION plan_2026-07-14_79ee0f59/D-001");
+  assert.ok(m, "composed anchor regex should match a qualified anchor");
+  assert.equal(m[1], "plan_2026-07-14_79ee0f59");
+  assert.equal(m[2], "001");
+  // Legacy unqualified form still matches with a null plan-id.
+  const m2 = composed.exec("# DECISION D-002");
+  assert.ok(m2);
+  assert.equal(m2[1], undefined);
+});
+
+// ---------------------------------------------------------------------------
+// DECISION_ID_NUM_PATTERN (defect #6 — ids were hard-capped at exactly 3 digits,
+// so D-1000+ neither parsed nor got stamped [STALE] by `retire`)
+// ---------------------------------------------------------------------------
+
+test("DECISION_ID_NUM_PATTERN: 3-digit padding is the MINIMUM, not the maximum", () => {
+  const re = new RegExp(`^D-${DECISION_ID_NUM_PATTERN}$`);
+  // Canonical + past the old 3-digit cap.
+  for (const ok of ["D-001", "D-099", "D-999", "D-1000", "D-12345"]) {
+    assert.ok(re.test(ok), `${ok} must be a valid decision id`);
+  }
+  // Padding minimum preserved: under-padded ids stay INVALID, so `D-1` and
+  // `D-001` can never become two names for the same decision.
+  for (const bad of ["D-1", "D-99", "D-", "D-abc", "D001"]) {
+    assert.ok(!re.test(bad), `${bad} must NOT be a valid decision id`);
+  }
 });

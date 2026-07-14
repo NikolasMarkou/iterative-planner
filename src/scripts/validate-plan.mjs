@@ -18,6 +18,9 @@ import {
   CHANGELOG_COMPRESSED_INLINE_RE,
   blankCompressedSummaryBlock,
   stripHtmlComments,
+  PLAN_ID_PATTERN,
+  PLAN_ID_RE,
+  DECISION_ID_NUM_PATTERN,
 } from "./shared.mjs";
 
 const cwd = process.cwd();
@@ -47,11 +50,12 @@ const pointerFile = join(plansDir, ".current_plan");
 // WARN-only on missing schema fields they couldn't have known about.
 const ANCHOR_REFS_REQUIRED_SINCE = "2026-05-07T09:00:00Z";
 
-// Plan-id format: `plan_YYYY-MM-DD_<hex>` (from bootstrap.mjs randomBytes(4).hex
-// — 8 hex chars; we permit any positive-length lowercase-hex tail for forward
-// compatibility).
-const PLAN_ID_PATTERN = "plan_\\d{4}-\\d{2}-\\d{2}_[0-9a-f]+";
-const PLAN_ID_RE = new RegExp(`^${PLAN_ID_PATTERN}$`);
+// Plan-id (`plan_YYYY-MM-DD_XXXXXXXX`) and decision-id (`D-NNN`) grammars are
+// imported from shared.mjs — the single definition, shared with bootstrap.mjs (the
+// PRODUCER of both). This file used to keep its own copy of PLAN_ID_PATTERN with a
+// permissive `[0-9a-f]+` tail "for forward compatibility" while bootstrap enforced
+// exactly 8 hex, so the two disagreed about what a legal plan-id even is. Do not
+// re-declare either grammar here. See shared.mjs / decisions.md D-005.
 
 // Read the INIT timestamp from state.md. Looks for any line matching
 // `INIT (→|->) EXPLORE (TS)` where TS parses as an ISO date — checks the
@@ -762,7 +766,9 @@ function parseDecisionsEntries(content) {
   const lines = stripped.split("\n");
   const entries = [];
   const badHeaders = [];
-  const headerRe = /^## D-(\d{3}) \| (.+) \| (\d{4}-\d{2}-\d{2})$/;
+  // Decision ids are `D-NNN` with 3-digit padding as the MINIMUM, not a cap:
+  // `D-1000` must parse (shared.mjs DECISION_ID_NUM_PATTERN). `D-1` stays a bad header.
+  const headerRe = new RegExp(`^## D-(${DECISION_ID_NUM_PATTERN}) \\| (.+) \\| (\\d{4}-\\d{2}-\\d{2})$`);
   // Any "## " heading that is not the top-level "# Decision Log" header.
   const anyH2Re = /^## (.+)$/;
 
@@ -1018,10 +1024,14 @@ function findAnchorsInFile(file, projectRoot) {
   const out = [];
 
   // Build per-style regexes once. Capture groups: 1=planName(opt), 2=id, 3=stale(opt).
-  const hashRe = new RegExp(`(?:^|\\s)#\\s+DECISION\\s+(?:(${PLAN_ID_PATTERN})\\/)?D-(\\d{3})(\\s+\\[STALE\\])?(?::|\\s|$)`);
-  const slashRe = new RegExp(`(?:^|\\s)\\/\\/\\s+DECISION\\s+(?:(${PLAN_ID_PATTERN})\\/)?D-(\\d{3})(\\s+\\[STALE\\])?(?::|\\s|$)`);
-  const sqlRe = new RegExp(`(?:^|\\s)--\\s+DECISION\\s+(?:(${PLAN_ID_PATTERN})\\/)?D-(\\d{3})(\\s+\\[STALE\\])?(?::|\\s|$)`);
-  const blockInnerRe = new RegExp(`DECISION\\s+(?:(${PLAN_ID_PATTERN})\\/)?D-(\\d{3})(\\s+\\[STALE\\])?`);
+  // Both id grammars come from shared.mjs. The decision-id digit run is `\d{3,}(?!\d)`
+  // — 3-digit padding is a MINIMUM, so D-1000+ is scannable; the trailing boundary keeps
+  // the run maximal. These four MUST stay grammar-identical to bootstrap.mjs retire's
+  // stamper, or retire cannot clear an orphan this scanner still reports.
+  const hashRe = new RegExp(`(?:^|\\s)#\\s+DECISION\\s+(?:(${PLAN_ID_PATTERN})\\/)?D-(${DECISION_ID_NUM_PATTERN})(\\s+\\[STALE\\])?(?::|\\s|$)`);
+  const slashRe = new RegExp(`(?:^|\\s)\\/\\/\\s+DECISION\\s+(?:(${PLAN_ID_PATTERN})\\/)?D-(${DECISION_ID_NUM_PATTERN})(\\s+\\[STALE\\])?(?::|\\s|$)`);
+  const sqlRe = new RegExp(`(?:^|\\s)--\\s+DECISION\\s+(?:(${PLAN_ID_PATTERN})\\/)?D-(${DECISION_ID_NUM_PATTERN})(\\s+\\[STALE\\])?(?::|\\s|$)`);
+  const blockInnerRe = new RegExp(`DECISION\\s+(?:(${PLAN_ID_PATTERN})\\/)?D-(${DECISION_ID_NUM_PATTERN})(\\s+\\[STALE\\])?`);
 
   function pushMatch(m, lineNum) {
     out.push({
@@ -1151,7 +1161,7 @@ function collectKnownDecisionIdsByPlan(planDir, activePlanName) {
     const lines = consolidated.split("\n");
     let currentPlan = null;
     const planSectionRe = new RegExp(`^##\\s+(${PLAN_ID_PATTERN})\\s*$`);
-    const dashEntryRe = /^#{2,3}\s+D-(\d{3})\b/;
+    const dashEntryRe = new RegExp(`^#{2,3}\\s+D-(${DECISION_ID_NUM_PATTERN})\\b`);
     for (const line of lines) {
       const ps = planSectionRe.exec(line);
       if (ps) { currentPlan = ps[1]; continue; }
@@ -1497,7 +1507,9 @@ function checkChangelogFormat(planDir, issues) {
   // Grouped alternation — without the outer group, ^ anchors only the first
   // alternative and $ only the second, so e.g. `radius:LOW(2)trailing` passes.
   const RADIUS = /^(radius:(LOW|MED|HIGH)\(-?\d+\)|radius:UNKNOWN\([^)]+\))$/;
-  const DREF = /^(D-\d{3}|-)$/;
+  // Decision-ref field: a decision id (D-NNN, 3-digit padding minimum — D-1000+ is
+  // legal) or `-`. Same shared grammar as the decisions.md headers it points at.
+  const DREF = new RegExp(`^(D-${DECISION_ID_NUM_PATTERN}|-)$`);
 
   const lines = content.split("\n");
   let lineNo = 0;

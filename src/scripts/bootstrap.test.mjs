@@ -1917,6 +1917,22 @@ describe("bootstrap.mjs", () => {
       assert.equal(r.exitCode, 1, "orphan must exit non-zero");
     });
 
+    // Defect #6 (iter-1/step-6): the validator's 4 anchor regexes hard-capped ids at
+    // exactly 3 digits, so a `D-1000` anchor was INVISIBLE to the scanner — a real
+    // orphan would go unreported (silent false-negative), and retire had nothing to
+    // stamp. Both halves of the "retire stamps exactly what the validator scans"
+    // contract had to widen together; this pins the validator half.
+    it("scans a 4-digit anchor id (D-1000): orphan is reported, not silently skipped", () => {
+      const dir = getTempDir();
+      run(dir, "new", "wide id");
+      const planDir = getPointer(dir);
+      writeDecisionsWithEntry(dir, planDir); // only D-001 exists
+      writeFileSync(join(dir, "src.py"), `# DECISION ${planDir}/D-1000: id past the old cap\nx = 1\n`);
+      const r = runValidate(dir);
+      assert.ok(r.stdout.includes("anchor-orphan"), `D-1000 anchor must be scanned + reported, got:\n${r.stdout}`);
+      assert.match(r.stdout, /D-1000/, `the reported id must be D-1000 (not a truncated D-100), got:\n${r.stdout}`);
+    });
+
     it("qualified anchor with [STALE] downgrades orphan to WARN", () => {
       const dir = getTempDir();
       run(dir, "new", "stale orphan");
@@ -3226,6 +3242,71 @@ describe("bootstrap.mjs retire", () => {
     assert.equal(r.exitCode, 1, `retire with no arg should exit 1, got ${r.exitCode}\n${r.stderr}`);
     assert.match(r.stderr, /usage: node bootstrap\.mjs retire <plan-id>/,
       `expected retire usage error, got:\n${r.stderr}`);
+  });
+
+  // ---- Defect #6 (iter-1/step-6): decision ids were hard-capped at exactly 3
+  // digits (`D-\d{3}`), so a D-1000+ anchor was INVISIBLE to retire's stamper —
+  // it would stay un-[STALE]d and keep the orphan ERROR that jams REFLECT→CLOSE
+  // for an unrelated plan. Widened to `\d{3,}` (padding minimum, not a cap).
+  it("stamps [STALE] on a 4-digit decision id (D-1000)", () => {
+    const dir = getTempDir();
+    run(dir, "new", "active work");
+    mkdirSync(join(dir, "src"), { recursive: true });
+    const js = join(dir, "src", "big.js");
+    writeFileSync(js, `// DECISION ${OTHER}/D-1000: id space past 999\nfunction f(){ return 1; }\n`);
+    const r = run(dir, "retire", OTHER);
+    assert.equal(r.exitCode, 0, `retire should succeed, got:\n${r.stdout}\n${r.stderr}`);
+    const after = readFileSync(js, "utf-8");
+    assert.match(after, /D-1000 \[STALE\]/, `D-1000 anchor should be marked [STALE], got:\n${after}`);
+    // Idempotency at 4 digits is NOT free: without the `(?!\d)` boundary the greedy
+    // `\d{3,}` backtracks to `D-100` (whose next char is `0`, so the `[STALE]`
+    // negative lookahead passes) and re-stamps the anchor into `D-100 [STALE]0 [STALE]`
+    // — an irreversible corruption of the source file. Pin both halves.
+    run(dir, "retire", OTHER);
+    const again = readFileSync(js, "utf-8");
+    assert.equal((again.match(/\[STALE\]/g) || []).length, 1,
+      `exactly one [STALE] marker after re-run, got:\n${again}`);
+    assert.match(again, /D-1000 \[STALE\]/, `id must stay D-1000, got:\n${again}`);
+    assert.ok(!/D-100 \[STALE\]/.test(again), `must not backtrack-stamp a truncated id, got:\n${again}`);
+  });
+
+  // The 3-digit zero-padding MINIMUM survives the widening: `D-1` is not a legal
+  // decision id and must not be stamped (widening the cap must not become "any
+  // number of digits" — that would make `D-1` and `D-001` two distinct ids).
+  it("does not stamp an under-padded decision id (D-1)", () => {
+    const dir = getTempDir();
+    run(dir, "new", "active work");
+    mkdirSync(join(dir, "src"), { recursive: true });
+    const js = join(dir, "src", "short.js");
+    const before = `// DECISION ${OTHER}/D-1: under-padded, not a legal id\nfunction f(){ return 1; }\n`;
+    writeFileSync(js, before);
+    const r = run(dir, "retire", OTHER);
+    assert.equal(r.exitCode, 0);
+    assert.equal(readFileSync(js, "utf-8"), before, "D-1 must be left byte-identical (not a legal anchor)");
+    assert.match(r.stdout, /Anchors marked \[STALE\]: 0 across 0 file\(s\)/,
+      `nothing should be stamped, got:\n${r.stdout}`);
+  });
+
+  // Defect #4 (iter-1/step-6): PLAN_ID_RE now comes from shared.mjs — the SAME
+  // regex validate-plan.mjs uses. Pin the grammar bootstrap enforces on `retire`
+  // so a future divergence (e.g. re-loosening the hex tail) fails here.
+  it("enforces the shared plan-id grammar: 8-hex tail required", () => {
+    const dir = getTempDir();
+    run(dir, "new", "active work");
+    // Valid shape (8 hex) — passes the id check; the dir simply isn't present.
+    const ok = run(dir, "retire", "plan_2026-03-01_0123abcd");
+    assert.equal(ok.exitCode, 0, `valid 8-hex plan-id should pass the grammar check, got:\n${ok.stderr}`);
+    // Malformed shapes — each must be rejected by the shared regex.
+    for (const bad of [
+      "plan_2026-03-01_cccccc",     // 6 hex — too short
+      "plan_2026-03-01_ccccccccc",  // 9 hex — too long
+      "plan_2026-03-01_zzzzzzzz",   // not hex
+      "plan_2026-3-1_cccccccc",     // unpadded date
+    ]) {
+      const r = runFull(dir, "retire", bad);
+      assert.notEqual(r.exitCode, 0, `"${bad}" should be rejected as a plan-id`);
+      assert.match(r.stderr, /not a valid plan-id/, `"${bad}" should hit the plan-id guard`);
+    }
   });
 });
 
