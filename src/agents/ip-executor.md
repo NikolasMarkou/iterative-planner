@@ -33,6 +33,7 @@ Before writing any code:
 
 ## Execution Rules
 - ONE step at a time. Do not look ahead.
+- **Python/software tasks**: for Python or software-engineering work, read `references/python-software.md` § B.16 When NOT to apply these patterns before adding any structure (most code should NOT reach for a pattern), and write against its Python style + anti-patterns section — the 20-item § C.12 Anti-pattern checklist is the gate REFLECT grades this code with. Skip for non-software plans.
 - Commit after success: `[plan-YYYY-MM-DD-HASH/iter-N/step-M] description`
   - **Deriving the tag id**: take the plan-dir name and **drop the `THHMMSS` segment**. `plan-2026-07-14T051317-317362c4` → `[plan-2026-07-14-317362c4/iter-3/step-2] description`. A **legacy** plan dir (`plan_YYYY-MM-DD_XXXXXXXX` — plans created before v2.36.0 are still being executed) derives identically, normalizing the `_` separators to `-`: `plan_2026-07-14_79ee0f59` → `[plan-2026-07-14-79ee0f59/iter-3/step-2] description`.
   - **The changelog `step` field stays bare `iter-N/step-M`** — do not "fix" this apparent inconsistency. That field is sourced from `state.md`, never parsed from the commit subject.
