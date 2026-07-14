@@ -19,7 +19,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -38,6 +38,7 @@ import {
   rawText,
   readDoc,
   renderDoc,
+  tempPathFor,
   writeDocAtomic,
   xmlPath,
 } from "./changelog.mjs";
@@ -411,27 +412,46 @@ test("render of a document with only a root element is sane", () => {
   assert.equal(renderDoc(parse("<changelog/>")), "");
 });
 
-// --- atomic writes --------------------------------------------------------------
+// --- atomic writes: the per-writer temp path (K3) ---------------------------------
+//
+// These three tests were REWRITTEN in iter-2/step-1. They previously asserted the LITERAL path
+// `${file}.tmp` — the fixed, shared temp name that is half of the concurrent-append corruption
+// (D-008). Asserting a shared name is asserting the bug. They now assert the PROPERTY that matters
+// and that a fixed name cannot have: after any write — success or throw — NO temp file of ANY shape
+// is left in the plan dir. `tmpResidue()` is deliberately shape-agnostic, so re-introducing a fixed
+// name would not make these tests pass again by accident.
 
-test("writeDocAtomic leaves no .tmp behind and the result parses", () => {
+/** Every temp artifact left in a plan dir. Shape-agnostic on purpose. */
+const tmpResidue = (dir) => readdirSync(dir).filter((f) => f.endsWith(".tmp"));
+
+test("K3: the temp path is per-writer — it carries the pid and is never reused", () => {
+  const file = "/nowhere/changelog.xml"; // pure path arithmetic; nothing is written
+  const a = tempPathFor(file);
+  const b = tempPathFor(file);
+  assert.ok(a.includes(`.${process.pid}.`), `temp path must carry the pid, got ${a}`);
+  assert.ok(a.endsWith(".tmp") && b.endsWith(".tmp"));
+  assert.notEqual(a, b, "two writes must never open the same temp path, even in one process");
+  assert.notEqual(a, `${file}.tmp`, "the fixed shared temp name is exactly the bug (D-008)");
+});
+
+test("K3: writeDocAtomic leaves no temp residue and the result parses", () => {
   const dir = tmp();
   try {
     const file = xmlPath(dir);
     writeDocAtomic(file, emptyDoc());
     assert.ok(existsSync(file));
-    assert.ok(!existsSync(`${file}.tmp`), "the .tmp must be renamed away, never left behind");
+    assert.deepEqual(tmpResidue(dir), [], "the temp file must be renamed away, never left behind");
     assert.deepEqual(validateDoc(parse(readFileSync(file, "utf8")), CHANGELOG_SPEC), []);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test("a failure mid-write leaves the ORIGINAL changelog.xml intact and parseable", () => {
+test("K3: a serialize failure leaves the ORIGINAL changelog.xml intact, parseable, and no residue", () => {
   const dir = tmp();
   try {
     const file = xmlPath(dir);
-    const good = emptyDoc();
-    writeDocAtomic(file, good);
+    writeDocAtomic(file, emptyDoc());
     const before = readFileSync(file, "utf8");
 
     // A document serialize() cannot represent: the failure happens BEFORE any byte is written,
@@ -441,18 +461,35 @@ test("a failure mid-write leaves the ORIGINAL changelog.xml intact and parseable
 
     assert.equal(readFileSync(file, "utf8"), before, "the original document is untouched");
     assert.deepEqual(validateDoc(parse(readFileSync(file, "utf8")), CHANGELOG_SPEC), []);
-    assert.ok(!existsSync(`${file}.tmp`));
+    assert.deepEqual(tmpResidue(dir), []);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test("a stale .tmp from a crashed run does not corrupt the next write", () => {
+test("K3: a THROW inside the write itself still leaves no temp residue (the try/finally)", () => {
+  // The serialize-failure test above throws BEFORE the temp file exists, so it never exercises the
+  // finally. This one does: the destination is a NON-EMPTY DIRECTORY, so writeFileSync succeeds and
+  // renameSync throws — the only window in which a temp file is live on disk.
+  const dir = tmp();
+  try {
+    const file = xmlPath(dir);
+    mkdirSync(file, { recursive: true });
+    writeFileSync(join(file, "occupied"), "x");
+
+    assert.throws(() => writeDocAtomic(file, emptyDoc()), /.*/, "renaming over a non-empty dir must fail");
+    assert.deepEqual(tmpResidue(dir), [], "a failed rename must not strand its temp file");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("K3: a stale temp file from a crashed run does not corrupt the next write", () => {
   const dir = tmp();
   try {
     const file = xmlPath(dir);
     writeDocAtomic(file, emptyDoc());
-    writeFileSync(`${file}.tmp`, "<changelog>TRUNCATED");
+    writeFileSync(`${file}.999999.1.tmp`, "<changelog>TRUNCATED"); // a crashed writer's leftover
     const doc = readDoc(dir);
     appendEntry(doc, FIELDS);
     writeDocAtomic(file, doc);

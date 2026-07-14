@@ -46,7 +46,7 @@
 // no such element and stays that way. append() therefore inserts BEFORE a trailing empty <raw/>.
 // ---------------------------------------------------------------------------
 
-import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse, serialize } from "./xml.mjs";
@@ -330,15 +330,51 @@ export function readDoc(planDir) {
   return parse(readFileSync(p, "utf8"));
 }
 
+// DECISION plan_2026-07-14_79ee0f59/D-008 — THE TEMP PATH IS PER-WRITER, NOT SHARED.
+//
+// What NOT to do: do NOT "simplify" this back to a fixed `${file}.tmp`. That is what shipped in
+// v2.33.0 and it is HALF of the concurrent-append data-loss bug: two processes writing the same
+// temp path interleave their bytes, and renameSync then publishes whichever half-written document
+// happened to be on disk — which is how a pipeline-written changelog.xml ended up UNPARSEABLE
+// ("text is not allowed outside the root element"). renameSync IS atomic, but only with respect to
+// the DESTINATION; it says nothing about who else is writing the SOURCE.
+//
+// Read the docstring below carefully before "restoring" anything here: `.tmp` + `renameSync` is
+// atomic FOR ONE WRITER. It was never, at any point, a concurrency guarantee — the old comment
+// claiming otherwise is corrected below. A unique temp name stops two writers from corrupting each
+// other's BYTES; it does NOT stop them from losing each other's ENTRIES (both still read the same
+// document and the second rename wins). That is a separate mechanism — an exclusive lock around the
+// whole read-modify-write. BOTH are required; neither alone closes the bug.
+// See decisions.md D-008.
+let tmpCounter = 0;
+
+/** A temp path unique to this process AND to this call — never shared with a concurrent writer. */
+export const tempPathFor = (file) => `${file}.${process.pid}.${++tmpCounter}.tmp`;
+
 /**
- * Atomic write: .tmp + renameSync. A crash mid-write leaves the ORIGINAL changelog.xml intact —
- * never a truncated, unparseable document. Same idiom as bootstrap.mjs's compressors.
+ * Write `doc` to `file` via a unique temp file + renameSync.
+ *
+ * The guarantee, stated precisely: a crash (or a throw) part-way through leaves the ORIGINAL
+ * `file` intact — never a truncated, unparseable document — because nothing is ever written into
+ * `file` directly; it is only ever replaced whole by a rename. That holds for ONE writer. It does
+ * NOT make two concurrent read-modify-write cycles safe: both would still read the same document
+ * and the second rename would drop the first one's entry. A caller that must not lose an entry has
+ * to serialize the whole read-modify-write itself.
+ *
+ * The try/finally exists so a throw from writeFileSync or renameSync (read-only dir, full disk, a
+ * destination that is a directory) cannot leave temp residue behind in the plan dir.
  */
 export function writeDocAtomic(file, doc) {
-  const xml = serialize(doc);
-  const tmp = `${file}.tmp`;
-  writeFileSync(tmp, xml);
-  renameSync(tmp, file);
+  const xml = serialize(doc); // may throw — before any byte is written, and before any temp exists
+  const tmp = tempPathFor(file);
+  try {
+    writeFileSync(tmp, xml);
+    renameSync(tmp, file);
+  } finally {
+    if (existsSync(tmp)) {
+      try { unlinkSync(tmp); } catch { /* best effort: never mask the original error */ }
+    }
+  }
   return xml;
 }
 
