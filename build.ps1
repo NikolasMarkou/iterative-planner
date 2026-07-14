@@ -329,6 +329,15 @@ function Invoke-Validate {
         }
     }
 
+    # Verify agent/module prose wiring: script paths, reference citations, section pointers, skill-path resolution
+    if (Test-Path "src/scripts/check-agent-wiring.mjs") {
+        Write-Host "Checking agent wiring (script paths, references, section pointers)..."
+        node src/scripts/check-agent-wiring.mjs
+        if ($LASTEXITCODE -ne 0) {
+            $errors += "ERROR: agent/module prose wiring is broken (see check-agent-wiring.mjs)"
+        }
+    }
+
     if ($errors.Count -gt 0) {
         $errors | ForEach-Object { Write-Host $_ -ForegroundColor Red }
         exit 1

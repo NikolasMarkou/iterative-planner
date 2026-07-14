@@ -204,6 +204,9 @@ validate:
 	@# Verify README version badge and test-count badge match VERSION and TEST_COUNT files
 	@echo "Checking README badge parity (version + test count)..."
 	@node src/scripts/check-readme-parity.mjs || exit 1
+	@# Verify agent/module prose wiring: script paths, reference citations, section pointers, skill-path resolution
+	@echo "Checking agent wiring (script paths, references, section pointers)..."
+	@node src/scripts/check-agent-wiring.mjs || exit 1
 	@echo "Validation passed!"
 
 # Check script syntax
