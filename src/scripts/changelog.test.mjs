@@ -19,26 +19,34 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse, serialize } from "./xml.mjs";
 import { validateDoc, CHANGELOG_SPEC } from "./schema.mjs";
 import {
+  LOCK_BUDGET_MS,
+  LOCK_STALE_MS,
   MD_HEADER_LINES,
+  acquireLock,
   appendEntry,
   compressedLine,
   elementsOf,
   emptyDoc,
   entryLine,
   importMarkdown,
+  lockPath,
   makeDoc,
   nowTs,
   rawText,
   readDoc,
+  releaseLock,
   renderDoc,
   tempPathFor,
+  withLock,
   writeDocAtomic,
   xmlPath,
 } from "./changelog.mjs";
@@ -611,6 +619,241 @@ test("K2: the ledger stays ordered — entries are appended, never interleaved i
     // was RECORDED, and the lock serializes the recording. Arrival order == timestamp order.
     const ts = elementsOf(doc).filter((e) => e.name === "entry").map((e) => e.attrs.ts);
     assert.deepEqual([...ts].sort(), ts, "recorded timestamps are non-decreasing");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// --- K4/K5: the lock's DEGRADATION paths -------------------------------------------
+//
+// A lock is the classic way to convert a data-loss bug into a HANG (plan.md Pre-Mortem #1). These
+// tests exist to catch that, so they assert the boring, unglamorous half of the design: what the
+// lock does when it CANNOT be taken, when its holder is dead, and when the work under it throws.
+// If any of them is slow or flaky, the design is wrong — not the test.
+//
+// The invariants: append never blocks; it never hangs; it never lies about having recorded an
+// entry; and it never leaves a .lock or a .tmp behind, on ANY path — success, schema rejection, or
+// a throw mid-write. A stranded .lock would wedge every future append in that plan dir until the
+// stale threshold expired, which is the exact failure this whole mechanism exists to avoid.
+
+const holdLock = (file, mtimeAgeMs = 0) => {
+  const lock = lockPath(file);
+  writeFileSync(lock, "999999 2026-07-14T00:00:00.000Z\n"); // a pid that is not us
+  if (mtimeAgeMs > 0) {
+    const when = new Date(Date.now() - mtimeAgeMs);
+    utimesSync(lock, when, when); // backdate: this is how a lock becomes "stale"
+  }
+  return lock;
+};
+
+test("K4: a lock held by a LIVE holder — append degrades within budget and records NOTHING", () => {
+  const dir = seedPlanDir(1);
+  try {
+    const file = xmlPath(dir);
+    const before = readFileSync(file, "utf8");
+    holdLock(file); // fresh mtime => a live holder, never broken as stale
+
+    const t0 = Date.now();
+    const r = cli(["append", "--plan-dir", dir, "--iter", "2", "--step", "9", "--commit", "uncommitted",
+      "--path", "src/a.js", "--op", "EDIT(+1,-1)", "--radius", "radius:LOW(0)", "--reason", "blocked"]);
+    const elapsed = Date.now() - t0;
+
+    assert.notEqual(r.status, 0, "a contended append must exit non-zero, not pretend success");
+    assert.ok(elapsed >= LOCK_BUDGET_MS - 100, `it must actually WAIT for the budget, waited ${elapsed}ms`);
+    assert.ok(elapsed < 3000, `it must NEVER stall: waited ${elapsed}ms (hard bound 3000)`);
+
+    assert.match(r.stderr, /could not acquire lock/);
+    assert.match(r.stderr, /entry NOT recorded/, "silence is the failure mode — it must SAY it lost the entry");
+    assert.ok(r.stderr.includes(file), "the message must name the file the executor can go look at");
+
+    assert.equal(readFileSync(file, "utf8"), before, "the ledger is byte-unchanged");
+    assert.deepEqual(validateDoc(parse(readFileSync(file, "utf8")), CHANGELOG_SPEC), [], "and still parses");
+    assert.deepEqual(tmpResidue(dir), [], "a degraded append leaves no temp file");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("K5: a STALE lock (dead holder) is broken, and the append succeeds", () => {
+  const dir = seedPlanDir(1);
+  try {
+    const file = xmlPath(dir);
+    holdLock(file, LOCK_STALE_MS * 3); // mtime well past the threshold: a crashed writer's corpse
+
+    const r = cli(["append", "--plan-dir", dir, "--iter", "2", "--step", "9", "--commit", "uncommitted",
+      "--path", "src/a.js", "--op", "EDIT(+1,-1)", "--radius", "radius:LOW(0)", "--reason", "after stale"]);
+
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stderr, /stale lock/, "breaking a lock is never silent — it is logged");
+    const entries = readEntries(dir);
+    assert.equal(entries.length, 2, "the entry is recorded: a dead holder must not wedge the ledger");
+    assert.equal(entries[1].attrs.reason, "after stale");
+    assert.deepEqual(lockResidue(dir), [], "the broken lock is replaced and then released");
+    assert.deepEqual(tmpResidue(dir), []);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("K5: a stale lock is broken ONCE, not repeatedly — a live holder that re-takes it still wins", () => {
+  const dir = seedPlanDir(0);
+  try {
+    const file = xmlPath(dir);
+    holdLock(file, LOCK_STALE_MS * 3);
+
+    const logged = [];
+    // Break the stale lock, then immediately re-hold it with a FRESH one (simulating a live writer
+    // that grabbed it in the gap). The second attempt must NOT break the fresh lock: it must give up.
+    const first = acquireLock(file, { budgetMs: 200, log: (m) => logged.push(m) });
+    assert.ok(first, "the stale lock is broken and the lock acquired");
+    assert.equal(logged.length, 1);
+    assert.match(logged[0], /broke a stale lock/);
+
+    const second = acquireLock(file, { budgetMs: 200, log: (m) => logged.push(m) });
+    assert.equal(second, null, "a lock held by a LIVE holder is never broken — the loser degrades");
+    assert.equal(logged.length, 1, "and no second break is logged");
+
+    releaseLock(first);
+    assert.deepEqual(lockResidue(dir), []);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("K4: the lock is exclusive — a second acquire fails while the first is held, and works after release", () => {
+  const dir = seedPlanDir(0);
+  try {
+    const file = xmlPath(dir);
+    const a = acquireLock(file, { budgetMs: 150 });
+    assert.ok(a, "the first writer wins");
+    assert.equal(acquireLock(file, { budgetMs: 150 }), null, "the second must NOT also win (O_EXCL)");
+
+    releaseLock(a);
+    const b = acquireLock(file, { budgetMs: 150 });
+    assert.ok(b, "and the lock is reusable once released");
+    releaseLock(b);
+    assert.deepEqual(lockResidue(dir), []);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("K4: a THROW inside the locked section still releases the lock (the `finally`)", () => {
+  // THE most load-bearing line in changelog.mjs. Without it, one bad append wedges every future
+  // append in that plan dir until the stale threshold expires — a data-loss bug traded for a stall.
+  const dir = seedPlanDir(0);
+  try {
+    const file = xmlPath(dir);
+    assert.throws(() => withLock(file, () => { throw new Error("writeDocAtomic blew up"); }), /blew up/);
+    assert.deepEqual(lockResidue(dir), [], "the lock MUST be released even when the work throws");
+
+    const after = acquireLock(file, { budgetMs: 150 });
+    assert.ok(after, "and the next writer is not wedged out");
+    releaseLock(after);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("K4: withLock reports contention as a value, not an exception — it never waits forever", () => {
+  const dir = seedPlanDir(0);
+  try {
+    const file = xmlPath(dir);
+    holdLock(file);
+    let ran = false;
+    const r = withLock(file, () => { ran = true; }, { budgetMs: 150 });
+    assert.deepEqual(r, { locked: true, value: undefined });
+    assert.equal(ran, false, "the read-modify-write must NOT run without the lock");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("K4: a NORMAL append leaves no lock and no temp file", () => {
+  const dir = tmp();
+  try {
+    const r = cli(["append", "--plan-dir", dir, "--iter", "2", "--step", "1", "--commit", "uncommitted",
+      "--path", "src/a.js", "--op", "CREATE(+1)", "--radius", "radius:LOW(0)", "--reason", "clean"]);
+    assert.equal(r.status, 0, r.stderr);
+    assert.deepEqual(lockResidue(dir), [], "a successful append leaves NO .lock behind");
+    assert.deepEqual(tmpResidue(dir), [], "a successful append leaves NO .tmp behind");
+    assert.equal(readEntries(dir).length, 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("K4: a REJECTED entry (schema failure) leaves no lock, no temp file, and the ledger unchanged", () => {
+  const dir = seedPlanDir(1);
+  try {
+    const before = readFileSync(xmlPath(dir), "utf8");
+    const r = cli(["append", "--plan-dir", dir, "--iter", "2", "--step", "1", "--commit", "NOTAHASH",
+      "--path", "src/a.js", "--op", "CREATE(+1)", "--radius", "radius:LOW(0)", "--reason", "bad"]);
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /rejected/);
+    // The rejection happens UNDER the lock (validation is part of the read-modify-write), so this
+    // is the path where a missing `finally` would strand the lock most easily.
+    assert.deepEqual(lockResidue(dir), [], "a rejected entry must still release the lock");
+    assert.deepEqual(tmpResidue(dir), []);
+    assert.equal(readFileSync(xmlPath(dir), "utf8"), before, "and must not touch the ledger");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("K4: --dry-run takes NO lock — it writes nothing, so it must never contend with a real writer", () => {
+  const dir = seedPlanDir(1);
+  try {
+    const file = xmlPath(dir);
+    const before = readFileSync(file, "utf8");
+    holdLock(file); // a real writer is mid-append...
+
+    const t0 = Date.now();
+    const r = cli(["append", "--dry-run", "--plan-dir", dir, "--iter", "2", "--step", "1",
+      "--commit", "uncommitted", "--path", "src/a.js", "--op", "CREATE(+1)", "--radius",
+      "radius:LOW(0)", "--reason", "preview"]);
+    const elapsed = Date.now() - t0;
+
+    assert.equal(r.status, 0, "...and --dry-run sails straight past it");
+    assert.ok(elapsed < 1000, `--dry-run must not wait on the budget, took ${elapsed}ms`);
+    assert.ok(r.stdout.includes("<entry"));
+    assert.equal(readFileSync(file, "utf8"), before, "--dry-run writes nothing");
+
+    releaseLock(lockPath(file));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("K4: --dry-run against a fresh plan dir creates no lock file at all", () => {
+  const dir = tmp();
+  try {
+    const r = cli(["append", "--dry-run", "--plan-dir", dir, "--iter", "2", "--step", "1",
+      "--commit", "uncommitted", "--path", "src/a.js", "--op", "CREATE(+1)", "--radius",
+      "radius:LOW(0)", "--reason", "preview"]);
+    assert.equal(r.status, 0, r.stderr);
+    assert.deepEqual(lockResidue(dir), [], "--dry-run must not create a .lock");
+    assert.deepEqual(tmpResidue(dir), []);
+    assert.ok(!existsSync(xmlPath(dir)));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("K4: a garbage lock file cannot confuse the recovery path (staleness is mtime, not contents)", () => {
+  // The lock's holder record is for humans. Nothing parses it — so a truncated/binary/empty lock
+  // file is just an opaque held lock, and its AGE is the only thing that decides its fate.
+  const dir = seedPlanDir(0);
+  try {
+    const file = xmlPath(dir);
+    writeFileSync(lockPath(file), "  not a pid at all ");
+    assert.equal(acquireLock(file, { budgetMs: 150 }), null, "garbage but FRESH: still a held lock");
+
+    const old = new Date(Date.now() - LOCK_STALE_MS * 3);
+    utimesSync(lockPath(file), old, old);
+    const got = acquireLock(file, { budgetMs: 150 });
+    assert.ok(got, "garbage but STALE: broken by age, with no attempt to parse it");
+    releaseLock(got);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
