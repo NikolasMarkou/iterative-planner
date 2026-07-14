@@ -4,6 +4,42 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.36.0] - 2026-07-14
+
+**Three conventions, one release: plan directories are timestamped, EXECUTE commits name their plan, and every new plan records the skill version that created it.** The third one was blocked by a packaging defect — `VERSION` was built by everything and shipped by nothing — so that is fixed here too. Suite 490 → **524**, 0 failures. Zero runtime dependencies, zero new files, one new abstraction (the plan-id read union).
+
+### Changed
+
+- **Plan directories are now `plan-YYYY-MM-DDTHHMMSS-HASH`** (UTC, e.g. `plan-2026-07-14T051317-317362c4`), regex `/^plan-\d{4}-\d{2}-\d{2}T\d{6}-[0-9a-f]{8}$/`. Lexical sort still equals chronological sort, and the timestamp makes two plans created on the same day distinguishable at a glance.
+
+  **The colons the ISO-8601 form implies were deliberately dropped** (D-001). A colon is illegal in a Win32/NTFS filename — it denotes an NTFS Alternate Data Stream — and this project ships `build.ps1` and documents Windows as a first-class install path. `plan-2026-07-14T05:13:17-…` would not merely look odd on Windows; `mkdir` would fail outright. The colon buys a punctuation convention; it costs a supported platform.
+
+- **Read-union, write-new** (D-003). Legacy `plan_YYYY-MM-DD_XXXXXXXX` directories are still **read** on every path — pointer resolution, `status`/`resume`/`close`/`list`/`retire`, the `# DECISION` anchor scan, `## <plan-id>` section headers, the `*Plan: …*` preamble check, the consolidated-file sliding window, the INDEX date column — and are **never generated again**. `shared.mjs` gains `LEGACY_PLAN_ID_PATTERN` and a non-capturing `ANY_PLAN_ID_PATTERN`; generation validates against the strict *new* `PLAN_ID_RE` before it touches the disk.
+
+  This is not softness about the cutover. With a strict single-format regex there is **no commit ordering** in which the plan directory executing this very migration stays valid at every boundary: rename it first and it fails the old regex; flip the regex first and the live directory fails the new one. The only escape would have been one un-bisectable mega-commit renaming the dir, rewriting the pointer, the preamble, and the grammar atomically. The union is what makes the migration bisectable and revertable — and it is what keeps the 18 committed `# DECISION plan_2026-07-14_79ee0f59/D-NNN` anchors in the audit net. Under a new-only grammar those anchors would not have become loud orphans; they would have matched the anchor regexes *not at all*, and silently left the audit net with no error to say so. D-005's "one grammar" discipline is now, explicitly, **one write grammar and one read union** — recorded in the D-005 anchor comment rather than quietly violated.
+
+  As a side effect, the seven hardcoded `"plan_"` literals scattered across `bootstrap.mjs` and `validate-plan.mjs` are gone, onto the shared constants. Every one of them was a **silent** failure site: a missed literal blanks the INDEX date column, or stops the sliding window trimming, or makes `list` blind to a plan — and raises nothing.
+
+- **EXECUTE step commits now carry `[plan-YYYY-MM-DD-HASH/iter-N/step-M] desc`** (D-002), e.g. `[plan-2026-07-14-317362c4/iter-1/step-8] …`. The tag id is derived from the directory name by **dropping the `THHMMSS` segment** — it is not the directory name itself. Prose-only: `SKILL.md`, `modules/state-execute.md`, `agents/ip-executor.md`, `README.md`.
+
+  The changelog ledger's `step` field deliberately stays bare `iter-N/step-M`. Nothing in this codebase parses a commit message — no hook, no CI, no commitlint, no `git log` shelling — and the ledger's `step` value is sourced from `state.md`, not from the commit subject. "Fixing" the apparent inconsistency would drag `schema.mjs` / `STEP_RE` into a release that has no reason to touch them, for zero behavioral gain. That coupling does not exist; we decline to invent it.
+
+### Added
+
+- **New plans stamp `*Skill: iterative-planner vX.Y.Z*` into `state.md` and `decisions.md`** — so a plan directory records which skill version produced it, which is the first thing you want when a plan from three versions ago behaves oddly. `decisions.md` carries it on its own line, never inside the `*Plan: …*` preamble, which is matched positionally.
+
+  The version is resolved by a **never-throwing two-layout probe**: `<script>/../VERSION` (installed layout) first, then `<script>/../../VERSION` (dev tree). The order matters — an installed `bootstrap.mjs` that used the dev-tree depth would resolve to `~/.claude/skills/`, i.e. some *other* skill's directory. A missing, unreadable, or malformed `VERSION` degrades to `unknown` and bootstrap still exits 0. A version stamp is a nicety; a bootstrap that cannot run is a dead skill, and the nicety does not get to take the skill down with it.
+
+### Fixed
+
+- **`VERSION` was never shipped into the built or synced skill package** (D-004). It was *read* at build time by `Makefile`, `build.ps1`, and `check-readme-parity.mjs` — and copied by none of them: absent from `DOC_FILES`, absent from `make sync-skill`'s copy set *and* its `diff -rq` verification list, absent from **both** of `build.ps1`'s doc-copy lists. An installed skill therefore had no version file at all, which is why the version stamp above needed a packaging fix before it could exist. Now copied on every delivery path, and — because an unverified copy is exactly how the pre-v2.35.0 orphan bug happened — *verified* on the one that verifies.
+- **`bootstrap.mjs cmdNew` did not recognize error codes other than `EACTIVE`/`ECREATE`.** Any other structured failure fell through to a double lock-release and a raw stack trace. The new plan-id assertion throws `EBADPLANID`, which is now registered, so a rejected id releases the lock once and prints one clean message.
+- **`references/decision-anchoring.md` hand-copied the plan-id regex four times, and the copies had drifted** — they said `[0-9a-f]+` where the code enforces `[0-9a-f]{8}`. Documentation that restates a regex is a regex that will eventually be wrong. All four collapse to a single `<plan-id>` placeholder pointing at the one definition in `shared.mjs`.
+
+### Not done, on purpose
+
+- **`bootstrap.mjs retire` was NOT run on the legacy plan `plan_2026-07-14_79ee0f59`.** Under read-union its 18 anchors are not orphaned, so retire buys nothing — and it would stamp `[STALE]` onto decisions that are still binding, D-005 among them (the very grammar rule this release extends). A `[STALE]` marker on a live constraint is not housekeeping; it is a lie left in the source for the next reader to trust. This is recorded so nobody later "finishes the migration" by retiring it.
+
 ## [2.35.0] - 2026-07-14
 
 **Reverted the XML artifact encoding.** The changelog is markdown again, and an append is one line again. Every defect fix from v2.33.0/v2.34.0 stays, and `schema.mjs` stays — it is the part of that work that paid off. Suite 656 → **490** (the 146 tests of the deleted modules go with them), 0 failures. Zero runtime dependencies.
