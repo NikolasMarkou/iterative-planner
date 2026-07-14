@@ -36,12 +36,8 @@ iterative-planner/
     │   ├── validate-plan.test.mjs    # Test suite (node:test)
     │   ├── blast-radius.mjs          # Per-edit blast-radius scorer (used by ip-executor; Node.js 18+)
     │   ├── blast-radius.test.mjs     # Test suite (node:test)
-    │   ├── xml.mjs                   # Minimal hand-written XML parser + serializer (zero-dep; HARD cap 300 lines — see D-001; Node.js 18+)
-    │   ├── xml.test.mjs              # Test suite (node:test)
-    │   ├── schema.mjs                # Declarative element/attribute spec + validateDoc(); hosts CHANGELOG_SPEC — the ONE definition of the changelog field shapes (Node.js 18+)
+    │   ├── schema.mjs                # CHANGELOG_SPEC — the ONE declarative definition of the changelog's field shapes + validateElement()/entryFromFields(); consumed by validate-plan.mjs (Node.js 18+)
     │   ├── schema.test.mjs           # Test suite (node:test)
-    │   ├── changelog.mjs             # The ONLY writer of changelog.xml. CLI + library: append | import | render (Node.js 18+)
-    │   ├── changelog.test.mjs        # Test suite (node:test)
     │   ├── check-test-count.mjs      # TEST_COUNT vs live `node --test` pass-count gate (used by make/build.ps1 test, NOT validate; Node.js 18+)
     │   ├── check-test-count.test.mjs # Test suite (node:test)
     │   ├── check-doc-parity.mjs      # README<->SKILL.md File Ownership table parity gate (used by make/build.ps1 validate; Node.js 18+)
@@ -193,10 +189,8 @@ make help                    # Show available targets
 - [ ] `node src/scripts/emit-template.mjs --name <slug>` emits the byte-faithful template slice from references/file-formats.md for each of the 17 slugs (incl. `lessons-synthesis`, the CLOSE structure guide for LESSONS.md synthesis); unknown/missing `--name` exits non-zero (2 for missing, 1 for unknown)
 - [ ] `.md` HTML-comment anchors (the `<!-- DECISION … -->` opener form only) are scanned by `src/scripts/validate-plan.mjs` and stamped by `bootstrap.mjs retire` — both list `.md` in `ANCHOR_SOURCE_EXTS`; the block-comment scan is gated off for HTML-style extensions (`HTML_STYLE_EXTS`); and `src/references/*.md` doc examples produce zero anchor findings (guarded by the negative real-doc fixture test in `bootstrap.test.mjs`). Doc examples MUST use placeholder ids — see `src/references/decision-anchoring.md` § Writing About Anchors
 - [ ] `src/scripts/modules/` is synced into the skill bundle (`diff -rq --exclude='.claude' src/scripts/modules ~/.claude/skills/iterative-planner/scripts/modules` empty) and re-inlined by `make build-combined` (each of the 5 module bodies present in the combined output)
-- [ ] `src/scripts/xml.mjs` is **≤ 300 lines** (D-001 hard budget; pinned by a test in `xml.test.mjs`). The budget is exhausted — any ADDITION to the parser (a new node type, namespaces, a DTD) must re-open D-001 (take a dependency) rather than push past 300
-- [ ] Changelog field shapes have exactly ONE definition — `CHANGELOG_SPEC` in `src/scripts/schema.mjs`. No changelog field regex (ts / step / commit / op / radius / dref) is re-declared in `validate-plan.mjs`, `bootstrap.mjs`, or `changelog.mjs` (pinned by a source-grep test in `validate-plan.test.mjs`)
-- [ ] Changelog round-trip is byte-exact: for every legacy `plans/*/changelog.md`, `changelog.mjs import --dry-run` → `render -` reproduces the original bytes (`diff` clean). Pinned in `changelog.test.mjs` against the repo's real changelog
-- [ ] **No agent hand-writes XML.** `src/agents/ip-executor.md` mandates `changelog.mjs append` (append failure is non-fatal: log and proceed) and `src/agents/ip-reviewer.md` reads via `changelog.mjs render`. `changelog.mjs` is the only writer of `changelog.xml`; `bootstrap.mjs` is a *caller* of it, not a second author of the format (D-002)
+- [ ] Changelog field shapes have exactly ONE definition — `CHANGELOG_SPEC` in `src/scripts/schema.mjs`. The six field regexes (ts / step / commit / op / radius / dref) stay **deleted**: none is re-declared in `validate-plan.mjs` or `bootstrap.mjs` (pinned by a source-grep test in `validate-plan.test.mjs`). `validate-plan.mjs` validates each `changelog.md` line by `splitChangelogFields()` → `entryFromFields()` → `validateElement()` against the spec
+- [ ] **The changelog is markdown, and an append is ONE LINE** (`{plan-dir}/changelog.md`, pipe-delimited, 8 fields). It is not re-encoded and writes are not routed through a document library: the v2.33.0 XML encoding turned each append into a whole-file read-modify-write and lost entries under concurrency (reverted in v2.35.0, D-002). `maybeCompressChangelog` keeps its 5-key return shape and is byte-frozen by a golden-bytes test in `bootstrap.test.mjs`
 - [ ] `TEST_COUNT` matches the live `node --test` pass count (`node src/scripts/check-test-count.mjs`, run via `make test` — deliberately NOT in `make validate`, which must stay fast)
 
 ## Updating Local Skill

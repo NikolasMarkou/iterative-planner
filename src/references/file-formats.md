@@ -784,131 +784,75 @@ Automatic snapshot of `plans/LESSONS.md` taken at close, saved to the plan direc
 - Read-only reference — not updated after creation
 
 <!-- TEMPLATE:changelog -->
-## changelog.xml (legacy: changelog.md)
+## changelog.md
 
-Per-edit, append-only ledger of every file edit during EXECUTE. One record per (file, edit). Owner: `ip-executor` (via CLI only). Reader: `ip-reviewer` at REFLECT (via `render` only). Lives at `{plan-dir}/changelog.xml`. Reset per plan (not consolidated cross-plan).
+Per-edit, append-only ledger of every file edit during EXECUTE. One line per (file, edit). Owner: `ip-executor`. Reader: `ip-reviewer` at REFLECT. Lives at `{plan-dir}/changelog.md`. Reset per plan (not consolidated cross-plan).
 
-**Agents MUST NOT hand-write XML.** Every byte of `changelog.xml` is written by `src/scripts/changelog.mjs`. Appending to an XML document is not a pure append (the root element must be reopened), so a hand-edited ledger eventually carries an unclosed or misnested tag and becomes unreadable for every downstream reader. The defence is mechanical, not prompt discipline. See `decisions.md` D-002.
-
-```
-# WRITE  (the only write path — validates against the schema, then atomically rewrites)
-node <skill-path>/scripts/changelog.mjs append --plan-dir {plan-dir} \
-  --iter N --step M --commit <short-or-uncommitted> --path <repo-rel-path> \
-  --op 'EDIT(+45,-12)' --radius 'radius:LOW(2)' --dref D-007 --reason "rename for clarity"
-
-# READ   (emits the legacy pipe-delimited markdown, byte for byte)
-node <skill-path>/scripts/changelog.mjs render {plan-dir}
-
-# MIGRATE (opt-in; --dry-run prints the XML without writing)
-node <skill-path>/scripts/changelog.mjs import {plan-dir} [--dry-run]
-```
-
-### Document shape
-
-One XML element per line of the rendered markdown, in file order.
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<changelog>
-  <raw line="1"># Changelog</raw>
-  <compressed-summary entries-at-compress="187" elided-groups="3" elided-lines="42"/>
-  <entry ts="2026-05-07T10:23:45Z" step="iter-1/step-3" commit="abc1234" path="src/foo.ts" op="EDIT(+45,-12)" radius="radius:LOW(2)" dref="D-007" reason="rename for clarity"/>
-  <compressed count="14" from="iter-1/step-3" to="iter-1/step-7" files="4"/>
-</changelog>
-```
-
-`<entry>` — one file edit. All 8 attributes required, in this order (attribute order == legacy field order):
-
-| # | Attribute | Type | Notes |
-|---|---|---|---|
-| 1 | `ts` | iso-datetime | UTC ISO-8601 Z, second precision (`YYYY-MM-DDTHH:MM:SSZ`); calendar-checked, monotonically increasing |
-| 2 | `step` | `iter-N/step-M` | from state.md |
-| 3 | `commit` | 7-40 hex, or `uncommitted` | the commit this edit belongs to |
-| 4 | `path` | path | repo-relative; must not contain `\|` or a newline |
-| 5 | `op` | enum-shaped | `CREATE(+N)`, `EDIT(+N,-M)`, `DELETE(-N)`, `RENAME(old→new)`, `REVERT(file)` |
-| 6 | `radius` | radius | `radius:LOW(n)` / `radius:MED(n)` / `radius:HIGH(n)` / `radius:UNKNOWN(reason)` — from `blast-radius.mjs` |
-| 7 | `dref` | `D-NNN` or `-` | decision-ref; `-` means no `# DECISION` anchor governs this edit |
-| 8 | `reason` | free-text | one short clause; pipes, newlines and unicode are safe (attribute-escaped) |
-
-Field shapes have **one definition**: `CHANGELOG_SPEC` in `src/scripts/schema.mjs`. Do not re-declare them as regexes anywhere.
-
-`<raw line="N">…</raw>` — any line the importer could not parse (including the file header and blank lines), preserved verbatim. Never dropped, never reformatted.
-
-`<compressed>` / `<compressed-summary>` — see Intra-plan compression below.
-
-### Render contract
-
-`changelog.mjs render {plan-dir}` emits the **byte-identical legacy pipe-delimited markdown**:
+Format: pipe-delimited single line per edit:
 
 ```
 2026-05-07T10:23:45Z | iter-1/step-3 | abc1234 | src/foo.ts | EDIT(+45,-12) | radius:LOW(2) | D-007 | rename for clarity
 ```
 
-This is the form the Presentation Contracts and `ip-reviewer` consume — nothing downstream reads XML. Round-trip (`import` → `render` == the original bytes) is an acceptance test, and `import` enforces it per line: any element that does not re-render to its source line is demoted to `<raw>`.
+| # | Field | Required | Notes |
+|---|---|---|---|
+| 1 | UTC timestamp (ISO-8601 Z, second precision) | yes | monotonically increasing |
+| 2 | `iter-N/step-M` | yes | from state.md |
+| 3 | short commit hash, or `uncommitted` | yes | the commit this edit belongs to |
+| 4 | repo-relative file path | yes | one entry per file per edit |
+| 5 | op + LOC | yes | `CREATE(+N)`, `EDIT(+N,-M)`, `DELETE(-N)`, `RENAME(old→new)`, `REVERT(file)` |
+| 6 | radius score | yes | `LOW(score)` / `MED(score)` / `HIGH(score)` / `UNKNOWN(reason)` — from `blast-radius.mjs` |
+| 7 | decision-ref | optional | `D-NNN` (resolves against active plan's `decisions.md`), or `-` if none |
+| 8 | reason | yes | one short clause |
 
-### Precedence and migration
+Field shapes have **one definition**: `CHANGELOG_SPEC` in `src/scripts/schema.mjs`. The validator checks each line against it (split → synthetic entry → `validateElement`). Do not re-declare a changelog field regex anywhere.
 
-- `changelog.xml` present → it is authoritative.
-- Only `changelog.md` present (older plans) → the legacy markdown path validates and compresses unchanged. **No forced migration.**
-- Both present → `.xml` wins; validator emits WARN `[changelog-dual-encoding]`.
-- `changelog.mjs import` migrates a legacy plan dir (opt-in, `--dry-run`-able). It never drops a line: an unparseable line becomes `<raw>`. It refuses to overwrite an existing `changelog.xml`.
+Header (written by bootstrap on plan creation, or by executor on first append if missing):
 
-### Rules
+```markdown
+# Changelog
+*Append-only per-edit ledger. One line per file edit. See `references/blast-radius.md` for radius scoring. Decision-ref is optional — `-` means no `# DECISION` anchor governs this edit.*
+```
 
-- **Append-only**. Never edit existing records. Mistakes get a correction entry with op `EDIT(+0,-0)` and reason `correction: <what>`.
-- **Multi-file step** → one `append` call per file, all sharing the same iter/step/commit.
-- **Failed step revert** → append a `REVERT(file)` entry for each reverted file. Do not delete the original entries.
-- **Decision-ref optional** — most edits have no anchored decision. Use `-` freely. The 5 `# DECISION` trigger conditions are unchanged.
-- **Reason is mandatory** but terse (one clause, no period needed).
+Rules:
+- **Append-only**. Never edit existing lines. Mistakes get a correction line with op `EDIT(+0,-0)` and reason `correction: <what>`.
+- **Multi-file step** → one line per file, all sharing the same iter/step/commit.
+- **Failed step revert** → append `REVERT(file)` lines for each reverted file. Do not delete the original lines.
+- **Decision-ref optional** — most edits don't have an anchored decision. Use `-` freely. The 5 `# DECISION` trigger conditions remain unchanged.
+- **Reason is mandatory** but should be terse (one clause, no period needed).
+- **Pipes (`|`) in reason are tolerated**: parsers split on the first 7 ` | ` separators, so the reason field absorbs any trailing ` | ` sequences. No escaping required — write the reason as natural prose.
 
 Failure modes:
-- `blast-radius.mjs` missing or errors → executor passes `--radius 'radius:UNKNOWN(script-missing)'` (or `script-error`) and proceeds.
-- `changelog.mjs` missing or errors → executor **logs and proceeds**. A changelog write must never stall EXECUTE.
-- Plan dir lacks a changelog → `append` creates `changelog.xml` with the header idempotently.
+- `blast-radius.mjs` missing or errors → executor writes `radius:UNKNOWN(script-missing)` or `radius:UNKNOWN(script-error)` and proceeds.
+- Plan dir lacks changelog.md (older plans) → executor creates it idempotently with the header.
 
 Validator (`validate-plan.mjs`):
-- WARN `[changelog-unparseable]` when `changelog.xml` is not well-formed.
-- WARN `[changelog-malformed]` on records violating `CHANGELOG_SPEC` (both encodings) or, on the legacy path, lines not matching the 8-field shape.
-- WARN `[changelog-dual-encoding]` when both encodings exist.
-- WARN `[changelog-drift]` if a commit produced files absent from the changelog.
+- WARN `[changelog-malformed]` on lines not matching the 8-field shape, or on a field violating `CHANGELOG_SPEC` (the message names the offending field).
+- WARN `[changelog-drift]` if a commit produced files absent from changelog.
 - Never blocks CLOSE. Changelog issues are advisory only.
 
 ### Intra-plan compression
 
-Same marker lineage as `decisions.md` compression (see `SKILL.md` "Consolidated File Management"), but structurally different — chronology MUST be preserved, so each elided group is summarized INLINE at its original position rather than in a single top-of-file block. The `<compressed-summary>` element is metadata only (counts, not content).
+Same marker lineage as `decisions.md` compression (see `SKILL.md` "Consolidated File Management"), but structurally different — chronology MUST be preserved, so the summary lives INLINE at each elided group's original position rather than in a single top-of-file block. The top-of-file `<!-- COMPRESSED-SUMMARY -->` block is metadata only (counts, not content).
 
-- **Trigger**: file >200 lines, evaluated at PLAN gate-in (lower threshold than decisions.md — changelog grows faster per step). Both encodings measure the artifact **on disk**; `changelog.mjs` serializes one element per line, so the XML count stays directly comparable to the markdown one.
-- **Implementation**: `maybeCompressChangelog(planDir, { threshold, dryRun })` exported from `src/scripts/bootstrap.mjs`. It is encoding-aware: it edits the parsed XML document (never XML text), and keeps the legacy markdown path unchanged for old plan dirs.
-- **Elidable rules** (a record is elidable if and only if ALL three hold):
+- **Trigger**: file >200 lines, evaluated at PLAN gate-in (lower threshold than decisions.md — changelog grows faster per step).
+- **Implementation**: `maybeCompressChangelog(planDir, { threshold, dryRun })` exported from `src/scripts/bootstrap.mjs`.
+- **Elidable rules** (a line is elidable if and only if ALL three hold):
   - radius tier ∈ {`LOW`, `MED`} per `references/blast-radius.md`
-  - `op` does NOT start with `REVERT(`
-  - `dref` is `-` (no anchor)
+  - op field does NOT start with `REVERT(`
+  - decision-ref field is `-` (no anchor)
 - **Preserve-verbatim rules** (always survive compression):
   - tier `HIGH` or `UNKNOWN` (unknown is preserve-by-default — safer)
-  - `op` starting with `REVERT(` (e.g. `REVERT(src/foo.js)`)
-  - `dref` other than `-` (any `D-NNN` ref)
-  - existing `<compressed>` elements (idempotent re-compression)
-  - `<raw>` elements (the file header and anything unparsed)
-- **Group threshold**: only runs of **5+ consecutive elidable records** collapse. Smaller groups stay verbatim — eliding 2-3 records is not worth the round-trip cost.
-- **Idempotency**: `entries-at-compress` records the entry count at last compression. It counts BOTH live `<entry>` elements AND the entry-equivalents inside surviving `<compressed count="K"/>` elements (each contributes K). Without this dual count, a second pass would see fewer "entries" and re-compress.
+  - op starting with `REVERT(` (e.g. `REVERT(src/foo.js)`)
+  - decision-ref field other than `-` (any `D-NNN` ref)
+  - previously-elided inline summary lines (`- (compressed: …)` — idempotent re-compression)
+  - the 4-line file header
+- **Group threshold**: only runs of **5+ consecutive elidable lines** collapse. Smaller groups stay verbatim — eliding 2-3 lines is not worth the round-trip cost.
+- **Idempotency**: `<!-- entries-at-compress: N -->` records the entry count at last compression. The N value counts BOTH live well-formed entry lines AND the entry-equivalents recorded in surviving inline summaries (each `- (compressed: K …)` contributes K). Without this dual count, a second pass after the first would see fewer "entries" and diverge.
 
 **Format** — two pieces emitted in a single pass:
 
-(a) The metadata element, at the top of the document (rendering to the 4-line HTML-comment block the legacy format uses):
-
-```xml
-<compressed-summary entries-at-compress="187" elided-groups="3" elided-lines="42"/>
-```
-
-(b) One `<compressed>` element replacing each consecutive elidable group, AT the group's original chronological position:
-
-```xml
-<compressed count="14" from="iter-1/step-3" to="iter-1/step-7" files="4"/>
-```
-
-`from`/`to` are the group's first and last `step`; the rendered range collapses to a single `iter-X/step-Y` when they are equal. `files` counts distinct paths across the elided group.
-
-Legacy (`changelog.md`) rendering of the same two pieces, unchanged:
+(a) Top-of-file metadata block, inserted immediately after the 4-line file header:
 
 ```markdown
 <!-- COMPRESSED-SUMMARY -->
@@ -917,11 +861,15 @@ Legacy (`changelog.md`) rendering of the same two pieces, unchanged:
 <!-- /COMPRESSED-SUMMARY -->
 ```
 
+(b) One inline summary line replacing each consecutive elidable group, AT the group's original chronological position:
+
 ```
 - (compressed: 14 low-decision-impact edits, iter-1/step-3..iter-1/step-7, files: 4)
 ```
 
-No-op return reasons: `missing`, `empty`, `under-threshold`, `no-elidable-groups`, `no-new-entries`, `unparseable` (XML only), `locked` (XML only — another writer holds the `changelog.xml` append lock; the pass is skipped and re-runs at the next PLAN gate). Compression returns `{ compressed, beforeLines, afterLines, elidedCount, reason }`.
+The `iter-X/step-Y..iter-X/step-Z` range collapses to a single `iter-X/step-Y` when start equals end. `files: N` counts distinct paths across the elided group.
+
+No-op return reasons: `missing`, `empty`, `under-threshold`, `no-elidable-groups`, `no-new-entries`. Compression returns `{ compressed, beforeLines, afterLines, elidedCount, reason }`.
 
 <!-- TEMPLATE:summary -->
 ## summary.md

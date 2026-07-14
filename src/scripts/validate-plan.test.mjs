@@ -1456,90 +1456,33 @@ describe("validate-plan.mjs accepts bootstrap compression + idempotent-close art
 });
 
 // ---------------------------------------------------------------------------
-// iter-1/step-11 — encoding-aware, schema-driven changelog validation (D-001)
+// iter-1/step-11 — schema-driven changelog validation (D-001)
 // ---------------------------------------------------------------------------
-// The six field regexes that used to live inline in checkChangelogFormat are DELETED; both
-// encodings now validate through schema.mjs's CHANGELOG_SPEC. These tests are the "did not weaken"
-// proof: every shape the six regexes rejected must still be rejected via the LEGACY markdown path,
-// and the new XML path must never be able to escalate past WARN.
-describe("validate-plan.mjs — changelog: encoding-aware + schema-driven", () => {
+// The six field regexes that used to live inline in checkChangelogFormat are DELETED; the markdown
+// changelog now validates through schema.mjs's CHANGELOG_SPEC. These tests are the "did not weaken"
+// proof: every shape the six regexes rejected must still be rejected, and no changelog check may
+// ever escalate past WARN.
+//
+// The changelog is MARKDOWN. The XML encoding briefly added in v2.33.0 was REVERTED in v2.35.0 (it
+// replaced a one-line append with a whole-file read-modify-write and lost entries under
+// concurrency). The schema is what survived.
+describe("validate-plan.mjs — changelog: schema-driven", () => {
   let tempDirs = [];
   function getTempDir() { const d = makeTempDir(); tempDirs.push(d); return d; }
   afterEach(() => { for (const d of tempDirs) removeTempDir(d); tempDirs = []; });
 
   const GOOD_LINE = '2026-05-30T10:00:00Z | iter-1/step-1 | abc1234 | f.js | EDIT(+1,-0) | radius:LOW(1) | - | fix race: a | b';
-  const GOOD_XML = [
-    '<?xml version="1.0" encoding="UTF-8"?>',
-    "<changelog>",
-    '  <raw line="1"># Changelog</raw>',
-    '  <raw line="2"/>',
-    '  <entry ts="2026-05-30T10:00:00Z" step="iter-1/step-1" commit="abc1234" path="f.js" op="EDIT(+1,-0)" radius="radius:LOW(1)" dref="-" reason="fix race: a | b"/>',
-    '  <raw line="4"/>',
-    "</changelog>",
-    "",
-  ].join("\n");
-
   const changelogLines = (stdout) => stdout.split("\n").filter((l) => /\[changelog-/.test(l));
-  /** writePlan() seeds a legacy changelog.md; drop it when the fixture is about the XML path. */
-  const dropMd = (planDir) => rmSync(join(planDir, "changelog.md"), { force: true });
 
-  it("changelog.xml present + valid → validates clean, no changelog WARNs", () => {
+  it("no changelog.md → the changelog is optional, zero changelog issues", () => {
     const cwd = getTempDir();
     const { planDir } = writePlan(cwd);
-    dropMd(planDir);
-    writeFileSync(join(planDir, "changelog.xml"), GOOD_XML);
-    const r = run(cwd);
-    assert.deepEqual(changelogLines(r.stdout), [], `valid changelog.xml must be silent, got:\n${r.stdout}`);
-    assert.notEqual(r.exitCode, 2);
-  });
-
-  it("changelog.xml malformed → exactly one WARN [changelog-unparseable], never ERROR, never exit 2", () => {
-    const cwd = getTempDir();
-    const { planDir } = writePlan(cwd);
-    dropMd(planDir);
-    // Unclosed root — the exact corruption D-002 exists to prevent, and Pre-Mortem #1's tripwire.
-    writeFileSync(join(planDir, "changelog.xml"), '<?xml version="1.0"?>\n<changelog>\n  <entry ts="2026-05-30T10:00:00Z"\n');
-    const r = run(cwd);
-    const hits = r.stdout.split("\n").filter((l) => /\[changelog-unparseable\]/.test(l));
-    assert.equal(hits.length, 1, `expected exactly one [changelog-unparseable], got:\n${r.stdout}`);
-    assert.match(hits[0], /WARN/, `[changelog-unparseable] must be WARN, not ERROR: ${hits[0]}`);
-    assert.doesNotMatch(r.stdout, /ERROR.*\[changelog-/, `no changelog check may emit ERROR:\n${r.stdout}`);
-    assert.notEqual(r.exitCode, 2, "exit 2 is --pre-step-exclusive; a parser failure must never claim it");
-  });
-
-  it("changelog.xml with a schema-invalid entry → WARN [changelog-malformed] (not ERROR)", () => {
-    const cwd = getTempDir();
-    const { planDir } = writePlan(cwd);
-    dropMd(planDir);
-    writeFileSync(join(planDir, "changelog.xml"), GOOD_XML.replace('op="EDIT(+1,-0)"', 'op="FROBNICATE"'));
-    const r = run(cwd);
-    const hits = r.stdout.split("\n").filter((l) => /\[changelog-malformed\]/.test(l));
-    assert.equal(hits.length, 1, `expected one [changelog-malformed], got:\n${r.stdout}`);
-    assert.match(hits[0], /WARN/);
-    assert.notEqual(r.exitCode, 2);
-  });
-
-  it("both encodings present → .xml wins + WARN [changelog-dual-encoding]", () => {
-    const cwd = getTempDir();
-    const { planDir } = writePlan(cwd);
-    writeFileSync(join(planDir, "changelog.xml"), GOOD_XML);
-    // A markdown line that WOULD warn if the legacy path ran — it must not.
-    writeFileSync(join(planDir, "changelog.md"), "# Changelog\nNOTATIME | iter-1/step-1 | abc1234 | f.js | EDIT(+1,-0) | radius:LOW(1) | - | r\n");
-    const r = run(cwd);
-    assert.match(r.stdout, /WARN.*\[changelog-dual-encoding\]/, `expected dual-encoding WARN, got:\n${r.stdout}`);
-    assert.doesNotMatch(r.stdout, /\[changelog-malformed\]/, `.xml must win — the stale .md must not be validated:\n${r.stdout}`);
-    assert.notEqual(r.exitCode, 2);
-  });
-
-  it("neither encoding present → changelog is optional, zero changelog issues", () => {
-    const cwd = getTempDir();
-    const { planDir } = writePlan(cwd);
-    dropMd(planDir);
+    rmSync(join(planDir, "changelog.md"), { force: true });
     const r = run(cwd);
     assert.deepEqual(changelogLines(r.stdout), [], `absent changelog must be silent, got:\n${r.stdout}`);
   });
 
-  it("legacy changelog.md, clean line → no changelog WARNs (unchanged verdict)", () => {
+  it("changelog.md, clean line → no changelog WARNs (unchanged verdict)", () => {
     const cwd = getTempDir();
     const { planDir } = writePlan(cwd);
     writeFileSync(join(planDir, "changelog.md"), `# Changelog\n*note*\n${GOOD_LINE}\n`);
@@ -1564,11 +1507,11 @@ describe("validate-plan.mjs — changelog: encoding-aware + schema-driven", () =
     // fixture on purpose: the line is `.trim()`ed before splitting, so a trailing empty reason
     // collapses the 8th field away and the line is caught by the field-COUNT rule instead. That
     // was equally true of the deleted inline check — this is parity, not a weakening. The rule
-    // itself is still enforced, and is now reachable via the XML encoding (test below).
+    // itself is still enforced by the spec (schema.test.mjs covers it directly).
   ];
 
   for (const [label, idx, bad, messageRe] of FIELD_CASES) {
-    it(`legacy changelog.md: bad ${label} → WARN [changelog-malformed]`, () => {
+    it(`changelog.md: bad ${label} → WARN [changelog-malformed]`, () => {
       const cwd = getTempDir();
       const { planDir } = writePlan(cwd);
       const fields = ["2026-05-30T10:00:00Z", "iter-1/step-1", "abc1234", "f.js", "EDIT(+1,-0)", "radius:LOW(1)", "-", "a reason"];
@@ -1581,16 +1524,7 @@ describe("validate-plan.mjs — changelog: encoding-aware + schema-driven", () =
     });
   }
 
-  it("changelog.xml: empty reason → WARN [changelog-malformed] (the 7th rule, reachable in XML)", () => {
-    const cwd = getTempDir();
-    const { planDir } = writePlan(cwd);
-    dropMd(planDir);
-    writeFileSync(join(planDir, "changelog.xml"), GOOD_XML.replace('reason="fix race: a | b"', 'reason="   "'));
-    const r = run(cwd);
-    assert.match(r.stdout, /WARN.*\[changelog-malformed\].*attribute "reason"/, `got:\n${r.stdout}`);
-  });
-
-  it("legacy changelog.md: wrong field count → WARN [changelog-malformed] (encoding rule, not a field rule)", () => {
+  it("changelog.md: wrong field count → WARN [changelog-malformed] (encoding rule, not a field rule)", () => {
     const cwd = getTempDir();
     const { planDir } = writePlan(cwd);
     writeFileSync(join(planDir, "changelog.md"), "# Changelog\n2026-05-30T10:00:00Z | iter-1/step-1 | abc1234\n");
@@ -1598,7 +1532,7 @@ describe("validate-plan.mjs — changelog: encoding-aware + schema-driven", () =
     assert.match(r.stdout, /WARN.*\[changelog-malformed\].*expected 8 pipe-separated fields, got 3/, `got:\n${r.stdout}`);
   });
 
-  it("legacy changelog.md: D-1000 decision-ref is accepted (D-005 grammar, shared with the XML path)", () => {
+  it("changelog.md: D-1000 decision-ref is accepted (the shared D-005 grammar)", () => {
     const cwd = getTempDir();
     const { planDir } = writePlan(cwd);
     writeFileSync(join(planDir, "changelog.md"),

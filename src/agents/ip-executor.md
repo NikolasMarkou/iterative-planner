@@ -65,12 +65,10 @@ Before writing any code:
 4. **Pure-code-edit steps**: lockfile snapshotting is NOT required. Still emit a `## Lockfiles snapshotted:` section containing the single line `- none (no package manager touched)` so every checkpoint has a uniform shape.
 
 ## Per-Edit Changelog (MANDATORY, v2.15.0+)
-After EACH `Edit` or `Write` (one call per file modified), record the edit in the plan's changelog by calling the CLI. **You are FORBIDDEN to hand-write the changelog** — never edit `changelog.xml` with `Edit`/`Write`, and never emit raw XML. Appending to an XML document is not a pure append (the root element must be reopened), so a hand-written entry eventually leaves an unclosed or misnested tag and the ledger becomes unreadable for every downstream reader. `changelog.mjs` is the only writer (see `references/file-formats.md` § changelog.xml, and D-002).
+After EACH `Edit` or `Write` (one line per file modified), append a single line to `{plan-dir}/changelog.md`:
 
 ```
-node <skill-path>/scripts/changelog.mjs append --plan-dir {plan-dir} \
-  --iter <N> --step <M> --commit <short-or-uncommitted> --path <repo-rel-path> \
-  --op '<OP>' --radius '<radius>' --dref <D-NNN-or-dash> --reason "<reason>"
+<UTC ISO-8601 Z> | iter-<N>/step-<M> | <short-commit-or-uncommitted> | <repo-rel-path> | <OP> | <radius> | <D-NNN-or-dash> | <reason>
 ```
 
 Procedure:
@@ -79,18 +77,9 @@ Procedure:
    node <skill-path>/scripts/blast-radius.mjs <repo-rel-path>
    ```
    Capture the first stdout line (`radius:TIER(score)` or `radius:UNKNOWN(reason)`). Script always exits 0 — never fails the step.
-2. Call `changelog.mjs append` with the fields below. It validates them against the schema, appends the entry, and rewrites `changelog.xml` atomically. If the plan dir has no changelog yet, `append` creates one with the header — you do not create it by hand.
-3. Append-only — never edit or delete prior entries. A mistake gets a correction entry (`--op 'EDIT(+0,-0)' --reason "correction: <what>"`).
-4. After the step's commit, you MAY re-append nothing — leave the `uncommitted` token as-is (the validator accepts both `uncommitted` and a short hash).
-5. **Legacy plan dirs** (`changelog.md`, no `changelog.xml`): leave the encoding alone. Migrate with `changelog.mjs import {plan-dir}` (opt-in, `--dry-run`-able) or keep appending in the pipe-delimited legacy format — both still validate. Never mix by hand.
-
-**Append failure is NON-FATAL.** If `changelog.mjs` is missing, errors, or rejects the entry: log the failure in your step report and PROCEED. A changelog write must never stall EXECUTE (same degradation rule as `radius:UNKNOWN(script-missing)` below). Do NOT "fix" it by hand-writing the entry.
-
-To READ the changelog (yours or a prior step's), use `node <skill-path>/scripts/changelog.mjs render {plan-dir}` — it emits the pipe-delimited form:
-
-```
-<UTC ISO-8601 Z> | iter-<N>/step-<M> | <short-commit-or-uncommitted> | <repo-rel-path> | <OP> | <radius> | <D-NNN-or-dash> | <reason>
-```
+2. If `changelog.md` is missing (older plans), create it with the standard header (see `references/file-formats.md` — or run `node <skill-path>/scripts/emit-template.mjs --name changelog` to get just this template; file-formats.md is the canonical fallback) before appending.
+3. Append the line. Append-only — never edit prior lines.
+4. After the step's commit, you MAY rewrite the trailing `uncommitted` token to the short hash; otherwise leave as `uncommitted` (validator accepts both).
 
 OP field values:
 - `CREATE(+N)` — new file (N = lines added)
@@ -106,7 +95,7 @@ Decision-ref field:
 Reason: one short clause (no period needed). Examples: `wire executor changelog protocol`, `bump VERSION to 2.15.0`, `fix off-by-one in numstat parse`.
 
 If `blast-radius.mjs` is missing or errors:
-- Pass `--radius 'radius:UNKNOWN(script-missing)'` or `--radius 'radius:UNKNOWN(script-error)'` and proceed.
+- Use `radius:UNKNOWN(script-missing)` or `radius:UNKNOWN(script-error)` and proceed.
 - Never block the step on radius computation.
 
 ## On Failure
@@ -115,7 +104,7 @@ If `blast-radius.mjs` is missing or errors:
 - 10-Line Rule: fix needs >10 new lines → not a fix → report failure
 - You have MAX 2 fix attempts. After 2 failures, report to orchestrator.
 - Revert uncommitted changes: `git checkout -- <files>; git clean -fd`
-- For each reverted file, append a `REVERT(file)` entry via `changelog.mjs append` (`--op 'REVERT(<path>)' --reason "revert: <what failed>"`). Do not delete the original entries.
+- For each reverted file, append a `REVERT(file)` line to `changelog.md` with reason `revert: <what failed>`.
 
 ## Output Format
 Report back with:

@@ -1,4 +1,4 @@
-// Tests for schema.mjs — declarative element spec + validateDoc().
+// Tests for schema.mjs — the declarative definition of the changelog's field shapes.
 //
 // C10 IS THE BAR: "schema.mjs rejects every field-shape violation the 6 deleted regexes rejected."
 // The named failure mode of this module is a spec that is quietly MORE PERMISSIVE than the six
@@ -16,8 +16,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parse, serialize } from "./xml.mjs";
-import { validateDoc, validateElement, rootElement, CHANGELOG_SPEC, DREF_RE } from "./schema.mjs";
+import { validateElement, entryFromFields, CHANGELOG_SPEC, DREF_RE } from "./schema.mjs";
 import { DECISION_ID_NUM_PATTERN } from "./shared.mjs";
 
 // --- fixtures ---------------------------------------------------------------
@@ -35,8 +34,8 @@ const GOOD_ENTRY = {
 
 const el = (name, attrs = {}, children = []) => ({ type: "element", name, attrs, children });
 const entry = (over = {}) => el("entry", { ...GOOD_ENTRY, ...over });
-const doc = (children) => ({ type: "document", name: null, attrs: {}, children: [el("changelog", {}, children)] });
-const check = (children) => validateDoc(doc(children), CHANGELOG_SPEC);
+const changelog = (children) => el("changelog", {}, children);
+const check = (children) => validateElement(changelog(children), CHANGELOG_SPEC, "<changelog>");
 const checkEntry = (over) => check([entry(over)]);
 
 /** Assert an entry attribute value is REJECTED, and that the finding names that attribute. */
@@ -291,21 +290,11 @@ test("reason is free-text: newlines and unicode arrows are accepted", () => {
   accepts("reason", "suite 302 → 372, 0 failures\ttab too");
 });
 
-test("reason free-text survives a real serialize → parse round trip", () => {
-  // xml.mjs escapes a newline in an attribute to &#10; precisely so a conformant reader cannot
-  // normalize it to a space and silently corrupt the reason. Prove the pair holds end to end.
-  const nasty = "fix race: a | b\nthen c → d\twith\ttabs & <angles> \"quotes\" 'apos'";
-  const xml = serialize(doc([entry({ reason: nasty })]));
-  const reparsed = parse(xml);
-  assert.deepEqual(validateDoc(reparsed, CHANGELOG_SPEC), []);
-  assert.equal(rootElement(reparsed).children[0].attrs.reason, nasty);
-});
-
 // --- structural: required / unknown / cardinality ---------------------------
 
 test("missing required attribute is reported, one issue per missing field", () => {
   const bare = el("entry", { ts: GOOD_ENTRY.ts });
-  const issues = validateDoc(doc([bare]), CHANGELOG_SPEC);
+  const issues = check([bare]);
   for (const name of ["step", "commit", "path", "op", "radius", "dref", "reason"]) {
     assert.ok(
       issues.some((i) => i.message.includes(`missing required attribute "${name}"`)),
@@ -325,13 +314,6 @@ test("unknown element is reported", () => {
   const issues = check([el("note", {}, [])]);
   assert.equal(issues.length, 1);
   assert.match(issues[0].message, /unexpected child element <note>/);
-});
-
-test("wrong root element is reported, and nothing else is claimed", () => {
-  const d = { type: "document", name: null, attrs: {}, children: [el("decisions", {}, [])] };
-  const issues = validateDoc(d, CHANGELOG_SPEC);
-  assert.equal(issues.length, 1);
-  assert.match(issues[0].message, /root element is <decisions>, expected <changelog>/);
 });
 
 test("wrong child cardinality is reported: <compressed-summary> is `?`", () => {
@@ -369,34 +351,35 @@ test("<compressed> element: int and range fields are typed", () => {
   assert.match(issues.map((i) => i.message).join("\n"), /attribute "files" must be >= 1/);
 });
 
-test("whitespace between elements is not text content", () => {
-  const d = parse('<changelog>\n  <entry ts="2026-07-14T05:49:13Z" step="iter-1/step-1" commit="uncommitted" path="a.mjs" op="CREATE(+1)" radius="radius:LOW(0)" dref="-" reason="x"/>\n</changelog>\n');
-  assert.deepEqual(validateDoc(d, CHANGELOG_SPEC), []);
+test("whitespace-only text between records is not text content", () => {
+  assert.deepEqual(check([{ type: "text", value: "\n  " }, entry(), { type: "text", value: "\n" }]), []);
 });
 
-test("XML comments inside the changelog are ignored, not validated", () => {
+test("comment nodes are ignored, not validated", () => {
   assert.deepEqual(check([{ type: "comment", value: " append-only ledger " }, entry()]), []);
 });
 
 // --- the load-bearing invariant: report, never throw -------------------------
+// The changelog is ADVISORY (never blocks CLOSE), so a bad row must become a FINDING, never a
+// crash. Feed the driver garbage and assert it always answers with an issue array.
 
-test("validateDoc REPORTS invalid content — it never throws", () => {
+test("validateElement REPORTS invalid content — it never throws", () => {
   const nasties = [
-    doc([entry({ ts: null })]),
-    doc([entry({ radius: undefined })]),
+    changelog([entry({ ts: null })]),
+    changelog([entry({ radius: undefined })]),
+    { type: "element", name: "changelog" },
     { type: "document", name: null, attrs: {}, children: [] },
     { type: "document" },
     null,
     undefined,
     "a string",
     42,
-    { type: "element", name: "changelog" },
   ];
   for (const d of nasties) {
     let issues;
     assert.doesNotThrow(() => {
-      issues = validateDoc(d, CHANGELOG_SPEC);
-    }, `validateDoc threw on ${JSON.stringify(d)}`);
+      issues = validateElement(d, CHANGELOG_SPEC, "<changelog>");
+    }, `validateElement threw on ${JSON.stringify(d)}`);
     assert.ok(Array.isArray(issues));
     for (const i of issues) {
       assert.ok(typeof i.severity === "string" && typeof i.check === "string" && typeof i.message === "string");
@@ -404,15 +387,10 @@ test("validateDoc REPORTS invalid content — it never throws", () => {
   }
 });
 
-test("a document with no root element is reported, not thrown", () => {
-  const issues = validateDoc({ type: "document", name: null, attrs: {}, children: [{ type: "comment", value: "x" }] }, CHANGELOG_SPEC);
-  assert.deepEqual(issues, [{ severity: "WARN", check: "changelog-malformed", message: "document has no root element" }]);
-});
-
-test("a cyclic DOM is reported, not a stack overflow crash", () => {
+test("a cyclic node graph is reported, not a stack overflow crash", () => {
   const bad = el("changelog", {}, []);
   bad.children.push(bad);
-  assert.doesNotThrow(() => validateDoc({ type: "document", name: null, attrs: {}, children: [bad] }, CHANGELOG_SPEC));
+  assert.doesNotThrow(() => validateElement(bad, CHANGELOG_SPEC, "<changelog>"));
 });
 
 test("every issue has exactly the validator's standard issue shape", () => {
@@ -421,11 +399,13 @@ test("every issue has exactly the validator's standard issue shape", () => {
   for (const i of issues) assert.deepEqual(Object.keys(i).sort(), ["check", "message", "severity"]);
 });
 
-// --- validateElement + rootElement (the exported seams for steps 10/11) -----
+// --- entryFromFields + validateElement: THE seam the markdown validator uses -----------------
+//
+// validate-plan.mjs splits a changelog.md line with splitChangelogFields(), builds the node with
+// entryFromFields(), and checks it with validateElement(). That chain is why the six field regexes
+// could be DELETED from validate-plan.mjs instead of duplicated. Pin the chain here.
 
-test("validateElement validates a synthetic <entry> — the legacy markdown path's seam", () => {
-  // Step 11 builds this node from splitChangelogFields() so the legacy .md changelog and the .xml
-  // changelog validate through the SAME field types. One shape, two encodings.
+test("validateElement validates a synthetic <entry> — the markdown validator's seam", () => {
   assert.deepEqual(validateElement(entry(), CHANGELOG_SPEC, "changelog.md:12"), []);
   const issues = validateElement(entry({ commit: "nope" }), CHANGELOG_SPEC, "changelog.md:12");
   assert.equal(issues.length, 1);
@@ -438,17 +418,36 @@ test("validateElement on a non-element reports rather than throwing", () => {
   ]);
 });
 
-test("rootElement finds the root past a declaration and comments", () => {
-  const d = parse('<?xml version="1.0"?><!-- hi --><changelog/>');
-  assert.equal(rootElement(d).name, "changelog");
+test("entryFromFields maps the 8 pipe-delimited fields onto the 8 attributes, in order", () => {
+  const fields = [
+    "2026-07-14T05:49:13Z", "iter-1/step-6", "3bdcd6c", "src/scripts/shared.mjs",
+    "EDIT(+81,-0)", "radius:MED(3)", "D-005", "hoist the id grammars into shared.mjs",
+  ];
+  const e = entryFromFields(fields);
+  assert.equal(e.name, "entry");
+  assert.deepEqual(e.attrs, GOOD_ENTRY, "field order is the line's field order — a swap here is silent corruption");
+  assert.deepEqual(validateElement(e, CHANGELOG_SPEC, "changelog.md:1"), []);
 });
 
-test("rootElement is identity on an element and null on junk", () => {
-  const e = el("changelog");
-  assert.equal(rootElement(e), e);
-  assert.equal(rootElement({ name: "changelog", attrs: {}, children: [] }).name, "changelog");
-  assert.equal(rootElement(null), null);
-  assert.equal(rootElement({ type: "document", name: null, attrs: {}, children: [] }), null);
+test("entryFromFields validates by default (null on a bad field) and defers on validate:false", () => {
+  const bad = [
+    "2026-02-30T00:00:00Z", "iter-1/step-6", "3bdcd6c", "src/a.mjs",
+    "EDIT(+1,-0)", "radius:LOW(0)", "-", "calendar-impossible ts",
+  ];
+  assert.equal(entryFromFields(bad), null, "a field that fails the spec yields null");
+
+  // The validator passes `false`: it wants the ISSUES (to report them), not a yes/no.
+  const e = entryFromFields(bad, false);
+  const issues = validateElement(e, CHANGELOG_SPEC, "changelog.md:9");
+  assert.equal(issues.length, 1);
+  assert.match(issues[0].message, /^changelog\.md:9: attribute "ts" is not a real calendar date\/time/);
+});
+
+test("entryFromFields on a short field list reports the missing attributes, never throws", () => {
+  const e = entryFromFields(["2026-07-14T05:49:13Z", "iter-1/step-1"], false);
+  const issues = validateElement(e, CHANGELOG_SPEC, "changelog.md:3");
+  assert.ok(issues.length > 0);
+  for (const i of issues) assert.equal(i.severity, "WARN");
 });
 
 // --- the spec is the single source of truth ---------------------------------
@@ -465,9 +464,12 @@ test("the spec carries the artifact's published advisory tier and slug", () => {
   assert.equal(CHANGELOG_SPEC.root, "changelog");
 });
 
-test("importing schema.mjs has no CLI side effects", async () => {
+test("schema.mjs is a library: importing it has no side effects, and it exports its seams", async () => {
   const mod = await import("./schema.mjs");
-  assert.equal(typeof mod.validateDoc, "function");
   assert.equal(typeof mod.validateElement, "function");
-  assert.equal(typeof mod.rootElement, "function");
+  assert.equal(typeof mod.entryFromFields, "function");
+  assert.equal(typeof mod.CHANGELOG_SPEC, "object");
+  // The XML document layer is GONE (v2.35.0). These must never come back with it.
+  assert.equal(mod.validateDoc, undefined, "validateDoc walked a parsed XML doc — it is gone");
+  assert.equal(mod.rootElement, undefined, "rootElement walked a parsed XML doc — it is gone");
 });

@@ -26,7 +26,7 @@ reasons it might still be wrong, despite passing verification.
    - For Python/software-engineering tasks, check changed code against the 20-item anti-pattern checklist in `references/python-software.md` § C.
 7. **Anchor quality**: Are placed `# DECISION <plan-id>/D-NNN` anchors qualified (plan-id prefix, v2.14.0+) and at the right granularity? Do they explain what NOT to do, not just what was done?
 8. **Decisions.md schema**: Does each entry follow the canonical schema in `references/file-formats.md` for its entry type? Trade-off line present? Complexity Assessment for PIVOTs?
-9. **Changelog scan (v2.15.0+)**: read this iteration's changelog by RENDERING it — `node <skill-path>/scripts/changelog.mjs render {plan-dir}` — which emits the pipe-delimited lines (`ts | iter-N/step-M | commit | path | OP | radius | dref | reason`). Do not parse `changelog.xml` directly; the render is the contract (see `references/file-formats.md` § changelog.xml). If `render` fails or the plan dir is legacy markdown-only, fall back to reading `{plan-dir}/changelog.md`. Surface:
+9. **Changelog scan (v2.15.0+)**: read `{plan-dir}/changelog.md` for this iteration. Surface:
    - **HIGH-radius edits** — list them, check each has a sufficiently specific reason; flag thin reasons (e.g. "minor fix", "tweak").
    - **"Tiny edit, big radius" outliers** — `EDIT(+N,-M)` with small N+M but radius MED/HIGH (small change in a hot file). These are the canonical "one-line change in shared util" risk.
    - **Missing decision-refs** — HIGH-radius edits with `-` in field 7 deserve a closer look at whether one of the 5 anchor-trigger conditions applies.

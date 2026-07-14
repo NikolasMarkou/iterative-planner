@@ -28,34 +28,19 @@ import {
   PLAN_ID_RE,
   DECISION_ID_NUM_PATTERN,
 } from "./shared.mjs";
-// DECISION plan_2026-07-14_79ee0f59/D-002 — bootstrap.mjs is a CALLER of the changelog library,
-// never a second writer of XML. Every byte of changelog.xml it produces (the `new` template, the
-// compression pass) goes through changelog.mjs's node builders + serializer.
+// DECISION plan_2026-07-14_79ee0f59/D-002 — THE CHANGELOG IS A MARKDOWN FILE, AND AN APPEND IS ONE
+// LINE. Do NOT re-encode it (XML, JSON, SQLite, …) and do NOT route writes through a document
+// library. v2.33.0 did exactly that and it was REVERTED in v2.35.0: turning the one-line append
+// into a parse -> splice -> re-serialize -> rename of the WHOLE file made every write a
+// read-modify-write, and concurrent executors then silently dropped each other's entries from an
+// append-only evidence ledger (measured: 16 parallel appends against a 3,000-entry ledger recorded
+// 1, every process exiting 0). The lock added to fix that had a TOCTOU in its stale-recovery path.
+// A single-line append needs none of it, and this file writes the changelog with writeFileSync.
 //
-// What NOT to do: do NOT go back to `writeFileSync(join(planDir, "changelog.xml"), `<changelog>…`)`
-// with a template literal, the way `new` used to write changelog.md. It looks simpler and it drops
-// this import — but it makes bootstrap a SECOND author of the format, so the header text and the
-// document shape would then exist in two places and drift, and the "one mechanical writer" property
-// that D-002 buys (well-formedness as a machine invariant) would be silently gone. Same for the
-// compression pass: it edits the parsed document and re-serializes; it never string-splices XML.
+// What survived that work is schema.mjs — the changelog's field SHAPES, defined exactly once and
+// consumed by validate-plan.mjs. If a field shape is ever needed HERE, import it from schema.mjs;
+// never re-derive a changelog field regex in this file.
 // See decisions.md D-002.
-import {
-  // Aliased: bootstrap already has an acquireLock/releaseLock pair of its own (the plans-dir CLI
-  // lock, ~:111 — pid-based, whole-process). These two are the changelog.xml WRITER lock (O_EXCL,
-  // mtime-staleness). Different files, different lifetimes, different staleness rules. The alias is
-  // load-bearing: without it the two names collide and the CLI lock silently wins.
-  acquireLock as acquireChangelogLock,
-  releaseLock as releaseChangelogLock,
-  el,
-  elementsOf,
-  emptyDoc,
-  parseXml,
-  serializeDoc,
-  setElementsOf,
-  writeDocAtomic,
-  xmlPath,
-} from "./changelog.mjs";
-import { STEP_RE } from "./schema.mjs";
 // Re-exported so bootstrap.test.mjs can probe it via the bootstrap entrypoint.
 export { splitChangelogFields };
 
@@ -805,7 +790,7 @@ const CHANGELOG_MIN_ELIDE_GROUP = 5;
 // validate-plan.mjs imports the same function instead of reimplementing it.
 
 /**
- * THE elidable rule — one definition, both encodings.
+ * THE elidable rule — one definition.
  *
  * A record may be elided if and only if ALL THREE hold (references/file-formats.md
  * "Intra-plan compression", changelog section):
@@ -813,11 +798,10 @@ const CHANGELOG_MIN_ELIDE_GROUP = 5;
  *   - the op is not a REVERT
  *   - the decision-ref is `-` (no `# DECISION` anchor governs the edit)
  *
- * Takes the three fields by name so the markdown classifier (which has them positionally, from
- * splitChangelogFields) and the XML classifier (which has them as <entry> attributes) share ONE
- * implementation. Do NOT re-state this rule at either call site: a second copy of "which edits are
- * safe to lose" is a copy that will drift, and the failure mode is silent data loss from an
- * append-only ledger.
+ * Takes the three fields by name, not positionally, so a caller cannot silently pass them in the
+ * wrong order. Do NOT re-state this rule at a call site: a second copy of "which edits are safe to
+ * lose" is a copy that will drift, and the failure mode is silent data loss from an append-only
+ * ledger.
  */
 function isElidableRecord({ op = "", radius = "", dref = "" }) {
   const tier = radius.match(/^radius:(LOW|MED|HIGH|UNKNOWN)/)?.[1] ?? "UNKNOWN";
@@ -842,7 +826,7 @@ function classifyChangelogLine(line) {
   const fields = splitChangelogFields(line);
   if (fields.length < 8) return { kind: "non-entry" };
 
-  // Elidable/preserve rules: isElidableRecord() — shared with the XML path.
+  // Elidable/preserve rules: isElidableRecord() — the one definition.
   const { tier, isRevert, isAnchored, elidable } = isElidableRecord({
     op: fields[4],
     radius: fields[5],
@@ -923,189 +907,11 @@ function parseChangelogFile(content) {
 }
 
 /**
- * Compress a plan dir's changelog. ENCODING-AWARE (v2.33.0+): `changelog.xml` wins when present,
- * otherwise the legacy `changelog.md` path runs — the same precedence validate-plan.mjs uses.
+ * Compress {planDir}/changelog.md if its line count exceeds `threshold`.
  *
- * A7 (no forced migration): a plan dir created before v2.33.0 still has only a `changelog.md`, and
- * it compresses EXACTLY as it did before — the legacy path below is untouched, byte for byte. Do
- * NOT "unify" the two paths by importing the .md, compressing as XML, and rendering back: that
- * would rewrite a legacy plan's ledger into an encoding it never opted into, and it is the kind of
- * silent migration this plan explicitly rejected.
- *
- * Both encodings preserve the SAME semantics: the elidable/preserve rules (isElidableRecord), the
- * 5+-consecutive-group threshold, the `entries-at-compress: N` dual-count idempotency rule, and the
- * `{compressed, beforeLines, afterLines, elidedCount, reason}` return shape (ip-orchestrator's PLAN
- * gate dispatches this by dynamic import and JSON-stringifies the result — the shape is a contract).
- *
- * Options:
- *   threshold (default 200) — line count above which compression triggers.
- *   dryRun   (default false) — compute metrics but do not write.
- *
- * Returns { compressed, beforeLines, afterLines, elidedCount, reason }.
- *   reason ∈ { "missing", "empty", "under-threshold", "no-elidable-groups", "no-new-entries",
- *              "unparseable" (XML only), "locked" (XML only), "compressed" }.
- */
-// DECISION plan_2026-07-14_79ee0f59/D-008 — THE COMPRESSOR IS THE SECOND WRITER, AND TAKES THE SAME LOCK.
-//
-// compressChangelogXml is a read-modify-write of changelog.xml (read -> re-splice elements ->
-// writeDocAtomic), i.e. exactly the shape that lost entries in changelog.mjs append. It is the ONLY
-// other writer of that file. Unlocked, a compression pass racing an executor's append drops the
-// append: both read the same document, the compressor's rename wins, and the entry is gone —
-// silently, from an append-only ledger.
-//
-// What NOT to do:
-//   - Do NOT rely on "compression only runs at the PLAN gate, when no executor is appending"
-//     (assumption B5). That is TRUE today only because the orchestrator happens to be serial. It is
-//     an assumption about a CALLER, not an invariant of this function, and it is exactly the kind of
-//     reasoning that left `append` unlocked in v2.33.0.
-//   - Do NOT invent a new return shape or a new error path for a failed acquire. The PLAN gate
-//     dispatches this by dynamic import and JSON-stringifies the result; the 5-key shape is a
-//     contract. A lock we cannot take means "skip this pass" — a no-op, like `under-threshold`.
-//     Compression is idempotent and re-runs at the next gate, so a skipped pass costs nothing.
-//   - Do NOT use changelog.mjs's `withLock` here, tempting as it is: it folds "could not acquire"
-//     and "fn threw" into one call, and this path must keep them apart. A throw from
-//     compressChangelogXml (a full disk mid-write) must still propagate as it always has; only a
-//     failed ACQUIRE degrades to reason:"locked". acquireLock/releaseLock keep that seam visible.
-//   - dryRun writes nothing, so it takes NO lock — mirroring `changelog.mjs append --dry-run`. A
-//     dry run under contention must still report metrics, not "locked".
-// See decisions.md D-008.
-export function maybeCompressChangelog(planDir, opts = {}) {
-  const file = xmlPath(planDir);
-  if (!existsSync(file)) return compressChangelogMarkdown(planDir, opts);
-  if (opts.dryRun) return compressChangelogXml(planDir, opts);
-
-  // A throw here is a real fs error (EACCES on a read-only plan dir, ...), not contention. Treat it
-  // the same way: we could not take the lock, so we do not write. The XML path's "never throws"
-  // contract is what the PLAN gate leans on — the lock must not become the one thing that breaks it.
-  let lock = null;
-  try { lock = acquireChangelogLock(file); } catch { lock = null; }
-  if (lock === null) {
-    return { compressed: false, beforeLines: 0, afterLines: 0, elidedCount: 0, reason: "locked" };
-  }
-  try {
-    return compressChangelogXml(planDir, opts);
-  } finally {
-    releaseChangelogLock(lock);   // in a `finally`: a throw must never wedge every future append
-  }
-}
-
-/**
- * XML path (v2.33.0+). Same rules as the markdown path, expressed over elements instead of lines:
- * runs of >=5 consecutive elidable <entry> elements collapse into ONE <compressed count= from= to=
- * files=/> element AT THE GROUP'S CHRONOLOGICAL POSITION, and a single top-of-file
- * <compressed-summary entries-at-compress= elided-groups= elided-lines=/> records idempotency state.
- *
- * Never throws. A corrupted/unparseable changelog.xml returns reason "unparseable" — the PLAN gate
- * that calls this is failure-tolerant by design, and a changelog is advisory (file-formats.md), so
- * a bad ledger must never take down PLAN.
- *
- * <raw> elements are NEVER elided (they carry the header, blank lines, and any line the importer
- * could not parse) and they BREAK a run, exactly as a non-entry line does in the markdown path.
- */
-function compressChangelogXml(planDir, opts = {}) {
-  const { threshold = CHANGELOG_COMPRESS_THRESHOLD, dryRun = false } = opts;
-  const filePath = xmlPath(planDir);
-  const nope = (reason, beforeLines = 0, afterLines = beforeLines) =>
-    ({ compressed: false, beforeLines, afterLines, elidedCount: 0, reason });
-
-  let xml;
-  try { xml = readFileSync(filePath, "utf-8"); }
-  catch { return nope("missing"); }
-  if (!xml.trim()) return nope("empty");
-
-  // beforeLines/afterLines measure the artifact ON DISK (the .xml file), which is what the
-  // threshold bounds. One element per line (changelog.mjs serializes that way), so this stays
-  // directly comparable to the markdown path's line count, +3 for the decl and the root tags.
-  const beforeLines = xml.split("\n").length;
-  if (beforeLines <= threshold) return nope("under-threshold", beforeLines);
-
-  let doc;
-  try { doc = parseXml(xml); }
-  catch { return nope("unparseable", beforeLines); }
-
-  const elements = elementsOf(doc);
-  const entryCountOf = (list) => list.reduce((n, e) => {
-    if (e.name === "entry") return n + 1;
-    // Dual count: a <compressed> from a PRIOR pass stands for `count` entries. Without this the
-    // second pass would see fewer "entries" than the first recorded and re-compress forever.
-    if (e.name === "compressed") return n + (Number(e.attrs?.count) || 0);
-    return n;
-  }, 0);
-
-  const entryCount = entryCountOf(elements);
-  const prior = elements.find((e) => e.name === "compressed-summary");
-  if (prior && Number(prior.attrs?.["entries-at-compress"]) === entryCount) {
-    return nope("no-new-entries", beforeLines);
-  }
-
-  // Drop the old summary (regenerated below); classify what remains.
-  const body = elements.filter((e) => e !== prior);
-  const elidableAt = (i) => {
-    const e = body[i];
-    if (!e || e.name !== "entry") return false;
-    // A schema-invalid step would produce a <compressed from=…> that fails validation, so an entry
-    // with an unusable range bound is preserved rather than elided (safer-by-default, same spirit
-    // as UNKNOWN tier).
-    if (!STEP_RE.test(String(e.attrs?.step ?? ""))) return false;
-    return isElidableRecord(e.attrs ?? {}).elidable;
-  };
-
-  const runs = [];
-  for (let i = 0, start = -1; i <= body.length; i++) {
-    const ok = i < body.length && elidableAt(i);
-    if (ok && start < 0) start = i;
-    else if (!ok && start >= 0) { runs.push({ start, end: i }); start = -1; }
-  }
-  const elideRuns = runs.filter((r) => (r.end - r.start) >= CHANGELOG_MIN_ELIDE_GROUP);
-  if (elideRuns.length === 0) return nope("no-elidable-groups", beforeLines);
-
-  const newBody = [];
-  let cursor = 0;
-  let totalElided = 0;
-  for (const run of elideRuns) {
-    for (; cursor < run.start; cursor++) newBody.push(body[cursor]);
-    const group = body.slice(run.start, run.end);
-    totalElided += group.length;
-    newBody.push(el("compressed", {
-      count: String(group.length),
-      from: group[0].attrs.step,
-      to: group[group.length - 1].attrs.step,
-      files: String(new Set(group.map((e) => e.attrs.path)).size),
-    }));
-    cursor = run.end;
-  }
-  for (; cursor < body.length; cursor++) newBody.push(body[cursor]);
-
-  const summary = el("compressed-summary", {
-    "entries-at-compress": String(entryCount),
-    "elided-groups": String(elideRuns.length),
-    "elided-lines": String(totalElided),
-  });
-  // Position: where the previous summary sat, else immediately before the first non-<raw> element
-  // (i.e. after the header/blank raws) — the XML analogue of "top of file, under the header".
-  // Rendering it there reproduces the legacy layout, and re-compression finds it in the same slot.
-  const priorIdx = prior ? elements.indexOf(prior) : -1;
-  const at = priorIdx >= 0
-    ? Math.min(priorIdx, newBody.length)
-    : Math.max(0, newBody.findIndex((e) => e.name !== "raw"));
-  newBody.splice(at, 0, summary);
-
-  setElementsOf(doc, newBody);
-  const newXml = dryRun ? serializeDoc(doc) : writeDocAtomic(filePath, doc);
-
-  return {
-    compressed: true,
-    beforeLines,
-    afterLines: newXml.split("\n").length,
-    elidedCount: elideRuns.length,
-    reason: "compressed",
-  };
-}
-
-/**
- * LEGACY markdown path — behavior frozen. Retained verbatim for plan dirs created before v2.33.0
- * (A7: no forced migration). Every byte it produces must stay identical to v2.32.0's; a fixture
- * suite diffs its output before/after any change to this file.
+ * Behavior FROZEN, and pinned to exact bytes by a golden-bytes test (bootstrap.test.mjs,
+ * "LEGACY FREEZE"). Every byte this produces is what the v2.32.0 compressor produced. Compression
+ * rewrites an append-only evidence ledger, so a silent drift here silently rewrites history.
  *
  * Behavior: chronology-preserving inline elision. Consecutive groups of >=5
  * elidable lines (LOW/MED tier, non-REVERT, `-` decision-ref) are replaced
@@ -1124,11 +930,13 @@ function compressChangelogXml(planDir, opts = {}) {
  *   threshold (default 200) — line count above which compression triggers.
  *   dryRun   (default false) — compute metrics but do not write.
  *
- * Returns { compressed, beforeLines, afterLines, elidedCount, reason }.
+ * Returns { compressed, beforeLines, afterLines, elidedCount, reason } — the 5-key shape is a
+ * CONTRACT: ip-orchestrator's PLAN gate dispatches this by dynamic import and JSON-stringifies the
+ * result. Do not add, drop, or rename a key.
  *   elidedCount = number of inline summary lines INSERTED this pass
  *                 (existing prior summary lines are preserved but not counted).
  */
-function compressChangelogMarkdown(planDir, opts = {}) {
+export function maybeCompressChangelog(planDir, opts = {}) {
   const { threshold = CHANGELOG_COMPRESS_THRESHOLD, dryRun = false } = opts;
   const filePath = join(planDir, "changelog.md");
 
@@ -1580,10 +1388,14 @@ ${crossPlanNote}
 `
     );
 
-    // changelog.xml (v2.33.0+). The 4 legacy header lines are seeded as <raw> elements, so
-    // `changelog.mjs render` on a fresh plan emits exactly the markdown header this used to write.
-    // The header text itself lives in changelog.mjs (MD_HEADER_LINES) — one definition, not two.
-    writeFileSync(xmlPath(planDir), serializeDoc(emptyDoc()));
+    writeFileSync(
+      join(planDir, "changelog.md"),
+      `# Changelog
+*Append-only per-edit ledger. One line per file edit. Owner: ip-executor (writes). Reader: ip-reviewer at REFLECT.*
+*Format: \`UTC | iter-N/step-M | commit | path | OP(+N,-M) | radius:TIER(score) | D-NNN-or-dash | reason\`*
+*See references/blast-radius.md for radius scoring. Decision-ref optional — \`-\` means no \`# DECISION\` anchor governs this edit.*
+`
+    );
 
     // Ensure consolidated files exist at plans/ root
     ensureConsolidatedFiles();

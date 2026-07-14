@@ -1,27 +1,31 @@
 #!/usr/bin/env node
-// schema.mjs — declarative element/attribute specs + validateDoc() for plan-dir XML artifacts.
-// Node.js 18+ (ESM). Zero dependencies.
+// schema.mjs — the declarative definition of the changelog's field shapes. Node.js 18+ (ESM).
+// Zero dependencies. Library only: no CLI, no side effects on import.
 //
 // DECISION plan_2026-07-14_79ee0f59/D-001 — this spec is the SINGLE SOURCE OF TRUTH for the
 // changelog's field shapes. It REPLACES the six hand-maintained regexes that lived inline in
 // validate-plan.mjs's checkChangelogFormat (TS / STEP / COMMIT / OP / RADIUS / DREF).
 //
+// The changelog artifact itself is MARKDOWN (pipe-delimited, one line per edit, appended
+// atomically). The XML encoding that briefly wrapped it was REVERTED in v2.35.0 — it turned an
+// O(1) line append into an O(file) read-modify-write and lost entries under concurrency. This
+// module is the part of that work that PAID OFF and stayed: the field shapes have exactly one
+// definition, and validate-plan.mjs's markdown path checks each line against it.
+//
 // What NOT to do here:
-//   - Do NOT re-declare a changelog field regex anywhere else (validate-plan.mjs, changelog.mjs,
-//     bootstrap.mjs). The whole point of the XML migration is that the schema stops being
-//     reconstructed by N independent regexes that must be kept in lockstep by hand. If a field
+//   - Do NOT re-declare a changelog field regex anywhere else (validate-plan.mjs, bootstrap.mjs).
+//     Six regexes kept in lockstep by hand is the defect this module exists to remove. If a field
 //     shape changes, it changes HERE and every consumer moves with it.
 //   - Do NOT loosen a field to `free-text` "to make a real changelog validate". A too-permissive
 //     spec passes all of its own tests and silently destroys validation the repo already had —
-//     that is this module's named failure mode (plan.md Failure Modes) and criterion C10 exists
-//     to prevent it. Every shape the six regexes rejected must still be rejected; schema.test.mjs
-//     enumerates them case by case. Weakening one means deleting its rejection test, which is a
-//     loud, reviewable act.
+//     that is this module's named failure mode. Every shape the six regexes rejected must still be
+//     rejected; schema.test.mjs enumerates them case by case. Weakening one means deleting its
+//     rejection test, which is a loud, reviewable act.
 //   - Do NOT re-derive the decision-id grammar. Import DECISION_ID_NUM_PATTERN from shared.mjs
 //     (D-005: a hand-copied `\d{3,}` without the boundary corrupts source in bootstrap retire).
-//   - Do NOT make validateDoc() throw on invalid CONTENT. Throwing is xml.mjs's job, and only for
-//     malformed SYNTAX. Invalid content is a FINDING: it is reported as an issue so the validator
-//     can rank it, batch it, and keep going. A validator that dies on the first bad row is useless.
+//   - Do NOT make validateElement() throw on invalid content. Invalid content is a FINDING: it is
+//     reported as an issue so the validator can rank it, batch it, and keep going. A validator that
+//     dies on the first bad row is useless.
 // See decisions.md D-001.
 //
 // A spec is a plain object (no classes, no registry):
@@ -30,11 +34,13 @@
 //   children: { <childName>: "*" | "?" | "+" | "1" }   // cardinality; any other child is an error
 //   text:     true  // element may carry text/CDATA content (default: text is an error)
 //
+// The "element" is a plain node object — `{ type: "element", name, attrs, children }`. A changelog
+// LINE is checked by building one synthetic <entry> node from its 8 fields (entryFromFields) and
+// running it through validateElement(). The node shape is an internal detail of that check; there
+// is no XML on disk.
+//
 // Field types: enum | regex | int | iso-datetime | path | free-text.
 
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { parse } from "./xml.mjs";
 import { DECISION_ID_NUM_PATTERN } from "./shared.mjs";
 
 // ---------------------------------------------------------------------------
@@ -67,9 +73,8 @@ const TYPES = {
     if (!Number.isFinite(t)) return "is not a real calendar date/time";
     return new Date(t).toISOString().replace(".000Z", "Z") === v ? null : "is not a real calendar date/time";
   },
-  // Ports the legacy `!path || path.includes("|")` check. The pipe ban is a legacy-encoding
-  // artifact kept on purpose: the markdown changelog is pipe-delimited, so a path containing "|"
-  // is unparseable there and must stay rejected in both encodings (one shape, two encodings).
+  // Ports the legacy `!path || path.includes("|")` check. The pipe ban is not decoration: the
+  // changelog is pipe-delimited, so a path containing "|" is unparseable and must stay rejected.
   path: (v) => {
     if (v.trim() === "") return "must not be empty";
     if (v.includes("|")) return 'must not contain "|"';
@@ -110,15 +115,14 @@ const ENTRY_ATTRS = {
 };
 
 /**
- * The changelog document spec.
+ * The changelog record model. `entry` is the one the validator exercises today (one markdown line
+ * -> one synthetic <entry> node -> validateElement); `compressed` and `compressed-summary` declare
+ * the shapes bootstrap's compressor emits, and `raw` stands for any line that is not a record
+ * (header, blank, an unparseable row that must never be dropped).
  *
  * `severity: "WARN"` and `check: "changelog-malformed"` are not decoration — they are the tier and
  * slug the repo already promises for this artifact (file-formats.md: "Changelog issues are
  * advisory only. Never blocks CLOSE."). Changing them changes a published contract.
- *
- * <raw> exists so the step-10 importer NEVER drops a line it could not parse. A legacy changelog
- * line that fails the field types is preserved verbatim as text inside <raw> rather than being
- * silently discarded — losing an append-only ledger entry is worse than carrying a bad one.
  */
 export const CHANGELOG_SPEC = {
   root: "changelog",
@@ -164,15 +168,29 @@ export const CHANGELOG_SPEC = {
 
 const isElement = (n) => !!n && typeof n === "object" && (n.type === "element" || (!n.type && typeof n.name === "string"));
 
+/** Build a node. Not exported as a general utility — entryFromFields() is the only intended maker. */
+const makeElement = (name, attrs, children = []) => ({ type: "element", name, attrs, children });
+
+/** Attribute order == the changelog line's field order. */
+const ENTRY_FIELDS = ["ts", "step", "commit", "path", "op", "radius", "dref", "reason"];
+
 /**
- * The root element of a parsed document (or the node itself, if already an element). Lives here,
- * not in xml.mjs: it had no call site there (and xml.mjs is at its 300-line budget), and this
- * module is its first real consumer — see the NOTE at the bottom of xml.mjs.
+ * A synthetic <entry> node from the 8 pipe-delimited fields of a changelog line, in field order.
+ *
+ * This is the seam that let the six hand-maintained field regexes in validate-plan.mjs's
+ * checkChangelogFormat be DELETED rather than duplicated: the validator splits a markdown line with
+ * splitChangelogFields(), builds the node here, and runs it through validateElement() against
+ * CHANGELOG_SPEC. Do not re-implement this shape anywhere else.
+ *
+ * With `validate: true` it returns null when the fields do not satisfy the spec; the validator
+ * passes `false` because it wants the ISSUES, not a yes/no.
  */
-export function rootElement(node) {
-  if (!node || typeof node !== "object") return null;
-  if (isElement(node)) return node;
-  return (node.children ?? []).find(isElement) ?? null;
+export function entryFromFields(fields, validate = true) {
+  const attrs = {};
+  ENTRY_FIELDS.forEach((f, i) => { attrs[f] = fields[i]; });
+  const e = makeElement("entry", attrs);
+  if (validate && validateElement(e, CHANGELOG_SPEC, "<entry>").length > 0) return null;
+  return e;
 }
 
 function walk(el, at, spec, issues, mk) {
@@ -245,12 +263,13 @@ const makeIssue = (spec) => (message) => ({
 });
 
 /**
- * Validate one element (and its subtree) against `spec`. Exported so the legacy markdown changelog
- * path can validate a synthetic <entry> node built from splitChangelogFields() through the exact
- * same field types as the XML path — one shape, two encodings.
+ * Validate one element (and its subtree) against `spec`. This is the module's whole public driver:
+ * the validator builds a synthetic <entry> from a changelog line (entryFromFields) and checks it
+ * here, so every field shape is defined exactly once.
  *
  * Returns an array of `{severity, check, message}` issues. NEVER throws: a malformed node object
- * becomes an issue, not a crash.
+ * becomes an issue, not a crash. That is load-bearing — the changelog is ADVISORY and a bad row
+ * must never be able to take down a CLOSE.
  */
 export function validateElement(el, spec, at) {
   const issues = [];
@@ -262,49 +281,4 @@ export function validateElement(el, spec, at) {
     issues.push(mk(`schema validation aborted on a malformed node: ${e.message}`));
   }
   return issues;
-}
-
-/**
- * Validate a parsed document against `spec`. Returns the validator's standard issue objects —
- * `{severity, check, message}` — and NEVER throws on invalid content (see the D-001 anchor above).
- */
-export function validateDoc(doc, spec) {
-  const mk = makeIssue(spec);
-  try {
-    const root = rootElement(doc);
-    if (!root) return [mk("document has no root element")];
-    if (root.name !== spec.root) return [mk(`root element is <${root.name}>, expected <${spec.root}>`)];
-    return validateElement(root, spec, `<${root.name}>`);
-  } catch (e) {
-    return [mk(`schema validation aborted: ${e.message}`)];
-  }
-}
-
-const isEntryPoint = (() => {
-  try {
-    return process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
-  } catch {
-    return false;
-  }
-})();
-
-// CLI: validate a changelog.xml against CHANGELOG_SPEC. Prints one line per issue; exit 1 if any.
-// A SYNTAX error (from xml.mjs) exits 2 — it is a different failure than a CONTENT finding.
-if (isEntryPoint) {
-  const file = process.argv[2];
-  if (!file) {
-    console.error("usage: schema.mjs <changelog.xml>   # validate against CHANGELOG_SPEC");
-    process.exit(2);
-  }
-  let doc;
-  try {
-    doc = parse(readFileSync(file, "utf8"));
-  } catch (e) {
-    console.error(`schema: ${file}: ${e.message}`);
-    process.exit(2);
-  }
-  const issues = validateDoc(doc, CHANGELOG_SPEC);
-  for (const i of issues) console.log(`${i.severity} [${i.check}] ${i.message}`);
-  console.log(issues.length === 0 ? `PASS ${file}` : `${issues.length} issue(s) in ${file}`);
-  process.exit(issues.length === 0 ? 0 : 1);
 }

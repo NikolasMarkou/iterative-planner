@@ -4,6 +4,35 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.35.0] - 2026-07-14
+
+**Reverted the XML artifact encoding.** The changelog is markdown again, and an append is one line again. Every defect fix from v2.33.0/v2.34.0 stays, and `schema.mjs` stays — it is the part of that work that paid off. Suite 656 → **490** (the 146 tests of the deleted modules go with them), 0 failures. Zero runtime dependencies.
+
+### Removed
+
+- **`src/scripts/xml.mjs`, `src/scripts/changelog.mjs`** (and their test suites), and the `changelog.xml` artifact. **Reason: the migration replaced an atomic single-line append with an O(file) read-modify-write of the whole document, which introduced silent data loss that did not exist before.** Measured at v2.33.0: 16 parallel appends against a 3,000-entry ledger recorded **1**, with every process exiting 0 — total, silent loss from an append-only *evidence* ledger, on the normal path (`ip-executor.md` mandates an append after EACH edit; parallel tool calls are the encouraged pattern). The v2.34.0 file lock that fixed the loss then carried a time-of-check/time-of-use race in its own stale-recovery path. The correct move is not a better lock; it is not needing one. A one-line append to a markdown file needs no lock, no parser, and no serializer.
+
+  Markdown is canonical: `bootstrap.mjs new` creates `changelog.md`, `ip-executor` appends a pipe-delimited line to it, and `ip-reviewer` reads it directly. `maybeCompressChangelog` is the markdown compressor again — same 5-key return shape (`{compressed, beforeLines, afterLines, elidedCount, reason}`), same idempotency, and **byte-identical** to its pre-XML output (pinned by a golden-bytes test).
+
+### Kept
+
+- **`src/scripts/schema.mjs` — the six hand-maintained changelog field regexes stay DELETED.** They were replaced by one declarative spec (`CHANGELOG_SPEC`) which is now the single source of truth for the changelog's field shapes; `validate-plan.mjs` validates each markdown line through it (`splitChangelogFields()` → `entryFromFields()` → `validateElement()`). Its `iso-datetime` check is strictly **stronger** than the regex it replaced: it round-trips the timestamp through `Date`, so calendar-impossible dates such as `2026-02-30` are rejected — the old `TS` regex accepted them (it was shape-only). The XML-document surface of the module (`validateDoc`, `rootElement`, the CLI) is gone; `entryFromFields()` moved in from `changelog.mjs`, where it never belonged.
+- **All defect fixes from v2.33.0 and v2.34.0**, untouched and still under test:
+  - untracked-file blast-radius scoring (a `CREATE` no longer scores as an error);
+  - `git grep` no-match vs. real-error disambiguation, plus the scoped grep fallback;
+  - `bootstrap.mjs new --force` no longer swallows the goal argument (positional-only);
+  - comment-blind markdown scanners, all five unified onto one code-span-aware, line-count-preserving primitive (`stripHtmlComments`) — so reported line numbers are exact by construction;
+  - the iteration hard cap now **fails closed** (`max(raw, stripped)`), with `WARN [state-comment-anomaly]` explaining any over-count;
+  - numeric complexity-budget enforcement in the validator;
+  - one unified `PLAN_ID_RE`;
+  - decision IDs beyond 3 digits (`D-1000` no longer truncates);
+  - the `TEST_COUNT` drift gate (`check-test-count.mjs`, run via `make test`).
+
+### Changed
+
+- `[changelog-malformed]` remains a **WARN** and never blocks CLOSE. The `[changelog-unparseable]` and `[changelog-dual-encoding]` checks are gone with the encoding that needed them.
+- `TEST_COUNT` 656 → **490** (live). README badge, test-file list, and the `Makefile` / `build.ps1` lint+test targets updated to match.
+
 ## [2.34.0] - 2026-07-14
 
 Three **CRITICAL** fixes, all found by an adversarial review of v2.33.0 (`plans/plan_2026-07-14_79ee0f59/`, iteration 2) and all reproduced live before being fixed. Every one of them was a **silent** failure in a mechanism the protocol treats as safety-critical: the evidence ledger, the iteration hard cap, and the decision-schema check. Two of the three were affirmatively claimed correct in shipped in-source decision anchors — those anchors were false, and are corrected in-source here rather than left to mislead. Suite 584 → 640, 0 failures. Zero new runtime dependencies, zero new files, zero new abstractions.
