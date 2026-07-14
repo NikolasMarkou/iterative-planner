@@ -223,12 +223,31 @@ export function htmlCommentSpans(content) {
   return spans;
 }
 
-// DECISION plan_2026-07-14_79ee0f59/D-003 — the unterminated-comment branch below is
-// deliberate and load-bearing. Do NOT "fix" it to blank from a dangling `<!--` to EOF,
-// and do NOT make it throw: validate-plan.mjs's iteration hard-cap counter reads
-// state.md through this helper, so blanking-to-EOF on a stray opener would erase real
-// `EXECUTE → REFLECT` records and silently disable a safety cap. Leaving the region
-// untouched can only OVER-count iterations (a loud, recoverable false positive).
+// DECISION plan_2026-07-14_79ee0f59/D-009 — CORRECTS a FALSE invariant this anchor used
+// to assert under D-003. The old note claimed the unterminated-comment branch below made
+// validate-plan.mjs's iteration hard cap fail SAFE: leave a dangling `<!--` untouched, the
+// story went, and a stray opener can only ever make the cap OVER-count. That was FALSE in
+// the shipped template's own shape. bootstrap.mjs ends EVERY state.md with a guidance
+// comment supplying a trailing `-->` (bootstrap.mjs:1383-1386), so a stray opener is never
+// unterminated: it PAIRS with that trailer and this helper dutifully blanks every real
+// transition record in between. Measured: a stray `<!-- note:` line + 4 real
+// `EXECUTE → REFLECT` records → the cap derived 0. The cap failed OPEN, silently.
+//
+// The fail-safe could not be repaired here, and MUST NOT be re-attempted here. Under HTML
+// rules that document genuinely IS one long comment; no purely-local rule distinguishes "a
+// `-->` belonging to a different comment" (a blank line does not — the decisions.md
+// template comment contains one; a heading does not; marker-balance counting does not —
+// left-to-right pairing finds the stray opener perfectly "balanced" against the trailer).
+// So the invariant was RELOCATED to the consumer that needs it: the cap now counts on the
+// RAW Transition-History block (validate-plan.mjs, `deriveIterationFromHistory`), which is
+// structurally incapable of under-counting for any comment shape.
+//
+// What that means for THIS function: it is a general-purpose, HTML-correct text helper and
+// nothing more. It is NOT a safety mechanism, and no caller may treat it as one. Keep the
+// unterminated branch (leaving the region untouched is still the least-surprising reading,
+// and blanking-to-EOF would wreck the advisory scanners), but do not restore any claim that
+// it protects a cap. An invariant asserted in a comment is not an invariant until a test
+// constructs the case it forbids — that test now exists. See decisions.md D-009.
 /**
  * Blank out every complete HTML comment region (`<!-- ... -->`, markers included)
  * in `content`, preserving line count so downstream line numbers stay accurate —

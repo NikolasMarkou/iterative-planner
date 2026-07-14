@@ -758,16 +758,28 @@ describe("validate-plan.mjs --pre-step gate", () => {
     assert.equal(warns.length, 1, `a genuinely missing confidence sub-line must still WARN exactly once, got:\n${r.stdout}`);
   });
 
-  // C5(c) — the safety pin. Comment-stripping must remove ONLY template text: with the
-  // guidance comment present AND 7 real EXECUTE → REFLECT transitions, the iteration
-  // hard cap must still ERROR. Over-stripping here would silently disable the cap.
-  it("(x) #8: guidance comment present + 7 real EXECUTE → REFLECT transitions → iteration hard cap still ERRORs (derived=7)", () => {
+  // C5(c) — the safety pin. With the guidance comment present AND 7 real
+  // EXECUTE → REFLECT transitions, the iteration hard cap must still ERROR.
+  //
+  // ASSERTION INTENTIONALLY REWRITTEN at iter-2/step-5 (D-009), derived=7 → derived=8.
+  // This test asserted the STRIPPING MECHANISM ("the commented example was not counted"),
+  // which falsifies plan assumption B7. D-009 deliberately relocates the cap's fail-safe
+  // OUT of the stripper: the counter now reads the RAW block, because a stray `<!--` pairs
+  // with bootstrap's template trailer and the stripper would otherwise blank real records
+  // away (measured: 4 real records → derived 0 — the cap failed OPEN). The cost, accepted
+  // explicitly in D-009's Trade-off, is exactly this fixture: a comment that genuinely
+  // embeds a transition-shaped line now OVER-counts by one. That is the safe, loud,
+  // recoverable direction — and [state-comment-anomaly] (step 6) fires here to explain it.
+  // The VERDICT is unchanged (the cap still ERRORs, which is what this test exists to pin);
+  // only the derived number moves. Real plans are unaffected: bootstrap's template example
+  // is `EXPLORE → PLAN`, never `EXECUTE → REFLECT` (assumption B4, re-verified at step 5).
+  it("(x) #8/D-009: guidance comment w/ an example EXECUTE → REFLECT + 7 real ones → hard cap ERRORs, derived=8 (raw count: over-count, never under-count)", () => {
     const cwd = getTempDir();
     const transitionHistory = [
       "<!-- When logging EXPLORE → PLAN, add Exploration Confidence on the line below, e.g.:",
       "- EXPLORE → PLAN (gathered enough context, YYYY-MM-DDTHH:MM:SSZ)",
       "  - confidence: scope=deep|partial|shallow, solutions=adequate|thin, risks=clear|unclear",
-      "- EXECUTE → REFLECT (example inside the comment — must NOT be counted)",
+      "- EXECUTE → REFLECT (example inside the comment — D-009: raw counting DOES count it)",
       "See references/planning-rigor.md for definitions. -->",
       "- EXECUTE → REFLECT (1)",
       "- EXECUTE → REFLECT (2)",
@@ -781,8 +793,9 @@ describe("validate-plan.mjs --pre-step gate", () => {
     const r = run(cwd);
     const iterErrs = r.stdout.split("\n").filter((l) => /ERROR \[iteration\]/.test(l));
     assert.ok(iterErrs.length >= 1, `hard cap must still fire with a comment block present, got:\n${r.stdout}`);
-    // derived=7, not 8 — the commented example transition was stripped, the 7 real ones were not.
-    assert.ok(/derived=7/.test(iterErrs[0]), `expected derived=7 (comment example not counted), got: ${iterErrs[0]}`);
+    // derived=8, not 7 — the raw block includes the comment's example transition. Over-count
+    // is the SAFE direction; the cap's job (fire at 6+) is unaffected. See D-009.
+    assert.ok(/derived=8/.test(iterErrs[0]), `expected derived=8 (raw count includes the in-comment example), got: ${iterErrs[0]}`);
   });
 
   // C5(c) — phantom transitions: an ILLEGAL transition inside a comment must not be
@@ -803,6 +816,106 @@ describe("validate-plan.mjs --pre-step gate", () => {
     writePlan(cwd, { state: "EXECUTE", iteration: 1, transitionHistoryExtra: "- CLOSE → EXPLORE (real, illegal)" });
     const r2 = run(cwd);
     assert.ok(/ERROR \[transition\]/.test(r2.stdout), `a REAL illegal transition must still ERROR, got:\n${r2.stdout}`);
+  });
+
+  // -------------------------------------------------------------------------
+  // D-009 (iter-2, CRITICAL 2) — the iteration hard cap must FAIL CLOSED.
+  //
+  // The review's exact fixture: a stray `<!-- note:` opener ABOVE the records, N real
+  // EXECUTE → REFLECT records, and bootstrap's trailing template guidance comment (which
+  // supplies the `-->`). Under HTML rules the stray opener PAIRS with that trailer, so
+  // `stripHtmlComments` blanks everything between — including the `## Transition History:`
+  // heading itself. RED RUN against the pre-step-5 code, 4 real records:
+  //
+  //     real EXECUTE → REFLECT record lines in fixture: 4
+  //     PRE-FIX deriveIterationFromHistory(): 0
+  //     RED  (bug reproduced: cap UNDER-counts — fails OPEN)
+  //
+  // Worse than the 2 the review reported: the cap read ZERO, from ANY number of real
+  // records. A safety mechanism that silently evaporates. The fix reads the RAW block.
+  // -------------------------------------------------------------------------
+
+  /** state.md exactly as the reviewer's repro: stray opener above, template trailer below. */
+  function strayOpenerState({ iteration = 0, records = 4 } = {}) {
+    const recs = Array.from({ length: records }, (_, i) => `- EXECUTE → REFLECT (iter ${i + 1})`);
+    return [
+      "# Current State: EXECUTE",
+      `## Iteration: ${iteration}`,
+      "## Current Plan Step: 1 of 5",
+      "## Pre-Step Checklist (reset before each EXECUTE step)",
+      "- [ ] Re-read state.md (this file)",
+      "## Fix Attempts (resets per plan step)",
+      "- (none yet for current step)",
+      "## Change Manifest (current iteration)",
+      "<!-- note: stray opener — an authoring accident, never closed by its author",
+      "## Last Transition: PLAN → EXECUTE (2026-05-15T11:45:00Z)",
+      "## Transition History:",
+      "- INIT → EXPLORE (task started)",
+      "- EXPLORE → PLAN (gathered enough context, 2026-05-15T11:30:00Z)",
+      "  - confidence: scope=deep, solutions=adequate, risks=clear",
+      "- PLAN → EXECUTE (user approved, 2026-05-15T11:45:00Z)",
+      ...recs,
+      // bootstrap.mjs:1383-1386 — every state.md ends with this. It supplies the `-->`.
+      "<!-- When logging EXPLORE → PLAN, add Exploration Confidence on the line below, e.g.:",
+      "- EXPLORE → PLAN (gathered enough context, YYYY-MM-DDTHH:MM:SSZ)",
+      "  - confidence: scope=deep|partial|shallow, solutions=adequate|thin, risks=clear|unclear",
+      "See references/planning-rigor.md for definitions. -->",
+      "",
+    ].join("\n");
+  }
+
+  it("(aa) D-009: stray `<!--` opener + 4 real EXECUTE → REFLECT records → derived === 4 (pre-fix: 0)", async () => {
+    const { deriveIterationFromHistory } = await import(VALIDATOR);
+    assert.equal(deriveIterationFromHistory(strayOpenerState({ records: 4 })), 4,
+      "the review's exact fixture: the cap must count all 4 real records, not the 0 the stripped block yields");
+  });
+
+  it("(ab) D-009: the cap NEVER under-counts, in any comment shape (opener before/between/after; balanced; backticked; none)", async () => {
+    const { deriveIterationFromHistory } = await import(VALIDATOR);
+    const rec = (n) => Array.from({ length: n }, (_, i) => `- EXECUTE → REFLECT (${i + 1})`);
+    const head = [
+      "# Current State: EXECUTE",
+      "## Iteration: 0",
+      "## Transition History:",
+      "- INIT → EXPLORE (task started)",
+    ];
+    const trailer = "<!-- guidance: - EXPLORE → PLAN (example) -->";
+    const shapes = {
+      "no comments at all": [...head, ...rec(3)],
+      "stray opener BEFORE the records": [...head, "<!-- note: stray", ...rec(3), trailer],
+      "stray opener BETWEEN the records": [...head, ...rec(1), "<!-- note: stray", ...rec(2), trailer],
+      "stray opener AFTER the records (the only shape D-003 ever tested)": [...head, ...rec(3), "<!-- note: stray"],
+      "balanced comment holding an example transition": [...head, ...rec(3), "<!-- e.g. - EXECUTE → REFLECT (example) -->"],
+      "backticked delimiter in prose": [...head, "- NOTE: a stray `<!--` in prose is not a comment", ...rec(3), trailer],
+      "stray opener above the HEADING itself": ["# Current State: EXECUTE", "## Iteration: 0", "<!-- note: stray", ...head.slice(2), ...rec(3), trailer],
+    };
+    for (const [name, lines] of Object.entries(shapes)) {
+      const derived = deriveIterationFromHistory(lines.join("\n") + "\n");
+      assert.ok(derived >= 3, `[${name}] cap UNDER-counted: derived=${derived}, real records=3 — this is the fail-open D-009 forbids`);
+    }
+    // Equality where the comments hold no transition-shaped line (no gratuitous over-count).
+    for (const name of ["no comments at all", "stray opener BEFORE the records", "stray opener BETWEEN the records", "stray opener AFTER the records (the only shape D-003 ever tested)", "backticked delimiter in prose"]) {
+      const derived = deriveIterationFromHistory(shapes[name].join("\n") + "\n");
+      assert.equal(derived, 3, `[${name}] expected exactly 3 (no comment here embeds a transition-shaped line)`);
+    }
+  });
+
+  it("(ac) D-009: 6 real records + a stray `<!--` opener → the hard-cap ERROR still fires (pre-fix: silent)", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd, { state: "EXECUTE", iteration: 0 });
+    writeFileSync(join(planDir, "state.md"), strayOpenerState({ iteration: 0, records: 6 }));
+    const r = run(cwd);
+    const iterErrs = r.stdout.split("\n").filter((l) => /ERROR \[iteration\]/.test(l));
+    assert.equal(iterErrs.length, 1, `the hard cap must still fire through a stray opener, got:\n${r.stdout}`);
+    assert.ok(/derived=6/.test(iterErrs[0]), `expected derived=6 from the raw block, got: ${iterErrs[0]}`);
+  });
+
+  it("(ad) D-009/B4: bootstrap's state.md template holds NO example EXECUTE → REFLECT (raw counting cannot over-count a fresh plan)", () => {
+    const template = readFileSync(BOOTSTRAP, "utf-8");
+    const m = /## Transition History:\n([\s\S]*?)\n`\n\s*\);/.exec(template);
+    assert.ok(m, "could not locate bootstrap's state.md Transition History template block");
+    assert.ok(!/EXECUTE\s*(?:→|->)\s*REFLECT/.test(m[1]),
+      `B4 FALSIFIED: bootstrap's state.md template now contains an example EXECUTE → REFLECT, so the raw-counting cap (D-009) would over-count on EVERY fresh plan. Fix the template or re-open D-009. Template block:\n${m[1]}`);
   });
 
   // C5 — most-recent-only: 3 historical EXPLORE → PLAN cycles must not yield 3 WARNs.

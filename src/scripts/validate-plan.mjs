@@ -217,9 +217,13 @@ function isPivotPhase(s) {
 // v2.32.0 for the .md DECISION-anchor scanner (see HTML_STYLE_EXTS below, ~:904). The
 // state.md scanners never learned that lesson; this helper is the single place they do.
 // Do NOT re-introduce a raw `state.slice(indexOf("## Transition History:"))` scan —
-// route every Transition-History reader through this function. And do NOT "improve"
-// stripHtmlComments to blank an unterminated `<!--` to EOF: that would silently swallow
-// real `EXECUTE → REFLECT` records and disable the iteration hard cap (see shared.mjs).
+// route every Transition-History reader through this function.
+// CORRECTED at iter-2/step-5 (D-009): this note used to add "and do NOT improve
+// stripHtmlComments to blank an unterminated `<!--` to EOF, because that would disable the
+// iteration hard cap". That framing was wrong — it located a SAFETY property in a
+// general-purpose text helper. The stripper's behaviour never protected the cap (a stray
+// opener pairs with bootstrap's template trailer, so it is never unterminated in the first
+// place). The cap protects itself, by reading RAW: see deriveIterationFromHistory below.
 // DECISION plan_2026-07-14_79ee0f59/D-010 — the heading is located with a LINE-ANCHORED
 // match (`/^## Transition History:/m`), never a bare `stripped.indexOf("## Transition
 // History:")`. Do not "simplify" it back to indexOf. A substring search also matches the
@@ -232,12 +236,23 @@ function isPivotPhase(s) {
 // own state.md: the block started at line 17, the transition-legality check saw 14
 // transition-shaped prose lines, and the iteration hard-cap counter derived **0** from 3
 // real `EXECUTE → REFLECT` records. A heading is a LINE, so match it as one.
-function transitionHistoryBlock(state) {
+// DECISION plan_2026-07-14_79ee0f59/D-009 — the `raw` option exists for exactly ONE
+// caller: deriveIterationFromHistory (the iteration hard cap). Do NOT pass `{ raw: true }`
+// from an advisory scanner "for consistency" — they MUST keep reading the stripped block,
+// where bootstrap's template example transition is invisible and a false WARN would be
+// recoverable anyway. See the fail-closed note on deriveIterationFromHistory below.
+// The heading is located in whichever text the caller reads, NOT always in the stripped
+// text: a stray `<!--` ABOVE the heading blanks the heading itself, so a stripped-only
+// lookup returns null and the cap derives 0 from ANY number of real records. Measured on
+// the reviewer's fixture (stray opener + 4 real records + the template trailer): the
+// stripped lookup derives **0**, not the 2 the review reported. Locating in raw text is
+// what makes the cap structurally incapable of under-counting.
+function transitionHistoryBlock(state, { raw = false } = {}) {
   if (!state) return null;
-  const stripped = stripHtmlComments(state);
-  const m = /^## Transition History:/m.exec(stripped);
+  const text = raw ? state : stripHtmlComments(state);
+  const m = /^## Transition History:/m.exec(text);
   if (!m) return null;
-  return stripped.slice(m.index);
+  return text.slice(m.index);
 }
 
 function checkStateTransitions(planDir, issues) {
@@ -447,12 +462,8 @@ function checkLeashCount(planDir, issues) {
 // Cross-check: each EXECUTE → REFLECT arrow in Transition History closes one
 // iteration. Final value = max(declared, derived) — both signals govern.
 //
-// SAFETY (D-003): this counter drives the iteration hard cap. It reads the block
-// comment-blind (template/guidance text can never inflate the count) but must never
-// UNDER-count — stripHtmlComments leaves an unterminated `<!--` untouched precisely
-// so a stray opener cannot blank real transition records away and disable the cap.
-function deriveIterationFromHistory(state) {
-  const block = transitionHistoryBlock(state);
+/** Count `EXECUTE → REFLECT` arrows in a Transition-History block (null → 0). */
+function countExecuteReflect(block) {
   if (block === null) return 0;
   // Use normalizePhase semantics (en/em dash → hyphen). Count distinct
   // EXECUTE → REFLECT transitions.
@@ -461,6 +472,46 @@ function deriveIterationFromHistory(state) {
   let count = 0;
   while (re.exec(norm) !== null) count++;
   return count;
+}
+
+// DECISION plan_2026-07-14_79ee0f59/D-009 — this counter drives the iteration hard cap
+// (a SAFETY mechanism), and it therefore counts on the **RAW** history block. Do NOT
+// "unify" it with the advisory scanners by dropping the raw read.
+//
+// This CORRECTS a false invariant that shipped here under D-003. That note claimed the
+// cap could only ever OVER-count, because `stripHtmlComments` leaves an unterminated
+// `<!--` untouched. The claim was FALSE in the shipped template's own shape:
+// bootstrap.mjs ends EVERY state.md with a guidance comment that supplies a trailing
+// `-->` (bootstrap.mjs:1383-1386), so a stray opener is never unterminated — it pairs
+// with that trailer and blanks everything between. Reproduced: a stray `<!-- note:` line
+// above the heading + 4 real `EXECUTE → REFLECT` records → the cap derived **0**. The
+// safety cap silently disappeared. It failed OPEN.
+//
+// The fail-safe cannot live in the stripper. Under HTML rules that document genuinely IS
+// one long comment, and no purely-local rule distinguishes "a `-->` belonging to another
+// comment": a blank line does not, a heading does not, and marker-balance counting does
+// not (left-to-right pairing finds the stray opener perfectly "balanced" against the
+// template's closer). So the invariant is RELOCATED to the consumer that needs it — this
+// one. Counting `max(raw, stripped)` (raw is the whole region a comment could hide) makes
+// under-counting STRUCTURALLY IMPOSSIBLE for any comment shape, and the cap can then only
+// OVER-count: the loud, recoverable, agent-visible direction.
+//
+// Advisory scanners (checkExplorationConfidence, transition legality, the PC advisory)
+// deliberately keep reading the STRIPPED block: a false WARN there is recoverable, a false
+// ERROR would not be. The price of raw counting is re-acquiring the template-example
+// exposure D-003 removed — safe today ONLY because the template's sole example transition
+// is `EXPLORE → PLAN`, never `EXECUTE → REFLECT` (assumption B4, re-verified against
+// bootstrap.mjs:1383-1386 at iter-2/step-5). If a template example ever adds an
+// `EXECUTE → REFLECT` line, this over-counts by one on EVERY fresh plan — and
+// [state-comment-anomaly] fires to say why. See decisions.md D-009.
+// Exported for testability ONLY (the CLI cannot observe a derived count below 5 — the cap
+// prints nothing under its WARN threshold — and the review's fixture measures exactly 4).
+// The module's CLI dispatch is already guarded by `isEntryPoint`, so importing is safe.
+export function deriveIterationFromHistory(state) {
+  return Math.max(
+    countExecuteReflect(transitionHistoryBlock(state, { raw: true })),
+    countExecuteReflect(transitionHistoryBlock(state)),
+  );
 }
 
 function checkIterationLimits(planDir, issues) {
