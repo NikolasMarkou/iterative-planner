@@ -16,6 +16,7 @@ import {
   blankCompressedSummaryBlock,
   stripHtmlComments,
   htmlCommentSpans,
+  unterminatedCommentOpener,
   COMPRESSED_SUMMARY_OPEN,
   COMPRESSED_SUMMARY_CLOSE,
   CHANGELOG_COMPRESSED_INLINE_RE,
@@ -477,4 +478,52 @@ test("DECISION_ID_NUM_PATTERN: 3-digit padding is the MINIMUM, not the maximum",
   for (const bad of ["D-1", "D-99", "D-", "D-abc", "D001"]) {
     assert.ok(!re.test(bad), `${bad} must NOT be a valid decision id`);
   }
+});
+
+// ---------------------------------------------------------------------------
+// unterminatedCommentOpener — the [state-comment-anomaly] balance probe (D-009).
+// ---------------------------------------------------------------------------
+
+test("unterminatedCommentOpener: finds an opener with no closer, and agrees with htmlCommentSpans", () => {
+  assert.equal(unterminatedCommentOpener(""), -1);
+  assert.equal(unterminatedCommentOpener(null), -1);
+  assert.equal(unterminatedCommentOpener("no comments here at all"), -1);
+  assert.equal(unterminatedCommentOpener("<!-- balanced -->"), -1);
+  assert.equal(unterminatedCommentOpener("<!-- one --> text <!-- two -->"), -1);
+
+  // The unterminated cases: the offset points AT the `<`.
+  assert.equal(unterminatedCommentOpener("<!-- stray"), 0);
+  const s = "line\n<!-- stray, never closed\nmore";
+  assert.equal(unterminatedCommentOpener(s), s.indexOf("<!--"));
+  // A closed comment followed by a stray one — the probe must see PAST the closed region.
+  const t = "<!-- closed -->\ntext\n<!-- stray";
+  assert.equal(unterminatedCommentOpener(t), t.lastIndexOf("<!--"));
+
+  // Code spans are PROSE: a backticked delimiter can neither open nor close (D-010).
+  assert.equal(unterminatedCommentOpener("a backticked `<!--` is not an opener"), -1);
+  assert.equal(unterminatedCommentOpener("```\n<!-- inside a fence\n```"), -1);
+
+  // HTML comments do not nest: the first `-->` closes, so this BALANCES.
+  assert.equal(unterminatedCommentOpener("<!-- outer <!-- inner -->"), -1);
+});
+
+test("unterminatedCommentOpener: a stray opener PAIRED with bootstrap's template trailer BALANCES (why D-009 does not build the cap on this probe)", () => {
+  // This is the review's exact shape. The markers balance perfectly — left-to-right pairing
+  // matches the stray opener with the template's closer — so the probe is SILENT here, and a
+  // balance check could never have been the iteration cap's fail-safe. The cap protects itself
+  // by counting the RAW block; this probe is a diagnostic, and the [state-comment-anomaly]
+  // check pairs it with a raw-vs-stripped count comparison precisely to cover this shape.
+  const state = [
+    "## Transition History:",
+    "<!-- note: stray opener, an authoring accident",
+    "- EXECUTE → REFLECT (1)",
+    "- EXECUTE → REFLECT (2)",
+    "<!-- When logging EXPLORE → PLAN, add Exploration Confidence, e.g.:",
+    "- EXPLORE → PLAN (gathered enough context)",
+    "See references/planning-rigor.md for definitions. -->",
+  ].join("\n");
+  assert.equal(unterminatedCommentOpener(state), -1, "the markers balance — this is the trap D-009 documents");
+  // And the proof that the region really was swallowed: both records vanish from the strip.
+  assert.ok(!/EXECUTE → REFLECT \(1\)/.test(stripHtmlComments(state)));
+  assert.ok(!/EXECUTE → REFLECT \(2\)/.test(stripHtmlComments(state)));
 });

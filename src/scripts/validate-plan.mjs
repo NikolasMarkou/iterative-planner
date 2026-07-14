@@ -19,6 +19,7 @@ import {
   blankCompressedSummaryBlock,
   stripHtmlComments,
   htmlCommentSpans,
+  unterminatedCommentOpener,
   PLAN_ID_PATTERN,
   PLAN_ID_RE,
   DECISION_ID_NUM_PATTERN,
@@ -512,6 +513,47 @@ export function deriveIterationFromHistory(state) {
     countExecuteReflect(transitionHistoryBlock(state, { raw: true })),
     countExecuteReflect(transitionHistoryBlock(state)),
   );
+}
+
+// DECISION plan_2026-07-14_79ee0f59/D-009 — the DIAGNOSTIC half of the fail-closed cap.
+// Raw counting (above) makes the cap incapable of under-counting, but it buys that with the
+// possibility of an OVER-count whenever a comment region embeds a transition-shaped line.
+// An unexplained over-count would be its own kind of silent failure ("why does the validator
+// think I am on iteration 8?"), so this check exists to always EXPLAIN one.
+//
+// WARN ONLY. Do NOT promote this to an ERROR and do NOT add it to the --pre-step gate's
+// HARD-fail slugs. A stray comment marker in state.md is an authoring accident, not a
+// protocol violation: the cap already handles the safety consequence, and an ERROR here
+// would BLOCK a plan over a typo in a file the agent is actively editing. It also must stay
+// silent on a fresh `bootstrap.mjs new` plan dir and on this repo's own plan dir — a WARN
+// that fires on every plan is noise, and noise is how a real signal gets ignored.
+function checkStateCommentAnomaly(planDir, issues) {
+  const state = readFile(join(planDir, "state.md"));
+  if (!state) return; // absence is already reported by checkStateTransitions
+
+  const strayIdx = unterminatedCommentOpener(state);
+  if (strayIdx >= 0) {
+    const line = state.slice(0, strayIdx).split("\n").length;
+    issues.push({
+      severity: "WARN",
+      check: "state-comment-anomaly",
+      message: `state.md line ${line}: an HTML comment opener \`<!--\` has no matching \`-->\`. Everything after it reads as comment body to the advisory scanners. The iteration cap is unaffected (it counts the raw block — D-009), but close or delete the marker.`,
+    });
+  }
+
+  // The other half: a transition-shaped line living INSIDE a comment region. This is what a
+  // stray opener does when it pairs with bootstrap's trailing template comment — it swallows
+  // real records — and it is also what a genuine comment holding an example transition does.
+  // Either way the raw and stripped readings disagree, and the cap took the raw one.
+  const raw = countExecuteReflect(transitionHistoryBlock(state, { raw: true }));
+  const stripped = countExecuteReflect(transitionHistoryBlock(state));
+  if (raw !== stripped) {
+    issues.push({
+      severity: "WARN",
+      check: "state-comment-anomaly",
+      message: `state.md Transition History: ${raw} \`EXECUTE → REFLECT\` record(s) in the raw text but ${stripped} after HTML comments are stripped — ${raw - stripped} transition-shaped line(s) sit INSIDE a comment region. The iteration cap counts the raw ${raw} on purpose (it must never under-count — D-009), so this is why it may read higher than you expect.`,
+    });
+  }
 }
 
 function checkIterationLimits(planDir, issues) {
@@ -1758,6 +1800,7 @@ function validate(planDirName) {
   checkChangeManifest(planDir, issues);
   checkLeashCount(planDir, issues);
   checkIterationLimits(planDir, issues);
+  checkStateCommentAnomaly(planDir, issues); // v2.34.0 — D-009 diagnostic (WARN-only)
   checkProgressStructure(planDir, issues);
   checkCheckpoints(planDir, issues);
   checkComplexityBudget(planDir, issues);

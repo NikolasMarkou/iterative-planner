@@ -279,6 +279,30 @@ export function stripHtmlComments(content) {
   return out + content.slice(cursor);
 }
 
+/**
+ * Locate an UNBALANCED HTML comment opener: a `<!--` that no `-->` ever closes, using
+ * EXACTLY the same left-to-right pairing (and the same code-span masking) that
+ * `htmlCommentSpans` uses. Returns its 0-based offset, or -1 when the markers balance.
+ *
+ * Deliberately built ON TOP of `htmlCommentSpans` rather than re-running the pairing loop:
+ * the two must agree by construction. `htmlCommentSpans` consumes the document up to the
+ * last `-->` it could pair, so any opener remaining after that is, by definition, the one
+ * with no closer.
+ *
+ * This is the diagnostic half of D-009. It cannot make the iteration cap safe — the cap
+ * protects itself by counting raw (see validate-plan.mjs `deriveIterationFromHistory`) —
+ * because marker-balance counting is exactly what a stray opener DEFEATS: pairing finds it
+ * perfectly "balanced" against bootstrap's template trailer. What it CAN do is EXPLAIN an
+ * over-count, and surface a stray opener even when nothing was swallowed. Consumer:
+ * validate-plan.mjs's `[state-comment-anomaly]` WARN (advisory — never an ERROR).
+ */
+export function unterminatedCommentOpener(content) {
+  if (!content) return -1;
+  const spans = htmlCommentSpans(content);
+  const after = spans.length > 0 ? spans[spans.length - 1].end : 0;
+  return maskLiteralRegions(content).indexOf("<!--", after);
+}
+
 // ---------------------------------------------------------------------------
 // Identifier grammars: plan-id and decision-id.
 //

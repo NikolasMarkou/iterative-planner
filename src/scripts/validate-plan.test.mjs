@@ -910,6 +910,89 @@ describe("validate-plan.mjs --pre-step gate", () => {
     assert.ok(/derived=6/.test(iterErrs[0]), `expected derived=6 from the raw block, got: ${iterErrs[0]}`);
   });
 
+  // -------------------------------------------------------------------------
+  // D-009 (step 6) — [state-comment-anomaly]: the diagnostic that EXPLAINS an over-count.
+  // WARN only. Never ERROR, never exit 2, and SILENT on every well-formed plan.
+  // -------------------------------------------------------------------------
+
+  // WHY THE CHECK IS AN *OR* (measured, not assumed): on the review's exact fixture the
+  // marker-BALANCE probe is SILENT. The stray opener pairs perfectly with bootstrap's
+  // template trailer, so the markers genuinely balance — which is precisely the argument
+  // D-009 makes for why balance-counting cannot be the fail-safe. What catches this shape is
+  // the raw-vs-stripped DISAGREEMENT (4 records raw, 0 after stripping). Neither condition
+  // alone suffices; (ai) below covers the shape the balance probe is the only one that sees.
+  it("(ae) D-009: the review's stray-opener fixture → WARN [state-comment-anomaly] (via raw/stripped divergence), never an ERROR, exit != 2", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd, { state: "EXECUTE", iteration: 4 });
+    writeFileSync(join(planDir, "state.md"), strayOpenerState({ iteration: 4, records: 4 }));
+    const r = run(cwd);
+    const hits = r.stdout.split("\n").filter((l) => /\[state-comment-anomaly\]/.test(l));
+    assert.ok(hits.length >= 1, `the swallowed records must be reported, got:\n${r.stdout}`);
+    for (const h of hits) assert.ok(/^\s*WARN/.test(h), `[state-comment-anomaly] must be WARN, never ERROR: ${h}`);
+    assert.equal(r.stdout.split("\n").filter((l) => /ERROR \[state-comment-anomaly\]/.test(l)).length, 0);
+    assert.notEqual(r.exitCode, 2, "exit 2 is reserved for the --pre-step leash gate");
+    // It explains the cap: 4 real records survive raw, 0 survive the strip.
+    assert.ok(/4 .*record\(s\) in the raw text but 0 after/.test(hits[0]),
+      `the WARN must explain the over-count by naming both counts, got: ${hits[0]}`);
+  });
+
+  it("(ai) D-009: a genuinely UNTERMINATED opener (nothing swallowed) → the balance probe names its line", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd, { state: "EXECUTE", iteration: 1 });
+    // No template trailer, no records inside: raw === stripped, so ONLY marker balance can see it.
+    const state = readFileSync(join(planDir, "state.md"), "utf-8") + "<!-- note: stray, never closed\n";
+    writeFileSync(join(planDir, "state.md"), state);
+    const r = run(cwd);
+    const hits = r.stdout.split("\n").filter((l) => /\[state-comment-anomaly\]/.test(l));
+    assert.equal(hits.length, 1, `an unterminated opener must be surfaced even when nothing was swallowed, got:\n${r.stdout}`);
+    assert.ok(/^\s*WARN/.test(hits[0]), "must be WARN");
+    const expectedLine = state.slice(0, state.indexOf("<!-- note:")).split("\n").length;
+    assert.ok(new RegExp(`state\\.md line ${expectedLine}:`).test(hits[0]), `the WARN must name the line, got: ${hits[0]}`);
+  });
+
+  it("(af) D-009: a transition-shaped line INSIDE a comment → WARN explains the raw/stripped disagreement (the cap's over-count)", () => {
+    const cwd = getTempDir();
+    const transitionHistory = [
+      "<!-- guidance:",
+      "- EXECUTE → REFLECT (an example, inside a real balanced comment)",
+      "-->",
+      "- EXECUTE → REFLECT (1)",
+    ].join("\n");
+    writePlan(cwd, { state: "EXECUTE", iteration: 1, transitionHistoryExtra: transitionHistory });
+    const r = run(cwd);
+    const hits = r.stdout.split("\n").filter((l) => /\[state-comment-anomaly\]/.test(l));
+    assert.equal(hits.length, 1, `raw=2 vs stripped=1 must be explained exactly once, got:\n${r.stdout}`);
+    assert.ok(/^\s*WARN/.test(hits[0]), "must be WARN");
+    assert.ok(/2 .*raw.*1 after/.test(hits[0]) || /raw text but 1/.test(hits[0]), `the WARN must state both counts, got: ${hits[0]}`);
+  });
+
+  it("(ag) D-009: SILENT on a well-formed plan — no stray opener, no in-comment transition (the noise regression guard)", () => {
+    const cwd = getTempDir();
+    // The default writePlan fixture: balanced comments (none), real transitions only.
+    writePlan(cwd, { state: "EXECUTE", iteration: 1, transitionHistoryExtra: "- EXECUTE → REFLECT (1)" });
+    const r = run(cwd);
+    const hits = r.stdout.split("\n").filter((l) => /\[state-comment-anomaly\]/.test(l));
+    assert.equal(hits.length, 0, `a well-formed state.md must produce NO anomaly WARN, got:\n${r.stdout}`);
+  });
+
+  it("(ah) D-009: SILENT on a fresh `bootstrap.mjs new` plan dir (a WARN on every plan is a signal-quality regression)", () => {
+    const cwd = getTempDir();
+    const b = spawnSync("node", [BOOTSTRAP, "new", "anomaly silence probe"], { cwd, encoding: "utf-8", timeout: 15000 });
+    assert.equal(b.status, 0, `bootstrap new failed: ${b.stderr}`);
+    const planId = readFileSync(join(cwd, "plans", ".current_plan"), "utf-8").trim();
+    const r = run(cwd, [join("plans", planId)]);
+    const hits = r.stdout.split("\n").filter((l) => /\[state-comment-anomaly\]/.test(l));
+    assert.equal(hits.length, 0, `bootstrap's own state.md template must NOT trip the anomaly WARN, got:\n${r.stdout}`);
+    // And the backticked delimiter case: prose ABOUT comments is not a comment.
+    const statePath = join(cwd, "plans", planId, "state.md");
+    const state = readFileSync(statePath, "utf-8");
+    writeFileSync(statePath, state.replace("## Change Manifest (current iteration)",
+      "## Change Manifest (current iteration)\n- NOTE: a backticked `<!--` in prose must not read as an opener"));
+    const r2 = run(cwd, [join("plans", planId)]);
+    assert.equal(r2.stdout.split("\n").filter((l) => /\[state-comment-anomaly\]/.test(l)).length, 0,
+      `a code-span delimiter is PROSE, not a comment marker, got:\n${r2.stdout}`);
+  });
+
   it("(ad) D-009/B4: bootstrap's state.md template holds NO example EXECUTE → REFLECT (raw counting cannot over-count a fresh plan)", () => {
     const template = readFileSync(BOOTSTRAP, "utf-8");
     const m = /## Transition History:\n([\s\S]*?)\n`\n\s*\);/.exec(template);
