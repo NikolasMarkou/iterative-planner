@@ -43,7 +43,26 @@ const repoRel = relative(cwd, filePath);
 // expansion when the filename contained those. Live probe (FN-004) created
 // /tmp/FN_PWNED from a filename `bad$(touch /tmp/FN_PWNED).js`. Post-fix:
 // argv elements never touch the shell. shell:false is the spawnSync default.
-function tryExecArgs(cmd, args, opts = {}) {
+//
+// NOTE: execArgs returns a three-way verdict because the grep family overloads
+// its exit status: `git grep -l` (and plain `grep`) exit **1 on zero matches**,
+// which is a perfectly normal result, not a failure. Verified live: no match →
+// status 1 + empty stdout; not a git repo → 128; bad regex → 128; unknown flag →
+// 129. So real errors are always >= 2 (or a spawn error), and the no-match verdict
+// keys on (status === 1 AND empty stdout) — never on the bare number 1, which a
+// future git error could also use.
+//
+// Pre-fix, `tryExecArgs` folded no-match into "failed", so reverseDeps()'s `??`
+// chain fell through to the unscoped `grep -r .` fallback on the COMMON case (a
+// file with zero reverse-dependents), paying a second subprocess and an unfiltered
+// whole-tree scan on nearly every invocation. See reverseDeps() below.
+//
+// Verdict shape: { ok, noMatch, stdout }
+//   ok:true                  → command succeeded; stdout is the trimmed output
+//   ok:false, noMatch:true   → command ran fine and found nothing
+//   ok:false, noMatch:false  → real failure (spawn error, timeout, status >= 2)
+function execArgs(cmd, args, opts = {}) {
+  const fail = { ok: false, noMatch: false, stdout: "" };
   try {
     const r = spawnSync(cmd, args, {
       encoding: "utf-8",
@@ -51,11 +70,21 @@ function tryExecArgs(cmd, args, opts = {}) {
       timeout: 1500,
       ...opts,
     });
-    if (r.error || r.status !== 0) return null;
-    return (r.stdout ?? "").trim();
+    if (r.error) return fail;
+    const stdout = (r.stdout ?? "").trim();
+    if (r.status === 0) return { ok: true, noMatch: false, stdout };
+    if (r.status === 1 && stdout === "") return { ok: false, noMatch: true, stdout: "" };
+    return fail;
   } catch {
-    return null;
+    return fail;
   }
+}
+
+// Back-compat wrapper: every non-grep caller only cares about "usable stdout or
+// nothing", and for them a status-1 exit is still nothing. Semantics unchanged.
+function tryExecArgs(cmd, args, opts = {}) {
+  const r = execArgs(cmd, args, opts);
+  return r.ok ? r.stdout : null;
 }
 
 function isGitRepo() {
@@ -174,11 +203,26 @@ function reverseDeps() {
   // Pattern goes into git grep / grep as an argv element — never shell-interpreted.
   const escaped = base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const pat = `(from ['\"][^'\"]*${escaped}['\"]|require\\(['\"][^'\"]*${escaped}['\"]\\)|import [^;]*${escaped}|use [a-zA-Z0-9_:]*${escaped}|include [\"<][^\">]*${escaped})`;
-  // Use git grep when in repo (faster, respects .gitignore); fall back to grep -r.
-  let out =
-    tryExecArgs("git", ["grep", "-E", "-l", "--untracked", "--no-color", pat,
-                        "--", `:(top,exclude)${repoRel}`, ":(top,exclude)plans/"]) ??
-    tryExecArgs("grep", ["-E", "-r", "-l", `--include=*.${ext.slice(1) || "*"}`, pat, "."]);
+  // Use git grep when in repo (faster, respects .gitignore); fall back to grep -r
+  // ONLY on a real git failure.
+  //
+  // NOTE: zero reverse-dependents is a RESULT, not an error — `git grep` reports it
+  // as exit 1 with empty stdout (see execArgs above). Returning count 0 here is what
+  // keeps the fallback off the common path; pre-fix it fired on nearly every call.
+  // The fallback carries the same exclusions as the git-grep pathspec (`plans/`)
+  // plus the dirs git-grep gets for free by respecting .gitignore / not indexing
+  // .git — without them, a basename mentioned in prose inside plans/*/changelog.md
+  // (or a vendored copy under node_modules/) inflates the deps count for the
+  // fallback path only, making the two paths disagree on the same file.
+  const gitGrep = execArgs("git", ["grep", "-E", "-l", "--untracked", "--no-color", pat,
+                                   "--", `:(top,exclude)${repoRel}`, ":(top,exclude)plans/"]);
+  if (gitGrep.noMatch) return { score: 0, count: 0 };
+  const out = gitGrep.ok
+    ? gitGrep.stdout
+    : tryExecArgs("grep", ["-E", "-r", "-l",
+                           "--exclude-dir=.git", "--exclude-dir=node_modules",
+                           "--exclude-dir=dist", "--exclude-dir=plans",
+                           `--include=*.${ext.slice(1) || "*"}`, pat, "."]);
   if (out == null) return { score: 0, count: 0 };
   const lines = out.split("\n").filter((l) => l.trim().length > 0 && l !== repoRel);
   const count = lines.length;

@@ -5,7 +5,7 @@
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, writeFileSync, existsSync, rmSync, unlinkSync } from "fs";
+import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, unlinkSync, chmodSync } from "fs";
 import { join, resolve } from "path";
 import { spawnSync } from "child_process";
 import { tmpdir } from "os";
@@ -41,6 +41,56 @@ function makeNonGitDir() {
   const dir = join(tmpdir(), `radius-nogit-${randomBytes(4).toString("hex")}`);
   mkdirSync(dir, { recursive: true });
   return dir;
+}
+
+// --- defect #2 observability harness -----------------------------------------
+// The script is a CLI (no isEntryPoint guard, no exported functions), so the only
+// way to observe WHICH subprocess it spawned is to intercept the spawn. It resolves
+// `git` / `grep` through PATH, so a shim bin dir prepended to PATH gives us the real
+// argv without adding a mocking dependency.
+//   - the `grep` shim logs its argv (one call per line), then execs the real grep;
+//   - the optional `git` shim makes ONLY `git grep` fail with status 128 (a genuine
+//     git error — verified live: not-a-repo and bad-regex both exit 128, while a
+//     legitimate zero-match exits 1), passing every other git subcommand through.
+// POSIX-only (sh shebang + exec bit), hence the win32 skip on the suite below.
+const POSIX_ONLY = { skip: process.platform === "win32" ? "POSIX sh shims" : false };
+
+function which(cmd) {
+  return spawnSync("sh", ["-c", `command -v ${cmd}`], { encoding: "utf-8" }).stdout.trim();
+}
+
+function makeShimDir({ failGitGrep = false } = {}) {
+  const dir = join(tmpdir(), `radius-shim-${randomBytes(4).toString("hex")}`);
+  mkdirSync(dir, { recursive: true });
+  const log = join(dir, "grep-argv.log");
+  const realGrep = which("grep");
+  const realGit = which("git");
+
+  const grepShim = `#!/bin/sh\nprintf '%s\\n' "$*" >> '${log}'\nexec '${realGrep}' "$@"\n`;
+  writeFileSync(join(dir, "grep"), grepShim);
+  chmodSync(join(dir, "grep"), 0o755);
+
+  if (failGitGrep) {
+    const gitShim = `#!/bin/sh\nif [ "$1" = "grep" ]; then exit 128; fi\nexec '${realGit}' "$@"\n`;
+    writeFileSync(join(dir, "git"), gitShim);
+    chmodSync(join(dir, "git"), 0o755);
+  }
+  return { dir, log };
+}
+
+/** grep invocations recorded by the shim (empty array = grep was never spawned). */
+function grepCalls(log) {
+  if (!existsSync(log)) return [];
+  return readFileSync(log, "utf-8").split("\n").filter((l) => l.trim().length > 0);
+}
+
+/** run() with the shim dir prepended to PATH. */
+function runShimmed(cwd, shimDir, ...args) {
+  const r = spawnSync("node", [SCRIPT, ...args], {
+    cwd, encoding: "utf-8", timeout: 5000,
+    env: { ...process.env, PATH: `${shimDir}:${process.env.PATH}` },
+  });
+  return { stdout: r.stdout ?? "", stderr: r.stderr ?? "", exitCode: r.status ?? 1 };
 }
 
 describe("blast-radius.mjs — D-003: spawnSync argv shape prevents shell injection (OBS-002)", () => {
@@ -548,5 +598,111 @@ describe("blast-radius.mjs — defect #1: untracked (CREATE) files are scored fr
       assert.equal(r.exitCode, 0);
       assert.match(r.stdout.trim(), /^radius:UNKNOWN\(no-git\)$/);
     } finally { removeTempDir(dir); }
+  });
+});
+
+// Defect #2 — `git grep -l` exits 1 with empty stdout when there are ZERO matches.
+// That is a normal result, not a failure, but tryExecArgs folded it into "null", so
+// the `??` chain in reverseDeps() fell through to an unscoped `grep -r .` on the
+// COMMON case (a file with no reverse-dependents): a second subprocess on nearly
+// every call, scanning the whole tree with none of the git-grep path's exclusions
+// (.git, node_modules, dist, plans/) — so it could also inflate the deps count with
+// prose matches from inside plans/.
+//
+// These tests assert on the INVOCATION, not just the result: a PATH shim records the
+// argv grep is actually spawned with (see makeShimDir above). A test that only checked
+// `count === 0` would pass both pre- and post-fix.
+describe("blast-radius.mjs — defect #2: git-grep no-match is a result, not an error", POSIX_ONLY, () => {
+  it("zero reverse-dependents -> deps.count=0 AND the grep fallback is NEVER spawned", () => {
+    const cwd = makeTempDir();
+    const { dir: shim, log } = makeShimDir();
+    try {
+      writeFileSync(join(cwd, "lonely.js"), "export const z = 1;\n"); // nothing imports it
+      commitAll(cwd);
+      const r = runShimmed(cwd, shim, "lonely.js", "--json");
+      assert.equal(r.exitCode, 0, "blast-radius must always exit 0");
+      const o = JSON.parse(r.stdout.trim());
+      assert.equal(o.signals.deps.count, 0, JSON.stringify(o.signals.deps));
+      assert.equal(o.signals.deps.score, 0);
+      assert.deepEqual(grepCalls(log), [],
+        `no-match must NOT invoke the grep fallback; grep was spawned with: ${JSON.stringify(grepCalls(log))}`);
+    } finally { removeTempDir(cwd); removeTempDir(shim); }
+  });
+
+  it("exec count: no-match path spawns grep 0 times; the real-failure path spawns it exactly 1 time", () => {
+    // The perf half of the defect: pre-fix, the zero-dep case paid an extra
+    // whole-tree subprocess (up to the 1500ms timeout). Asserting the exec count is
+    // the deterministic form of "no slower than the git-grep path".
+    const ok = makeTempDir();
+    const shimOk = makeShimDir();                          // git works -> git grep exits 1 (no match)
+    const bad = makeTempDir();
+    const shimBad = makeShimDir({ failGitGrep: true });    // git grep exits 128 -> real failure
+    try {
+      writeFileSync(join(ok, "solo.js"), "export const s = 1;\n");
+      commitAll(ok);
+      runShimmed(ok, shimOk.dir, "solo.js", "--json");
+      assert.equal(grepCalls(shimOk.log).length, 0, "no-match path must spawn zero grep processes");
+
+      writeFileSync(join(bad, "solo.js"), "export const s = 1;\n");
+      commitAll(bad);
+      runShimmed(bad, shimBad.dir, "solo.js", "--json");
+      assert.equal(grepCalls(shimBad.log).length, 1, "real-failure path must spawn the fallback exactly once");
+    } finally {
+      removeTempDir(ok); removeTempDir(shimOk.dir);
+      removeTempDir(bad); removeTempDir(shimBad.dir);
+    }
+  });
+
+  it("when the fallback DOES fire (git grep errors, status 128), its argv carries all four --exclude-dir flags", () => {
+    const cwd = makeTempDir();
+    const { dir: shim, log } = makeShimDir({ failGitGrep: true });
+    try {
+      writeFileSync(join(cwd, "dep.js"), "export const x = 1;\n");
+      writeFileSync(join(cwd, "user.js"), 'import { x } from "./dep.js";\n');
+      commitAll(cwd);
+      const r = runShimmed(cwd, shim, "dep.js", "--json");
+      assert.equal(r.exitCode, 0);
+
+      const calls = grepCalls(log);
+      assert.equal(calls.length, 1, `expected the fallback to fire exactly once, got: ${JSON.stringify(calls)}`);
+      const argv = calls[0];
+      for (const flag of ["--exclude-dir=.git", "--exclude-dir=node_modules", "--exclude-dir=dist", "--exclude-dir=plans"]) {
+        assert.ok(argv.includes(flag), `fallback argv is missing ${flag}; got: ${argv}`);
+      }
+      // ...and it still finds the importer, so the fallback remains a working fallback.
+      const o = JSON.parse(r.stdout.trim());
+      assert.equal(o.signals.deps.count, 1, JSON.stringify(o.signals.deps));
+    } finally { removeTempDir(cwd); removeTempDir(shim); }
+  });
+
+  it("REGRESSION PIN: a file WITH reverse-dependents keeps the exact same count, score and tier", () => {
+    // Same fixture as the tier-boundary suite's score-3 case (shared=2 + deps=1).
+    // If the no-match short-circuit ever leaks into the has-matches path, this moves.
+    const cwd = makeTempDir();
+    try {
+      mkdirSync(join(cwd, "lib"));
+      writeFileSync(join(cwd, "lib", "a.js"), "export const a=1;\n");
+      writeFileSync(join(cwd, "one.js"), 'import { a } from "./lib/a.js";\n');
+      commitAll(cwd);
+      const o = JSON.parse(run(cwd, join("lib", "a.js"), "--json").stdout.trim());
+      assert.equal(o.signals.deps.count, 1, JSON.stringify(o.signals.deps));
+      assert.equal(o.signals.deps.score, 1, JSON.stringify(o.signals.deps));
+      assert.equal(o.score, 3, JSON.stringify(o.signals));
+      assert.equal(o.tier, "MED", JSON.stringify(o));
+    } finally { removeTempDir(cwd); }
+  });
+
+  it("6 reverse-dependents still score deps=2 (the count -> score tiers are untouched)", () => {
+    const cwd = makeTempDir();
+    try {
+      writeFileSync(join(cwd, "core.js"), "export const c=1;\n");
+      for (let i = 1; i <= 6; i++) {
+        writeFileSync(join(cwd, `u${i}.js`), 'import { c } from "./core.js";\n');
+      }
+      commitAll(cwd);
+      const o = JSON.parse(run(cwd, "core.js", "--json").stdout.trim());
+      assert.equal(o.signals.deps.count, 6, JSON.stringify(o.signals.deps));
+      assert.equal(o.signals.deps.score, 2, JSON.stringify(o.signals.deps));
+    } finally { removeTempDir(cwd); }
   });
 });
