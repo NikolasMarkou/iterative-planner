@@ -58,14 +58,25 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PLAN_TEMPLATES } from "./bootstrap.mjs";
+// DECISION plan-2026-07-14T141152-113d5b92/D-008: import the served-region boundary from its single
+// owner (emit-template.mjs). Do NOT re-derive it here with an exact-line `<!-- TEMPLATE:END -->`
+// match — that hand-derivation diverged from emit-template's `<!-- TEMPLATE:` prefix terminator
+// grammar four times, and the fourth break (Reviewer 4) renamed the terminator + planted an early
+// decoy END to SHRINK this checker's scan while emit-template's served region stayed put. One
+// definition, both consumers: the boundary cannot disagree with itself. See decisions.md D-008.
+import { servedRegionEnd, TEMPLATE_MARKER } from "./emit-template.mjs";
 
 export const DOC_REL = "src/references/file-formats.md";
 export const SRC_REL = "src/scripts/bootstrap.mjs";
 
 const MARKER_RE = /^<!-- SKELETON:([A-Za-z-]+) -->$/;
 const FENCE = "```";
-const BANNED = [FENCE, "<!-- TEMPLATE:"];
+const BANNED = [FENCE, TEMPLATE_MARKER];
 const TEMPLATE_END = "<!-- TEMPLATE:END -->";
+// A standalone <!-- TEMPLATE:* --> marker line: the WHOLE trimmed line is the marker. Distinguishes
+// a real marker from prose that merely CONTAINS `<!-- TEMPLATE:` (file-formats.md ~1029/1031), so
+// the marker-grammar rule below never false-positives on the skeleton half's prose.
+const TEMPLATE_MARKER_LINE_RE = /^<!-- TEMPLATE:[A-Za-z-]+ -->$/;
 
 // The floor. A gate that PASSES having compared fewer slugs than exist is the defect this
 // script exists to prevent, so the expected count is enforced here, not by a human reading
@@ -165,25 +176,45 @@ export function checkParity(templates, docText, srcText = "", expectedSlugs = EX
     const h = header(templates[slug]);
     for (let i = 0; i + 1 < h.length; i++) if (!pairs.has(pair(h, i))) pairs.set(pair(h, i), slug);
   }
-  // The boundary. Take the LAST TEMPLATE:END, never the first: a decoy inserted early must only be
-  // able to WIDEN this scan, never shrink it. Taking the first let one inserted line hide the rest
-  // of the doc from this rule while truncating no emit-template slice. Duplicates FAIL via (f).
+  // The boundary is IMPORTED, not re-derived (D-008). servedRegionEnd owns "where the half
+  // emit-template serves to agents ends" under emit-template's OWN terminator grammar; this checker
+  // cannot disagree with it, because it IS that function. Returns a 0-based line index used as `stop`.
   const lines = (docText || "").split("\n");
-  const ends = lines.reduce((a, l, i) => (l.trim() === TEMPLATE_END ? [...a, i] : a), []);
-  for (const dup of ends.slice(1)) {
-    push(DOC_REL, dup + 1, "duplicate-region",
-      `${TEMPLATE_END} appears twice (lines ${ends[0] + 1} and ${dup + 1}) — it is the boundary of ` +
-      `the half emit-template serves to agents, and rule [header-copy] scans up to it; only one may exist`);
-  }
-  const stop = ends.length === 0 ? lines.length : ends[ends.length - 1];
+  const stop = servedRegionEnd(docText);
   for (let i = 0; i + 1 < stop; i++) {
     const slug = pairs.get(pair(lines, i));
     // A 3+-line header overlaps its own windows: report each run once, at its first line.
     if (!slug || (i > 0 && pairs.get(pair(lines, i - 1)) === slug)) continue;
     push(DOC_REL, i + 1, "header-copy",
-      `lines ${i + 1}-${i + 2} restate PLAN_TEMPLATES.${slug}'s header bytes before <!-- TEMPLATE:END --> — ` +
-      `an un-gated second copy, and emit-template serves THAT half to agents. State bootstrap's bytes ` +
-      `only in the <!-- SKELETON:${slug} --> region; point here instead.`);
+      `lines ${i + 1}-${i + 2} restate PLAN_TEMPLATES.${slug}'s header bytes before the served-region ` +
+      `boundary — an un-gated second copy, and emit-template serves THAT half to agents. State ` +
+      `bootstrap's bytes only in the <!-- SKELETON:${slug} --> region; point here instead.`);
+  }
+
+  // (f) template-markers — marker-grammar HYGIENE for the <!-- TEMPLATE:* --> family. This is NOT
+  // the boundary detector (servedRegionEnd is, above) — it is defense-in-depth. servedRegionEnd
+  // already makes the scan correct regardless of what this finds, but a doc author who RENAMES the
+  // terminator (Reviewer 4: <!-- TEMPLATE:END --> -> <!-- TEMPLATE:END-OF-LIST -->, its END lost but
+  // its `<!-- TEMPLATE:` prefix kept) or inserts a <!-- TEMPLATE:* --> marker PAST the END must fail
+  // LOUDLY rather than let the two consumers drift toward disagreement. STANDALONE-MARKER-LINE
+  // semantics keep prose substrings (~1029/1031) from tripping it. Grammar: exactly ONE standalone
+  // <!-- TEMPLATE:END --> line, and it is the LAST standalone <!-- TEMPLATE: --> marker line.
+  const standalone = lines
+    .map((l, i) => ({ t: l.trim(), i }))
+    .filter((x) => TEMPLATE_MARKER_LINE_RE.test(x.t));
+  const endMarkers = standalone.filter((x) => x.t === TEMPLATE_END);
+  if (endMarkers.length !== 1) {
+    push(DOC_REL, endMarkers.length ? endMarkers[endMarkers.length - 1].i + 1 : endLine, "template-markers",
+      `expected exactly one standalone ${TEMPLATE_END} marker line, found ${endMarkers.length}` +
+      (endMarkers.length === 0
+        ? ` — the terminator may have been renamed (its <!-- TEMPLATE: prefix kept, its END dropped); ` +
+          `it bounds the half emit-template serves to agents`
+        : ` (lines ${endMarkers.map((x) => x.i + 1).join(", ")}); only one may exist`));
+  } else if (standalone.length && standalone[standalone.length - 1].t !== TEMPLATE_END) {
+    const last = standalone[standalone.length - 1];
+    push(DOC_REL, last.i + 1, "template-markers",
+      `${last.t} is a standalone <!-- TEMPLATE: --> marker AFTER ${TEMPLATE_END} — ${TEMPLATE_END} must ` +
+      `be the LAST one (a marker past it would widen the served region into the SKELETON half)`);
   }
 
   // (f) duplicate-region — a repeated marker means the doc a human reads and the region a

@@ -18,16 +18,18 @@ import {
   EXPECTED_SLUGS,
 } from "./check-template-parity.mjs";
 import { PLAN_TEMPLATES } from "./bootstrap.mjs";
-import { resolveTemplate } from "./emit-template.mjs";
+import { resolveTemplate, servedRegionEnd } from "./emit-template.mjs";
 
 // --- fixtures ---------------------------------------------------------------
 
-// A minimal doc in the real shape: worked-example prose, the TEMPLATE:END boundary, then the
-// SKELETON regions, then the END terminator. The boundary is part of the shape, not decoration:
-// rule (h) forbids bootstrap's header bytes BEFORE it and requires them AFTER it, so a fixture
-// without it is not a model of the doc (and, fail-closed, its own regions would trip the rule).
+// A minimal doc in the real shape: worked-example prose, a REAL <!-- TEMPLATE:<slug> --> marker, the
+// TEMPLATE:END boundary, then the SKELETON regions, then the SKELETON END terminator. The worked-half
+// slug marker is load-bearing: the shared boundary `servedRegionEnd` anchors to the LAST valid slug's
+// terminator (D-008), so a fixture WITHOUT one would fail-close to whole-doc and trip rule (h) on its
+// own skeleton regions. `state` is a real slug in VALID_TEMPLATES; the fixture's own template keys
+// (alpha/beta) are deliberately NOT — the anchor slug and the compared slugs are independent.
 const doc = (...regions) =>
-  ["# Formats", "", "<!-- TEMPLATE:END -->", "", ...regions, "<!-- SKELETON:END -->", ""].join("\n");
+  ["# Formats", "", "<!-- TEMPLATE:state -->", "<!-- TEMPLATE:END -->", "", ...regions, "<!-- SKELETON:END -->", ""].join("\n");
 
 const region = (slug, ...bodyLines) =>
   [`<!-- SKELETON:${slug} -->`, "```markdown", ...bodyLines, "```", ""].join("\n");
@@ -50,9 +52,9 @@ test("parseSkeletons lifts each region body as bytes, with a 1-based doc line fo
   assert.deepEqual([...regions.keys()], ["alpha", "beta"]);
   assert.equal(regions.get("alpha").body, "# Alpha\n- one\n");
   assert.equal(regions.get("beta").body, "# Beta\n");
-  // "# Formats"=1, ""=2, TEMPLATE:END=3, ""=4, marker=5, fence=6, first body line=7.
-  assert.equal(regions.get("alpha").bodyLine, 7);
-  assert.equal(regions.get("alpha").markerLine, 5);
+  // "# Formats"=1, ""=2, TEMPLATE:state=3, TEMPLATE:END=4, ""=5, marker=6, fence=7, first body line=8.
+  assert.equal(regions.get("alpha").bodyLine, 8);
+  assert.equal(regions.get("alpha").markerLine, 6);
   assert.ok(endLine > regions.get("beta").markerLine);
 });
 
@@ -161,7 +163,9 @@ test("(b) a region whose marker lost its fenced block fails loudly instead of sk
 test("(b) an empty doc fails every slug rather than passing vacuously", () => {
   const { issues, compared } = checkParity(TEMPLATES, "", "", FIXTURE_FLOOR);
   assert.equal(compared, 0);
-  assert.deepEqual(rules(issues), ["completeness", "completeness", "coverage"]);
+  // An empty doc also lacks the standalone <!-- TEMPLATE:END --> terminator → the marker-grammar
+  // rule fires alongside completeness/coverage. Every failure here is true; none is vacuous.
+  assert.deepEqual(rules(issues), ["template-markers", "completeness", "completeness", "coverage"]);
 });
 
 // --- (c) encodability -------------------------------------------------------
@@ -213,8 +217,9 @@ test("(g) THE VACUOUS PASS: checkParity({}, \"\") compares nothing and must FAIL
   // so the floor has to live in the gate — an assertion here would have left it to a human.
   const { issues, compared } = checkParity({}, "");
   assert.equal(compared, 0);
-  assert.deepEqual(rules(issues), ["coverage"]);
-  assert.match(issues[0].message, /0 of 12/);
+  // Missing-END (marker-grammar) fires too — a malformed doc is not a passing one.
+  assert.deepEqual(rules(issues), ["template-markers", "coverage"]);
+  assert.match(issues.find((i) => i.rule === "coverage").message, /0 of 12/);
 });
 
 test("(g) EXPECTED_SLUGS is the real floor: the live template count must not drop below it", () => {
@@ -261,6 +266,7 @@ test("(h) a template's header lines restated in the worked-example half are CAUG
     "# Alpha",
     "- one",
     "",
+    "<!-- TEMPLATE:state -->",
     "<!-- TEMPLATE:END -->",
     "",
     region("alpha", "# Alpha", "- one"),
@@ -289,48 +295,52 @@ test("(h) a 1-line header does NOT fire — the named gap, pinned so it cannot b
   // would fire on every `# Progress` heading in the doc. The gap is declared in CLAUDE.md and in
   // the Region<->bytes contract; this test is here so a future maintainer meets it deliberately.
   const withBeta = [
-    "# Formats", "", "# Beta", "", "<!-- TEMPLATE:END -->", "",
+    "# Formats", "", "# Beta", "", "<!-- TEMPLATE:state -->", "<!-- TEMPLATE:END -->", "",
     region("alpha", "# Alpha", "- one"), region("beta", "# Beta"), "<!-- SKELETON:END -->", "",
   ].join("\n");
   assert.deepEqual(rules(checkParity(TEMPLATES, withBeta, "", FIXTURE_FLOOR).issues), []);
 });
 
-// --- (f)+(h) the SCAN BOUNDARY ----------------------------------------------
+// --- (f)+(h) the SCAN BOUNDARY (D-008: one shared definition) ----------------
 // Every (h) test above asks what the rule does INSIDE its window. These ask where the window ENDS
-// — which is where the hole was. `<!-- TEMPLATE:END -->` is load-bearing for two consumers with
-// different parse rules, and the doc's marker grammar was unowned: nothing checked it was unique.
+// — which is where the hole was, four times. The window is now `servedRegionEnd` (imported from
+// emit-template.mjs), so the two consumers cannot disagree; the marker-grammar rule `template-markers`
+// is defense-in-depth catching a renamed/duplicated/post-END marker LOUDLY.
 
-test("(f) THE MOVED BOUNDARY: a duplicate <!-- TEMPLATE:END --> is CAUGHT, naming BOTH lines", () => {
+test("(f) TWO <!-- TEMPLATE:END --> MARKERS: the marker-grammar rule FAILs, naming both lines", () => {
   const d = [
-    "# Formats",             // 1
-    "",                      // 2
-    "<!-- TEMPLATE:END -->", // 3 — a decoy
-    "",                      // 4
-    "<!-- TEMPLATE:END -->", // 5 — the real boundary
+    "# Formats",              // 1
+    "",                       // 2
+    "<!-- TEMPLATE:state -->",// 3 — a real slug, so servedRegionEnd is well-defined
+    "<!-- TEMPLATE:END -->",  // 4 — first END (the served-region terminator of `state`)
+    "",                       // 5
+    "<!-- TEMPLATE:END -->",  // 6 — a second END
     "",
     region("alpha", "# Alpha", "- one"),
     region("beta", "# Beta"),
     "<!-- SKELETON:END -->",
     "",
   ].join("\n");
-  const dup = checkParity(TEMPLATES, d, "", FIXTURE_FLOOR).issues.filter((i) => i.rule === "duplicate-region");
-  assert.equal(dup.length, 1);
-  assert.equal(dup[0].line, 5);
-  assert.match(dup[0].message, /lines 3 and 5/); // both, so the reader can see which one moved
+  const mk = checkParity(TEMPLATES, d, "", FIXTURE_FLOOR).issues.filter((i) => i.rule === "template-markers");
+  assert.equal(mk.length, 1);
+  assert.match(mk[0].message, /found 2/);
+  assert.match(mk[0].message, /lines 4, 6/); // both, so the reader can see the duplicate
 });
 
-test("(h) THE SHRUNK WINDOW: a header copy after a decoy END but before the real one is CAUGHT", () => {
-  // The last-END semantics, pinned. Taking the FIRST end would stop the scan at line 3 and never
-  // see the bytes on lines 5-6. A boundary an attacker can move must only ever WIDEN the scan.
+test("(h) A DECOY END CANNOT SHRINK THE SCAN: a header copy below it, before the real terminator, is CAUGHT", () => {
+  // The hole, closed structurally. Under the OLD exact-line-END boundary a decoy END inserted early
+  // shrank the scan and hid everything below it. servedRegionEnd anchors to the LAST SLUG's terminator,
+  // so an early decoy END is inert: the copy planted below it stays inside the served region → CAUGHT.
+  // (The duplicate END also trips the marker-grammar rule.)
   const d = [
-    "# Formats",             // 1
-    "",                      // 2
-    "<!-- TEMPLATE:END -->", // 3 — the decoy: a first-match scan stops here
-    "",                      // 4
-    "# Alpha",               // 5 — bootstrap's bytes, in the half emit-template serves
-    "- one",                 // 6
-    "",                      // 7
-    "<!-- TEMPLATE:END -->", // 8 — the real boundary
+    "# Formats",              // 1
+    "",                       // 2
+    "<!-- TEMPLATE:END -->",  // 3 — decoy; the OLD first-match scan stopped here
+    "",                       // 4
+    "<!-- TEMPLATE:state -->",// 5 — a real slug; its terminator is the real boundary
+    "# Alpha",                // 6 — bootstrap's bytes, in the half emit-template serves
+    "- one",                  // 7
+    "<!-- TEMPLATE:END -->",  // 8 — the real terminator
     "",
     region("alpha", "# Alpha", "- one"),
     region("beta", "# Beta"),
@@ -340,9 +350,86 @@ test("(h) THE SHRUNK WINDOW: a header copy after a decoy END but before the real
   const { issues } = checkParity(TEMPLATES, d, "", FIXTURE_FLOOR);
   const copy = issues.filter((i) => i.rule === "header-copy");
   assert.equal(copy.length, 1);
-  assert.equal(copy[0].line, 5);
+  assert.equal(copy[0].line, 6);
   assert.match(copy[0].message, /PLAN_TEMPLATES\.alpha/);
-  assert.equal(issues.filter((i) => i.rule === "duplicate-region").length, 1); // and the decoy itself
+  assert.ok(issues.some((i) => i.rule === "template-markers")); // the duplicate END, reported loudly
+});
+
+test("(S3) BOUNDARY AGREEMENT: the checker scans EXACTLY up to emit-template's servedRegionEnd", () => {
+  // The load-bearing new invariant (D-008): the checker's scan boundary is not re-derived — it IS
+  // servedRegionEnd. On the real doc the boundary is the <!-- TEMPLATE:END --> line, never the prose
+  // substrings after it; and no exact-token boundary detection survives in the checker source.
+  assert.equal(REAL_DOC.split("\n")[servedRegionEnd(REAL_DOC)].trim(), "<!-- TEMPLATE:END -->");
+  const checkerSrc = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "check-template-parity.mjs"), "utf8");
+  assert.equal(checkerSrc.includes('=== "<!-- TEMPLATE:END -->"'), false);
+
+  // A doc where a NAIVE last-exact-END disagrees with servedRegionEnd: rename the real terminator and
+  // add an early decoy END. servedRegionEnd anchors to the last slug (`state`) → the renamed marker; a
+  // naive END-scan would stop at the decoy. A header copy planted BETWEEN them must be CAUGHT — proving
+  // the checker scanned to servedRegionEnd, not to the decoy.
+  const d = [
+    "# Formats", "",                 // 1,2
+    "<!-- TEMPLATE:END -->", "",     // 3 decoy, 4
+    "<!-- TEMPLATE:state -->",       // 5 — the last slug
+    "# Alpha", "- one",              // 6,7 — copy between the decoy and the real terminator
+    "<!-- TEMPLATE:END-OF-LIST -->", // 8 — the real terminator, renamed (invisible to an exact-END scan)
+    "",
+    region("alpha", "# Alpha", "- one"), region("beta", "# Beta"), "<!-- SKELETON:END -->", "",
+  ].join("\n");
+  const stop = servedRegionEnd(d);
+  assert.equal(d.split("\n")[stop].trim(), "<!-- TEMPLATE:END-OF-LIST -->"); // NOT the decoy at line 3
+  const copy = checkParity(TEMPLATES, d, "", FIXTURE_FLOOR).issues.filter((i) => i.rule === "header-copy");
+  assert.equal(copy.length, 1);
+  assert.equal(copy[0].line, 6);
+});
+
+test("(S4) REVIEWER 4's EXACT EXPLOIT IS DEAD: rename END + early decoy + planted index header → FAIL", () => {
+  // Reviewer 4's exact move against the REAL doc: rename the real terminator, insert one fresh decoy
+  // <!-- TEMPLATE:END --> before <!-- TEMPLATE:index -->, and plant index's real header plus a line
+  // bootstrap never writes below the decoy. Under the OLD exact-line-END boundary the scan shrank to
+  // the decoy (1016 -> 753) and the poison rode in with the board green. Now servedRegionEnd anchors
+  // to the last slug's terminator (the renamed marker), so the poison is scanned -> header-copy; and
+  // the rename leaves the real END renamed, so the marker-grammar rule FAILs too. The poison cannot hide.
+  const lines = REAL_DOC.split("\n");
+  const realEnd = lines.findIndex((l) => l.trim() === "<!-- TEMPLATE:END -->");
+  assert.notEqual(realEnd, -1);
+  lines[realEnd] = "<!-- TEMPLATE:END-OF-LIST -->"; // rename the real terminator
+  const idxAt = lines.findIndex((l) => l.trim() === "<!-- TEMPLATE:index -->");
+  assert.notEqual(idxAt, -1);
+  lines.splice(idxAt, 0,
+    "<!-- TEMPLATE:END -->", "",
+    ...header(PLAN_TEMPLATES.index),
+    "*Retention: NEVER trimmed, even past the 20-plan window.*", "");
+  const { issues } = checkParity(PLAN_TEMPLATES, lines.join("\n"), REAL_SRC);
+  assert.ok(
+    issues.some((i) => i.rule === "header-copy" && i.message.includes("PLAN_TEMPLATES.index")),
+    "the planted index header sits below the shared boundary and must be CAUGHT",
+  );
+  assert.ok(
+    issues.some((i) => i.rule === "template-markers"),
+    "renaming the terminator must FAIL the marker-grammar rule (its standalone END is gone / not last)",
+  );
+});
+
+test("(S5) STRUCTURAL: an earlier decoy END never pulls the boundary earlier; a later slug only widens it", () => {
+  // Property-style, over every decoy position. The boundary is always the terminator that FOLLOWS the
+  // last slug — never an earlier decoy END — so a boundary an attacker can move may only ever WIDEN.
+  const base = [
+    "<!-- TEMPLATE:state -->", "state body",
+    "<!-- TEMPLATE:index -->", "index body",
+    "<!-- TEMPLATE:END -->", "skeleton",
+  ];
+  const lastSlug = base.lastIndexOf("<!-- TEMPLATE:index -->");
+  for (let p = 0; p <= lastSlug; p++) {
+    const d = [...base.slice(0, p), "<!-- TEMPLATE:END -->", ...base.slice(p)];
+    const e = servedRegionEnd(d.join("\n"));
+    assert.equal(d[e], "<!-- TEMPLATE:END -->"); // still lands on an END terminator
+    assert.ok(e > d.lastIndexOf("<!-- TEMPLATE:index -->"), `decoy at ${p} shrank the boundary past the last slug`);
+  }
+  // A later valid slug moves the last-slug terminator later — widen only.
+  const widened = [...base, "<!-- TEMPLATE:summary -->", "more", "<!-- TEMPLATE:END -->"];
+  assert.ok(servedRegionEnd(widened.join("\n")) > servedRegionEnd(base.join("\n")));
 });
 
 // --- (h) against the REAL doc and the REAL templates ------------------------
@@ -425,6 +512,7 @@ test("(S5) NO FALSE POSITIVES: an example reusing skeleton structure BELOW the h
   const worked = ["# Formats", "", "| Plan | Date |", "|------|------|", "## Completed", "- [x] done", ""];
   const d = [
     ...worked,
+    "<!-- TEMPLATE:state -->",
     "<!-- TEMPLATE:END -->",
     "",
     region("gamma", "# Gamma", "*subtitle*", "", "| Plan | Date |", "|------|------|", "## Completed"),
@@ -452,11 +540,11 @@ test("(A6) THE ATTACKER-CONTROLLED BOUNDARY: a decoy TEMPLATE:END hiding a plant
   const { issues } = checkParity(PLAN_TEMPLATES, lines.join("\n"), REAL_SRC);
   assert.ok(
     issues.some((i) => i.rule === "header-copy" && i.message.includes(`PLAN_TEMPLATES.${slug}`)),
-    "a decoy END shrinks rule (h)'s scan window — the planted header copy is invisible to the gate",
+    "the planted header copy sits below the shared boundary and must be CAUGHT",
   );
   assert.ok(
-    issues.some((i) => i.rule === "duplicate-region" && i.message.includes("TEMPLATE:END")),
-    "the decoy boundary itself must be reported",
+    issues.some((i) => i.rule === "template-markers" && i.message.includes("TEMPLATE:END")),
+    "the decoy boundary itself must be reported by the marker-grammar rule",
   );
 });
 
