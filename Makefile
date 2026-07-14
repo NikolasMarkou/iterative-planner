@@ -16,7 +16,11 @@ REFERENCE_FILES := $(sort $(wildcard src/references/*.md))
 SCRIPT_FILES := $(filter-out %.test.mjs,$(wildcard src/scripts/*.mjs))
 MODULE_FILES := $(sort $(wildcard src/scripts/modules/*.md))
 AGENT_FILES := $(sort $(wildcard src/agents/*.md))
-DOC_FILES := README.md LICENSE CHANGELOG.md
+# VERSION ships INSIDE the package: bootstrap.mjs resolves the skill version at runtime by
+# probing <pkg>/VERSION (installed layout) / <repo>/VERSION (dev layout). If VERSION is not
+# copied here, the installed skill has no VERSION file and every new plan is stamped
+# "unknown". Keep it in DOC_FILES, in sync-skill's copy set, AND in sync-skill's diff list.
+DOC_FILES := README.md LICENSE CHANGELOG.md VERSION
 
 # Default target
 .PHONY: all
@@ -273,7 +277,7 @@ sync-skill:
 	cp src/scripts/*.mjs $(SKILL_INSTALL_DIR)/scripts/
 	cp src/scripts/modules/*.md $(SKILL_INSTALL_DIR)/scripts/modules/
 	cp src/references/*.md $(SKILL_INSTALL_DIR)/references/
-	cp README.md LICENSE CHANGELOG.md $(SKILL_INSTALL_DIR)/
+	cp README.md LICENSE CHANGELOG.md VERSION $(SKILL_INSTALL_DIR)/
 	cp src/agents/*.md $(SKILL_INSTALL_DIR)/agents/
 	cp src/agents/*.md $(AGENTS_INSTALL_DIR)/
 # Verify ALL synced trees, not just agents+modules. The old check diffed only those two, so a
@@ -283,7 +287,8 @@ sync-skill:
 	  && diff -rq --exclude='.claude' src/agents $(SKILL_INSTALL_DIR)/agents \
 	  && diff -rq --exclude='.claude' src/scripts/modules $(SKILL_INSTALL_DIR)/scripts/modules \
 	  && diff -q src/SKILL.md $(SKILL_INSTALL_DIR)/SKILL.md \
-	  && echo "Sync verified (scripts, references, agents, modules, SKILL.md)." \
+	  && diff -q VERSION $(SKILL_INSTALL_DIR)/VERSION \
+	  && echo "Sync verified (scripts, references, agents, modules, SKILL.md, VERSION)." \
 	  || (echo "ERROR: sync diff mismatch" && exit 1)
 
 # Help

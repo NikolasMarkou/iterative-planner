@@ -68,8 +68,10 @@ function Invoke-Build {
         Copy-Item "src/agents/*.md" "$skillDir/agents/"
     }
 
-    # Copy documentation
-    @("README.md", "LICENSE", "CHANGELOG.md") | ForEach-Object {
+    # Copy documentation. VERSION ships INSIDE the package: bootstrap.mjs resolves the skill
+    # version at runtime by probing <pkg>/VERSION (installed) / <repo>/VERSION (dev). Without
+    # it the installed skill stamps every new plan "unknown". 1:1 with the Makefile DOC_FILES.
+    @("README.md", "LICENSE", "CHANGELOG.md", "VERSION") | ForEach-Object {
         if (Test-Path $_) {
             Copy-Item $_ $skillDir
         }
@@ -444,7 +446,7 @@ function Invoke-SyncSkill {
     Copy-Item "src/scripts/*.mjs" "$skillInstallDir/scripts/"
     Copy-Item "src/scripts/modules/*.md" "$skillInstallDir/scripts/modules/"
     Copy-Item "src/references/*.md" "$skillInstallDir/references/"
-    @("README.md", "LICENSE", "CHANGELOG.md") | ForEach-Object {
+    @("README.md", "LICENSE", "CHANGELOG.md", "VERSION") | ForEach-Object {
         if (Test-Path $_) { Copy-Item $_ $skillInstallDir }
     }
     Copy-Item "src/agents/*.md" "$skillInstallDir/agents/"
@@ -487,9 +489,19 @@ function Invoke-SyncSkill {
         Write-Host "ERROR: content differs: SKILL.md" -ForegroundColor Red
         $mismatch = $true
     }
+    # VERSION is copied, so VERSION is verified — an unverified copy is how the pre-v2.35.0
+    # orphan bug survived. 1:1 with the Makefile's `diff -q VERSION` line.
+    $versionDst = Join-Path $skillInstallDir "VERSION"
+    if (-not (Test-Path $versionDst)) {
+        Write-Host "ERROR: missing from install: VERSION" -ForegroundColor Red
+        $mismatch = $true
+    } elseif ((Get-FileHash "VERSION" -Algorithm SHA256).Hash -ne (Get-FileHash $versionDst -Algorithm SHA256).Hash) {
+        Write-Host "ERROR: content differs: VERSION" -ForegroundColor Red
+        $mismatch = $true
+    }
     if ($mismatch) { exit 1 }
 
-    Write-Host "Sync verified (scripts, references, agents, modules, SKILL.md)." -ForegroundColor Green
+    Write-Host "Sync verified (scripts, references, agents, modules, SKILL.md, VERSION)." -ForegroundColor Green
 }
 
 # Execute command
