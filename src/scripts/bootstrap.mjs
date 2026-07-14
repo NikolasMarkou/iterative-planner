@@ -1849,8 +1849,16 @@ function runCli() {
     // Backward compat: treat args as goal for `new`
     cmdNew(args.join(" ") || "No goal specified", false);
   } else if (cmd === "new") {
-    const force = args.includes("--force");
-    const goalArgs = args.slice(1).filter((a) => a !== "--force");
+    // DECISION plan_2026-07-14_79ee0f59/D-004
+    // `--force` is POSITIONAL: honored ONLY as the token immediately after `new`.
+    // Do NOT restore the tolerant `args.includes("--force")` scan — it made goal
+    // TEXT destructive. A caller that word-splits its goal (shells, CI, agents all
+    // do) turned `new "add a --force flag"` into a silent force-close of the user's
+    // active plan, and stripped the token from the goal on the way. A `--force`
+    // token anywhere after args[1] is goal text and stays in the goal verbatim.
+    // See decisions.md D-004.
+    const force = args[1] === "--force";
+    const goalArgs = force ? args.slice(2) : args.slice(1);
     const goal = goalArgs.join(" ") || "No goal specified";
     cmdNew(goal, force);
   } else if (cmd === "resume") {

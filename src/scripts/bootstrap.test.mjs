@@ -581,6 +581,83 @@ describe("bootstrap.mjs", () => {
   });
 
   // =========================================================================
+  // --force is positional (defect #3 — plan_2026-07-14_79ee0f59 step 3)
+  // A `--force` token in GOAL TEXT must never force-close the active plan.
+  // =========================================================================
+  describe("new --force is positional only", () => {
+    it("does NOT force-close when --force appears in word-split goal text", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Original plan");
+      const original = getPointer(dir);
+      assert.ok(original, "precondition: an active plan exists");
+
+      // A caller that word-splits the goal "add a --force flag" — the exact
+      // destructive case: this used to close `original` silently.
+      const r = run(dir, "new", "add", "a", "--force", "flag");
+
+      assert.notEqual(r.exitCode, 0, "should refuse: an active plan exists");
+      assert.equal(getPointer(dir), original, "pointer must still name the original plan");
+
+      // The original plan must still be active (not force-closed).
+      const state = readPlanFile(dir, original, "state.md");
+      assert.ok(!/^# Current State: CLOSE\b/m.test(state), "original plan must not be closed");
+
+      // And no second plan directory may have been created.
+      const plans = readdirSync(join(dir, "plans")).filter((n) => n.startsWith("plan_"));
+      assert.equal(plans.length, 1, `exactly one plan dir should exist, got: ${plans.join(", ")}`);
+    });
+
+    it("still force-closes on the documented `new --force \"goal\"` form", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Old plan");
+      const oldPlan = getPointer(dir);
+      const r = run(dir, "new", "--force", "New plan");
+      assert.equal(r.exitCode, 0, `stderr: ${r.stderr}`);
+      const newPlan = getPointer(dir);
+      assert.notEqual(newPlan, oldPlan, "should have created a different plan");
+      assert.ok(existsSync(join(dir, "plans", oldPlan)), "old plan dir preserved");
+      const oldState = readPlanFile(dir, oldPlan, "state.md");
+      assert.ok(/^# Current State: CLOSE\b/m.test(oldState), "old plan should be closed by force");
+      // Goal must not carry the flag token.
+      const plan = readPlanFile(dir, newPlan, "plan.md");
+      assert.ok(plan.includes("New plan"), "goal should be the text after --force");
+      assert.ok(!plan.includes("--force"), "flag token must not leak into the goal");
+    });
+
+    it("preserves a mid-goal --force token verbatim (single argv element)", () => {
+      const dir = getTempDir();
+      const goal = "goal with --force in the middle";
+      const r = run(dir, "new", goal);
+      assert.equal(r.exitCode, 0, `stderr: ${r.stderr}`);
+      const planDir = getPointer(dir);
+      const plan = readPlanFile(dir, planDir, "plan.md");
+      assert.ok(plan.includes(goal), `goal must be preserved verbatim, got:\n${plan.slice(0, 400)}`);
+    });
+
+    it("preserves a word-split --force token in the goal (no silent stripping)", () => {
+      const dir = getTempDir();
+      const r = run(dir, "new", "add", "a", "--force", "flag");
+      assert.equal(r.exitCode, 0, `stderr: ${r.stderr}`);
+      const planDir = getPointer(dir);
+      const plan = readPlanFile(dir, planDir, "plan.md");
+      assert.ok(
+        plan.includes("add a --force flag"),
+        `goal must keep the --force token, got:\n${plan.slice(0, 400)}`
+      );
+    });
+
+    it("backward-compatible bare goal form still creates a plan", () => {
+      const dir = getTempDir();
+      const r = run(dir, "refactor the parser module");
+      assert.equal(r.exitCode, 0, `stderr: ${r.stderr}`);
+      const planDir = getPointer(dir);
+      assert.ok(planDir, "bare goal form should create a plan");
+      const plan = readPlanFile(dir, planDir, "plan.md");
+      assert.ok(plan.includes("refactor the parser module"), "goal should be preserved");
+    });
+  });
+
+  // =========================================================================
   // Edge cases (step 9)
   // =========================================================================
   describe("edge cases", () => {
