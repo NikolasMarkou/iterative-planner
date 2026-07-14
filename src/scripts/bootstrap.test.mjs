@@ -9,7 +9,7 @@ import { mkdirSync, readFileSync, writeFileSync, existsSync, rmSync, readdirSync
 import { join, resolve } from "path";
 import { execFileSync, spawnSync } from "child_process";
 import { tmpdir } from "os";
-import { randomBytes } from "crypto";
+import { randomBytes, createHash } from "crypto";
 
 // Path to bootstrap.mjs (relative to this test file)
 const BOOTSTRAP = resolve(import.meta.dirname, "bootstrap.mjs");
@@ -3843,5 +3843,94 @@ describe("retire: md anchor stamping is code-span aware (D-010)", () => {
     assert.equal(second, after, "run 2 must be byte-identical to run 1");
     assert.equal(third, after, "run 3 must be byte-identical to run 1");
     assert.equal((third.match(/\[STALE\]/g) || []).length, 1, `exactly one [STALE] marker, got:\n${third}`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// iter-3 CRITICAL B (D-012) — retire must NEVER edit a documentation example.
+//
+// RED-RUN EVIDENCE (recorded against 79ef8a8 / v2.34.0, the pre-fix code, on a `.md`
+// file whose `<!-- DECISION … -->` example sat in a 4-SPACE INDENTED code block and
+// carried a REAL 8-hex plan id):
+//
+//   $ md5sum red-doc.md   → 73cc7c3ea310f0f6ab1a3c652756f4b3
+//   $ node bootstrap.mjs retire plan_2026-01-01_deadbeef
+//     Retired plan_2026-01-01_deadbeef.
+//       Anchors marked [STALE]: 1 across 1 file(s).
+//   $ md5sum red-doc.md   → b02ad9b99585bcc92c84cdc14b5d0f4b     ← MUTATED
+//   $ diff
+//   <     <!-- DECISION plan_2026-01-01_deadbeef/D-001 — example only -->
+//   >     <!-- DECISION plan_2026-01-01_deadbeef/D-001 [STALE] — example only -->
+//
+// That is a WRONG EDIT TO A SOURCE FILE — precisely what the D-010 anchor in this
+// stamper claims the shared primitive prevents. `maskLiteralRegions` covered fenced
+// blocks and inline backtick runs but not CommonMark INDENTED code blocks, so the
+// example was a live comment to both the validator and retire: they agreed, on the
+// wrong answer. These tests pin the byte-identity, and (crucially) the inverse — that
+// a REAL anchor is still stamped, so the fix under-masks rather than going blind.
+// ---------------------------------------------------------------------------
+describe("retire: never edits a doc example in an indented code block (CRITICAL B / D-012)", () => {
+  const tempDirs = [];
+  function getTempDir() { const d = makeTempDir(); tempDirs.push(d); return d; }
+  afterEach(() => { while (tempDirs.length) removeTempDir(tempDirs.pop()); });
+  const GONE = "plan_2026-01-01_deadbeef"; // a REAL 8-hex plan id, not a placeholder
+
+  /** Content hash — the byte-identity assertion the plan (K4) requires. */
+  const md5 = (s) => createHash("md5").update(s).digest("hex");
+
+  it("leaves a 4-space indented DECISION example BYTE-IDENTICAL, even with a real plan id", () => {
+    const dir = getTempDir();
+    run(dir, "new", "active work");
+    mkdirSync(join(dir, "docs"), { recursive: true });
+    const md = join(dir, "docs", "guide.md");
+    const before =
+      "# Anchor format\n\nExample (indented = documentation, NOT a live anchor):\n\n" +
+      "    <!-- DECISION " + GONE + "/D-001 — example only -->\n\n" +
+      "The fenced sibling was always ignored:\n\n```\n<!-- DECISION " + GONE + "/D-002 — example only -->\n```\n";
+    writeFileSync(md, before);
+    const hashBefore = md5(before);
+
+    const r = run(dir, "retire", GONE);
+    assert.equal(r.exitCode, 0, `retire should succeed, got:\n${r.stdout}\n${r.stderr}`);
+    const after = readFileSync(md, "utf-8");
+    assert.equal(md5(after), hashBefore, `retire MUTATED a doc example:\n${after}`);
+    assert.equal(after, before, "the doc must be byte-identical after retire");
+    assert.match(r.stdout, /Anchors marked \[STALE\]: 0 across 0 file\(s\)/,
+      `nothing should be stamped, got:\n${r.stdout}`);
+  });
+
+  it("still stamps a REAL flush-left anchor in the SAME file as an indented example (under-mask, not blind)", () => {
+    // The Pre-Mortem #2 guard on the WRITE path. Masking indented blocks must not make a
+    // real comment invisible — if this test ever goes quiet, retire has stopped stamping
+    // and a stale anchor would jam the next plan's REFLECT→CLOSE gate forever.
+    const dir = getTempDir();
+    run(dir, "new", "active work");
+    mkdirSync(join(dir, "docs"), { recursive: true });
+    const md = join(dir, "docs", "mixed.md");
+    writeFileSync(md,
+      "# Notes\n\nExample:\n\n    <!-- DECISION " + GONE + "/D-001 — example only -->\n\n" +
+      "<!-- DECISION " + GONE + "/D-002 — a REAL anchor -->\n");
+    const r = run(dir, "retire", GONE);
+    assert.equal(r.exitCode, 0, `got:\n${r.stdout}\n${r.stderr}`);
+    const after = readFileSync(md, "utf-8");
+    assert.match(after, /<!-- DECISION plan_2026-01-01_deadbeef\/D-002 \[STALE\] — a REAL anchor -->/,
+      `the real anchor must still be stamped, got:\n${after}`);
+    assert.match(after, /^ {4}<!-- DECISION plan_2026-01-01_deadbeef\/D-001 — example only -->$/m,
+      `the indented example must be untouched, got:\n${after}`);
+    assert.match(r.stdout, /Anchors marked \[STALE\]: 1 across 1 file\(s\)/, `got:\n${r.stdout}`);
+  });
+
+  it("leaves a DECISION example below an UNTERMINATED fence stampable (the fence masks nothing)", () => {
+    // The mirror harm named in review WARNING 3: pre-fix, an unclosed fence masked to EOF,
+    // so a REAL anchor below it was invisible to retire and could never be stamped.
+    const dir = getTempDir();
+    run(dir, "new", "active work");
+    mkdirSync(join(dir, "docs"), { recursive: true });
+    const md = join(dir, "docs", "fence.md");
+    writeFileSync(md, "# Notes\n\n```\nan unclosed fence\n\n<!-- DECISION " + GONE + "/D-001 — a REAL anchor -->\n");
+    const r = run(dir, "retire", GONE);
+    assert.equal(r.exitCode, 0, `got:\n${r.stdout}\n${r.stderr}`);
+    assert.match(readFileSync(md, "utf-8"), /\/D-001 \[STALE\] — a REAL anchor -->/,
+      "an anchor below an unterminated fence is REAL and must be stamped");
   });
 });

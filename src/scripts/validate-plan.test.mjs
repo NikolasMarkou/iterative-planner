@@ -36,6 +36,89 @@ function removeTempDir(dir) {
 }
 
 /** Run validate-plan.mjs in a given cwd with args. Returns { stdout, stderr, exitCode }. */
+// ---------------------------------------------------------------------------
+// iter-3 CRITICAL B (D-012) — the masker's blind spot, from the validator's side.
+//
+// RED-RUN EVIDENCE (recorded against 79ef8a8 / v2.34.0, the pre-fix code):
+//
+//   (a) A doc whose `<!-- DECISION … -->` example sits in a 4-SPACE INDENTED code
+//       block, carrying a REAL 8-hex plan id:
+//         ERROR [anchor-unknown-plan]: red-doc.md:5 anchor references unknown plan
+//         plan_2026-01-01_deadbeef (plan_2026-01-01_deadbeef/D-001); no per-plan
+//         decisions.md and no matching section in plans/DECISIONS.md
+//       FALSE — the example is literal text. The fenced sibling on the next line was
+//       correctly ignored, which is what proves the gap was indented blocks specifically.
+//       (`bootstrap.mjs retire` then EDITED the file on disk — see bootstrap.test.mjs.)
+//
+//   (b) An unclosed ``` fence prepended to a FRESH `bootstrap.mjs new` decisions.md:
+//         ERROR [decisions-schema]: decisions.md:10 non-conforming entry header:
+//         "## D-001 | EXPLORE → PLAN | YYYY-MM-DD"
+//       FALSE — that line is inside bootstrap's own schema-example COMMENT. The fence
+//       masked to EOF, so the comment's `-->` vanished from the mask, the comment stopped
+//       being a comment, and the template parsed as a live entry. That is Pre-Mortem #2's
+//       over-masking failure, firing on the shipped template. Baseline: 0 findings.
+// ---------------------------------------------------------------------------
+
+describe("masker: indented code blocks and unterminated fences (CRITICAL B / D-012)", () => {
+  const tempDirs = [];
+  function getTempDir() { const d = makeTempDir(); tempDirs.push(d); return d; }
+  afterEach(() => { while (tempDirs.length) removeTempDir(tempDirs.pop()); });
+
+  const GONE = "plan_2026-01-01_deadbeef"; // a REAL 8-hex id, and an UNKNOWN plan
+
+  it("(a) a DECISION example in a 4-space indented code block yields ZERO anchor findings, even with a real plan id", () => {
+    const cwd = getTempDir();
+    writePlan(cwd);
+    writeFileSync(join(cwd, "doc.md"),
+      "# Doc\n\nExample (indented = documentation, not an anchor):\n\n" +
+      "    <!-- DECISION " + GONE + "/D-001 — example only -->\n\n" +
+      "A fenced sibling, always ignored:\n\n```\n<!-- DECISION " + GONE + "/D-002 — example only -->\n```\n");
+    const r = run(cwd);
+    assert.doesNotMatch(r.stdout, /\[anchor-unknown-plan\]/,
+      `an indented doc example must not be an anchor, got:\n${r.stdout}`);
+    assert.doesNotMatch(r.stdout, /doc\.md/, `doc.md must produce no anchor finding at all, got:\n${r.stdout}`);
+  });
+
+  it("(a') the same anchor FLUSH LEFT is still a real anchor — the fix under-masks, it does not blind the scanner", () => {
+    // The over-masking guard on the READ path. If this ever goes quiet, the masker has
+    // started hiding real anchors and Pre-Mortem #2 has fired.
+    const cwd = getTempDir();
+    writePlan(cwd);
+    writeFileSync(join(cwd, "doc.md"), "# Doc\n\n<!-- DECISION " + GONE + "/D-001 — a REAL anchor -->\n");
+    const r = run(cwd);
+    assert.match(r.stdout, /\[anchor-unknown-plan\][^\n]*doc\.md/,
+      `a flush-left comment anchor must still be reported, got:\n${r.stdout}`);
+  });
+
+  it("(b) an unterminated ``` fence in decisions.md masks NOTHING — no false [decisions-schema] ERROR", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    // bootstrap's real schema-example comment, verbatim in shape, behind an unclosed fence.
+    writeFileSync(join(planDir, "decisions.md"),
+      "```\n" +
+      "# Decision Log\n" +
+      "*Plan: plan_2026-05-15_aaaabbbb*\n\n" +
+      "<!-- Schema example — DO NOT REMOVE. Real entries follow this shape.\n\n" +
+      "## D-001 | EXPLORE → PLAN | YYYY-MM-DD\n" +
+      "**Context**: <background>\n" +
+      "**Decision**: <approach>\n" +
+      "**Trade-off**: <X> **at the cost of** <Y>\n" +
+      "**Reasoning**: <why>\n" +
+      "-->\n");
+    const r = run(cwd);
+    assert.doesNotMatch(r.stdout, /\[decisions-schema\]/,
+      `the template comment must stay a comment behind an unclosed fence, got:\n${r.stdout}`);
+  });
+
+  it("(b') a CLOSED fence still masks — the unterminated fix did not disable fenced masking", () => {
+    const cwd = getTempDir();
+    writePlan(cwd);
+    writeFileSync(join(cwd, "doc.md"), "# Doc\n\n```\n<!-- DECISION " + GONE + "/D-001 -->\n```\n");
+    const r = run(cwd);
+    assert.doesNotMatch(r.stdout, /\[anchor-unknown-plan\]/, `got:\n${r.stdout}`);
+  });
+});
+
 function run(cwd, ...args) {
   const r = spawnSync("node", [VALIDATOR, ...args], {
     cwd,

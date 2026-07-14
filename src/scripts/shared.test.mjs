@@ -527,3 +527,98 @@ test("unterminatedCommentOpener: a stray opener PAIRED with bootstrap's template
   assert.ok(!/EXECUTE → REFLECT \(1\)/.test(stripHtmlComments(state)));
   assert.ok(!/EXECUTE → REFLECT \(2\)/.test(stripHtmlComments(state)));
 });
+
+// ---------------------------------------------------------------------------
+// maskLiteralRegions (iter-3 CRITICAL B, D-012) — indented code blocks + the
+// unterminated fence. Exercised through `htmlCommentSpans` / `stripHtmlComments`,
+// which is the only way any consumer sees the mask.
+//
+// The failure direction is asymmetric and the tests are written to pin BOTH sides:
+//   under-mask → a doc example is reported as a live anchor, and `bootstrap.mjs
+//                retire` EDITS the documentation file (loud, but a wrong write).
+//   over-mask  → a REAL comment's markers vanish, so bootstrap's schema example
+//                parses as a phantom `D-001` and a stale anchor never gets stamped
+//                (SILENT, and strictly worse — Pre-Mortem #2).
+// ---------------------------------------------------------------------------
+
+test("maskLiteralRegions: a 4-space INDENTED code block is literal — a DECISION example in one is NOT a comment", () => {
+  // The iter-3 CRITICAL B red run, in miniature. Pre-fix this yielded a span, so the
+  // validator emitted a false [anchor-unknown-plan] and retire wrote [STALE] into the doc.
+  const doc = "# Doc\n\nExample:\n\n    <!-- DECISION plan_2026-01-01_deadbeef/D-001 example -->\n\nEnd.\n";
+  assert.deepEqual(htmlCommentSpans(doc), [], "an indented-code example must yield NO comment span");
+  assert.equal(stripHtmlComments(doc), doc, "and the text must come back byte-identical");
+});
+
+test("maskLiteralRegions: an indented block starting at SOF is literal", () => {
+  assert.deepEqual(htmlCommentSpans("    <!-- DECISION x/D-001 -->\n\ntext\n"), []);
+});
+
+test("maskLiteralRegions: an indented block runs through interior blank lines but stops at the first flush-left line", () => {
+  const doc = "para\n\n    <!-- one -->\n\n    <!-- two -->\n\n<!-- REAL -->\n";
+  const spans = htmlCommentSpans(doc);
+  assert.equal(spans.length, 1, "only the flush-left comment is real");
+  assert.equal(doc.slice(spans[0].start, spans[0].end), "<!-- REAL -->");
+});
+
+test("maskLiteralRegions: OVER-MASK GUARD — an indented run cannot interrupt a paragraph (no preceding blank line)", () => {
+  // CommonMark: an indented code block cannot interrupt a paragraph. This is the rule
+  // that keeps bootstrap's decisions.md schema-example comment a COMMENT: its 5-space
+  // continuation lines follow the non-blank `<!-- Schema example …` opener line.
+  const doc = "<!-- Schema example\n     See references/file-formats.md\n     more prose\n-->\n";
+  const spans = htmlCommentSpans(doc);
+  assert.equal(spans.length, 1, "the schema-example comment must still be ONE comment span");
+  assert.equal(doc.slice(spans[0].start, spans[0].end), doc.trimEnd());
+});
+
+test("maskLiteralRegions: OVER-MASK GUARD — indented text under a LIST marker is item continuation, not code", () => {
+  // A checklist item (CLAUDE.md's own shape) whose continuation is indented 4+.
+  const doc = "- [ ] a checklist item\n\n    <!-- REAL comment under a list -->\n";
+  const spans = htmlCommentSpans(doc);
+  assert.equal(spans.length, 1, "a list continuation must NOT be masked — the comment stays visible");
+  assert.equal(doc.slice(spans[0].start, spans[0].end), "<!-- REAL comment under a list -->");
+  // Ordered lists too, and the list survives blank lines.
+  assert.equal(htmlCommentSpans("1. step one\n\n    <!-- c -->\n").length, 1);
+  // …but a flush-left paragraph CLOSES the list, and the block after it is real code.
+  assert.deepEqual(htmlCommentSpans("- item\n\nA plain paragraph.\n\n    <!-- c -->\n"), []);
+});
+
+test("maskLiteralRegions: OVER-MASK GUARD — a TAB-indented block is not recognized (under-mask, deliberately)", () => {
+  assert.equal(htmlCommentSpans("para\n\n\t<!-- c -->\n").length, 1);
+});
+
+test("maskLiteralRegions: an UNTERMINATED fence masks NOTHING (it does not swallow to EOF)", () => {
+  // Review WARNING 3 / Pre-Mortem #2: pre-fix, the opener masked every remaining line,
+  // so bootstrap's template comment stopped being a comment and the validator emitted a
+  // FALSE [decisions-schema] ERROR on the schema example it had just un-hidden.
+  const doc = "```\n<!-- REAL comment below an unclosed fence -->\ntext\n";
+  const spans = htmlCommentSpans(doc);
+  assert.equal(spans.length, 1, "an unclosed fence is ordinary text; the comment below it is REAL");
+  assert.equal(doc.slice(spans[0].start, spans[0].end), "<!-- REAL comment below an unclosed fence -->");
+});
+
+test("maskLiteralRegions: a CLOSED fence still masks (the unterminated fix did not disable fences)", () => {
+  assert.deepEqual(htmlCommentSpans("```\n<!-- example -->\n```\n"), []);
+  assert.deepEqual(htmlCommentSpans("~~~\n<!-- example -->\n~~~\n"), []);
+  // A longer closer closes; a shorter one does not.
+  assert.deepEqual(htmlCommentSpans("```\n<!-- e -->\n`````\n"), []);
+  // A fence closed only by a DIFFERENT char is unterminated → masks nothing.
+  assert.equal(htmlCommentSpans("```\n<!-- REAL -->\n~~~\n").length, 1);
+});
+
+test("maskLiteralRegions: stripHtmlComments stays EXACTLY line-count preserving across the new constructs", () => {
+  const docs = [
+    "para\n\n    <!-- indented -->\n\nafter\n",
+    "```\n<!-- unclosed fence -->\nmore\n",
+    "- item\n\n    <!-- list continuation -->\n",
+    "    <!-- sof indented -->\n",
+    "<!-- real -->\n\n    indented code\n\n<!-- real2 -->\n",
+    "\r\npara\r\n\r\n    <!-- crlf indented -->\r\n",
+  ];
+  for (const d of docs) {
+    assert.equal(
+      stripHtmlComments(d).split("\n").length,
+      d.split("\n").length,
+      `line count must be preserved for:\n${JSON.stringify(d)}`,
+    );
+  }
+});

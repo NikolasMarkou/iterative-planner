@@ -116,36 +116,108 @@ export function blankCompressedSummaryBlock(content) {
 // ---------------------------------------------------------------------------
 
 /**
- * Mask every markdown literal region (fenced code blocks, inline code spans) by
- * overwriting its characters with spaces, preserving both length and newlines so
- * indices into the mask are valid indices into `content`. Used ONLY to decide where
- * comment delimiters may legally appear — the original text is what gets sliced.
+ * Mask every markdown literal region by overwriting its characters with spaces,
+ * preserving both length and newlines so indices into the mask are valid indices
+ * into `content`. Used ONLY to decide where comment delimiters may legally appear —
+ * the original text is what gets sliced.
  *
- * Fences: a line whose first non-space run is ``` or ~~~ (3+) opens; a later line
- * whose run uses the same char and is at least as long closes. Inline: a run of N
- * backticks is closed by the next run of exactly N backticks ON THE SAME LINE; an
- * unclosed run is ordinary text and masks nothing (deliberately conservative — a
- * stray backtick must not blind the scanner to a real comment, which is Pre-Mortem
- * #2's over-masking failure: a real comment left visible turns bootstrap's schema
- * example into a phantom `D-001` entry).
+ * WHAT IS MASKED (three of markdown's four literal-text constructs):
+ *  1. FENCED code blocks. A line whose first non-space run is ``` or ~~~ (3+) opens;
+ *     a later line whose run uses the same char and is at least as long closes. A
+ *     fence with NO closer is ordinary text and masks NOTHING (see below).
+ *  2. INLINE code spans. A run of N backticks is closed by the next run of exactly N
+ *     backticks ON THE SAME LINE; an unclosed run masks nothing.
+ *  3. INDENTED code blocks (4+ leading spaces). Conservatively detected — see below.
+ *
+ * WHAT IS DELIBERATELY *NOT* MASKED: raw HTML blocks. A `<div>`-wrapped example
+ * containing a `<!-- DECISION … -->` is still read as a live comment. That hole is
+ * why the CLAUDE.md placeholder-id policy REMAINS LOAD-BEARING — see the D-010/D-012
+ * note above. Do not claim otherwise in a comment; claim it in a test.
+ *
+ * THE FAILURE DIRECTION IS CHOSEN, NOT ACCIDENTAL (Pre-Mortem #2, D-012).
+ * Under-masking is loud: a doc example is reported as a real anchor (and, for
+ * `bootstrap.mjs retire`, edited). Over-masking is SILENT and strictly worse: a REAL
+ * comment's `<!--`/`-->` disappear from the mask, so bootstrap's schema-example
+ * comment stops being a comment and parses as a phantom `D-001` entry, the state.md
+ * template's example transition starts counting as a real one, and a genuinely stale
+ * anchor never gets stamped. So every rule here is written to UNDER-mask when unsure:
+ *  - an unterminated fence masks nothing (it used to mask to EOF — that bug made
+ *    bootstrap's schema example visible and emitted a false `[decisions-schema]` ERROR);
+ *  - an unclosed inline backtick run masks nothing;
+ *  - an indented block must START at SOF or after a BLANK line (CommonMark: an indented
+ *    block cannot interrupt a paragraph), and is skipped entirely when a list item
+ *    governs it (indented text under a list marker is item continuation, NOT code);
+ *  - a TAB-indented block is not recognized (leading spaces only) — under-masking.
  */
 function maskLiteralRegions(content) {
   const lines = content.split("\n");
-  let fence = null; // { char, len } while inside a fenced block
-  const masked = lines.map((line) => {
+  const literal = new Array(lines.length).fill(false); // whole-line literal regions
+
+  const isBlank = (l) => l.trim() === "";
+  const leadSpaces = (l) => {
+    let n = 0;
+    while (n < l.length && l[n] === " ") n += 1;
+    return n;
+  };
+  const fenceMark = (line) => {
     const indent = line.length - line.trimStart().length;
-    const fm = /^(`{3,}|~{3,})/.exec(line.slice(indent));
-    if (fence) {
-      if (fm && fm[1][0] === fence.char && fm[1].length >= fence.len) fence = null;
-      return " ".repeat(line.length); // fence lines themselves are masked too
+    const m = /^(`{3,}|~{3,})/.exec(line.slice(indent));
+    return m ? { char: m[1][0], len: m[1].length } : null;
+  };
+
+  // Pass 1 — fenced blocks. The closer is located BEFORE committing to the fence, so
+  // an opener that is never closed stays ordinary text instead of swallowing the file.
+  for (let i = 0; i < lines.length; i += 1) {
+    const open = fenceMark(lines[i]);
+    if (!open) continue;
+    let close = -1;
+    for (let j = i + 1; j < lines.length; j += 1) {
+      const m = fenceMark(lines[j]);
+      if (m && m.char === open.char && m.len >= open.len) {
+        close = j;
+        break;
+      }
     }
-    if (fm) {
-      fence = { char: fm[1][0], len: fm[1].length };
-      return " ".repeat(line.length);
+    if (close < 0) continue; // unterminated fence → masks NOTHING
+    for (let j = i; j <= close; j += 1) literal[j] = true;
+    i = close;
+  }
+
+  // Pass 2 — indented code blocks, conservatively.
+  const LIST_MARKER = /^ {0,3}([-*+]|\d{1,9}[.)])(\s|$)/;
+  // Walk back from a candidate block start: blanks are transparent (a list may contain
+  // them); an open list marker means this indented run is item CONTINUATION, not code;
+  // any other indented line is ambiguous, so keep looking back rather than deciding; a
+  // flush-left non-list line closes any list and settles it as real code.
+  const governedByList = (i) => {
+    for (let k = i - 1; k >= 0; k -= 1) {
+      const l = lines[k];
+      if (isBlank(l)) continue;
+      if (LIST_MARKER.test(l)) return true;
+      if (leadSpaces(l) >= 1) continue;
+      return false;
     }
-    return maskInlineCodeSpans(line);
-  });
-  return masked.join("\n");
+    return false;
+  };
+
+  for (let i = 0; i < lines.length; i += 1) {
+    if (literal[i] || isBlank(lines[i]) || leadSpaces(lines[i]) < 4) continue;
+    if (i > 0 && !isBlank(lines[i - 1])) continue; // cannot interrupt a paragraph
+    if (governedByList(i)) continue;
+    // The block runs through indented + blank lines; trailing blanks are NOT part of it.
+    let end = i;
+    for (let j = i; j < lines.length && !literal[j]; j += 1) {
+      if (isBlank(lines[j])) continue;
+      if (leadSpaces(lines[j]) < 4) break;
+      end = j;
+    }
+    for (let k = i; k <= end; k += 1) literal[k] = true;
+    i = end;
+  }
+
+  return lines
+    .map((line, i) => (literal[i] ? " ".repeat(line.length) : maskInlineCodeSpans(line)))
+    .join("\n");
 }
 
 /** Mask inline backtick code spans in one line. Length-preserving. */
