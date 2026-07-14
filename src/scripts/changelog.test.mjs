@@ -18,7 +18,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -423,6 +423,7 @@ test("render of a document with only a root element is sane", () => {
 
 /** Every temp artifact left in a plan dir. Shape-agnostic on purpose. */
 const tmpResidue = (dir) => readdirSync(dir).filter((f) => f.endsWith(".tmp"));
+const lockResidue = (dir) => readdirSync(dir).filter((f) => f.endsWith(".lock"));
 
 test("K3: the temp path is per-writer — it carries the pid and is never reused", () => {
   const file = "/nowhere/changelog.xml"; // pure path arithmetic; nothing is written
@@ -495,6 +496,121 @@ test("K3: a stale temp file from a crashed run does not corrupt the next write",
     writeDocAtomic(file, doc);
     assert.deepEqual(validateDoc(parse(readFileSync(file, "utf8")), CHANGELOG_SPEC), []);
     assert.equal(elementsOf(readDoc(dir)).filter((e) => e.name === "entry").length, 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// --- K2: CONCURRENCY — the regression test for D-008 -------------------------------
+//
+// THE TEST THE 584-TEST SUITE DID NOT HAVE. C12 pinned 50 SEQUENTIAL appends; not one test issued
+// two appends at once. That blind spot hid a data-loss bug in the artifact the protocol calls an
+// append-only evidence ledger: `ip-executor.md` mandates an append after EACH edit and the harness
+// encourages parallel tool calls, so an executor editing 5 files in one batch is the NORMAL path.
+//
+// Measured against a68d939 (pre-fix), all child processes exiting 0 — SILENTLY:
+//   10 parallel appends, fresh changelog     ->  5, 5, 6 of 10 recorded
+//    8 parallel appends, 400-entry changelog ->  2, 1, 2 of  8 recorded
+//   16 parallel appends, 3000-entry changelog ->  1 of 16 recorded, 8 trials out of 8
+// and (rarer, timing-dependent) changelog.xml left UNPARSEABLE — "text is not allowed outside the
+// root element" — from two writers interleaving bytes in the shared ${file}.tmp.
+//
+// The tests below MUST FAIL on that code. A concurrency test that passes on the broken code is not
+// evidence, it is decoration. Do NOT weaken the "exactly N" assertion to "at least 1".
+
+/** N `changelog.mjs append` child processes, ALL spawned before ANY is awaited (a real race). */
+function appendRace(dir, n) {
+  const kids = Array.from({ length: n }, (_, i) => new Promise((resolve) => {
+    const p = spawn(process.execPath, [SCRIPT, "append", "--plan-dir", dir, "--iter", "2",
+      "--step", String(i + 1), "--commit", "uncommitted", "--path", `src/p${i + 1}.js`,
+      "--op", "EDIT(+1,-1)", "--radius", "radius:LOW(0)", "--reason", `parallel ${i + 1}`],
+      { stdio: ["ignore", "pipe", "pipe"] });
+    let stderr = "";
+    p.stderr.on("data", (d) => { stderr += d; });
+    p.on("close", (code) => resolve({ code, stderr }));
+  }));
+  return Promise.all(kids); // launched above, awaited here — never awaited in the loop
+}
+
+/** A plan dir whose changelog.xml already holds `pre` entries. */
+function seedPlanDir(pre = 0) {
+  const dir = tmp();
+  const doc = emptyDoc();
+  for (let i = 1; i <= pre; i++) {
+    appendEntry(doc, { ...FIELDS, step: `iter-1/step-${i}`, reason: `pre ${i}` });
+  }
+  writeDocAtomic(xmlPath(dir), doc);
+  return dir;
+}
+
+/** Every recorded entry, re-parsed FROM DISK, with the document's own well-formedness asserted. */
+function readEntries(dir) {
+  const doc = parse(readFileSync(xmlPath(dir), "utf8")); // throws if a writer corrupted it
+  assert.deepEqual(validateDoc(doc, CHANGELOG_SPEC), [], "every entry must be schema-valid");
+  return elementsOf(doc).filter((e) => e.name === "entry");
+}
+
+test("K2: 10 PARALLEL appends — all 10 recorded, document re-parses, no residue", async () => {
+  const dir = seedPlanDir(0);
+  try {
+    const t0 = Date.now();
+    const results = await appendRace(dir, 10);
+    const elapsed = Date.now() - t0;
+
+    assert.ok(elapsed < 3000, `no append may stall: the race took ${elapsed}ms (budget 3000)`);
+    results.forEach((r, i) => assert.equal(r.code, 0, `child ${i + 1} failed: ${r.stderr}`));
+
+    const entries = readEntries(dir);
+    const recorded = entries.map((e) => e.attrs.reason).filter((r) => r.startsWith("parallel "));
+    assert.equal(recorded.length, 10, "EVERY parallel append must be recorded — this is the bug");
+    assert.deepEqual(
+      [...recorded].sort(),
+      Array.from({ length: 10 }, (_, i) => `parallel ${i + 1}`).sort(),
+      "all 10 distinct entries, none lost and none duplicated",
+    );
+    assert.deepEqual(tmpResidue(dir), [], "no temp file survives the race");
+    assert.deepEqual(lockResidue(dir), [], "no lock file survives the race");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("K2: 8 PARALLEL appends against a 400-entry changelog — all 8 recorded, none lost", async () => {
+  // The reviewer's worst measurement: 1 of 8 recorded, 5/5 trials. A bigger document widens the
+  // read-modify-write window, so this is the variant that loses the most.
+  const dir = seedPlanDir(400);
+  try {
+    const results = await appendRace(dir, 8);
+    results.forEach((r, i) => assert.equal(r.code, 0, `child ${i + 1} failed: ${r.stderr}`));
+
+    const entries = readEntries(dir);
+    assert.equal(entries.length, 408, "400 pre-existing + 8 appended, with nothing overwritten");
+    const recorded = entries.filter((e) => e.attrs.reason.startsWith("parallel "));
+    assert.equal(recorded.length, 8);
+    assert.deepEqual(tmpResidue(dir), []);
+    assert.deepEqual(lockResidue(dir), []);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("K2: the ledger stays ordered — entries are appended, never interleaved into the preamble", async () => {
+  const dir = seedPlanDir(0);
+  try {
+    await appendRace(dir, 10);
+    const doc = parse(readFileSync(xmlPath(dir), "utf8"));
+    const lines = renderDoc(doc).split("\n");
+
+    // The legacy shape survives 10 racing writers: header, blank, 10 entries, trailing newline.
+    assert.deepEqual(lines.slice(0, 4), MD_HEADER_LINES);
+    assert.equal(lines[4], "");
+    assert.equal(lines.length, 4 + 1 + 10 + 1);
+    assert.equal(lines[lines.length - 1], "", "the trailing newline survives the race");
+
+    // Chronological by construction: `ts` is stamped INSIDE the lock, so it is the time the entry
+    // was RECORDED, and the lock serializes the recording. Arrival order == timestamp order.
+    const ts = elementsOf(doc).filter((e) => e.name === "entry").map((e) => e.attrs.ts);
+    assert.deepEqual([...ts].sort(), ts, "recorded timestamps are non-decreasing");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

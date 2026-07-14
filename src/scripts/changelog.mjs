@@ -46,7 +46,9 @@
 // no such element and stays that way. append() therefore inserts BEFORE a trailing empty <raw/>.
 // ---------------------------------------------------------------------------
 
-import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+  closeSync, existsSync, openSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse, serialize } from "./xml.mjs";
@@ -330,6 +332,129 @@ export function readDoc(planDir) {
   return parse(readFileSync(p, "utf8"));
 }
 
+// ---------------------------------------------------------------------------
+// The lock — serializing the read-modify-write
+// ---------------------------------------------------------------------------
+
+// DECISION plan_2026-07-14_79ee0f59/D-008 — AN O_EXCL LOCK WRAPS THE WHOLE READ-MODIFY-WRITE.
+//
+// append is parse -> splice -> re-serialize -> rename: a read-modify-write over the WHOLE document.
+// Unlocked, N concurrent appends all read the same document and the last rename wins, so N-1
+// entries vanish from an append-only evidence ledger — SILENTLY, every process exiting 0. Measured
+// at v2.33.0: 10 parallel appends recorded 5-6; 8 appends against a 400-entry changelog recorded
+// 1-2; 16 against a 3000-entry changelog recorded 1, in 8 trials out of 8. This is the NORMAL path
+// (ip-executor.md mandates an append after EACH edit; parallel tool calls are the encouraged
+// pattern), and it is a REGRESSION: the legacy markdown path appended ONE LINE, effectively atomic
+// under O_APPEND. The XML rewrite turned an O(1) line append into an O(file) rewrite.
+//
+// What NOT to do:
+//   - Do NOT remove this lock "because renameSync is atomic". renameSync is atomic with respect to
+//     the DESTINATION; it does nothing about two processes having read the same document. The
+//     unique temp path (below) fixes byte-level corruption, NOT entry loss. Both are required.
+//   - Do NOT add a compare-and-swap / retry-on-conflict loop on top. It was CONSIDERED AND
+//     REJECTED: the lock spans the entire RMW, so the readDoc() inside it is fresh by construction.
+//     A CAS loop would be a second mechanism doing this one's job, with its own retry surface.
+//     (It stays the documented FALLBACK if this lock ever stalls — see plan.md Pre-Mortem #1.)
+//   - Do NOT make the wait unbounded, and do NOT move the release out of the `finally`. A lock is
+//     the classic way to convert a data-loss bug into a HANG, and this write is advisory and
+//     best-effort: ip-executor.md:87 says an append failure is NON-FATAL. Losing an entry loudly
+//     (exit 1, "entry NOT recorded") is acceptable. Stalling EXECUTE on a changelog write is not.
+//   - Do NOT judge staleness by reading a pid out of the lock file and probing it with
+//     process.kill(pid, 0). Pids are reused, and they mean nothing across containers. mtime is
+//     opaque, cheap, and cannot be confused by a garbage lock file.
+// See decisions.md D-008.
+
+/** Total time an append will wait for a contended lock before degrading. */
+export const LOCK_BUDGET_MS = 2000;
+/** A lock file older than this is assumed to belong to a dead writer and is broken. */
+export const LOCK_STALE_MS = 10000;
+
+export const lockPath = (file) => `${file}.lock`;
+
+/** A synchronous sleep with zero dependencies. Atomics.wait is legal on Node's main thread. */
+function sleepMs(ms) {
+  if (ms <= 0) return;
+  try {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+  } catch {
+    // B2 falsified (no SharedArrayBuffer / Atomics.wait forbidden): bounded busy-wait, same
+    // semantics, more CPU. Bounded by `ms`, so it can no more hang than the sleep it replaces.
+    const until = Date.now() + ms;
+    while (Date.now() < until) { /* spin */ }
+  }
+}
+
+/**
+ * Take an exclusive lock on `file`. Returns the lock path, or `null` if the budget ran out.
+ *
+ * openSync(lock, "wx") is O_CREAT|O_EXCL — an ATOMIC create-if-absent, so exactly one of N racing
+ * processes wins and the losers get EEXIST. The holder record (pid + timestamp) is for humans
+ * debugging a stuck lock; nothing reads it back, deliberately (see the anchor above).
+ */
+export function acquireLock(file, { budgetMs = LOCK_BUDGET_MS, staleMs = LOCK_STALE_MS, log = console.error } = {}) {
+  const lock = lockPath(file);
+  const deadline = Date.now() + budgetMs;
+  let brokeStale = false;
+
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const fd = openSync(lock, "wx");
+      try { writeFileSync(fd, `${process.pid} ${new Date().toISOString()}\n`); } finally { closeSync(fd); }
+      return lock;
+    } catch (e) {
+      if (e.code !== "EEXIST") throw e; // ENOENT (no plan dir), EACCES, ... are real errors
+    }
+
+    // Stale-lock recovery: a crashed holder must not wedge the ledger forever. Judged by mtime, and
+    // attempted ONCE — a second break would mean we are fighting a live holder, not a corpse.
+    if (!brokeStale) {
+      let ageMs = -1;
+      try { ageMs = Date.now() - statSync(lock).mtimeMs; } catch { /* it vanished: just retry */ }
+      if (ageMs > staleMs) {
+        brokeStale = true;
+        try {
+          unlinkSync(lock);
+          log(`changelog: broke a stale lock on ${lock} (held for ${Math.round(ageMs / 1000)}s)`);
+        } catch { /* another writer broke it first — fine, retry either way */ }
+        continue;
+      }
+    }
+
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) return null;
+    // Backoff with jitter. The jitter is what stops N losers re-colliding in lockstep. The 50ms CAP
+    // is load-bearing under contention: a loser can only notice the lock is free when it next polls,
+    // so a large cap burns the budget in sleep rather than in work. Measured with 16 writers on a
+    // 3000-entry ledger: a 200ms cap dropped 4 of 16 (budget-exhausted); a 50ms cap drops none.
+    const backoff = Math.min(5 * 2 ** attempt, 50) + Math.floor(Math.random() * 15);
+    sleepMs(Math.min(backoff, remaining));
+  }
+}
+
+/** Drop the lock. Idempotent: a lock broken as stale by someone else is not an error. */
+export function releaseLock(lock) {
+  try { unlinkSync(lock); } catch { /* already gone */ }
+}
+
+/**
+ * Run `fn` holding an exclusive lock on `file`. Returns `{ locked: false, value }` on success, or
+ * `{ locked: true }` if the lock could not be taken within the budget — the caller degrades, it
+ * does not wait forever.
+ *
+ * The release is in a `finally`, so a throw inside `fn` (a serialize error, a full disk) can never
+ * strand the lock. That `finally` is the single most load-bearing line in this file: without it,
+ * one bad append wedges every future append in that plan dir until the stale threshold expires.
+ */
+export function withLock(file, fn, opts = {}) {
+  const lock = acquireLock(file, opts);
+  if (lock === null) return { locked: true, value: undefined };
+  try {
+    return { locked: false, value: fn() };
+  } finally {
+    releaseLock(lock);
+  }
+}
+
 // DECISION plan_2026-07-14_79ee0f59/D-008 — THE TEMP PATH IS PER-WRITER, NOT SHARED.
 //
 // What NOT to do: do NOT "simplify" this back to a fixed `${file}.tmp`. That is what shipped in
@@ -409,15 +534,10 @@ function cmdAppend(flags) {
   const planDir = flags["plan-dir"];
   const file = xmlPath(planDir);
 
-  let doc;
-  try {
-    doc = readDoc(planDir) ?? emptyDoc();
-  } catch (e) {
-    console.error(`changelog: ${file}: ${e.message}`);
-    return 1;
-  }
-
-  const { issues } = appendEntry(doc, {
+  // `ts` defaults LAZILY, so under the lock it is the moment the entry was RECORDED, not the moment
+  // the process started. The lock serializes recording, so the ledger is chronological by
+  // construction: arrival order == timestamp order, even when 10 writers race.
+  const fields = () => ({
     ts: flags.ts ?? nowTs(),
     step: `iter-${flags.iter}/step-${flags.step}`,
     commit: flags.commit,
@@ -427,18 +547,47 @@ function cmdAppend(flags) {
     dref: flags.dref ?? "-",
     reason: flags.reason,
   });
-  if (issues.length > 0) {
-    for (const i of issues) console.error(`changelog: rejected: ${i.message}`);
+
+  /** The read-modify-write. Runs under the lock (or, for --dry-run, without one — it writes nothing). */
+  const readModifyWrite = (write) => {
+    let doc;
+    try {
+      doc = readDoc(planDir) ?? emptyDoc();
+    } catch (e) {
+      console.error(`changelog: ${file}: ${e.message}`);
+      return 1;
+    }
+    const { issues } = appendEntry(doc, fields());
+    if (issues.length > 0) {
+      for (const i of issues) console.error(`changelog: rejected: ${i.message}`);
+      return 1;
+    }
+    if (!write) {
+      process.stdout.write(serialize(doc));
+      return 0;
+    }
+    writeDocAtomic(file, doc);
+    console.log(`appended 1 entry to ${file}`);
+    return 0;
+  };
+
+  // --dry-run writes NOTHING, so it takes NO lock — it must never contend with a real writer.
+  if (flags.dryRun) return readModifyWrite(false);
+
+  let result;
+  try {
+    result = withLock(file, () => readModifyWrite(true));
+  } catch (e) {
+    // A real filesystem error (no plan dir, read-only dir, full disk). The lock, if it was taken,
+    // was already released by withLock's `finally`. Degrade loudly; never a stack trace.
+    console.error(`changelog: ${file}: ${e.message}`);
     return 1;
   }
-
-  if (flags.dryRun) {
-    process.stdout.write(serialize(doc));
-    return 0;
+  if (result.locked) {
+    console.error(`changelog: could not acquire lock on ${file} after ${LOCK_BUDGET_MS}ms — entry NOT recorded`);
+    return 1;
   }
-  writeDocAtomic(file, doc);
-  console.log(`appended 1 entry to ${file}`);
-  return 0;
+  return result.value;
 }
 
 function cmdImport(planDir, flags) {
