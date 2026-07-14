@@ -88,3 +88,47 @@ export function blankCompressedSummaryBlock(content) {
   const blanked = block.replace(/[^\n]/g, "");
   return content.slice(0, openIdx) + blanked + content.slice(end);
 }
+
+// DECISION plan_2026-07-14_79ee0f59/D-003 — the unterminated-comment branch below is
+// deliberate and load-bearing. Do NOT "fix" it to blank from a dangling `<!--` to EOF,
+// and do NOT make it throw: validate-plan.mjs's iteration hard-cap counter reads
+// state.md through this helper, so blanking-to-EOF on a stray opener would erase real
+// `EXECUTE → REFLECT` records and silently disable a safety cap. Leaving the region
+// untouched can only OVER-count iterations (a loud, recoverable false positive).
+/**
+ * Blank out every complete HTML comment region (`<!-- ... -->`, markers included)
+ * in `content`, preserving line count so downstream line numbers stay accurate —
+ * the same non-newline-blanking idiom as blankCompressedSummaryBlock above.
+ *
+ * Why this exists: bootstrap.mjs's state.md template ends with a guidance block
+ * inside an HTML comment, and that block contains a literal EXAMPLE transition
+ * (`- EXPLORE → PLAN (...)`). Any scanner that reads the Transition History block
+ * raw ingests that example as if it were a real transition record. Callers must
+ * strip first, scan second.
+ *
+ * Semantics (deliberate):
+ *  - HTML comments do NOT nest: the first `-->` closes the comment, so a
+ *    `<!--` appearing inside a comment body is ordinary text and is blanked.
+ *  - An UNTERMINATED `<!--` (no closing `-->`) is left UNCHANGED rather than
+ *    blanked-to-EOF. This fails SAFE: consumers of this helper include the
+ *    iteration hard-cap counter, and blanking to EOF on a stray/typo'd opener
+ *    would silently swallow real transition records and disable a safety cap.
+ *    Over-counting is recoverable; under-counting is not. Never throws.
+ *  - Non-comment text is returned byte-identical.
+ */
+export function stripHtmlComments(content) {
+  if (!content) return content;
+  let out = "";
+  let cursor = 0;
+  for (;;) {
+    const openIdx = content.indexOf("<!--", cursor);
+    if (openIdx < 0) break;
+    const closeIdx = content.indexOf("-->", openIdx + 4);
+    if (closeIdx < 0) break; // unterminated → leave the remainder untouched (fail safe)
+    const end = closeIdx + 3;
+    out += content.slice(cursor, openIdx);
+    out += content.slice(openIdx, end).replace(/[^\n]/g, "");
+    cursor = end;
+  }
+  return cursor === 0 ? content : out + content.slice(cursor);
+}

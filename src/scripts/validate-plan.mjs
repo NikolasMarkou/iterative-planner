@@ -17,6 +17,7 @@ import {
   splitChangelogFields,
   CHANGELOG_COMPRESSED_INLINE_RE,
   blankCompressedSummaryBlock,
+  stripHtmlComments,
 } from "./shared.mjs";
 
 const cwd = process.cwd();
@@ -196,6 +197,28 @@ function isPivotPhase(s) {
   return false;
 }
 
+// DECISION plan_2026-07-14_79ee0f59/D-003 — state.md's Transition History MUST be
+// read comment-blind. bootstrap.mjs's own state.md template ends with an HTML-comment
+// guidance block that embeds a literal example transition (`- EXPLORE → PLAN (...)`),
+// so a raw scan of the block ingests template prose as if it were a real transition
+// record: it made [exploration-confidence] WARN on EVERY fresh plan, and it would let
+// a future template example inject a phantom (possibly ILLEGAL) transition into the
+// legality check and the iteration hard-cap counter.
+// NOTE: this is the SAME comment-region-blindness class the repo already fixed once in
+// v2.32.0 for the .md DECISION-anchor scanner (see HTML_STYLE_EXTS below, ~:904). The
+// state.md scanners never learned that lesson; this helper is the single place they do.
+// Do NOT re-introduce a raw `state.slice(indexOf("## Transition History:"))` scan —
+// route every Transition-History reader through this function. And do NOT "improve"
+// stripHtmlComments to blank an unterminated `<!--` to EOF: that would silently swallow
+// real `EXECUTE → REFLECT` records and disable the iteration hard cap (see shared.mjs).
+function transitionHistoryBlock(state) {
+  if (!state) return null;
+  const stripped = stripHtmlComments(state);
+  const start = stripped.indexOf("## Transition History:");
+  if (start < 0) return null;
+  return stripped.slice(start);
+}
+
 function checkStateTransitions(planDir, issues) {
   const state = readFile(join(planDir, "state.md"));
   if (!state) {
@@ -208,14 +231,13 @@ function checkStateTransitions(planDir, issues) {
     issues.push({ severity: "ERROR", check: "state", message: "Cannot parse current state from state.md" });
   }
 
-  // Parse transition history
-  const historyStart = state.indexOf("## Transition History:");
-  if (historyStart < 0) {
+  // Parse transition history (comment-blind — see transitionHistoryBlock / D-003).
+  const historyBlock = transitionHistoryBlock(state);
+  if (historyBlock === null) {
     issues.push({ severity: "WARN", check: "state", message: "No transition history found in state.md" });
     return;
   }
 
-  const historyBlock = state.slice(historyStart);
   const lines = historyBlock.split("\n").filter((l) => l.startsWith("- "));
 
   for (const line of lines) {
@@ -403,11 +425,14 @@ function checkLeashCount(planDir, issues) {
 // (or sloppy fork) that forgets to bump it bypasses the 5/6 caps indefinitely.
 // Cross-check: each EXECUTE → REFLECT arrow in Transition History closes one
 // iteration. Final value = max(declared, derived) — both signals govern.
+//
+// SAFETY (D-003): this counter drives the iteration hard cap. It reads the block
+// comment-blind (template/guidance text can never inflate the count) but must never
+// UNDER-count — stripHtmlComments leaves an unterminated `<!--` untouched precisely
+// so a stray opener cannot blank real transition records away and disable the cap.
 function deriveIterationFromHistory(state) {
-  if (!state) return 0;
-  const start = state.indexOf("## Transition History:");
-  if (start < 0) return 0;
-  const block = state.slice(start);
+  const block = transitionHistoryBlock(state);
+  if (block === null) return 0;
   // Use normalizePhase semantics (en/em dash → hyphen). Count distinct
   // EXECUTE → REFLECT transitions.
   const norm = block.replace(/[–—‐]/g, "-");
@@ -1273,27 +1298,39 @@ function checkFindingsTopicSections(planDir, issues) {
 }
 
 // 3.2c — state.md transition missing Exploration Confidence on EXPLORE → PLAN.
+//
+// Two corrections (D-003, defect #8):
+//  1. Comment-blind — via transitionHistoryBlock(). The pre-fix raw scan matched the
+//     literal `EXPLORE → PLAN` on the OPENING line of bootstrap's guidance comment and
+//     then read the EXAMPLE transition beneath it as the "next non-empty line", which
+//     of course carries no `confidence:` — so this WARN fired on every fresh plan,
+//     including plans with a perfectly correct confidence sub-line.
+//  2. Most-recent-only — a plan that has cycled EXPLORE → PLAN three times used to emit
+//     three WARNs. Only the LATEST transition's confidence sub-line is actionable.
+// The check still fires when the sub-line is genuinely absent: corrected, not deleted.
 function checkExplorationConfidence(planDir, issues) {
   const state = readFile(join(planDir, "state.md"));
-  if (!state) return;
-  const historyStart = state.indexOf("## Transition History:");
-  if (historyStart < 0) return;
-  const historyBlock = state.slice(historyStart);
+  const historyBlock = transitionHistoryBlock(state);
+  if (historyBlock === null) return;
   const lines = historyBlock.split("\n");
+
+  // Index of the LAST real `EXPLORE → PLAN` transition line, or -1.
+  let last = -1;
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (!/EXPLORE\s+(?:→|->)\s+PLAN/.test(line)) continue;
-    // Look at the next non-empty line; should contain "confidence:".
-    let j = i + 1;
-    while (j < lines.length && lines[j].trim() === "") j++;
-    const next = lines[j] || "";
-    if (!/confidence:/i.test(next)) {
-      issues.push({
-        severity: "WARN",
-        check: "exploration-confidence",
-        message: "state.md Transition History EXPLORE → PLAN line missing Exploration Confidence sub-line (expected 'confidence:' on next line)",
-      });
-    }
+    if (/EXPLORE\s+(?:→|->)\s+PLAN/.test(lines[i])) last = i;
+  }
+  if (last < 0) return;
+
+  // Look at the next non-empty line; should contain "confidence:".
+  let j = last + 1;
+  while (j < lines.length && lines[j].trim() === "") j++;
+  const next = lines[j] || "";
+  if (!/confidence:/i.test(next)) {
+    issues.push({
+      severity: "WARN",
+      check: "exploration-confidence",
+      message: "state.md Transition History EXPLORE → PLAN line missing Exploration Confidence sub-line (expected 'confidence:' on next line)",
+    });
   }
 }
 
@@ -1478,6 +1515,12 @@ function checkPresentationContractLog(planDir, issues) {
   const decisions = readFile(join(planDir, "decisions.md")) || "";
   const progress = readFile(join(planDir, "progress.md")) || "";
   const corpus = state + "\n" + decisions + "\n" + progress;
+  // D-003: the DETECTION side must be comment-blind — a transition named inside a
+  // template/guidance comment (or in commented-out prose) is not a recorded transition
+  // and must not summon a WARN about a contract that was never due. The SEARCH side
+  // (`corpus`) stays raw on purpose: it only ever SUPPRESSES a WARN, so stripping it
+  // could only make this advisory noisier, never more correct.
+  const stateRecorded = stripHtmlComments(state);
 
   // Gated transitions and their expected contract names. Multiple contracts
   // possible per transition — match any.
@@ -1491,7 +1534,7 @@ function checkPresentationContractLog(planDir, issues) {
     // Detect transition occurrence — match either "FROM → TO" or "FROM -> TO" forms,
     // anywhere in state.md (Transition History line or Last Transition).
     const re = new RegExp(`${g.from}\\s*(?:→|->)\\s*${g.to}`);
-    if (!re.test(state)) continue;
+    if (!re.test(stateRecorded)) continue;
     // Check whether any of the expected contract names appears in corpus.
     const found = g.contracts.some((c) => corpus.includes(c));
     if (!found) {

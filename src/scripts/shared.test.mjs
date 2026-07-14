@@ -14,6 +14,7 @@ import {
   extractField,
   splitChangelogFields,
   blankCompressedSummaryBlock,
+  stripHtmlComments,
   COMPRESSED_SUMMARY_OPEN,
   COMPRESSED_SUMMARY_CLOSE,
   CHANGELOG_COMPRESSED_INLINE_RE,
@@ -210,4 +211,71 @@ test("blankCompressedSummaryBlock: a single-line block (markers and body on one 
   // surrounding non-block text preserved
   assert.ok(out.startsWith("pre "));
   assert.ok(out.endsWith(" post"));
+});
+
+// ---------------------------------------------------------------------------
+// stripHtmlComments (defect #8 / D-003)
+// ---------------------------------------------------------------------------
+
+test("stripHtmlComments: blanks a multi-line comment interior and preserves line count exactly", () => {
+  const content = [
+    "- INIT → EXPLORE (task started)",
+    "- EXPLORE → PLAN (real, 2026-07-14)",
+    "  - confidence: scope=deep, solutions=open, risks=clear",
+    "<!-- When logging EXPLORE → PLAN, add Exploration Confidence below, e.g.:",
+    "- EXPLORE → PLAN (gathered enough context, YYYY-MM-DDTHH:MM:SSZ)",
+    "  - confidence: scope=deep|partial|shallow",
+    "See references/planning-rigor.md for definitions. -->",
+  ].join("\n");
+  const out = stripHtmlComments(content);
+  const inLines = content.split("\n");
+  const outLines = out.split("\n");
+  assert.equal(outLines.length, inLines.length, "line count must be preserved");
+  // Real transition lines survive byte-identically.
+  assert.equal(outLines[0], inLines[0]);
+  assert.equal(outLines[1], inLines[1]);
+  assert.equal(outLines[2], inLines[2]);
+  // Every line of the comment region is blanked to the empty string.
+  assert.deepEqual(outLines.slice(3), ["", "", "", ""]);
+  // The template's example transition is gone from the scanned text.
+  assert.equal(out.match(/EXPLORE → PLAN/g).length, 1);
+  assert.ok(!out.includes("<!--") && !out.includes("-->"));
+});
+
+test("stripHtmlComments: handles multiple comments in one document", () => {
+  const content = "a<!--x-->b<!--y-->c";
+  assert.equal(stripHtmlComments(content), "abc");
+});
+
+test("stripHtmlComments: leaves non-comment text byte-identical", () => {
+  const content = "# Current State: EXECUTE\n## Iteration: 1\n- EXECUTE → REFLECT (1)\n";
+  assert.equal(stripHtmlComments(content), content);
+});
+
+test("stripHtmlComments: an unterminated <!-- leaves the remainder UNCHANGED (fail-safe, never throws)", () => {
+  // Blanking to EOF here would swallow the real EXECUTE → REFLECT record below and
+  // silently disable the iteration hard cap. Over-count, never under-count.
+  const content = "- EXECUTE → REFLECT (1)\n<!-- dangling opener\n- EXECUTE → REFLECT (2)\n";
+  assert.equal(stripHtmlComments(content), content);
+  assert.equal(content.match(/EXECUTE → REFLECT/g).length, 2);
+});
+
+test("stripHtmlComments: a complete comment before an unterminated one is still blanked", () => {
+  const content = "a\n<!-- gone -->\nb\n<!-- dangling\nc";
+  const out = stripHtmlComments(content);
+  assert.equal(out.split("\n").length, content.split("\n").length);
+  assert.equal(out, "a\n\nb\n<!-- dangling\nc");
+});
+
+test("stripHtmlComments: comments do not nest — the first --> closes the comment", () => {
+  // `<!--` inside a comment body is ordinary text (HTML has no nesting); the trailing
+  // `tail` is therefore OUTSIDE the comment and must survive.
+  const content = "pre <!-- outer <!-- inner --> tail";
+  assert.equal(stripHtmlComments(content), "pre  tail");
+});
+
+test("stripHtmlComments: falsy content is returned as-is", () => {
+  assert.equal(stripHtmlComments(""), "");
+  assert.equal(stripHtmlComments(null), null);
+  assert.equal(stripHtmlComments(undefined), undefined);
 });

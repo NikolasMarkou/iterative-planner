@@ -8,13 +8,17 @@
 
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, writeFileSync, rmSync } from "fs";
+import { mkdirSync, writeFileSync, rmSync, readdirSync, readFileSync } from "fs";
 import { join, resolve } from "path";
 import { spawnSync } from "child_process";
 import { tmpdir } from "os";
 import { randomBytes } from "crypto";
 
 const VALIDATOR = resolve(import.meta.dirname, "validate-plan.mjs");
+// Defect #8 / D-003 fixtures use the REAL bootstrap template (the guidance comment that
+// caused the false positive is part of it) rather than a hand-copied approximation —
+// a hand-copied one would drift from bootstrap.mjs and stop testing the actual bug.
+const BOOTSTRAP = resolve(import.meta.dirname, "bootstrap.mjs");
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -661,6 +665,116 @@ describe("validate-plan.mjs --pre-step gate", () => {
     const r = run(cwd);
     const iterErrs = r.stdout.split("\n").filter((l) => /ERROR \[iteration\]/.test(l));
     assert.equal(iterErrs.length, 0, `derived=3 must not trigger cap, got:\n${r.stdout}`);
+  });
+
+  // -------------------------------------------------------------------------
+  // Defect #8 / D-003 — state.md Transition-History scanners must be comment-blind.
+  // bootstrap.mjs's own state.md template embeds an EXAMPLE `- EXPLORE → PLAN (...)`
+  // line inside an HTML comment; raw scans ingested it as a real transition record.
+  // -------------------------------------------------------------------------
+
+  // C5(a) — the live-bug regression test. A FRESH `bootstrap.mjs new` plan dir (whose
+  // state.md carries the guidance comment verbatim) with a correct confidence sub-line
+  // under its REAL transition must produce ZERO [exploration-confidence] WARNs.
+  it("(v) #8: fresh bootstrap plan dir + correct confidence sub-line → zero [exploration-confidence] WARNs", () => {
+    const cwd = getTempDir();
+    const b = spawnSync("node", [BOOTSTRAP, "new", "probe"], { cwd, encoding: "utf-8", timeout: 15000 });
+    assert.equal(b.status, 0, `bootstrap new failed: ${b.stderr}`);
+    const planId = readdirSync(join(cwd, "plans")).find((d) => d.startsWith("plan_"));
+    const statePath = join(cwd, "plans", planId, "state.md");
+    let state = readFileSync(statePath, "utf-8");
+    // Guard: the fixture is only meaningful if the template comment is really there.
+    assert.ok(state.includes("<!-- When logging EXPLORE → PLAN"), "bootstrap template must embed the guidance comment");
+    // Log a REAL EXPLORE → PLAN transition, correctly followed by its confidence sub-line.
+    state = state.replace(
+      "- INIT → EXPLORE (task started)",
+      "- INIT → EXPLORE (task started)\n- EXPLORE → PLAN (enough context, 2026-07-14T05:00:00Z)\n  - confidence: scope=deep, solutions=adequate, risks=clear",
+    );
+    writeFileSync(statePath, state);
+    const r = run(cwd);
+    const warns = r.stdout.split("\n").filter((l) => /\[exploration-confidence\]/.test(l));
+    assert.equal(warns.length, 0, `template comment must not trip the check, got:\n${r.stdout}`);
+  });
+
+  // C5(b) — corrected, NOT deleted: remove the sub-line and the WARN comes back, once.
+  it("(w) #8: fresh bootstrap plan dir with the confidence sub-line absent → exactly one [exploration-confidence] WARN", () => {
+    const cwd = getTempDir();
+    const b = spawnSync("node", [BOOTSTRAP, "new", "probe"], { cwd, encoding: "utf-8", timeout: 15000 });
+    assert.equal(b.status, 0, `bootstrap new failed: ${b.stderr}`);
+    const planId = readdirSync(join(cwd, "plans")).find((d) => d.startsWith("plan_"));
+    const statePath = join(cwd, "plans", planId, "state.md");
+    let state = readFileSync(statePath, "utf-8");
+    state = state.replace(
+      "- INIT → EXPLORE (task started)",
+      "- INIT → EXPLORE (task started)\n- EXPLORE → PLAN (enough context, 2026-07-14T05:00:00Z)",
+    );
+    writeFileSync(statePath, state);
+    const r = run(cwd);
+    const warns = r.stdout.split("\n").filter((l) => /\[exploration-confidence\]/.test(l));
+    assert.equal(warns.length, 1, `a genuinely missing confidence sub-line must still WARN exactly once, got:\n${r.stdout}`);
+  });
+
+  // C5(c) — the safety pin. Comment-stripping must remove ONLY template text: with the
+  // guidance comment present AND 7 real EXECUTE → REFLECT transitions, the iteration
+  // hard cap must still ERROR. Over-stripping here would silently disable the cap.
+  it("(x) #8: guidance comment present + 7 real EXECUTE → REFLECT transitions → iteration hard cap still ERRORs (derived=7)", () => {
+    const cwd = getTempDir();
+    const transitionHistory = [
+      "<!-- When logging EXPLORE → PLAN, add Exploration Confidence on the line below, e.g.:",
+      "- EXPLORE → PLAN (gathered enough context, YYYY-MM-DDTHH:MM:SSZ)",
+      "  - confidence: scope=deep|partial|shallow, solutions=adequate|thin, risks=clear|unclear",
+      "- EXECUTE → REFLECT (example inside the comment — must NOT be counted)",
+      "See references/planning-rigor.md for definitions. -->",
+      "- EXECUTE → REFLECT (1)",
+      "- EXECUTE → REFLECT (2)",
+      "- EXECUTE → REFLECT (3)",
+      "- EXECUTE → REFLECT (4)",
+      "- EXECUTE → REFLECT (5)",
+      "- EXECUTE → REFLECT (6)",
+      "- EXECUTE → REFLECT (7)",
+    ].join("\n");
+    writePlan(cwd, { state: "EXECUTE", iteration: 0, transitionHistoryExtra: transitionHistory });
+    const r = run(cwd);
+    const iterErrs = r.stdout.split("\n").filter((l) => /ERROR \[iteration\]/.test(l));
+    assert.ok(iterErrs.length >= 1, `hard cap must still fire with a comment block present, got:\n${r.stdout}`);
+    // derived=7, not 8 — the commented example transition was stripped, the 7 real ones were not.
+    assert.ok(/derived=7/.test(iterErrs[0]), `expected derived=7 (comment example not counted), got: ${iterErrs[0]}`);
+  });
+
+  // C5(c) — phantom transitions: an ILLEGAL transition inside a comment must not be
+  // ingested by checkStateTransitions. Pre-fix, the `.startsWith("- ")` filter admitted
+  // any example line in the comment body.
+  it("(y) #8: an ILLEGAL transition inside an HTML comment is not ingested by the legality check", () => {
+    const cwd = getTempDir();
+    const transitionHistory = [
+      "<!-- example block:",
+      "- CLOSE → EXPLORE (phantom — illegal, but it lives inside a comment)",
+      "-->",
+    ].join("\n");
+    writePlan(cwd, { state: "EXECUTE", iteration: 1, transitionHistoryExtra: transitionHistory });
+    const r = run(cwd);
+    const transErrs = r.stdout.split("\n").filter((l) => /\[transition\]/.test(l));
+    assert.equal(transErrs.length, 0, `commented-out transitions must not be ingested, got:\n${r.stdout}`);
+    // Sanity: the same line OUTSIDE a comment IS an error — proving the check still works.
+    writePlan(cwd, { state: "EXECUTE", iteration: 1, transitionHistoryExtra: "- CLOSE → EXPLORE (real, illegal)" });
+    const r2 = run(cwd);
+    assert.ok(/ERROR \[transition\]/.test(r2.stdout), `a REAL illegal transition must still ERROR, got:\n${r2.stdout}`);
+  });
+
+  // C5 — most-recent-only: 3 historical EXPLORE → PLAN cycles must not yield 3 WARNs.
+  it("(z) #8: multiple historical EXPLORE → PLAN transitions → at most one [exploration-confidence] WARN", () => {
+    const cwd = getTempDir();
+    // Default writePlan history already holds one EXPLORE → PLAN (with confidence).
+    // Append two more cycles; only the LAST one lacks the sub-line.
+    const transitionHistory = [
+      "- PIVOT → PLAN (cycle 2)",
+      "- EXPLORE → PLAN (cycle 2, no confidence line)",
+      "- EXPLORE → PLAN (cycle 3, no confidence line either)",
+    ].join("\n");
+    writePlan(cwd, { state: "EXECUTE", iteration: 1, transitionHistoryExtra: transitionHistory });
+    const r = run(cwd);
+    const warns = r.stdout.split("\n").filter((l) => /\[exploration-confidence\]/.test(l));
+    assert.equal(warns.length, 1, `only the most recent EXPLORE → PLAN is actionable, got:\n${r.stdout}`);
   });
 
   // #12 — checkIterationLimits: iteration 5 is the decomposition-reminder
