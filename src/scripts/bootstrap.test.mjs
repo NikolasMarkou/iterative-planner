@@ -3691,3 +3691,68 @@ describe("bootstrap.mjs reset-attempts", () => {
       `expected missing-section error, got:\n${r.stderr}`);
   });
 });
+
+// ---------------------------------------------------------------------------
+// D-010 (iter-2 CRITICAL 3) — retire's `.md` anchor stamper now scopes anchorRe with
+// shared.mjs's `htmlCommentSpans`, the SAME primitive validate-plan.mjs's `.md` anchor
+// scanner uses. The two are bound by the "the validator sees exactly what retire stamps"
+// contract, so they moved together. retire is a WRITE path over SOURCE files: a
+// divergence here is not a wrong report, it is a wrong edit.
+// ---------------------------------------------------------------------------
+describe("retire: md anchor stamping is code-span aware (D-010)", () => {
+  const tempDirs = [];
+  function getTempDir() { const d = makeTempDir(); tempDirs.push(d); return d; }
+  afterEach(() => { while (tempDirs.length) removeTempDir(tempDirs.pop()); });
+  const GONE = "plan_2099-05-05_abcdabcd";
+
+  it("does not stamp an anchor-shaped example inside a FENCED code block", () => {
+    // Prose that documents the anchor format is not an anchor. Before D-010 the
+    // stamper's `/<!--[\s\S]*?-->/g` treated a fenced example as a real comment span.
+    const dir = getTempDir();
+    run(dir, "new", "active work");
+    mkdirSync(join(dir, "docs"), { recursive: true });
+    const md = join(dir, "docs", "guide.md");
+    const before = "# Anchor format\n\n```md\n<!-- DECISION " + GONE + "/D-001: an EXAMPLE, not an anchor -->\n```\n";
+    writeFileSync(md, before);
+    const r = run(dir, "retire", GONE);
+    assert.equal(r.exitCode, 0, `retire should succeed, got:\n${r.stdout}\n${r.stderr}`);
+    assert.equal(readFileSync(md, "utf-8"), before, "a fenced example must be byte-identical after retire");
+    assert.match(r.stdout, /Anchors marked \[STALE\]: 0 across 0 file\(s\)/, `nothing should be stamped, got:\n${r.stdout}`);
+  });
+
+  it("does not let a backticked `<!--` in prose open a phantom span that stamps a later doc example", () => {
+    const dir = getTempDir();
+    run(dir, "new", "active work");
+    mkdirSync(join(dir, "docs"), { recursive: true });
+    const md = join(dir, "docs", "prose.md");
+    const before = "# Notes\n\nAn anchor opens with `<!--` and closes with `-->`.\n\nDECISION " + GONE + "/D-001 written as bare prose is not an anchor.\n";
+    writeFileSync(md, before);
+    const r = run(dir, "retire", GONE);
+    assert.equal(r.exitCode, 0);
+    assert.equal(readFileSync(md, "utf-8"), before, "prose must be byte-identical after retire");
+  });
+
+  it("still stamps a REAL comment anchor that sits next to code spans, idempotently over 3 runs", () => {
+    // The over-masking guard (Pre-Mortem #2) on the WRITE path: masking code spans must
+    // not make a real comment invisible to the stamper.
+    const dir = getTempDir();
+    run(dir, "new", "active work");
+    mkdirSync(join(dir, "docs"), { recursive: true });
+    const md = join(dir, "docs", "note.md");
+    writeFileSync(md, "# Notes\n\nWe write `<!--` when documenting.\n\n<!-- DECISION " + GONE + "/D-001: a real anchor -->\n\nAnd `-->` closes it.\n");
+    const r = run(dir, "retire", GONE);
+    assert.equal(r.exitCode, 0, `retire should succeed, got:\n${r.stdout}\n${r.stderr}`);
+    const after = readFileSync(md, "utf-8");
+    assert.match(after, /<!-- DECISION plan_2099-05-05_abcdabcd\/D-001 \[STALE\]: a real anchor -->/,
+      `the real anchor must be stamped, got:\n${after}`);
+    assert.match(after, /We write `<!--` when documenting\./, "the prose code span must be untouched");
+    // Idempotent + byte-identical across repeated runs.
+    run(dir, "retire", GONE);
+    const second = readFileSync(md, "utf-8");
+    run(dir, "retire", GONE);
+    const third = readFileSync(md, "utf-8");
+    assert.equal(second, after, "run 2 must be byte-identical to run 1");
+    assert.equal(third, after, "run 3 must be byte-identical to run 1");
+    assert.equal((third.match(/\[STALE\]/g) || []).length, 1, `exactly one [STALE] marker, got:\n${third}`);
+  });
+});

@@ -89,6 +89,140 @@ export function blankCompressedSummaryBlock(content) {
   return content.slice(0, openIdx) + blanked + content.slice(end);
 }
 
+// ---------------------------------------------------------------------------
+// HTML comment regions in Markdown — the SINGLE definition of "where the comments are".
+//
+// DECISION plan_2026-07-14_79ee0f59/D-010 — every markdown scanner in this repo MUST
+// locate comments through `htmlCommentSpans()` below. Do NOT write a fifth
+// `/<!--[\s\S]*?-->/` regex at a call site. That pattern has now produced the same
+// bug THREE times (v2.32.0's `.md` anchor scanner; iter-1 defect #8's state.md
+// Transition-History scanners; iter-2 CRITICAL 3's `checkDecisionsSchema`), because a
+// bare regex is blind to markdown code spans: a backticked `` `<!--` `` written in
+// PROSE — which is exactly what an entry *documenting comment handling* contains —
+// supplies a phantom opener that pairs with the next `-->` anywhere downstream and
+// swallows everything between. Content inside a phantom span is INVISIBLE to
+// validation, so the check FAILS OPEN (a genuinely missing `**Trade-off**:` goes
+// silently unreported). Reproduced live against this plan's own decisions.md: D-008
+// and D-009 vanished entirely and D-007 lost its `**Complexity Assessment**` line.
+//
+// The two properties below are both load-bearing; do not "simplify" either away:
+//   1. LINE-COUNT PRESERVING. `stripHtmlComments` blanks, it does not delete. Every
+//      caller reports line numbers from the stripped text. The deleted `:769` regex
+//      used `.replace(..., "")` and every finding it emitted was off by the size of
+//      the stripped comment (observed: "D-007 (line 59)"; D-007 is at line 69).
+//   2. CODE-SPAN AWARE. A delimiter inside a backtick run or a fenced block is
+//      literal text and can neither open nor close a comment.
+// See decisions.md D-010.
+// ---------------------------------------------------------------------------
+
+/**
+ * Mask every markdown literal region (fenced code blocks, inline code spans) by
+ * overwriting its characters with spaces, preserving both length and newlines so
+ * indices into the mask are valid indices into `content`. Used ONLY to decide where
+ * comment delimiters may legally appear — the original text is what gets sliced.
+ *
+ * Fences: a line whose first non-space run is ``` or ~~~ (3+) opens; a later line
+ * whose run uses the same char and is at least as long closes. Inline: a run of N
+ * backticks is closed by the next run of exactly N backticks ON THE SAME LINE; an
+ * unclosed run is ordinary text and masks nothing (deliberately conservative — a
+ * stray backtick must not blind the scanner to a real comment, which is Pre-Mortem
+ * #2's over-masking failure: a real comment left visible turns bootstrap's schema
+ * example into a phantom `D-001` entry).
+ */
+function maskLiteralRegions(content) {
+  const lines = content.split("\n");
+  let fence = null; // { char, len } while inside a fenced block
+  const masked = lines.map((line) => {
+    const indent = line.length - line.trimStart().length;
+    const fm = /^(`{3,}|~{3,})/.exec(line.slice(indent));
+    if (fence) {
+      if (fm && fm[1][0] === fence.char && fm[1].length >= fence.len) fence = null;
+      return " ".repeat(line.length); // fence lines themselves are masked too
+    }
+    if (fm) {
+      fence = { char: fm[1][0], len: fm[1].length };
+      return " ".repeat(line.length);
+    }
+    return maskInlineCodeSpans(line);
+  });
+  return masked.join("\n");
+}
+
+/** Mask inline backtick code spans in one line. Length-preserving. */
+function maskInlineCodeSpans(line) {
+  let out = "";
+  let i = 0;
+  while (i < line.length) {
+    if (line[i] !== "`") {
+      out += line[i];
+      i += 1;
+      continue;
+    }
+    let openEnd = i;
+    while (openEnd < line.length && line[openEnd] === "`") openEnd += 1;
+    const runLen = openEnd - i;
+    // Seek a closing run of EXACTLY runLen backticks (CommonMark's rule).
+    let k = openEnd;
+    let closeStart = -1;
+    while (k < line.length) {
+      if (line[k] !== "`") {
+        k += 1;
+        continue;
+      }
+      let runEnd = k;
+      while (runEnd < line.length && line[runEnd] === "`") runEnd += 1;
+      if (runEnd - k === runLen) {
+        closeStart = k;
+        break;
+      }
+      k = runEnd;
+    }
+    if (closeStart < 0) {
+      out += line.slice(i, openEnd); // unclosed run → literal text, mask nothing
+      i = openEnd;
+      continue;
+    }
+    const closeEnd = closeStart + runLen;
+    out += " ".repeat(closeEnd - i);
+    i = closeEnd;
+  }
+  return out;
+}
+
+/**
+ * Enumerate every COMPLETE HTML comment region in `content` as `{ start, end }`
+ * offsets (`start` at `<`, `end` one past the final `>`, so `content.slice(start, end)`
+ * is the whole comment including its markers). This is the one definition of where
+ * the comments are; `stripHtmlComments`, `validate-plan.mjs`'s `.md` anchor scanner
+ * and `bootstrap.mjs retire`'s anchor stamper all consume it, which is what keeps the
+ * validator/retire "sees ⇔ stamps" contract true by construction rather than by two
+ * regexes being kept in lockstep by hand.
+ *
+ * Semantics (deliberate):
+ *  - Comment delimiters inside a code span or fenced block are PROSE: they can
+ *    neither open nor close a region (D-010).
+ *  - HTML comments do NOT nest: the first `-->` closes, so a `<!--` inside a comment
+ *    body is ordinary text.
+ *  - An UNTERMINATED `<!--` yields NO span — the region is left alone rather than
+ *    swallowed to EOF (see the fail-safe note on `stripHtmlComments`). Never throws.
+ */
+export function htmlCommentSpans(content) {
+  if (!content) return [];
+  const mask = maskLiteralRegions(content);
+  const spans = [];
+  let cursor = 0;
+  for (;;) {
+    const openIdx = mask.indexOf("<!--", cursor);
+    if (openIdx < 0) break;
+    const closeIdx = mask.indexOf("-->", openIdx + 4);
+    if (closeIdx < 0) break; // unterminated → no span (fail safe)
+    const end = closeIdx + 3;
+    spans.push({ start: openIdx, end });
+    cursor = end;
+  }
+  return spans;
+}
+
 // DECISION plan_2026-07-14_79ee0f59/D-003 — the unterminated-comment branch below is
 // deliberate and load-bearing. Do NOT "fix" it to blank from a dangling `<!--` to EOF,
 // and do NOT make it throw: validate-plan.mjs's iteration hard-cap counter reads
@@ -106,31 +240,24 @@ export function blankCompressedSummaryBlock(content) {
  * raw ingests that example as if it were a real transition record. Callers must
  * strip first, scan second.
  *
- * Semantics (deliberate):
- *  - HTML comments do NOT nest: the first `-->` closes the comment, so a
- *    `<!--` appearing inside a comment body is ordinary text and is blanked.
- *  - An UNTERMINATED `<!--` (no closing `-->`) is left UNCHANGED rather than
- *    blanked-to-EOF. This fails SAFE: consumers of this helper include the
- *    iteration hard-cap counter, and blanking to EOF on a stray/typo'd opener
- *    would silently swallow real transition records and disable a safety cap.
- *    Over-counting is recoverable; under-counting is not. Never throws.
- *  - Non-comment text is returned byte-identical.
+ * Semantics (deliberate): those of `htmlCommentSpans` above — first `-->` wins,
+ * comments do not nest, an unterminated `<!--` is left UNCHANGED rather than
+ * blanked-to-EOF (fails SAFE: over-counting iterations is recoverable, under-counting
+ * is not), a delimiter inside a code span is prose, and non-comment text is returned
+ * byte-identical.
  */
 export function stripHtmlComments(content) {
   if (!content) return content;
+  const spans = htmlCommentSpans(content);
+  if (spans.length === 0) return content;
   let out = "";
   let cursor = 0;
-  for (;;) {
-    const openIdx = content.indexOf("<!--", cursor);
-    if (openIdx < 0) break;
-    const closeIdx = content.indexOf("-->", openIdx + 4);
-    if (closeIdx < 0) break; // unterminated → leave the remainder untouched (fail safe)
-    const end = closeIdx + 3;
-    out += content.slice(cursor, openIdx);
-    out += content.slice(openIdx, end).replace(/[^\n]/g, "");
+  for (const { start, end } of spans) {
+    out += content.slice(cursor, start);
+    out += content.slice(start, end).replace(/[^\n]/g, "");
     cursor = end;
   }
-  return cursor === 0 ? content : out + content.slice(cursor);
+  return out + content.slice(cursor);
 }
 
 // ---------------------------------------------------------------------------

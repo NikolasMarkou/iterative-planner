@@ -18,6 +18,7 @@ import {
   CHANGELOG_COMPRESSED_INLINE_RE,
   blankCompressedSummaryBlock,
   stripHtmlComments,
+  htmlCommentSpans,
   PLAN_ID_PATTERN,
   PLAN_ID_RE,
   DECISION_ID_NUM_PATTERN,
@@ -219,12 +220,24 @@ function isPivotPhase(s) {
 // route every Transition-History reader through this function. And do NOT "improve"
 // stripHtmlComments to blank an unterminated `<!--` to EOF: that would silently swallow
 // real `EXECUTE → REFLECT` records and disable the iteration hard cap (see shared.mjs).
+// DECISION plan_2026-07-14_79ee0f59/D-010 — the heading is located with a LINE-ANCHORED
+// match (`/^## Transition History:/m`), never a bare `stripped.indexOf("## Transition
+// History:")`. Do not "simplify" it back to indexOf. A substring search also matches the
+// heading's own NAME written mid-line in prose — and state.md's Change Manifest quotes it
+// verbatim (iteration 1 recorded: "All raw `state.indexOf(\"## Transition History:\")`
+// scans replaced..."). The block then began at the Change Manifest instead of the real
+// heading 45 lines later, so ~40 lines of prose were scanned as transition records. This
+// was INVISIBLE until CRITICAL 3 was fixed, because the code-span-blind comment scrub was
+// blanking the very lines it corrupted — two bugs cancelling out. Measured on this repo's
+// own state.md: the block started at line 17, the transition-legality check saw 14
+// transition-shaped prose lines, and the iteration hard-cap counter derived **0** from 3
+// real `EXECUTE → REFLECT` records. A heading is a LINE, so match it as one.
 function transitionHistoryBlock(state) {
   if (!state) return null;
   const stripped = stripHtmlComments(state);
-  const start = stripped.indexOf("## Transition History:");
-  if (start < 0) return null;
-  return stripped.slice(start);
+  const m = /^## Transition History:/m.exec(stripped);
+  if (!m) return null;
+  return stripped.slice(m.index);
 }
 
 function checkStateTransitions(planDir, issues) {
@@ -763,10 +776,24 @@ function parseDecisionsEntries(content) {
   // Blank the intra-plan COMPRESSED-SUMMARY block first (markers + body) so its
   // markdown headings ("## Summary (compressed)", "### Decision lookup", ...) —
   // written by bootstrap.mjs maybeCompressDecisions — are not parsed as decision
-  // entries. blankCompressedSummaryBlock preserves line count so reported line
-  // numbers stay accurate. Then strip remaining HTML comment blocks so the
-  // example schema in bootstrap.mjs (wrapped in <!-- ... -->) does not register.
-  const stripped = blankCompressedSummaryBlock(content).replace(/<!--[\s\S]*?-->/g, "");
+  // entries. Then blank the remaining HTML comment regions so the example schema
+  // in bootstrap.mjs (wrapped in <!-- ... -->) does not register as a real D-001.
+  //
+  // DECISION plan_2026-07-14_79ee0f59/D-010 — both scrubs are LINE-COUNT PRESERVING and
+  // the comment scrub is CODE-SPAN AWARE. Do NOT restore the regex that stood here:
+  //   blankCompressedSummaryBlock(content).replace(/<!--[\s\S]*?-->/g, "")
+  // It was wrong twice over. (1) It DELETED lines, so every line number this function
+  // reports was offset by the size of any stripped comment — it reported "D-007 (line 59)"
+  // for an entry at line 69 on this repo's own decisions.md. (2) It was blind to code
+  // spans, so a backticked `` `<!--` `` in an entry that merely *writes about* comments
+  // opened a phantom span that ran to the next `-->` in a LATER entry — silently
+  // deleting real entries. On this repo's own decisions.md it made D-008 and D-009
+  // vanish and emitted two FALSE ERRORs (a bogus "sequence broken … got D-010" and a
+  // bogus "missing **Complexity Assessment**"). The dangerous half is the inverse: a
+  // decision genuinely missing `**Trade-off**:` inside a swallowed span was reported by
+  // NOTHING. The check failed OPEN. See decisions.md D-010 and shared.mjs
+  // `htmlCommentSpans` — the single definition of where the comments are.
+  const stripped = stripHtmlComments(blankCompressedSummaryBlock(content));
   const lines = stripped.split("\n");
   const entries = [];
   const badHeaders = [];
@@ -1103,12 +1130,20 @@ function findAnchorsInFile(file, projectRoot) {
   // nor `retire`, so it is an anchor to NEITHER tool — the bootstrap.mjs "retire
   // stamps exactly what the validator scans" contract holds on malformed input.
   // A `#`- or `//`-style example inside a fenced code block is prose, not an anchor.
+  //
+  // DECISION plan_2026-07-14_79ee0f59/D-010 — the comment spans come from shared.mjs's
+  // `htmlCommentSpans`, NOT from a local `/<!--([\s\S]*?)-->/g`. Do not inline one back:
+  // that regex is code-span-blind, so a backticked `` `<!--` `` in prose opens a phantom
+  // span and the scanner then sees anchors inside doc examples (or misses a real one
+  // whose span boundary moved). That hole was previously only PAPERED OVER by policy —
+  // CLAUDE.md tells doc authors to use placeholder ids — which is a policy patch over a
+  // code bug. It is now closed in code. bootstrap.mjs retire's stamper consumes the SAME
+  // primitive, which is what makes the "the validator sees exactly what retire stamps"
+  // contract true by construction. Change one, change both. See decisions.md D-010.
   if (HTML_STYLE_EXTS.has(ext)) {
-    const htmlCommentRe = /<!--([\s\S]*?)-->/g;
-    let cm;
-    while ((cm = htmlCommentRe.exec(text)) !== null) {
-      const body = cm[1];
-      const bodyOffset = cm.index + 4; // skip past "<!--" (4 chars; block loop uses +2 for "/*")
+    for (const { start, end } of htmlCommentSpans(text)) {
+      const body = text.slice(start + 4, end - 3); // strip "<!--" and "-->"
+      const bodyOffset = start + 4; // (the block loop uses +2 for "/*")
       const innerRe = new RegExp(blockInnerRe.source, "g");
       let dm;
       while ((dm = innerRe.exec(body)) !== null) {

@@ -1337,3 +1337,295 @@ describe("validate-plan.mjs — changelog: encoding-aware + schema-driven", () =
     assert.ok(!/CREATE\\\(\\\+/.test(src), "the OP regex body reappeared in validate-plan.mjs");
   });
 });
+
+// ---------------------------------------------------------------------------
+// CRITICAL 3 (iter-2, D-010) — the decisions parser must not eat its own input.
+//
+// The deleted regex was `blankCompressedSummaryBlock(content).replace(/<!--[\s\S]*?-->/g, "")`.
+// It was wrong twice: it DELETED lines (so every reported line number was offset by
+// the size of any stripped comment), and it was blind to markdown code spans (so a
+// backticked `<!--` written in PROSE opened a phantom span that ran to the next `-->`
+// in a LATER entry, silently deleting everything between).
+//
+// RED-RUN EVIDENCE (recorded against a68d939, the pre-fix code, on this repo's own
+// plans/plan_2026-07-14_79ee0f59/decisions.md):
+//   ERROR [decisions-schema]: decisions.md D-NNN sequence broken at position 8: expected D-008, got D-010
+//   ERROR [decisions-schema]: decisions.md D-007 (line 59) is a PIVOT entry but missing **Complexity Assessment** block
+// Both FALSE. D-008 and D-009 exist (lines 84 and 91) — they were swallowed whole. D-007
+// is at line 69, not 59, and its **Complexity Assessment** is present at line 80. The
+// benign half is the two false ERRORs; the DANGEROUS half is that everything inside the
+// phantom span was invisible to validation, so a genuinely missing field would have gone
+// silently unreported. The check FAILED OPEN. The tests below pin both directions.
+// ---------------------------------------------------------------------------
+
+describe("decisions parser: code-span-aware, line-count-preserving (CRITICAL 3 / D-010)", () => {
+  const tempDirs = [];
+  function getTempDir() { const d = makeTempDir(); tempDirs.push(d); return d; }
+  afterEach(() => { while (tempDirs.length) removeTempDir(tempDirs.pop()); });
+
+  function schemaFindings(stdout) {
+    return stdout.split("\n").filter((l) => /\[decisions-schema\]/.test(l));
+  }
+
+  /** Overwrite the fixture plan's decisions.md and run the validator. */
+  function withDecisions(body) {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    writeFileSync(join(planDir, "decisions.md"), body);
+    return { ...run(cwd), planDir, body };
+  }
+
+  // K6 — the reproduced shape: a PIVOT entry that DISCUSSES a backticked `<!--`, and a
+  // later entry containing a backticked `-->`. Everything is schema-correct.
+  const K6_BODY = `# Decision Log
+*Plan: plan_2026-05-15_aaaabbbb*
+*Append-only.*
+
+## D-001 | EXPLORE → PLAN | 2026-05-15
+**Context**: fixture.
+**Decision**: fixture.
+**Trade-off**: a **at the cost of** b.
+**Reasoning**: fixture.
+
+## D-002 | PIVOT | 2026-05-15
+**Context**: the scrubber pairs a backticked \`<!--\` with a downstream closer.
+**What Failed**: the naive regex.
+**What Was Learned**: a delimiter in a code span is prose.
+**Root Cause Analysis**: code-span blindness.
+**Complexity Assessment**: no new files, no new abstractions.
+**Decision**: mask code spans before pairing delimiters.
+**Trade-off**: one shared primitive **at the cost of** a wider blast radius.
+**Reasoning**: four divergent regexes produced this bug three times.
+
+## D-003 | EXECUTE | 2026-05-15
+**Context**: the closing delimiter \`-->\` is likewise prose here.
+**Decision**: fixture.
+**Trade-off**: a **at the cost of** b.
+**Reasoning**: fixture.
+`;
+
+  it("K6: an entry that discusses `<!--` in a code span produces NO finding (was: 2 false ERRORs)", () => {
+    const r = withDecisions(K6_BODY);
+    assert.deepEqual(schemaFindings(r.stdout), [],
+      "a decision entry writing ABOUT html comments must not trip the schema check");
+  });
+
+  it("K6: the phantom span does not hide the entries inside it (D-002 and D-003 are seen)", () => {
+    // Pre-fix, the span from D-002's backticked opener to D-003's backticked closer
+    // deleted D-002's Complexity Assessment AND swallowed entries whole — which is how
+    // the real file produced a bogus "sequence broken ... got D-010".
+    const r = withDecisions(K6_BODY);
+    assert.ok(!/sequence broken/.test(r.stdout), "no entry may be swallowed");
+  });
+
+  it("K6: reported line numbers are EXACT (the old regex deleted lines and reported them offset)", () => {
+    // A genuine violation, placed AFTER a real multi-line HTML comment. The old
+    // line-DELETING scrub reported it short by the height of the comment.
+    const body = `# Decision Log
+*Plan: plan_2026-05-15_aaaabbbb*
+*Append-only.*
+
+<!-- Schema example — DO NOT REMOVE.
+     line 6
+     line 7
+     line 8
+## D-001 | EXPLORE → PLAN | YYYY-MM-DD
+**Context**: <template, not a real entry>
+-->
+
+## D-001 | EXPLORE → PLAN | 2026-05-15
+**Context**: fixture.
+**Decision**: fixture.
+**Reasoning**: fixture — this entry is genuinely missing its Trade-off line.
+`;
+    const r = withDecisions(body);
+    const trueLine = body.split("\n").findIndex((l) => l.startsWith("## D-001 | EXPLORE → PLAN | 2026-05-15")) + 1;
+    assert.equal(trueLine, 13, "sanity: the real D-001 header is on line 13 of the fixture");
+    const finding = schemaFindings(r.stdout).find((l) => /Trade-off/.test(l));
+    assert.ok(finding, `expected a missing-Trade-off finding, got: ${r.stdout}`);
+    assert.match(finding, new RegExp(`\\(line ${trueLine}\\)`),
+      `line number must equal the real line (${trueLine}); got: ${finding}`);
+  });
+
+  // K7 — THE FAIL-OPEN DIRECTION (the important one). Genuine violations positioned
+  // INSIDE what the old regex would have swallowed must STILL be reported.
+  // Cross-checked against a68d939: each of these produced NO finding there.
+  it("K7: a genuinely missing **Trade-off** INSIDE the would-be-swallowed span is still reported", () => {
+    const r = withDecisions(`# Decision Log
+*Plan: plan_2026-05-15_aaaabbbb*
+*Append-only.*
+
+## D-001 | EXPLORE → PLAN | 2026-05-15
+**Context**: this entry mentions a backticked \`<!--\` — the phantom opener.
+**Decision**: fixture.
+**Trade-off**: a **at the cost of** b.
+**Reasoning**: fixture.
+
+## D-002 | EXECUTE | 2026-05-15
+**Context**: this entry sits INSIDE the span the old regex swallowed.
+**Decision**: fixture.
+**Reasoning**: fixture — no Trade-off line anywhere. This MUST be reported.
+
+## D-003 | EXECUTE | 2026-05-15
+**Context**: and this one supplies the phantom closer \`-->\`.
+**Decision**: fixture.
+**Trade-off**: a **at the cost of** b.
+**Reasoning**: fixture.
+`);
+    const findings = schemaFindings(r.stdout);
+    assert.ok(findings.some((l) => /D-002/.test(l) && /Trade-off/.test(l)),
+      `D-002's missing Trade-off must be reported, not hidden. Got: ${findings.join(" | ") || "(none)"}`);
+  });
+
+  it("K7: a genuinely broken D-NNN sequence INSIDE the swallowed span is still reported", () => {
+    const r = withDecisions(`# Decision Log
+*Plan: plan_2026-05-15_aaaabbbb*
+*Append-only.*
+
+## D-001 | EXPLORE → PLAN | 2026-05-15
+**Context**: phantom opener here: \`<!--\`
+**Decision**: fixture.
+**Trade-off**: a **at the cost of** b.
+**Reasoning**: fixture.
+
+## D-005 | EXECUTE | 2026-05-15
+**Context**: the id jumps 001 -> 005. Phantom closer: \`-->\`
+**Decision**: fixture.
+**Trade-off**: a **at the cost of** b.
+**Reasoning**: fixture.
+`);
+    assert.match(r.stdout, /sequence broken/,
+      "a real gap in the D-NNN sequence must survive the scrub");
+  });
+
+  it("K7: a PIVOT genuinely missing **Complexity Assessment** INSIDE the span is still reported", () => {
+    const r = withDecisions(`# Decision Log
+*Plan: plan_2026-05-15_aaaabbbb*
+*Append-only.*
+
+## D-001 | EXPLORE → PLAN | 2026-05-15
+**Context**: phantom opener: \`<!--\`
+**Decision**: fixture.
+**Trade-off**: a **at the cost of** b.
+**Reasoning**: fixture.
+
+## D-002 | PIVOT | 2026-05-15
+**Context**: a real PIVOT entry with NO Complexity Assessment block.
+**Decision**: fixture.
+**Trade-off**: a **at the cost of** b.
+**Reasoning**: phantom closer: \`-->\`
+`);
+    assert.match(r.stdout, /D-002 \(line \d+\) is a PIVOT entry but missing \*\*Complexity Assessment\*\*/,
+      "a real PIVOT entry missing its Complexity Assessment must survive the scrub");
+  });
+
+  // K8 — the scrub must still do its ORIGINAL job. Over-masking (Pre-Mortem #2) would
+  // leave a REAL comment visible, and bootstrap's schema example would then parse as a
+  // phantom D-001 entry.
+  it("K8: bootstrap's real <!-- schema example --> still does NOT register as an entry", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    // Use the SHAPE bootstrap actually writes: a comment containing a `## D-001` heading.
+    writeFileSync(join(planDir, "decisions.md"), `# Decision Log
+*Plan: plan_2026-05-15_aaaabbbb*
+*Append-only. Never edit past entries.*
+
+<!-- Schema example — DO NOT REMOVE. Real entries follow this shape.
+     In-code anchors carry the plan-id prefix: \`# DECISION plan_2026-05-15_aaaabbbb/D-NNN\`.
+
+## D-001 | EXPLORE → PLAN | YYYY-MM-DD
+**Context**: <one-paragraph background>
+**Decision**: <chosen approach>
+**Trade-off**: <X> **at the cost of** <Y>
+**Reasoning**: <why>
+-->
+
+## D-001 | EXPLORE → PLAN | 2026-05-15
+**Context**: the one real entry.
+**Decision**: fixture.
+**Trade-off**: a **at the cost of** b.
+**Reasoning**: fixture.
+`);
+    const r = run(cwd);
+    // The template's `YYYY-MM-DD` header would be a BAD header, and its D-001 would
+    // collide with the real D-001, if the comment were not scrubbed. Note the comment
+    // body contains a backticked span — masking must not stop it being a comment.
+    assert.deepEqual(schemaFindings(r.stdout), [],
+      `the schema example must stay invisible. Got: ${r.stdout}`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// transitionHistoryBlock: the heading is a LINE, not a substring (D-010).
+//
+// Found while fixing CRITICAL 3: the block was located with a raw
+// `stripped.indexOf("## Transition History:")`, which also matches the heading's own
+// NAME quoted mid-line in prose. This repo's own state.md Change Manifest quotes it
+// verbatim, so the block began ~45 lines early, at the Change Manifest. Two bugs were
+// cancelling out: the code-span-blind comment scrub was blanking the very lines that
+// the early block start had wrongly included. Fixing CRITICAL 3 alone unmasked it —
+// measured live: 14 prose lines scanned as transition records (7 bogus [transition]
+// ERRORs), and the iteration hard-cap counter derived 0 from 3 real records.
+// ---------------------------------------------------------------------------
+
+describe("transitionHistoryBlock: heading matched at line start (D-010)", () => {
+  const tempDirs = [];
+  function getTempDir() { const d = makeTempDir(); tempDirs.push(d); return d; }
+  afterEach(() => { while (tempDirs.length) removeTempDir(tempDirs.pop()); });
+
+  it("a prose mention of the heading mid-line does not start the block early", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    // A Change Manifest note quoting the heading inside a code span — verbatim the
+    // shape from this repo's real state.md — plus a prose line carrying an arrow.
+    writeFileSync(join(planDir, "state.md"), `# Current State: EXECUTE
+## Iteration: 1
+## Current Plan Step: 1 of 5
+## Pre-Step Checklist (reset before each EXECUTE step)
+- [ ] Re-read state.md (this file)
+## Fix Attempts (resets per plan step)
+- (none yet for current step)
+## Change Manifest (current iteration)
+- [x] step-4 — all raw \`state.indexOf("## Transition History:")\` scans replaced.
+- NOTE: a stray opener would erase real \`EXECUTE → REFLECT\` records. Not a transition.
+## Last Transition: PLAN → EXECUTE (2026-05-15T11:45:00Z)
+## Transition History:
+- INIT → EXPLORE (task started, 2026-05-15T10:53:44Z)
+- EXPLORE → PLAN (gathered enough context, 2026-05-15T11:30:00Z)
+  - confidence: scope=deep, solutions=adequate, risks=clear
+- PLAN → EXECUTE (user approved, 2026-05-15T11:45:00Z)
+`);
+    const r = run(cwd);
+    assert.ok(!/\[transition\]/.test(r.stdout),
+      `Change Manifest prose must not be scanned as transition records. Got: ${r.stdout}`);
+  });
+
+  it("the iteration hard cap still counts real EXECUTE → REFLECT records (cannot under-count to 0)", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd, { iteration: 1 });
+    // 6 real records + a Change Manifest that quotes the heading in prose. Pre-fix the
+    // block started at the Change Manifest and the derived count came out wrong; the
+    // hard-cap ERROR must fire regardless of the (stale) `## Iteration: 1` declaration.
+    const records = Array.from({ length: 6 }, (_, i) => `- EXECUTE → REFLECT (iteration ${i + 1})`).join("\n");
+    writeFileSync(join(planDir, "state.md"), `# Current State: EXECUTE
+## Iteration: 1
+## Current Plan Step: 1 of 5
+## Pre-Step Checklist (reset before each EXECUTE step)
+- [ ] Re-read state.md (this file)
+## Fix Attempts (resets per plan step)
+- (none yet for current step)
+## Change Manifest (current iteration)
+- NOTE: raw \`state.indexOf("## Transition History:")\` scans replaced.
+## Last Transition: PLAN → EXECUTE (2026-05-15T11:45:00Z)
+## Transition History:
+- INIT → EXPLORE (task started, 2026-05-15T10:53:44Z)
+- EXPLORE → PLAN (gathered enough context, 2026-05-15T11:30:00Z)
+  - confidence: scope=deep, solutions=adequate, risks=clear
+- PLAN → EXECUTE (user approved, 2026-05-15T11:45:00Z)
+${records}
+`);
+    const r = run(cwd);
+    assert.match(r.stdout, /exceeds hard limit \(6\+\)/,
+      `the hard cap must see all 6 real records. Got: ${r.stdout}`);
+  });
+});

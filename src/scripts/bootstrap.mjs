@@ -21,6 +21,7 @@ import {
   extractField,
   splitChangelogFields,
   blankCompressedSummaryBlock,
+  htmlCommentSpans,
   COMPRESSED_SUMMARY_OPEN,
   COMPRESSED_SUMMARY_CLOSE,
   CHANGELOG_COMPRESSED_INLINE_RE,
@@ -1917,16 +1918,33 @@ function cmdRetire(planId) {
         let fileStamped = 0;
         let next;
         if (ANCHOR_HTML_EXTS.has(extname(e.name))) {
-          // `.md`: scope anchorRe to each CLOSED `<!-- … -->` span (the same model
-          // the validator's HTML scan uses). Prose, doc examples, and unclosed
-          // comments are outside any matched span and are left untouched.
+          // `.md`: scope anchorRe to each CLOSED `<!-- … -->` span. Prose, doc examples,
+          // and unclosed comments are outside every span and are left untouched.
+          //
+          // DECISION plan_2026-07-14_79ee0f59/D-010 — the spans come from shared.mjs's
+          // `htmlCommentSpans`, the SAME primitive validate-plan.mjs's `.md` anchor scan
+          // uses. Do NOT reintroduce the local `txt.replace(/<!--[\s\S]*?-->/g, …)` that
+          // stood here: it was code-span-blind (a backticked `` `<!--` `` in prose opened a
+          // phantom span), and — worse — this stamper and the validator's scanner are bound
+          // by the "the validator sees exactly what retire stamps" contract. Two hand-kept
+          // regexes are a lockstep invariant, i.e. a defect waiting to happen; one shared
+          // span enumeration makes the contract hold by construction. They move together or
+          // not at all. This is a WRITE path over SOURCE files, so a divergence here is not
+          // a wrong report — it is a wrong edit. See decisions.md D-010.
           // String.prototype.match/replace reset lastIndex per call, so reusing
-          // anchorRe inside the callback is safe.
-          next = txt.replace(/<!--[\s\S]*?-->/g, (span) => {
+          // anchorRe per span is safe.
+          const spans = htmlCommentSpans(txt);
+          let rebuilt = "";
+          let cur = 0;
+          for (const { start, end } of spans) {
+            rebuilt += txt.slice(cur, start);
+            const span = txt.slice(start, end);
             const hits = span.match(anchorRe);
             if (hits) fileStamped += hits.length;
-            return span.replace(anchorRe, "$1 [STALE]");
-          });
+            rebuilt += span.replace(anchorRe, "$1 [STALE]");
+            cur = end;
+          }
+          next = rebuilt + txt.slice(cur);
         } else {
           const hits = txt.match(anchorRe);
           fileStamped = hits ? hits.length : 0;

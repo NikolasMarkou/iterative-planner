@@ -15,6 +15,7 @@ import {
   splitChangelogFields,
   blankCompressedSummaryBlock,
   stripHtmlComments,
+  htmlCommentSpans,
   COMPRESSED_SUMMARY_OPEN,
   COMPRESSED_SUMMARY_CLOSE,
   CHANGELOG_COMPRESSED_INLINE_RE,
@@ -281,6 +282,138 @@ test("stripHtmlComments: falsy content is returned as-is", () => {
   assert.equal(stripHtmlComments(""), "");
   assert.equal(stripHtmlComments(null), null);
   assert.equal(stripHtmlComments(undefined), undefined);
+});
+
+// ---------------------------------------------------------------------------
+// Code-span awareness (iter-2 CRITICAL 3 / D-010).
+//
+// A comment delimiter written INSIDE a markdown code span or fenced block is
+// PROSE — it can neither open nor close a comment. Without this, an artifact that
+// merely *writes about* comment handling supplies a phantom opener that pairs with
+// the next `-->` anywhere downstream and swallows every line between, making that
+// content invisible to validation (fail-open). This is the reproduced CRITICAL 3.
+// ---------------------------------------------------------------------------
+
+test("stripHtmlComments: a backticked <!-- is PROSE and opens nothing (the CRITICAL 3 shape)", () => {
+  // The exact shape from this repo's own decisions.md: an entry discussing a
+  // backticked opener, a later entry containing a backticked closer. The old regex
+  // spanned between them and DELETED the lines in the middle.
+  const content = [
+    "**Decision**: the scrubber must ignore a backticked `<!--` token.",
+    "**Complexity Assessment**: no new files.",
+    "**Reasoning**: the closer `-->` is prose too.",
+  ].join("\n");
+  assert.equal(stripHtmlComments(content), content, "no span exists, so nothing may be blanked");
+});
+
+test("stripHtmlComments: a real comment ADJACENT to a code span is still blanked", () => {
+  // Over-masking guard (Pre-Mortem #2): masking code spans must not make real
+  // comments invisible — if it did, bootstrap's schema example would parse as a
+  // phantom D-001 entry.
+  const content = "text `<!--` more\n<!-- a real comment -->\ntail `-->` end";
+  const out = stripHtmlComments(content);
+  assert.equal(out, "text `<!--` more\n\ntail `-->` end");
+  assert.equal(out.split("\n").length, content.split("\n").length);
+});
+
+test("stripHtmlComments: backtick runs of length 1, 2 and 3 all mask their delimiters", () => {
+  // A run of N backticks is closed by a run of exactly N (CommonMark), which is how
+  // one writes a literal backtick inside a code span.
+  for (const n of [1, 2, 3]) {
+    const tick = "`".repeat(n);
+    const content = `pre ${tick}<!--${tick} post`;
+    assert.equal(stripHtmlComments(content), content, `run length ${n} must mask`);
+  }
+});
+
+test("stripHtmlComments: an UNBALANCED backtick masks nothing (a stray tick must not blind the scanner)", () => {
+  // Deliberately conservative: an unclosed run is ordinary text. If it masked to
+  // end-of-line, one stray backtick could hide a real comment opener.
+  const content = "a stray ` tick\n<!-- real -->\ntail";
+  assert.equal(stripHtmlComments(content), "a stray ` tick\n\ntail");
+});
+
+test("stripHtmlComments: a delimiter inside a fenced code block is prose (``` and ~~~)", () => {
+  for (const f of ["```", "~~~"]) {
+    const content = `intro\n${f}\n<!-- this is a code sample, not a comment -->\n${f}\noutro`;
+    assert.equal(stripHtmlComments(content), content, `fence ${f} must mask its body`);
+  }
+});
+
+test("stripHtmlComments: a fenced block cannot swallow a REAL comment that follows it", () => {
+  const content = "```js\nconst re = /<!--/;\n```\n<!-- real -->\nend";
+  const out = stripHtmlComments(content);
+  assert.equal(out, "```js\nconst re = /<!--/;\n```\n\nend");
+  assert.equal(out.split("\n").length, content.split("\n").length);
+});
+
+test("stripHtmlComments: an info-string fence closes on a bare fence of >= the opening length", () => {
+  const content = "````text\n<!-- inside -->\n````\n<!-- outside -->\n";
+  const out = stripHtmlComments(content);
+  assert.match(out, /<!-- inside -->/, "fenced body is literal and must survive");
+  assert.doesNotMatch(out, /outside/, "the comment after the fence is real and must be blanked");
+});
+
+test("stripHtmlComments: line count is preserved for every fixture (line numbers stay true)", () => {
+  const fixtures = [
+    "a\n<!-- x -->\nb",
+    "a\n<!--\nmulti\nline\n-->\nb",
+    "`<!--`\nreal\n`-->`",
+    "```\n<!-- fenced -->\n```",
+    "<!-- unterminated\nrest",
+    "no comments at all",
+  ];
+  for (const f of fixtures) {
+    assert.equal(
+      stripHtmlComments(f).split("\n").length,
+      f.split("\n").length,
+      `line count must survive: ${JSON.stringify(f)}`
+    );
+  }
+});
+
+// ---------------------------------------------------------------------------
+// htmlCommentSpans — the single definition of "where the comments are" (D-010).
+// ---------------------------------------------------------------------------
+
+test("htmlCommentSpans: returns offsets that slice the comment back out of the ORIGINAL text", () => {
+  const content = "pre <!-- one --> mid <!-- two --> post";
+  const spans = htmlCommentSpans(content);
+  assert.equal(spans.length, 2);
+  assert.equal(content.slice(spans[0].start, spans[0].end), "<!-- one -->");
+  assert.equal(content.slice(spans[1].start, spans[1].end), "<!-- two -->");
+});
+
+test("htmlCommentSpans: a phantom (backticked) opener yields NO span", () => {
+  assert.deepEqual(htmlCommentSpans("an entry about `<!--` and later `-->`"), []);
+});
+
+test("htmlCommentSpans: an unterminated opener yields NO span (fail-safe, never throws)", () => {
+  assert.deepEqual(htmlCommentSpans("<!-- dangling\nmore text"), []);
+});
+
+test("htmlCommentSpans: falsy content yields an empty list", () => {
+  assert.deepEqual(htmlCommentSpans(""), []);
+  assert.deepEqual(htmlCommentSpans(null), []);
+});
+
+test("htmlCommentSpans: stripHtmlComments blanks exactly the spans it reports (one definition)", () => {
+  // The anchor scanner (validate-plan.mjs) and the anchor stamper (bootstrap.mjs
+  // retire) are bound by a "sees ⇔ stamps" contract. Both consume THIS function, so
+  // the contract holds by construction rather than by two regexes kept in lockstep.
+  const content = "a\n<!-- one -->\n`<!--`\n<!-- two -->\nz";
+  const spans = htmlCommentSpans(content);
+  const stripped = stripHtmlComments(content);
+  assert.equal(spans.length, 2, "the phantom backticked opener must not produce a third span");
+  // Blanking keeps LINE count, not byte offsets (non-newline chars are removed — the
+  // same idiom as blankCompressedSummaryBlock), so compare content, not offsets.
+  for (const { start, end } of spans) {
+    const body = content.slice(start, end).replace(/\n/g, "");
+    assert.ok(body.length > 0);
+    assert.ok(!stripped.includes(body), `span ${JSON.stringify(body)} must be gone from the output`);
+  }
+  assert.equal(stripped, "a\n\n`<!--`\n\nz");
+  assert.equal(stripped.split("\n").length, content.split("\n").length);
 });
 
 // ---------------------------------------------------------------------------
