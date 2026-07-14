@@ -133,7 +133,7 @@ describe("bootstrap.mjs", () => {
 
       const planDir = getPointer(dir);
       assert.ok(planDir, "pointer should be set");
-      assert.match(planDir, /^plan_\d{4}-\d{2}-\d{2}_[0-9a-f]{8}$/, "dir name format");
+      assert.match(planDir, /^plan-\d{4}-\d{2}-\d{2}T\d{6}-[0-9a-f]{8}$/, "dir name format");
 
       // All expected files exist
       const base = join(dir, "plans", planDir);
@@ -288,7 +288,7 @@ describe("bootstrap.mjs", () => {
       assert.equal(r.exitCode, 0);
       assert.ok(r.stdout.includes("EXPLORE"), "should show EXPLORE state");
       assert.ok(r.stdout.includes("Status test goal"), "should show goal");
-      assert.ok(r.stdout.includes("plan_"), "should show plan dir name");
+      assert.ok(r.stdout.includes("plan-"), "should show plan dir name");
     });
 
     it("exits 0 with message when no active plan", () => {
@@ -606,7 +606,7 @@ describe("bootstrap.mjs", () => {
       assert.ok(!/^# Current State: CLOSE\b/m.test(state), "original plan must not be closed");
 
       // And no second plan directory may have been created.
-      const plans = readdirSync(join(dir, "plans")).filter((n) => n.startsWith("plan_"));
+      const plans = readdirSync(join(dir, "plans")).filter((n) => /^plan[-_]/.test(n));
       assert.equal(plans.length, 1, `exactly one plan dir should exist, got: ${plans.join(", ")}`);
     });
 
@@ -785,7 +785,7 @@ describe("bootstrap.mjs", () => {
       // Plan B is active
       const r = run(dir, "list");
       assert.equal(r.exitCode, 0);
-      const lines = r.stdout.split("\n").filter((l) => l.includes("plan_"));
+      const lines = r.stdout.split("\n").filter((l) => /plan[-_]\d{4}/.test(l));
       assert.equal(lines.length, 2, "should list 2 plans");
       const activeLine = lines.find((l) => l.includes("active"));
       assert.ok(activeLine, "one plan should be active");
@@ -1162,7 +1162,7 @@ describe("bootstrap.mjs", () => {
       }
       const consolidated = readFileSync(join(dir, "plans", "FINDINGS.md"), "utf-8");
       // Count plan sections
-      const sections = consolidated.match(/\n## plan_/g) || [];
+      const sections = consolidated.match(/\n## plan[-_]/g) || [];
       assert.equal(sections.length, 4, "should keep exactly 4 plan sections");
       // Newest (last created) should be present
       assert.ok(consolidated.includes(planDirs[9]), "newest plan should be present");
@@ -1186,7 +1186,7 @@ describe("bootstrap.mjs", () => {
         run(dir, "close");
       }
       const consolidated = readFileSync(join(dir, "plans", "FINDINGS.md"), "utf-8");
-      const sections = consolidated.match(/\n## plan_/g) || [];
+      const sections = consolidated.match(/\n## plan[-_]/g) || [];
       assert.equal(sections.length, 3, "all 3 plan sections should remain");
       for (const pd of planDirs) {
         assert.ok(consolidated.includes(pd), `plan ${pd} should still be present`);
@@ -1216,7 +1216,7 @@ describe("bootstrap.mjs", () => {
       assert.ok(result.includes("<!-- /COMPRESSED-SUMMARY -->"), "close marker preserved");
       assert.ok(result.includes("Key finding"), "summary content preserved");
       // Should have at most 4 plan sections
-      const sections = result.match(/\n## plan_/g) || [];
+      const sections = result.match(/\n## plan[-_]/g) || [];
       assert.ok(sections.length <= 4, `should have ≤4 sections, got ${sections.length}`);
     });
   });
@@ -2980,7 +2980,7 @@ describe("bootstrap.mjs", () => {
       }
       const results = await Promise.all(realProcs);
 
-      const dirs = readdirSync(join(dir, "plans")).filter((n) => n.startsWith("plan_"));
+      const dirs = readdirSync(join(dir, "plans")).filter((n) => /^plan[-_]/.test(n));
       const pointer = (() => {
         try { return readFileSync(join(dir, "plans", ".current_plan"), "utf-8").trim(); } catch { return null; }
       })();
@@ -3648,26 +3648,33 @@ describe("bootstrap.mjs: plan-id grammar union at the four enumeration/scan site
 
   it("INDEX.md date column still works for a LEGACY plan id", () => {
     const dir = getTempDir();
+    // `new` mints the NEW format now (step 3), so a legacy dir has to be staged by hand —
+    // which is exactly the on-disk situation every pre-v2.36.0 project is in.
     run(dir, "new", "Legacy index date");
-    const legacy = getPointer(dir);
-    const expected = legacy.slice("plan_".length, "plan_".length + 10); // YYYY-MM-DD
+    const minted = getPointer(dir);
+    renameSync(join(dir, "plans", minted), join(dir, "plans", LEG_A));
+    writeFileSync(join(dir, "plans", ".current_plan"), `${LEG_A}\n`);
     run(dir, "close");
     const index = readFileSync(join(dir, "plans", "INDEX.md"), "utf-8");
-    const row = index.split("\n").find((l) => l.includes(`| ${legacy} |`));
-    assert.ok(row, `INDEX.md must carry a row for ${legacy}, got:\n${index}`);
-    assert.ok(row.includes(expected), `date column must read ${expected}, got: ${row}`);
+    const row = index.split("\n").find((l) => l.includes(`| ${LEG_A} |`));
+    assert.ok(row, `INDEX.md must carry a row for ${LEG_A}, got:\n${index}`);
+    assert.ok(row.includes("2026-01-04"), `date column must read 2026-01-04, got: ${row}`);
+    assert.ok(!row.includes("unknown"), `date column must not be "unknown", got: ${row}`);
   });
 
   it("list enumerates BOTH a legacy and a new-format plan directory", () => {
     const dir = getTempDir();
-    run(dir, "new", "Legacy plan");
-    const legacy = getPointer(dir);
+    // The minted dir is NEW-format (step 3); the legacy one is staged by hand, as it
+    // would already be on disk in any project bootstrapped before v2.36.0.
+    run(dir, "new", "Minted plan");
+    const minted = getPointer(dir);
     run(dir, "close");
-    mkdirSync(join(dir, "plans", NEW_A), { recursive: true });
+    mkdirSync(join(dir, "plans", LEG_A), { recursive: true });
     const r = run(dir, "list");
     assert.equal(r.exitCode, 0, `list must exit 0, got:\n${r.stdout}${r.stderr}`);
-    assert.ok(r.stdout.includes(legacy), `list must show the legacy dir, got:\n${r.stdout}`);
-    assert.ok(r.stdout.includes(NEW_A), `list must show the new-format dir, got:\n${r.stdout}`);
+    assert.match(minted, /^plan-\d{4}-\d{2}-\d{2}T\d{6}-[0-9a-f]{8}$/, "minted dir must be new-format");
+    assert.ok(r.stdout.includes(minted), `list must show the new-format dir, got:\n${r.stdout}`);
+    assert.ok(r.stdout.includes(LEG_A), `list must show the legacy dir, got:\n${r.stdout}`);
     assert.ok(r.stdout.includes("(2 total)"), `list must count 2 plans, got:\n${r.stdout}`);
   });
 
@@ -3682,5 +3689,125 @@ describe("bootstrap.mjs: plan-id grammar union at the four enumeration/scan site
     assert.ok(r.stderr.includes("WARNING"), `orphan warning expected, got:\n${r.stderr}`);
     assert.ok(r.stderr.includes(NEW_A),
       `orphan scan must name the new-format directory ${NEW_A}, got:\n${r.stderr}`);
+  });
+});
+
+// ===========================================================================
+// GENERATION cutover: `new` mints `plan-YYYY-MM-DDTHHMMSS-XXXXXXXX`, UTC and
+// colon-free (v2.36.0, plan_2026-07-14_317362c4 step 3, D-001).
+//
+// Read paths accept BOTH grammars (step 1/2 above); only generation is
+// new-only. These tests pin the WRITE side: shape, timezone, colon-freedom,
+// the pointer, the pre-mkdir guard, and coexistence with legacy dirs on disk.
+// ===========================================================================
+describe("bootstrap.mjs: new-format plan-id generation", () => {
+  const tempDirs = [];
+  function getTempDir() { const d = makeTempDir(); tempDirs.push(d); return d; }
+  afterEach(() => { while (tempDirs.length) removeTempDir(tempDirs.pop()); });
+
+  const NEW_RE = /^plan-\d{4}-\d{2}-\d{2}T\d{6}-[0-9a-f]{8}$/;
+
+  it("mints a dir matching plan-YYYY-MM-DDTHHMMSS-XXXXXXXX and points .current_plan at it", () => {
+    const dir = getTempDir();
+    const r = run(dir, "new", "generation shape");
+    assert.equal(r.exitCode, 0, `stderr: ${r.stderr}`);
+    const planDir = getPointer(dir);
+    assert.match(planDir, NEW_RE, "generated dir name must match the new write grammar");
+    assert.ok(existsSync(join(dir, "plans", planDir)), "the directory named by the pointer must exist");
+    const dirs = readdirSync(join(dir, "plans")).filter((n) => /^plan[-_]/.test(n));
+    assert.deepEqual(dirs, [planDir], "pointer must name the one dir that was created");
+  });
+
+  it("contains NO colon — a colon is illegal in a Win32/NTFS filename (D-001)", () => {
+    const dir = getTempDir();
+    run(dir, "new", "colon-free");
+    const planDir = getPointer(dir);
+    assert.ok(!planDir.includes(":"),
+      `plan-dir name must be colon-free or mkdir fails on Windows (NTFS reads ":" as an Alternate Data Stream); got: ${planDir}`);
+    // Belt: nothing else Win32 forbids in a filename either.
+    for (const ch of ['<', '>', '"', '/', '\\', '|', '?', '*']) {
+      assert.ok(!planDir.includes(ch), `plan-dir name must not contain ${ch}; got: ${planDir}`);
+    }
+  });
+
+  it("matches the strict WRITE grammar and the READ union, and is NOT legacy", async () => {
+    const { PLAN_ID_RE, ANY_PLAN_ID_RE, LEGACY_PLAN_ID_RE } = await import(`file://${SHARED}`);
+    const dir = getTempDir();
+    run(dir, "new", "grammar cross-check");
+    const planDir = getPointer(dir);
+    assert.ok(PLAN_ID_RE.test(planDir), `must match PLAN_ID_RE, got: ${planDir}`);
+    assert.ok(ANY_PLAN_ID_RE.test(planDir), `must match ANY_PLAN_ID_RE, got: ${planDir}`);
+    assert.ok(!LEGACY_PLAN_ID_RE.test(planDir), `must NOT match LEGACY_PLAN_ID_RE, got: ${planDir}`);
+  });
+
+  it("timestamps in UTC, not local time", () => {
+    const before = new Date();
+    const dir = getTempDir();
+    run(dir, "new", "utc stamp");
+    const after = new Date();
+    const planDir = getPointer(dir);
+    const m = /^plan-(\d{4})-(\d{2})-(\d{2})T(\d{2})(\d{2})(\d{2})-[0-9a-f]{8}$/.exec(planDir);
+    assert.ok(m, `unparseable plan dir: ${planDir}`);
+    const stamped = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
+    // Truncation to whole seconds can put the stamp up to 999ms before `before`.
+    assert.ok(stamped >= before.getTime() - 1000 && stamped <= after.getTime(),
+      `stamp ${planDir} must be UTC-now (in [${before.toISOString()}, ${after.toISOString()}]); a local-time stamp fails this in every non-UTC zone`);
+    // Independent of the window check: the stamp must equal today's UTC date, not the local one.
+    assert.equal(`${m[1]}-${m[2]}-${m[3]}`, after.toISOString().slice(0, 10), "date segment must be the UTC date");
+  });
+
+  it("state.md/decisions.md preamble carries the generated new-format id", () => {
+    const dir = getTempDir();
+    run(dir, "new", "preamble id");
+    const planDir = getPointer(dir);
+    const decisions = readPlanFile(dir, planDir, "decisions.md");
+    assert.ok(decisions.includes(`*Plan: ${planDir}*`),
+      `decisions.md preamble must name the new-format id, got:\n${decisions.slice(0, 200)}`);
+  });
+
+  it("a legacy dir on disk coexists with a freshly minted one: list, status and validate see BOTH", () => {
+    const dir = getTempDir();
+    const LEGACY = "plan_2026-01-01_deadbeef";
+    run(dir, "new", "coexistence");
+    const minted = getPointer(dir);
+    assert.match(minted, NEW_RE);
+    // Stage a legacy plan dir alongside — the pre-v2.36.0 state of every real project.
+    mkdirSync(join(dir, "plans", LEGACY), { recursive: true });
+    writeFileSync(join(dir, "plans", LEGACY, "state.md"), "# Current State: CLOSE\n## Iteration: 1\n");
+
+    const list = run(dir, "list");
+    assert.equal(list.exitCode, 0, `list must exit 0, got:\n${list.stdout}${list.stderr}`);
+    assert.ok(list.stdout.includes(minted), `list must show the new dir, got:\n${list.stdout}`);
+    assert.ok(list.stdout.includes(LEGACY), `list must show the legacy dir, got:\n${list.stdout}`);
+
+    const status = run(dir, "status");
+    assert.equal(status.exitCode, 0, `status must exit 0, got:\n${status.stderr}`);
+    assert.ok(status.stdout.includes(minted),
+      `status must resolve the new-format active plan, got:\n${status.stdout}`);
+  });
+
+  it("`new` inside a plans/ dir holding a legacy plan still succeeds (no grammar collision)", () => {
+    const dir = getTempDir();
+    mkdirSync(join(dir, "plans", "plan_2026-01-01_deadbeef"), { recursive: true });
+    const r = runFull(dir, "new", "beside legacy");
+    assert.equal(r.exitCode, 0, `new must succeed, got:\n${r.stdout}${r.stderr}`);
+    assert.match(getPointer(dir), NEW_RE);
+  });
+
+  it("the pre-mkdir guard exists: a name failing PLAN_ID_RE is never written to disk", () => {
+    // The guard is unreachable from the CLI by construction (that is the point of it), so
+    // pin it at the source level: the generated name is asserted against the WRITE grammar
+    // BEFORE the `mkdirSync`, and the failure path throws instead of creating anything.
+    const src = readFileSync(BOOTSTRAP, "utf-8");
+    const iGuard = src.indexOf("if (!PLAN_ID_RE.test(planDirName))");
+    assert.ok(iGuard > 0, "cmdNewInner must assert the generated id against PLAN_ID_RE");
+    const iMkdir = src.indexOf('mkdirSync(join(planDir, "checkpoints")');
+    assert.ok(iMkdir > 0, "cmdNewInner must still create the plan dir");
+    assert.ok(iGuard < iMkdir, "the PLAN_ID_RE assertion must run BEFORE any mkdir touches disk");
+    assert.ok(src.slice(iGuard, iMkdir).includes('e.code = "EBADPLANID"'),
+      "the guard must throw a structured EBADPLANID error (process.exit would leak the lock)");
+    // And the wrapper must recognize that code, or the lock leaks and the message is a stack trace.
+    assert.ok(src.includes('err.code === "EBADPLANID"'),
+      "cmdNew must handle EBADPLANID: release the lock, print the message, exit 1");
   });
 });

@@ -10,7 +10,10 @@
 //   node bootstrap.mjs close                   Close active plan (preserves directory)
 //   node bootstrap.mjs list                    Show all plan directories (active and closed)
 //
-// Creates plans/plan_YYYY-MM-DD_XXXXXXXX/ (date + 8-char hex seed) in cwd.
+// Creates plans/plan-YYYY-MM-DDTHHMMSS-XXXXXXXX/ (UTC timestamp + 8-char hex seed) in cwd.
+// Dirs created before v2.36.0 use the legacy plan_YYYY-MM-DD_XXXXXXXX shape; they are still
+// read by every command, but are never minted again (shared.mjs D-005 / D-003: one write
+// grammar, one read union).
 // Writes plans/.current_plan with the directory name for discovery.
 // Requires Node.js 18+ (guaranteed by Claude Code).
 
@@ -25,6 +28,7 @@ import {
   COMPRESSED_SUMMARY_OPEN,
   COMPRESSED_SUMMARY_CLOSE,
   CHANGELOG_COMPRESSED_INLINE_RE,
+  PLAN_ID_RE,
   ANY_PLAN_ID_RE,
   PLAN_DIR_PREFIX_RE,
   PLAN_SECTION_RE,
@@ -1140,14 +1144,14 @@ function cmdNew(goal, force) {
   }
 
   // Run inner. cmdNewInner throws structured errors (code = "EACTIVE" /
-  // "ECREATE") for paths that previously called process.exit() directly —
-  // process.exit skips finally blocks, leaking the lock. We catch here,
-  // release the lock, THEN exit with the appropriate code.
+  // "ECREATE" / "EBADPLANID") for paths that previously called process.exit()
+  // directly — process.exit skips finally blocks, leaking the lock. We catch
+  // here, release the lock, THEN exit with the appropriate code.
   let exitCode = 0;
   try {
     cmdNewInner(goal, force);
   } catch (err) {
-    if (err && (err.code === "EACTIVE" || err.code === "ECREATE")) {
+    if (err && (err.code === "EACTIVE" || err.code === "ECREATE" || err.code === "EBADPLANID")) {
       if (err.message) console.error(err.message);
       exitCode = 1;
     } else {
@@ -1207,9 +1211,28 @@ function cmdNewInner(goal, force) {
 
   const now = new Date();
   const timestamp = now.toISOString().replace(/\.\d{3}Z$/, "Z");
-  const dateStr = now.toISOString().slice(0, 10);
+  // DECISION plan_2026-07-14_317362c4/D-001 — the plan-dir stamp is UTC and DELIBERATELY
+  // colon-free: `plan-2026-07-14T051317-317362c4`, not the ISO-8601 `…T05:13:17…`. Do NOT
+  // "restore" the colons for spec purity — `:` is illegal in a Win32/NTFS filename (it
+  // denotes an Alternate Data Stream), and this repo ships build.ps1 and documents Windows
+  // as a first-class install path, so mkdirSync would simply fail there. `toISOString()` is
+  // the UTC source (never local time: plan dirs from two machines must sort consistently),
+  // sliced to seconds; stripping the colons keeps HHMMSS fixed-width, so lexical order still
+  // equals chronological order — which cmdList() relies on. See decisions.md D-001.
+  const stampStr = now.toISOString().slice(0, 19).replace(/:/g, ""); // YYYY-MM-DDTHHMMSS
   const hexStr = randomBytes(4).toString("hex");
-  const planDirName = `plan_${dateStr}_${hexStr}`;
+  const planDirName = `plan-${stampStr}-${hexStr}`;
+  // Assert the WRITE grammar before anything touches disk. A dir that fails PLAN_ID_RE is a
+  // dir readPointer() rejects and validate-plan.mjs ERRORs on — better to refuse to mint it
+  // than to leave an unusable plan dir (and a dangling pointer) behind.
+  if (!PLAN_ID_RE.test(planDirName)) {
+    const e = new Error(
+      `ERROR: internal — generated plan-id "${planDirName}" does not match the plan-id grammar.\n` +
+      `  Refusing to create the directory. This is a bug in bootstrap.mjs; nothing was written.`
+    );
+    e.code = "EBADPLANID";
+    throw e;
+  }
   const planDir = join(plansDir, planDirName);
 
   // Check if consolidated files exist for cross-plan context seeding
@@ -1729,7 +1752,7 @@ function cmdRetire(planId) {
   // must be able to parse a legacy id. A new-only regex here makes retire unable to act on
   // the only plans that ever need retiring.
   if (!ANY_PLAN_ID_RE.test(planId)) {
-    console.error(`ERROR: "${planId}" is not a valid plan-id (expected plan_YYYY-MM-DD_XXXXXXXX).`);
+    console.error(`ERROR: "${planId}" is not a valid plan-id (expected plan-YYYY-MM-DDTHHMMSS-XXXXXXXX, or legacy plan_YYYY-MM-DD_XXXXXXXX).`);
     process.exit(1);
   }
   if (readPointer() === planId) {

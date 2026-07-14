@@ -807,7 +807,7 @@ describe("validate-plan.mjs --pre-step gate", () => {
     const cwd = getTempDir();
     const b = spawnSync("node", [BOOTSTRAP, "new", "probe"], { cwd, encoding: "utf-8", timeout: 15000 });
     assert.equal(b.status, 0, `bootstrap new failed: ${b.stderr}`);
-    const planId = readdirSync(join(cwd, "plans")).find((d) => d.startsWith("plan_"));
+    const planId = readdirSync(join(cwd, "plans")).find((d) => /^plan[-_]/.test(d));
     const statePath = join(cwd, "plans", planId, "state.md");
     let state = readFileSync(statePath, "utf-8");
     // Guard: the fixture is only meaningful if the template comment is really there.
@@ -828,7 +828,7 @@ describe("validate-plan.mjs --pre-step gate", () => {
     const cwd = getTempDir();
     const b = spawnSync("node", [BOOTSTRAP, "new", "probe"], { cwd, encoding: "utf-8", timeout: 15000 });
     assert.equal(b.status, 0, `bootstrap new failed: ${b.stderr}`);
-    const planId = readdirSync(join(cwd, "plans")).find((d) => d.startsWith("plan_"));
+    const planId = readdirSync(join(cwd, "plans")).find((d) => /^plan[-_]/.test(d));
     const statePath = join(cwd, "plans", planId, "state.md");
     let state = readFileSync(statePath, "utf-8");
     state = state.replace(
