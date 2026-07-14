@@ -23,7 +23,7 @@ reasons it might still be wrong, despite passing verification.
 4. **Assumption drift**: Were any plan assumptions invalidated during execution?
 5. **Side effects**: Could the changes break something not covered by verification?
 6. **Ghost patterns**: Are there lingering artifacts from failed approaches?
-   - For Python/software-engineering tasks, check changed code against the 20-item anti-pattern checklist in `references/python-software.md` § C.
+   - For Python/software-engineering tasks, check changed code against `references/python-software.md` § C.12 Anti-pattern checklist (20 items). Skip for non-software plans.
 7. **Anchor quality**: Are placed `# DECISION <plan-id>/D-NNN` anchors qualified (plan-id prefix, v2.14.0+) and at the right granularity? Do they explain what NOT to do, not just what was done?
 8. **Decisions.md schema**: Does each entry follow the canonical schema in `references/file-formats.md` for its entry type? Trade-off line present? Complexity Assessment for PIVOTs?
 9. **Changelog scan (v2.15.0+)**: read `{plan-dir}/changelog.md` for this iteration. Surface:

@@ -4,7 +4,7 @@
 
 ## A. Software-design models (any language)
 
-Compact mental models for software design, language-agnostic. Use them in EXPLORE (frame the problem), PLAN (justify a structure), and REFLECT (catch an anti-pattern). Each entry: definition + when to use it / implication.
+Compact mental models for software design, language-agnostic. Use them in PLAN (justify a structure) and REFLECT (catch an anti-pattern). Each entry: definition + when to use it / implication.
 
 ### Already covered elsewhere — do not restate
 
@@ -131,7 +131,7 @@ Mental shifts: "make it work" → "manage complexity"; "solve the problem" → "
 
 ## B. Python architecture patterns
 
-Condensed from Cosmic Python (Percival & Gregory) plus Hettinger, McKinney, Montani, Shaw. These are the structural patterns for Python software with non-trivial business logic. Each entry: when-to-use + the smallest illustrative form. **Read §B.16 (when NOT to apply) first** — most code should NOT reach for these.
+Condensed from Cosmic Python (Percival & Gregory) plus Hettinger, McKinney, Montani, Shaw. These are the structural patterns for Python software with non-trivial business logic. Each entry: when-to-use + the smallest illustrative form. **Read § B.16 When NOT to apply these patterns first** — most code should NOT reach for these.
 
 ### B.1 Dependency Inversion + Hexagonal (Ports & Adapters)
 
@@ -365,7 +365,7 @@ Decision matrix — reach for a pattern only when the situation on the left is r
 
 ## C. Python style + anti-patterns
 
-Terse, table-first. Distilled from van Rossum, Langa, Hettinger, Katriel, McKinney, Reitz, Montani, Shaw. The 20-item checklist in C.11 is the REVIEW GATE — run it in REFLECT.
+Terse, table-first. Distilled from van Rossum, Langa, Hettinger, Katriel, McKinney, Reitz, Montani, Shaw. The REVIEW GATE is the 20-item § C.12 Anti-pattern checklist — run it in REFLECT.
 
 ### C.1 Mindset
 
@@ -416,7 +416,7 @@ Dict/set comps and `{k: f(v) for ...}` over loops. If a comprehension exceeds 88
 
 ### C.6 Function patterns
 
-Guard clauses over nested `if` (return early; no pyramid of doom). One logical step per function — if the name needs "and", split it. Keyword-only args via `*` for booleans/flags (`def f(x, *, verbose=False)`); pass them by keyword at the call site (`create_user("alice", is_admin=True)`). Generators (`yield`) for large/streamed sequences. `@functools.cache` / `lru_cache` for pure functions. (Class vs function and Hettinger patterns: see Section B.10.)
+Guard clauses over nested `if` (return early; no pyramid of doom). One logical step per function — if the name needs "and", split it. Keyword-only args via `*` for booleans/flags (`def f(x, *, verbose=False)`); pass them by keyword at the call site (`create_user("alice", is_admin=True)`). Generators (`yield`) for large/streamed sequences. `@functools.cache` / `lru_cache` for pure functions. (Class vs function and Hettinger patterns: see § B.13 Class architecture.)
 
 ### C.7 Type annotations
 
