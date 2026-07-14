@@ -22,6 +22,13 @@ import {
   CHANGELOG_COMPRESSED_INLINE_RE,
   PLAN_ID_PATTERN,
   PLAN_ID_RE,
+  LEGACY_PLAN_ID_PATTERN,
+  LEGACY_PLAN_ID_RE,
+  ANY_PLAN_ID_PATTERN,
+  ANY_PLAN_ID_RE,
+  PLAN_DIR_PREFIX_RE,
+  PLAN_SECTION_RE,
+  planDateFromId,
   DECISION_ID_NUM_PATTERN,
 } from "./shared.mjs";
 
@@ -418,18 +425,57 @@ test("htmlCommentSpans: stripHtmlComments blanks exactly the spans it reports (o
 });
 
 // ---------------------------------------------------------------------------
-// PLAN_ID_RE / PLAN_ID_PATTERN (defect #4 — the grammar bootstrap.mjs and
-// validate-plan.mjs each used to define separately, with DIFFERENT hex tails)
+// Plan-id grammars (defect #4 — the grammar bootstrap.mjs and validate-plan.mjs each
+// used to define separately, with DIFFERENT hex tails).
+//
+// v2.36.0 (D-003): the ONE grammar became one WRITE grammar + one READ union.
+//   PLAN_ID_*        → new format `plan-YYYY-MM-DDTHHMMSS-XXXXXXXX` (what bootstrap MINTS)
+//   LEGACY_PLAN_ID_* → old format `plan_YYYY-MM-DD_XXXXXXXX` (never minted again)
+//   ANY_PLAN_ID_*    → the union every reader/scanner/validator uses
 // ---------------------------------------------------------------------------
 
-test("PLAN_ID_RE: accepts the canonical shape bootstrap actually generates", () => {
-  // randomBytes(4).toString("hex") → exactly 8 lowercase-hex chars.
-  assert.ok(PLAN_ID_RE.test("plan_2026-07-14_79ee0f59"));
-  assert.ok(PLAN_ID_RE.test("plan_1999-01-01_deadbeef"));
-  assert.ok(PLAN_ID_RE.test("plan_2099-12-31_00000000"));
+const NEW_ID = "plan-2026-07-14T051317-317362c4";
+const LEGACY_ID = "plan_2026-07-14_79ee0f59";
+
+test("PLAN_ID_RE: accepts the canonical NEW shape bootstrap actually generates", () => {
+  // UTC `YYYY-MM-DDTHHMMSS` (colon-free — D-001) + randomBytes(4).toString("hex").
+  assert.ok(PLAN_ID_RE.test(NEW_ID));
+  assert.ok(PLAN_ID_RE.test("plan-1999-01-01T000000-deadbeef"));
+  assert.ok(PLAN_ID_RE.test("plan-2099-12-31T235959-00000000"));
 });
 
-test("PLAN_ID_RE: rejects malformed plan-ids", () => {
+test("PLAN_ID_RE: rejects malformed NEW plan-ids", () => {
+  const bad = [
+    "plan-2026-07-14T051317-317362c",   // 7 hex — too short
+    "plan-2026-07-14T051317-317362c44", // 9 hex — too long
+    "plan-2026-07-14T051317-ZZZZZZZZ",  // not hex
+    "plan-2026-07-14T051317-317362C4",  // uppercase hex
+    "plan-2026-7-14T051317-317362c4",   // unpadded date
+    "plan-2026-07-14T05131-317362c4",   // 5-digit time
+    "plan-2026-07-14T0513177-317362c4", // 7-digit time
+    "plan-2026-07-14T05:13:17-317362c4", // colons (illegal on Win32 — D-001)
+    "plan-2026-07-14-317362c4",         // the COMMIT tag, not a dir name (no T HHMMSS)
+    "plan-2026-07-14T051317",           // no tail
+    "notaplan-2026-07-14T051317-317362c4", // wrong prefix
+    "../etc/passwd",                    // path traversal (the .current_plan guard)
+    "",
+  ];
+  for (const s of bad) assert.ok(!PLAN_ID_RE.test(s), `${JSON.stringify(s)} must be rejected`);
+});
+
+test("PLAN_ID_RE: the WRITE grammar rejects the legacy format", () => {
+  // Generation is new-only: a legacy id must never satisfy the mint-time assertion.
+  assert.ok(!PLAN_ID_RE.test(LEGACY_ID));
+  assert.ok(!PLAN_ID_RE.test("plan_2026-07-14_deadbeef"));
+});
+
+test("LEGACY_PLAN_ID_RE: accepts every pre-v2.36.0 plan-id", () => {
+  assert.ok(LEGACY_PLAN_ID_RE.test(LEGACY_ID));
+  assert.ok(LEGACY_PLAN_ID_RE.test("plan_1999-01-01_deadbeef"));
+  assert.ok(LEGACY_PLAN_ID_RE.test("plan_2099-12-31_00000000"));
+});
+
+test("LEGACY_PLAN_ID_RE: rejects malformed legacy plan-ids (unchanged old grammar)", () => {
   const bad = [
     "plan_2026-07-14_79ee0f5",      // 7 hex — too short
     "plan_2026-07-14_79ee0f599",    // 9 hex — too long
@@ -441,25 +487,136 @@ test("PLAN_ID_RE: rejects malformed plan-ids", () => {
     "../etc/passwd",                // path traversal (the .current_plan guard)
     "",
   ];
-  for (const s of bad) assert.ok(!PLAN_ID_RE.test(s), `${JSON.stringify(s)} must be rejected`);
+  for (const s of bad) {
+    assert.ok(!LEGACY_PLAN_ID_RE.test(s), `${JSON.stringify(s)} must be rejected`);
+  }
 });
 
-test("PLAN_ID_RE: is anchored — no substring match inside a longer string", () => {
-  assert.ok(!PLAN_ID_RE.test("x/plan_2026-07-14_79ee0f59"));
-  assert.ok(!PLAN_ID_RE.test("plan_2026-07-14_79ee0f59/D-001"));
+test("LEGACY_PLAN_ID_RE: rejects the new format", () => {
+  assert.ok(!LEGACY_PLAN_ID_RE.test(NEW_ID));
 });
 
-test("PLAN_ID_PATTERN: is the unanchored source, embeddable in a larger regex", () => {
-  // The anchor scanners compose it into `(?:(<pattern>)\/)?D-...`.
-  const composed = new RegExp(`^# DECISION (?:(${PLAN_ID_PATTERN})\\/)?D-(\\d{3,})$`);
+test("ANY_PLAN_ID_RE: the READ union accepts BOTH grammars", () => {
+  // This is what keeps yesterday's plan dirs (and their committed DECISION anchors)
+  // readable after the v2.36.0 cutover. See D-003.
+  assert.ok(ANY_PLAN_ID_RE.test(NEW_ID));
+  assert.ok(ANY_PLAN_ID_RE.test(LEGACY_ID));
+});
+
+test("ANY_PLAN_ID_RE: is anchored — no substring match inside a longer string", () => {
+  assert.ok(!ANY_PLAN_ID_RE.test(`x/${LEGACY_ID}`));
+  assert.ok(!ANY_PLAN_ID_RE.test(`${LEGACY_ID}/D-001`));
+  assert.ok(!ANY_PLAN_ID_RE.test(`x/${NEW_ID}`));
+  assert.ok(!ANY_PLAN_ID_RE.test(`${NEW_ID}/D-001`));
+});
+
+test("ANY_PLAN_ID_RE: rejects path traversal (the .current_plan guard — I-4)", () => {
+  const traversal = [
+    "../etc/passwd",
+    "..",
+    ".",
+    "plan-../x",
+    "plan_../x",
+    "../plan_2026-07-14_79ee0f59",
+    "plans/../../etc/passwd",
+    `${NEW_ID}/../..`,
+    "/etc/passwd",
+    "",
+  ];
+  for (const s of traversal) {
+    assert.ok(!ANY_PLAN_ID_RE.test(s), `${JSON.stringify(s)} must be rejected`);
+    assert.ok(!PLAN_ID_RE.test(s), `${JSON.stringify(s)} must be rejected by PLAN_ID_RE`);
+    assert.ok(!LEGACY_PLAN_ID_RE.test(s), `${JSON.stringify(s)} must be rejected by LEGACY`);
+  }
+});
+
+test("ANY_PLAN_ID_PATTERN: is NON-CAPTURING — group indices of the host regex are stable", () => {
+  // LOAD-BEARING (D-003). The 4 anchor regexes in validate-plan.mjs interpolate this
+  // pattern and then read m[1]=planName, m[2]=id, m[3]=stale BY INDEX (`pushMatch`).
+  // A capture group inside the union shifts all three and silently mis-parses every
+  // anchor in the repo. Assert on real group indices, not on the pattern's text.
+  const host = new RegExp(`(x)${ANY_PLAN_ID_PATTERN}(y)`);
+  const m = host.exec(`x${NEW_ID}y`);
+  assert.ok(m, "host regex should match");
+  assert.equal(m[1], "x");
+  assert.equal(m[2], "y", "the union must not consume a capture-group index");
+  assert.equal(m.length, 3, "exactly 2 capture groups — the union adds none");
+
+  const m2 = host.exec(`x${LEGACY_ID}y`);
+  assert.ok(m2);
+  assert.equal(m2[2], "y");
+  assert.equal(m2.length, 3);
+});
+
+test("the three patterns are string sources, and the union is built from the other two", () => {
+  // No re-typing: ANY is literally `(?:NEW|LEGACY)` (D-003 / D-005 — one definition each).
+  assert.equal(typeof PLAN_ID_PATTERN, "string");
+  assert.equal(typeof LEGACY_PLAN_ID_PATTERN, "string");
+  assert.equal(ANY_PLAN_ID_PATTERN, `(?:${PLAN_ID_PATTERN}|${LEGACY_PLAN_ID_PATTERN})`);
+});
+
+test("ANY_PLAN_ID_PATTERN: is the unanchored source, embeddable in a larger regex", () => {
+  // The anchor scanners compose it into `(?:(<pattern>)\/)?D-...` — one explicit capture
+  // group wrapping the union, so m[1] is the plan-id and m[2] the decision number.
+  const composed = new RegExp(`^# DECISION (?:(${ANY_PLAN_ID_PATTERN})\\/)?D-(\\d{3,})$`);
+
+  // Legacy qualified anchor — the 18 committed ones in this repo. MUST still match.
+  // Spelled out as a LITERAL (not `${LEGACY_ID}`) on purpose: this line is the byte-exact
+  // shape of a real committed anchor, so it is also what the repo-wide anchor-count
+  // tripwire greps for.
   const m = composed.exec("# DECISION plan_2026-07-14_79ee0f59/D-001");
-  assert.ok(m, "composed anchor regex should match a qualified anchor");
-  assert.equal(m[1], "plan_2026-07-14_79ee0f59");
+  assert.ok(m, "composed anchor regex should match a legacy-qualified anchor");
+  assert.equal(m[1], LEGACY_ID);
   assert.equal(m[2], "001");
-  // Legacy unqualified form still matches with a null plan-id.
+
+  // New-format qualified anchor.
+  const mNew = composed.exec(`# DECISION ${NEW_ID}/D-042`);
+  assert.ok(mNew, "composed anchor regex should match a new-format-qualified anchor");
+  assert.equal(mNew[1], NEW_ID);
+  assert.equal(mNew[2], "042");
+
+  // Pre-v2.14.0 unqualified form still matches with a null plan-id.
   const m2 = composed.exec("# DECISION D-002");
   assert.ok(m2);
   assert.equal(m2[1], undefined);
+});
+
+test("PLAN_DIR_PREFIX_RE: cheap prefix filter matches both grammars", () => {
+  assert.ok(PLAN_DIR_PREFIX_RE.test(NEW_ID));
+  assert.ok(PLAN_DIR_PREFIX_RE.test(LEGACY_ID));
+  assert.ok(!PLAN_DIR_PREFIX_RE.test("plans"));
+  assert.ok(!PLAN_DIR_PREFIX_RE.test("notaplan_2026-07-14_79ee0f59"));
+  assert.ok(!PLAN_DIR_PREFIX_RE.test(".current_plan"));
+});
+
+test("PLAN_SECTION_RE: finds `## <plan-id>` section headers of both grammars", () => {
+  const content = `# Findings\n\n## ${LEGACY_ID}\nold\n\n## ${NEW_ID}\nnew\n`;
+  // matchAll clones the regex, so the module-level `g` regex stays stateless.
+  const hits = [...content.matchAll(PLAN_SECTION_RE)];
+  assert.equal(hits.length, 2);
+  // `search` also saves/restores lastIndex — the two consumer idioms.
+  assert.equal(content.search(PLAN_SECTION_RE), content.indexOf(`## ${LEGACY_ID}`));
+  // Repeat: proves no lastIndex leakage across calls.
+  assert.equal([...content.matchAll(PLAN_SECTION_RE)].length, 2);
+  // A section at offset 0 (no leading newline) is still found — `m` flag, not `\n##`.
+  assert.equal(`## ${NEW_ID}\nx`.search(PLAN_SECTION_RE), 0);
+  // Non-section headings are not plan sections.
+  assert.equal("## Index\n## Notes\n".search(PLAN_SECTION_RE), -1);
+});
+
+test("planDateFromId: extracts YYYY-MM-DD from both grammars", () => {
+  assert.equal(planDateFromId(NEW_ID), "2026-07-14");
+  assert.equal(planDateFromId(LEGACY_ID), "2026-07-14");
+  assert.equal(planDateFromId("plan-1999-01-01T000000-deadbeef"), "1999-01-01");
+  assert.equal(planDateFromId("plan_2099-12-31_00000000"), "2099-12-31");
+});
+
+test("planDateFromId: returns null for non-plan-ids (caller supplies the fallback)", () => {
+  assert.equal(planDateFromId("not-a-plan"), null);
+  assert.equal(planDateFromId("plan-2026-07-14"), null); // no separator after the date
+  assert.equal(planDateFromId(""), null);
+  assert.equal(planDateFromId(null), null);
+  assert.equal(planDateFromId(undefined), null);
 });
 
 // ---------------------------------------------------------------------------

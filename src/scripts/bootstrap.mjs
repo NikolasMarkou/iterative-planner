@@ -25,7 +25,7 @@ import {
   COMPRESSED_SUMMARY_OPEN,
   COMPRESSED_SUMMARY_CLOSE,
   CHANGELOG_COMPRESSED_INLINE_RE,
-  PLAN_ID_RE,
+  ANY_PLAN_ID_RE,
   DECISION_ID_NUM_PATTERN,
 } from "./shared.mjs";
 // DECISION plan_2026-07-14_79ee0f59/D-002 — THE CHANGELOG IS A MARKDOWN FILE, AND AN APPEND IS ONE
@@ -168,8 +168,11 @@ function ensureGitignore() {
 // — existsSync alone is fail-safe in practice but doesn't reject paths like
 // `../etc/something` that happen to exist.
 //
-// PLAN_ID_RE is imported from shared.mjs — the single definition, shared with
-// validate-plan.mjs. Do not re-declare it here (see shared.mjs D-005).
+// ANY_PLAN_ID_RE (the READ union: new format | legacy format) is imported from
+// shared.mjs — the single definition, shared with validate-plan.mjs. Do not re-declare
+// it here (see shared.mjs D-005/D-003). The pointer is *validated* with the union, not
+// the write grammar: a legacy plan dir created before v2.36.0 must stay resolvable by
+// status/resume/close, or the tool cannot read the plans it wrote yesterday.
 
 // decisions.md entry headers: `## D-NNN | PHASE | YYYY-MM-DD`. Both forms are
 // built from the ONE shared digit grammar so the compressor recognizes exactly
@@ -186,7 +189,7 @@ function readPointer() {
   try {
     const name = readFileSync(pointerFile, "utf-8").trim();
     if (!name) return null;
-    if (!PLAN_ID_RE.test(name)) return null;
+    if (!ANY_PLAN_ID_RE.test(name)) return null;
     if (!existsSync(join(plansDir, name))) return null;
     return name;
   } catch {
@@ -1720,7 +1723,10 @@ function cmdRetire(planId) {
     console.error("ERROR: usage: node bootstrap.mjs retire <plan-id>");
     process.exit(1);
   }
-  if (!PLAN_ID_RE.test(planId)) {
+  // Union, not the write grammar: retire exists to stamp the anchors of OLD plans, so it
+  // must be able to parse a legacy id. A new-only regex here makes retire unable to act on
+  // the only plans that ever need retiring.
+  if (!ANY_PLAN_ID_RE.test(planId)) {
     console.error(`ERROR: "${planId}" is not a valid plan-id (expected plan_YYYY-MM-DD_XXXXXXXX).`);
     process.exit(1);
   }

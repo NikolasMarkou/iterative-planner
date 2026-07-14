@@ -388,16 +388,82 @@ export function unterminatedCommentOpener(content) {
 // there is no other producer, and a permissive checker cannot catch a corrupt
 // pointer or a hand-typo'd anchor. If the id shape ever really changes, change it
 // HERE and both consumers move together. See decisions.md D-005.
+//
+// v2.36.0 EXTENSION of the rule above (decisions.md D-003 of plan_2026-07-14_317362c4;
+// deliberately NOT a second anchor — D-005 is the anchor and this is its amended body).
+// The rule is now: ONE *write* grammar (`PLAN_ID_PATTERN`, new format) and ONE *read*
+// union (`ANY_PLAN_ID_PATTERN` = new | legacy) — BOTH live here and nowhere
+// else. Every path that *validates or scans* an existing id (pointer, retire input,
+// `*Plan:*` preamble, the 4 anchor regexes, plan-dir enumeration, `## <plan-id>`
+// sections, sliding-window trim, INDEX date) uses the UNION. Only *generation* uses
+// `PLAN_ID_PATTERN`. Do NOT "clean this up" by deleting `LEGACY_PLAN_ID_PATTERN` once
+// new-format dirs exist: old dirs stay on disk, and the 18 committed anchors qualified
+// by the legacy id `plan_2026-07-14_79ee0f59` are matched only by the union. A
+// new-only read grammar does not make them loud orphans — it makes them match
+// *nothing*, silently deleting 18 still-binding decisions from the audit net. And do
+// NOT make `ANY_PLAN_ID_PATTERN` capturing: it is interpolated into the anchor regexes,
+// whose `pushMatch` reads m[1]=planName / m[2]=id / m[3]=stale by INDEX. A capture group
+// here shifts all three and mis-parses every anchor in the repo. See decisions.md D-003.
 // ---------------------------------------------------------------------------
 
 /**
- * Plan-id grammar: `plan_YYYY-MM-DD_XXXXXXXX`, where the tail is exactly 8
- * lowercase-hex chars — precisely what bootstrap.mjs's `randomBytes(4).toString("hex")`
- * emits. Exported as a *string* pattern because the anchor scanners embed it inside
- * larger `new RegExp(...)` compositions; `PLAN_ID_RE` is the anchored form.
+ * Plan-id WRITE grammar: `plan-YYYY-MM-DDTHHMMSS-XXXXXXXX` (UTC, colon-free — colons
+ * are illegal on Win32/NTFS, see D-001), where the tail is exactly 8 lowercase-hex
+ * chars — precisely what bootstrap.mjs's `randomBytes(4).toString("hex")` emits.
+ * Exported as a *string* pattern because scanners embed it inside larger
+ * `new RegExp(...)` compositions; `PLAN_ID_RE` is the anchored form.
+ *
+ * This is what bootstrap GENERATES. To *recognize* an id, use ANY_PLAN_ID_PATTERN.
  */
-export const PLAN_ID_PATTERN = "plan_\\d{4}-\\d{2}-\\d{2}_[0-9a-f]{8}";
+export const PLAN_ID_PATTERN = "plan-\\d{4}-\\d{2}-\\d{2}T\\d{6}-[0-9a-f]{8}";
 export const PLAN_ID_RE = new RegExp(`^${PLAN_ID_PATTERN}$`);
+
+/**
+ * Plan-id LEGACY grammar: `plan_YYYY-MM-DD_XXXXXXXX` — every plan dir created before
+ * v2.36.0, and every `# DECISION <plan-id>/D-NNN` anchor committed under one. Never
+ * generated again; permanently readable.
+ */
+export const LEGACY_PLAN_ID_PATTERN = "plan_\\d{4}-\\d{2}-\\d{2}_[0-9a-f]{8}";
+export const LEGACY_PLAN_ID_RE = new RegExp(`^${LEGACY_PLAN_ID_PATTERN}$`);
+
+/**
+ * Plan-id READ union — the grammar every validating/scanning path uses.
+ * NON-CAPTURING by construction: it is interpolated into regexes whose consumers read
+ * capture groups by index. Adding a capture group here is a silent, repo-wide corruption
+ * (see the D-005 block above and the group-index test in shared.test.mjs).
+ */
+export const ANY_PLAN_ID_PATTERN = `(?:${PLAN_ID_PATTERN}|${LEGACY_PLAN_ID_PATTERN})`;
+export const ANY_PLAN_ID_RE = new RegExp(`^${ANY_PLAN_ID_PATTERN}$`);
+
+/**
+ * Cheap prefix filter for plan directory names (both grammars). Use to skip obvious
+ * non-plan dirs before the full `ANY_PLAN_ID_RE` test — never as a validator on its own
+ * (it accepts `plan-../x`, which is exactly the traversal `ANY_PLAN_ID_RE` rejects).
+ */
+export const PLAN_DIR_PREFIX_RE = /^plan[-_]/;
+
+/**
+ * `## <plan-id>` section header in a consolidated file (plans/FINDINGS.md,
+ * plans/DECISIONS.md, …), both grammars. Line-anchored via `m`, global so callers can
+ * enumerate every section position in one pass.
+ *
+ * `g` makes this regex STATEFUL: use it only with `String.prototype.search` (which saves
+ * and restores lastIndex) or `String.prototype.matchAll` (which clones the regex). Do NOT
+ * call `.test()` / `.exec()` on it directly — a shared module-level `g` regex carries
+ * lastIndex across calls and will skip matches on the second call.
+ */
+export const PLAN_SECTION_RE = /^## plan[-_]/gm;
+
+/**
+ * Extract `YYYY-MM-DD` from a plan-id of either grammar. Returns null when the input is
+ * not a plan-id (callers substitute their own placeholder — e.g. bootstrap's INDEX.md
+ * date column falls back to "unknown").
+ */
+export function planDateFromId(id) {
+  if (!id) return null;
+  const m = /^plan[-_](\d{4}-\d{2}-\d{2})[T_]/.exec(id);
+  return m ? m[1] : null;
+}
 
 /**
  * Decision-id digit grammar: 3-digit zero-padding is the MINIMUM, not the maximum.

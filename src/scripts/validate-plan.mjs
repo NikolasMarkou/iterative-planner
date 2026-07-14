@@ -20,8 +20,8 @@ import {
   stripHtmlComments,
   htmlCommentSpans,
   unterminatedCommentOpener,
-  PLAN_ID_PATTERN,
-  PLAN_ID_RE,
+  ANY_PLAN_ID_PATTERN,
+  ANY_PLAN_ID_RE,
   DECISION_ID_NUM_PATTERN,
 } from "./shared.mjs";
 // Changelog field shapes are schema-driven (see checkChangelogFormat / D-001).
@@ -54,12 +54,18 @@ const pointerFile = join(plansDir, ".current_plan");
 // WARN-only on missing schema fields they couldn't have known about.
 const ANCHOR_REFS_REQUIRED_SINCE = "2026-05-07T09:00:00Z";
 
-// Plan-id (`plan_YYYY-MM-DD_XXXXXXXX`) and decision-id (`D-NNN`) grammars are
-// imported from shared.mjs — the single definition, shared with bootstrap.mjs (the
-// PRODUCER of both). This file used to keep its own copy of PLAN_ID_PATTERN with a
-// permissive `[0-9a-f]+` tail "for forward compatibility" while bootstrap enforced
-// exactly 8 hex, so the two disagreed about what a legal plan-id even is. Do not
-// re-declare either grammar here. See shared.mjs / decisions.md D-005.
+// Plan-id and decision-id (`D-NNN`) grammars are imported from shared.mjs — the single
+// definition, shared with bootstrap.mjs (the PRODUCER of both). This file used to keep
+// its own copy of PLAN_ID_PATTERN with a permissive `[0-9a-f]+` tail "for forward
+// compatibility" while bootstrap enforced exactly 8 hex, so the two disagreed about what
+// a legal plan-id even is. Do not re-declare either grammar here.
+//
+// The validator is a pure READER: it never mints an id, so it uses ANY_PLAN_ID_PATTERN /
+// ANY_PLAN_ID_RE — the union of the v2.36.0 format (`plan-YYYY-MM-DDTHHMMSS-XXXXXXXX`)
+// and the legacy one (`plan_YYYY-MM-DD_XXXXXXXX`). Do NOT narrow these to PLAN_ID_*
+// (the write grammar): legacy plan dirs and the anchors qualified by legacy ids would
+// stop matching *silently* — not as orphan ERRORs, but as no match at all.
+// See shared.mjs / decisions.md D-005 + D-003.
 
 // Read the INIT timestamp from state.md. Looks for any line matching
 // `INIT (→|->) EXPLORE (TS)` where TS parses as an ISO date — checks the
@@ -849,7 +855,7 @@ function parseDecisionsEntries(content) {
   let preambleLine = null;
   {
     const rawLines = content.split("\n");
-    const preambleRe = new RegExp(`^\\*Plan:\\s*(${PLAN_ID_PATTERN})\\*\\s*$`);
+    const preambleRe = new RegExp(`^\\*Plan:\\s*(${ANY_PLAN_ID_PATTERN})\\*\\s*$`);
     let nonBlankSeen = 0;
     for (let i = 0; i < rawLines.length && nonBlankSeen < 10; i++) {
       const t = rawLines[i].trim();
@@ -1146,14 +1152,17 @@ function findAnchorsInFile(file, projectRoot) {
   const out = [];
 
   // Build per-style regexes once. Capture groups: 1=planName(opt), 2=id, 3=stale(opt).
-  // Both id grammars come from shared.mjs. The decision-id digit run is `\d{3,}(?!\d)`
-  // — 3-digit padding is a MINIMUM, so D-1000+ is scannable; the trailing boundary keeps
-  // the run maximal. These four MUST stay grammar-identical to bootstrap.mjs retire's
-  // stamper, or retire cannot clear an orphan this scanner still reports.
-  const hashRe = new RegExp(`(?:^|\\s)#\\s+DECISION\\s+(?:(${PLAN_ID_PATTERN})\\/)?D-(${DECISION_ID_NUM_PATTERN})(\\s+\\[STALE\\])?(?::|\\s|$)`);
-  const slashRe = new RegExp(`(?:^|\\s)\\/\\/\\s+DECISION\\s+(?:(${PLAN_ID_PATTERN})\\/)?D-(${DECISION_ID_NUM_PATTERN})(\\s+\\[STALE\\])?(?::|\\s|$)`);
-  const sqlRe = new RegExp(`(?:^|\\s)--\\s+DECISION\\s+(?:(${PLAN_ID_PATTERN})\\/)?D-(${DECISION_ID_NUM_PATTERN})(\\s+\\[STALE\\])?(?::|\\s|$)`);
-  const blockInnerRe = new RegExp(`DECISION\\s+(?:(${PLAN_ID_PATTERN})\\/)?D-(${DECISION_ID_NUM_PATTERN})(\\s+\\[STALE\\])?`);
+  // Both id grammars come from shared.mjs. The plan-id is the READ UNION, which is
+  // NON-CAPTURING `(?:new|legacy)` — that is load-bearing, not stylistic: `pushMatch`
+  // below reads m[1]/m[2]/m[3] by index, so a capture group inside the union shifts all
+  // three and mis-parses every anchor in the repo. The decision-id digit run is
+  // `\d{3,}(?!\d)` — 3-digit padding is a MINIMUM, so D-1000+ is scannable; the trailing
+  // boundary keeps the run maximal. These four MUST stay grammar-identical to
+  // bootstrap.mjs retire's stamper, or retire cannot clear an orphan this scanner reports.
+  const hashRe = new RegExp(`(?:^|\\s)#\\s+DECISION\\s+(?:(${ANY_PLAN_ID_PATTERN})\\/)?D-(${DECISION_ID_NUM_PATTERN})(\\s+\\[STALE\\])?(?::|\\s|$)`);
+  const slashRe = new RegExp(`(?:^|\\s)\\/\\/\\s+DECISION\\s+(?:(${ANY_PLAN_ID_PATTERN})\\/)?D-(${DECISION_ID_NUM_PATTERN})(\\s+\\[STALE\\])?(?::|\\s|$)`);
+  const sqlRe = new RegExp(`(?:^|\\s)--\\s+DECISION\\s+(?:(${ANY_PLAN_ID_PATTERN})\\/)?D-(${DECISION_ID_NUM_PATTERN})(\\s+\\[STALE\\])?(?::|\\s|$)`);
+  const blockInnerRe = new RegExp(`DECISION\\s+(?:(${ANY_PLAN_ID_PATTERN})\\/)?D-(${DECISION_ID_NUM_PATTERN})(\\s+\\[STALE\\])?`);
 
   function pushMatch(m, lineNum) {
     out.push({
@@ -1274,7 +1283,7 @@ function collectKnownDecisionIdsByPlan(planDir, activePlanName) {
     const entries = readdirSync(plansDir, { withFileTypes: true });
     for (const ent of entries) {
       if (!ent.isDirectory()) continue;
-      if (!PLAN_ID_RE.test(ent.name)) continue;
+      if (!ANY_PLAN_ID_RE.test(ent.name)) continue;
       if (ent.name === activePlanName) continue; // already loaded above
       const txt = readFile(join(plansDir, ent.name, "decisions.md"));
       if (!txt) continue;
@@ -1290,7 +1299,7 @@ function collectKnownDecisionIdsByPlan(planDir, activePlanName) {
   if (consolidated) {
     const lines = consolidated.split("\n");
     let currentPlan = null;
-    const planSectionRe = new RegExp(`^##\\s+(${PLAN_ID_PATTERN})\\s*$`);
+    const planSectionRe = new RegExp(`^##\\s+(${ANY_PLAN_ID_PATTERN})\\s*$`);
     const dashEntryRe = new RegExp(`^#{2,3}\\s+D-(${DECISION_ID_NUM_PATTERN})\\b`);
     for (const line of lines) {
       const ps = planSectionRe.exec(line);
