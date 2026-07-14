@@ -1032,3 +1032,258 @@ Agent files (`agents/ip-orchestrator.md` and contributing sub-agent files) inlin
 - <surprising constraint / sharp edge discovered> [I:N]
 
 <!-- TEMPLATE:END -->
+
+## Bootstrap Skeletons (machine-checked)
+
+The regions below are the **exact bytes `bootstrap.mjs` writes** for each plan file on `bootstrap.mjs new` — one region per key of `PLAN_TEMPLATES` in `src/scripts/bootstrap.mjs`, with its `{{TOKEN}}` placeholders left unsubstituted. `check-template-parity.mjs` (run by `make validate`) enforces byte-equality between each region and its template **in both directions**: a template with no region, or a region with no template, is a FAIL. Editing one without the other turns `make validate` red — that is the whole point of this section.
+
+**These are not the worked examples above.** Everything before this section shows a *populated* file — a filled-in `plan.md`, a `decisions.md` with real entries — so a human can see what "good" looks like. The regions here show the *empty skeleton bootstrap actually writes* into a fresh plan directory. Both are true; they answer different questions. Do not copy example content into a skeleton region: a fresh `INDEX.md` must not ship with two fake rows.
+
+**Region↔bytes contract** (encoded in `check-template-parity.mjs`; read it before editing a region):
+
+- A region opens with `<!-- SKELETON:<slug> -->` on its own line, followed immediately by a fenced `markdown` block.
+- The region **body** is the lines strictly between the opening fence line and its closing fence line, joined with `\n`, **plus a trailing `\n`**. Every template ends with exactly one newline, so this round-trips byte-exactly.
+- `{{TOKEN}}` placeholders are content. Leave them literal — they are substituted at plan-creation time by `renderTemplate()`, never here.
+- No skeleton body may contain a triple-backtick fence (it would close the block early) or the literal `<!-- TEMPLATE:` (it would truncate the last template slice emitted by `emit-template.mjs`). The checker enforces both.
+- The set is terminated by `<!-- SKELETON:END -->`. Nothing between the markers is prose — a region is bytes, not documentation.
+
+<!-- SKELETON:state -->
+```markdown
+# Current State: EXPLORE
+*Skill: iterative-planner v{{VERSION}}*
+## Iteration: 0
+## Current Plan Step: N/A
+## Pre-Step Checklist (reset before each EXECUTE step)
+- [ ] Re-read state.md (this file)
+- [ ] Re-read plan.md
+- [ ] Re-read progress.md
+- [ ] Re-read decisions.md (if fix attempt)
+- [ ] Checkpoint created (if risky step or irreversible op)
+## Fix Attempts (resets per plan step)
+- (none yet)
+## Change Manifest (current iteration)
+- (no changes yet)
+## Last Transition: INIT → EXPLORE ({{TIMESTAMP}})
+## Transition History:
+- INIT → EXPLORE (task started)
+<!-- When logging EXPLORE → PLAN, add Exploration Confidence on the line below the transition entry, e.g.:
+- EXPLORE → PLAN (gathered enough context, YYYY-MM-DDTHH:MM:SSZ)
+  - confidence: scope=deep|partial|shallow, solutions=adequate|thin, risks=clear|unclear
+See references/planning-rigor.md for definitions. -->
+```
+
+<!-- SKELETON:plan -->
+```markdown
+# Plan v0
+
+## Goal
+{{GOAL}}
+
+## Problem Statement
+*To be defined during PLAN. (1) Expected behavior, (2) invariants, (3) edge cases.*
+
+## Context
+*Pending EXPLORE phase. Findings will inform the approach.*
+
+## Files To Modify
+*To be determined after EXPLORE. List every file that will be touched.*
+
+## Steps
+*To be determined after EXPLORE. Annotate each with [RISK: low/medium/high] and [deps: N,M].*
+
+## Assumptions
+*To be populated during PLAN. Each: what you assume, which finding grounds it, which steps depend on it.*
+
+## Failure Modes
+*To be determined during PLAN. For each dependency/integration: what if slow, garbage, down?*
+
+## Pre-Mortem & Falsification Signals
+*To be determined during PLAN. Assume the plan failed — 2-3 scenarios with concrete STOP IF triggers.*
+
+## Success Criteria
+*To be defined before first EXECUTE.*
+
+## Verification Strategy
+*To be defined during PLAN. For each success criterion, define what check to run and what "pass" means.*
+
+## Complexity Budget
+- Files added: 0/3 max
+- New abstractions (classes/modules/interfaces): 0/2 max
+- Lines added vs removed: +0/-0 (target: net negative or neutral)
+```
+
+<!-- SKELETON:decisions -->
+```markdown
+# Decision Log
+*Plan: {{PLAN_ID}}*
+*Skill: iterative-planner v{{VERSION}}*
+*Append-only. Never edit past entries.*
+{{CROSS_PLAN_NOTE}}
+<!-- Schema example — DO NOT REMOVE. Real entries follow this shape.
+     See references/file-formats.md "Entry Schema by Type" for required fields per entry type.
+     In-code anchors carry the plan-id prefix: `# DECISION {{PLAN_ID}}/D-NNN` (see references/decision-anchoring.md).
+
+## D-001 | EXPLORE → PLAN | YYYY-MM-DD
+**Context**: <one-paragraph background — what was discovered in EXPLORE>
+**Decision**: <chosen approach in one sentence>
+**Trade-off**: <X> **at the cost of** <Y>
+**Reasoning**: <why this trade-off is acceptable; what alternatives were rejected>
+**Anchor-Refs**: `path/to/file.ext:LL`, `other/file.ext:LL-MM`  (required when a matching `# DECISION {{PLAN_ID}}/D-NNN` anchor exists in source)
+-->
+```
+
+<!-- SKELETON:findings -->
+```markdown
+# Findings
+*Summary and index of all findings. Detailed files go in findings/ directory.*
+{{CROSS_PLAN_NOTE}}
+## Index
+*To be populated during EXPLORE.*
+
+## Key Constraints
+*To be populated during EXPLORE.*
+
+## Corrections
+*Append [CORRECTED iter-N] entries here when earlier findings prove wrong. Reference the original finding file and what changed.*
+```
+
+<!-- SKELETON:progress -->
+```markdown
+# Progress
+
+## Completed
+*Nothing yet.*
+
+## In Progress
+- [ ] EXPLORE: Initial context gathering
+
+## Remaining
+*To be populated from plan.md after PLAN phase.*
+
+## Blocked
+*Nothing currently.*
+```
+
+<!-- SKELETON:verification -->
+```markdown
+# Verification Results
+*Populated during PLAN (template), updated during EXECUTE (per-step), completed during REFLECT (full pass).*
+*Rewritten each iteration — not append-only.*
+
+## Criteria Verification
+| # | Criterion (from plan.md) | Method | Command/Action | Result | Evidence |
+|---|--------------------------|--------|----------------|--------|----------|
+| 1 | *To be populated during PLAN* | - | - | PENDING | - |
+
+## Additional Checks
+*Required rows below are pre-populated every REFLECT cycle. Append optional rows (lint, type checks, behavioral diffs, smoke tests) as needed.*
+
+| Check | Command/Action | Result | Details |
+|-------|----------------|--------|---------|
+| Regression | *To be populated during REFLECT (re-run previously-passing tests)* | PENDING | - |
+| Scope drift | *To be populated during REFLECT (compare state.md manifest vs plan.md Files To Modify)* | PENDING | - |
+| Diff review | *To be populated during REFLECT (review git diff for debug artifacts, TODOs, commented-out code)* | PENDING | - |
+
+## Not Verified
+| What | Why |
+|------|-----|
+| *To be populated during REFLECT* | - |
+
+## Prediction Accuracy
+*Compare plan.md predictions against actual results during REFLECT.*
+
+| Predicted (from plan.md) | Actual | Delta |
+|--------------------------|--------|-------|
+| *To be populated during REFLECT* | - | - |
+
+## Convergence Metrics
+*EXTENDED — iteration 2+. First iteration: write "N/A — first iteration." See references/convergence-metrics.md.*
+
+| Metric | Previous | Current | Delta |
+|--------|----------|---------|-------|
+| Pass rate | - | - | - |
+| Scope (planned vs changed) | - | - | - |
+| New issues found | - | - | - |
+| **Convergence score** | - | - | - |
+
+## Verdict
+*To be completed during REFLECT. All 5 bullets required, in order. See references/file-formats.md.*
+
+- Criteria passed: PENDING (N/M)
+- Regressions: PENDING
+- Scope drift: PENDING
+- Simplification blockers: PENDING
+- Recommendation: PENDING (→ CLOSE / PIVOT / EXPLORE)
+```
+
+<!-- SKELETON:changelog -->
+```markdown
+# Changelog
+*Append-only per-edit ledger. One line per file edit. Owner: ip-executor (writes). Reader: ip-reviewer at REFLECT.*
+*Format: `UTC | iter-N/step-M | commit | path | OP(+N,-M) | radius:TIER(score) | D-NNN-or-dash | reason`*
+*See references/blast-radius.md for radius scoring. Decision-ref optional — `-` means no `# DECISION` anchor governs this edit.*
+```
+
+<!-- SKELETON:system -->
+```markdown
+# System Atlas
+*Last refreshed: (none yet) | (no plan closed yet)*
+*Domain-neutral system map. Rewritten at CLOSE — max 300 lines. Read before PLAN/EXPLORE.*
+
+## Identity
+- What the system is (1-2 sentences). Domain (codebase / research / ops / strategy / other).
+
+## Components
+- Top-level building blocks. 5-15 entries. One line each: `name` — role.
+
+## Boundaries
+- In scope vs out of scope.
+- External dependencies (services, APIs, files).
+- Boundary inputs the planner reads but does not own (e.g. CLAUDE.md, config files).
+
+## Invariants
+- Properties that must always hold (security, data, contracts, performance budgets).
+- Each grounded in a finding-id or decision-id reference (e.g. `see <plan-id>/D-002`).
+
+## Flows
+- 3-7 named end-to-end flows: trigger → path → terminus.
+
+## Known Patterns
+- Architectural archetypes the system instantiates (e.g. "stateless HTTP API + Redis cache", "FSM-driven CLI", "compiler", "research pipeline", "agent workflow").
+
+## Codebase Specialization
+*Optional — present only when domain=codebase. Omit entirely for non-code systems.*
+- Module map: top-level directories and their purpose.
+- Key files (by frequency-of-relevance).
+- Build / test / run commands.
+```
+
+<!-- SKELETON:findings-consolidated -->
+```markdown
+# Consolidated Findings
+*Cross-plan findings archive. Entries merged from per-plan findings.md on close. Newest first.*
+```
+
+<!-- SKELETON:decisions-consolidated -->
+```markdown
+# Consolidated Decisions
+*Cross-plan decision archive. Entries merged from per-plan decisions.md on close. Newest first.*
+```
+
+<!-- SKELETON:lessons -->
+```markdown
+# Lessons Learned
+*Cross-plan lessons. Updated and consolidated on close. Max 200 lines — rewrite, don't append forever.*
+*Read before any PLAN state. This is institutional memory.*
+```
+
+<!-- SKELETON:index -->
+```markdown
+# Plan Index
+*Topic-to-directory mapping. Updated on close. Survives sliding window trim.*
+
+| Plan | Date | Goal | Key Topics |
+|------|------|------|------------|
+```
+
+<!-- SKELETON:END -->
