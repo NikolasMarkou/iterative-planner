@@ -813,14 +813,7 @@ Format: pipe-delimited single line per edit:
 
 Field shapes have **one definition**: `CHANGELOG_SPEC` in `src/scripts/schema.mjs`. The validator checks each line against it (split → synthetic entry → `validateElement`). Do not re-declare a changelog field regex anywhere.
 
-Header (written by bootstrap on plan creation, or by executor on first append if missing):
-
-```markdown
-# Changelog
-*Append-only per-edit ledger. One line per file edit. Owner: ip-executor (writes). Reader: ip-reviewer at REFLECT.*
-*Format: `UTC | iter-N/step-M | commit | path | OP(+N,-M) | radius:TIER(score) | D-NNN-or-dash | reason`*
-*See references/blast-radius.md for radius scoring. Decision-ref optional — `-` means no `# DECISION` anchor governs this edit.*
-```
+Header: the exact bytes are **deliberately not restated here** — read them in the `<!-- SKELETON:changelog -->` region under **Bootstrap Skeletons (machine-checked)** below, the one copy `check-template-parity.mjs` enforces against `bootstrap.mjs`. A second copy in this section would be an ungated copy, free to drift, and `emit-template --name changelog` would then serve the drifted one to every agent.
 
 Rules:
 - **Append-only**. Never edit existing lines. Mistakes get a correction line with op `EDIT(+0,-0)` and reason `correction: <what>`.

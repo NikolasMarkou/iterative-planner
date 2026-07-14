@@ -16,6 +16,7 @@ import {
   SRC_REL,
 } from "./check-template-parity.mjs";
 import { PLAN_TEMPLATES } from "./bootstrap.mjs";
+import { resolveTemplate } from "./emit-template.mjs";
 
 // --- fixtures ---------------------------------------------------------------
 
@@ -181,6 +182,27 @@ test("report renders the house failure format: two-space indent, file:line, [rul
 });
 
 // --- the real repo (this is the gate itself, run against live inputs) --------
+
+// THE REVIEWER'S EXPLOIT, pinned dead. The gate above compares bootstrap only to the
+// SKELETON regions; `emit-template` serves agents the TEMPLATE (worked-example) regions.
+// So a byte-claim restated in the worked example is an UNGATED copy: the reviewer edited
+// the changelog header there, the gate still printed PASS, and `emit-template --name
+// changelog` served the lie. The fix was to delete that copy, not to gate a third one —
+// which is why this is a suite assertion (one literal, no allowlist) and not a checker rule.
+test("the changelog TEMPLATE region restates NO bootstrap bytes — it points at the gated skeleton", () => {
+  const region = resolveTemplate("changelog");
+  assert.equal(region.ok, true);
+  const text = region.body.toString();
+  // The deleted block's distinctive literal. Re-inserting it (the reviewer's exact move)
+  // turns this red. Do NOT grow this into a per-slug list — that is the rejected design.
+  assert.equal(
+    text.includes("*Append-only per-edit ledger."),
+    false,
+    "the changelog worked example restates bootstrap's header bytes again — an ungated copy " +
+      "emit-template serves to agents. Delete it; the bytes belong only in <!-- SKELETON:changelog -->.",
+  );
+  assert.ok(text.includes("<!-- SKELETON:changelog -->"), "the pointer to the gated copy is gone");
+});
 
 test("the LIVE bootstrap templates byte-match the LIVE file-formats.md skeletons — 12 slugs", () => {
   const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");

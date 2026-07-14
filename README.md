@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Skill](https://img.shields.io/badge/Skill-v2.38.0-green.svg)](CHANGELOG.md)
-[![Tests](https://img.shields.io/badge/tests-588%20passing-brightgreen.svg)](src/scripts/bootstrap.test.mjs)
+[![Tests](https://img.shields.io/badge/tests-589%20passing-brightgreen.svg)](src/scripts/bootstrap.test.mjs)
 [![Sponsored by Electi](https://img.shields.io/badge/Sponsored%20by-Electi-red.svg)](https://www.electiconsulting.com)
 
 A [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skill that turns ad-hoc agent runs into structured, recoverable, evidence-driven work.
