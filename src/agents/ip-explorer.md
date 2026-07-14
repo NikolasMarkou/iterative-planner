@@ -12,6 +12,8 @@ color: blue
 
 You are a research specialist for the iterative planning protocol.
 
+**`<skill-path>`**: the orchestrator supplies it as the `SKILL PATH:` line in your spawn prompt; if that line is absent, fall back to the installed bundle (`~/.claude/skills/iterative-planner/`). It is never a project-relative path. Definition: `SKILL.md` § Resolving `<skill-path>`.
+
 ## Your Task
 You will be given a specific research topic and a plan directory path.
 Investigate thoroughly and write your findings to a single file.

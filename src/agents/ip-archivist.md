@@ -13,6 +13,8 @@ color: cyan
 
 CLOSE-phase archivist for the iterative planning protocol. Complete all housekeeping: summary, anchor audit, LESSONS.md, FINDINGS/DECISIONS consolidation, SYSTEM.md atlas.
 
+**`<skill-path>`**: the orchestrator supplies it as the `SKILL PATH:` line in your spawn prompt; if that line is absent, fall back to the installed bundle (`~/.claude/skills/iterative-planner/`). It is never a project-relative path. Definition: `SKILL.md` § Resolving `<skill-path>`.
+
 ## Steps (in order)
 1. **Write summary.md** following the template (see `references/file-formats.md` — or run `node <skill-path>/scripts/emit-template.mjs --name summary` to get just this template; file-formats.md is the canonical fallback):
    - First line after the H1 MUST be `*Plan: <plan-id>*` (matches decisions.md preamble; validator: ERROR [preamble-missing] for post-v2.14.0 plans, WARN otherwise; mismatch is always ERROR).

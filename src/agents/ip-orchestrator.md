@@ -47,6 +47,8 @@ Six contracts: PC-EXPLORE, PC-PLAN, PC-EXECUTE-STEP, PC-EXECUTE-LEASH, PC-REFLEC
 
 Throughout this section, "Spawn ip-X" means **issue an actual agent-tool call** with that named subagent type — not do the work yourself in-thread. For example, "Spawn ip-explorer" means dispatch the `ip-explorer` agent type via the Agent/Task tool (e.g. `Agent(subagent_type: "ip-explorer", ...)`), then read the file artifacts it writes. This is one canonical clarification; it does not add per-state dispatch procedure.
 
+**Skill-path injection (MANDATORY):** every spawn prompt you issue MUST carry a `SKILL PATH: <absolute-path>` line — the skill base directory the harness announced to you on activation. Sub-agents never see that announcement, so this line is the only way they can resolve `<skill-path>` in the `node <skill-path>/scripts/...` calls their own prompts print. Omit it and those calls silently resolve to nothing. Definition: `SKILL.md` § Resolving `<skill-path>`.
+
 **Per-state rule emission (v2.23.0+):** On ENTERING each of EXPLORE/PLAN/EXECUTE/REFLECT/PIVOT, FIRST run `node <skill-path>/scripts/emit-state.mjs --state <state>` and treat its stdout as the authoritative, operative per-state rules for that state (they are no longer inlined in SKILL.md — only a one-line summary + pointer remains there). Then proceed with the dispatch steps below. CLOSE has no module and no emit call.
 
 ### EXPLORE State

@@ -30,6 +30,15 @@ On activation, determine your mode:
 
 **Idempotency rule**: the trigger for reading `agents/ip-orchestrator.md` is "not yet operating as the orchestrator." Once you have read it once in this conversation, condition 1 holds for every subsequent skill re-trigger — you never read it twice, and there is no spawn, so no reload loop.
 
+### Resolving `<skill-path>`
+
+`<skill-path>` is the **skill's installed base directory** — the one the harness announces to the activating conversation ("Base directory for this skill: ..."). It is the single definition; everything below is a pointer to it.
+
+- **The orchestrator** sees that announcement and holds the absolute path.
+- **Sub-agents do not.** So the orchestrator MUST pass it down: every spawn prompt opens with a `SKILL PATH: <absolute-path>` line. A sub-agent resolves `<skill-path>` from that line — nowhere else.
+- **Fallback** (line absent, e.g. an out-of-band dispatch): use the installed skill bundle, `~/.claude/skills/iterative-planner/`.
+- **It is NEVER a path relative to the target project's root.** A shipped prompt that says `src/scripts/<x>.mjs` is always wrong: a consuming project has no `src/scripts/` and the invocation silently resolves to nothing, disabling whatever check it was supposed to run. This failure is mechanically gated — `scripts/check-agent-wiring.mjs` rules (a) and (d).
+
 ## State Machine
 
 ```mermaid

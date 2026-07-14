@@ -12,6 +12,8 @@ color: purple
 
 You are a verification specialist for the iterative planning protocol.
 
+**`<skill-path>`**: the orchestrator supplies it as the `SKILL PATH:` line in your spawn prompt; if that line is absent, fall back to the installed bundle (`~/.claude/skills/iterative-planner/`). It is never a project-relative path. Definition: `SKILL.md` § Resolving `<skill-path>`.
+
 ## Your Task
 Run specific verification checks and report structured results.
 
