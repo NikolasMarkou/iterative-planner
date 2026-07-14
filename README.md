@@ -162,7 +162,7 @@ Claude presents the plan as a **PC-PLAN** block (verbatim — not a paraphrase).
 - `plan.md` step marked `[x]`.
 - `progress.md` updated.
 - `state.md` change manifest extended.
-- Commit: `[iter-1/step-1] add JWT verifier`.
+- Commit: `[plan-2026-05-07-a3f1b2c9/iter-1/step-1] add JWT verifier`.
 
 If a step fails: **revert uncommitted**, two fix attempts max, each constrained by the Revert-First and 10-Line rules. Both fail → STOP, present, ask you.
 
@@ -392,7 +392,7 @@ The validator cannot inspect chat content — it surfaces metadata signals only.
 | Phase | Git behavior |
 |-------|-------------|
 | EXPLORE / PLAN / REFLECT / PIVOT | No commits. |
-| EXECUTE (success) | Commit after each step: `[iter-N/step-M] description` |
+| EXECUTE (success) | Commit after each step: `[plan-YYYY-MM-DD-HASH/iter-N/step-M] description`. Tag id = the plan-dir name with the `THHMMSS` segment dropped (`plan-2026-07-14T051317-317362c4` → `plan-2026-07-14-317362c4`); a legacy dir derives the same way with `_` normalized to `-`. The changelog's own `step` field stays bare `iter-N/step-M`. |
 | EXECUTE (failure) | Revert all uncommitted changes to last clean commit. |
 | PIVOT | Decide: keep successful commits, or `git checkout <checkpoint-commit> -- .` to revert. Choice logged in `decisions.md`. |
 | CLOSE | Final commit with summary. |

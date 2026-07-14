@@ -21,7 +21,7 @@ Before writing any code:
 2. Read plan.md — confirm what this step should do
 3. Read progress.md — confirm what's already done
 4. Read decisions.md — check for 3-strike patterns, failed approaches
-5. Plan anchor placement: add `# DECISION <plan-id>/D-NNN` comments where any of the 5 trigger conditions in `references/decision-anchoring.md` apply. Anchors MUST carry the active plan-id prefix (the plan directory name, e.g. `plan_2026-05-07_7556fb98`); bare `D-NNN` anchors are legacy and trigger validator WARN [anchor-unqualified]. The 5 triggers:
+5. Plan anchor placement: add `# DECISION <plan-id>/D-NNN` comments where any of the 5 trigger conditions in `references/decision-anchoring.md` apply. Anchors MUST carry the active plan-id prefix (the plan directory name, e.g. `plan-2026-05-07T091743-7556fb98`, or a legacy `plan_2026-05-07_7556fb98` for a plan created before v2.36.0); bare `D-NNN` anchors are legacy and trigger validator WARN [anchor-unqualified]. The 5 triggers:
    - Code implements an approach chosen **after a prior approach failed**
    - Implementation is **non-obvious** ("why not do X instead?")
    - A simpler-looking alternative was **deliberately rejected**
@@ -33,7 +33,9 @@ Before writing any code:
 
 ## Execution Rules
 - ONE step at a time. Do not look ahead.
-- Commit after success: `[iter-N/step-M] description`
+- Commit after success: `[plan-YYYY-MM-DD-HASH/iter-N/step-M] description`
+  - **Deriving the tag id**: take the plan-dir name and **drop the `THHMMSS` segment**. `plan-2026-07-14T051317-317362c4` → `[plan-2026-07-14-317362c4/iter-3/step-2] description`. A **legacy** plan dir (`plan_YYYY-MM-DD_XXXXXXXX` — plans created before v2.36.0 are still being executed) derives identically, normalizing the `_` separators to `-`: `plan_2026-07-14_79ee0f59` → `[plan-2026-07-14-79ee0f59/iter-3/step-2] description`.
+  - **The changelog `step` field stays bare `iter-N/step-M`** — do not "fix" this apparent inconsistency. That field is sourced from `state.md`, never parsed from the commit subject.
 - Create checkpoint before risky changes (3+ files): `checkpoints/cp-NNN-iterN.md`. Template + sibling-directory convention: `references/file-formats.md` § checkpoints/cp-NNN-iterN.md — or run `node <skill-path>/scripts/emit-template.mjs --name checkpoints` to get just this template (file-formats.md is the canonical fallback). Revert order (git first, then reinstall): `references/code-hygiene.md` § Revert procedures.
 
 ### Checkpoint Lockfile Snapshot (MANDATORY when step touches a manifest)

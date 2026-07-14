@@ -2,7 +2,9 @@
 - Iteration 1, first EXECUTE → create `checkpoints/cp-000-iter1.md` (nuclear fallback). "Git State" = commit hash BEFORE changes (the restore point).
 - One step at a time. Post-Step Gate after each (see below).
 - Checkpoint before risky changes (3+ files, shared modules, destructive ops). Name: `cp-NNN-iterN.md` (e.g. `cp-001-iter2.md`). Increment NNN globally across iterations.
-- Commit after each successful step: `[iter-N/step-M] description`.
+- Commit after each successful step: `[plan-YYYY-MM-DD-HASH/iter-N/step-M] description`.
+  - **Deriving the tag id**: take the plan-dir name and **drop the `THHMMSS` segment**. `plan-2026-07-14T051317-317362c4` → `[plan-2026-07-14-317362c4/iter-3/step-2] description`. A **legacy** plan dir (`plan_YYYY-MM-DD_XXXXXXXX` — plans created before v2.36.0 are still being executed) derives identically, normalizing the `_` separators to `-`: `plan_2026-07-14_79ee0f59` → `[plan-2026-07-14-79ee0f59/iter-3/step-2] description`.
+  - **The changelog `step` field stays bare `iter-N/step-M`** — do not "fix" this apparent inconsistency. That field is sourced from `state.md`, never parsed from the commit subject, and nothing in the codebase reads a commit message. Prefixing it would drag in `schema.mjs` / `STEP_RE` and the compression `from`/`to` range bounds for zero benefit.
 - If something breaks → STOP. 2 fix attempts max (Autonomy Leash). Each must follow Revert-First.
 - **Irreversible operations** (DB migrations, external API calls, service config, non-tracked file deletion): mark step `[IRREVERSIBLE]` in `plan.md` during PLAN. Full procedure: `references/code-hygiene.md`.
 - **Surprise discovery** (behavior contradicts findings, unknown dependency, wrong assumption) → check plan.md Assumptions to identify which steps are invalidated. Note in `state.md`, finish or revert current step, transition to REFLECT. Do NOT silently update findings during EXECUTE.

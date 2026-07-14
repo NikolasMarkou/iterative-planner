@@ -318,7 +318,9 @@ See `references/decision-anchoring.md`.
 ## Git Integration
 
 - EXPLORE/PLAN/REFLECT/PIVOT: no commits.
-- EXECUTE: commit per successful step `[iter-N/step-M] desc`. Failed step → revert uncommitted.
+- EXECUTE: commit per successful step `[plan-YYYY-MM-DD-HASH/iter-N/step-M] desc`. Failed step → revert uncommitted.
+  - **Deriving the tag id**: take the plan-dir name and **drop the `THHMMSS` segment**. `plan-2026-07-14T051317-317362c4` → `[plan-2026-07-14-317362c4/iter-3/step-2] desc`. A **legacy** plan dir (`plan_YYYY-MM-DD_XXXXXXXX`, still executing under this protocol) derives identically, normalizing the `_` separators to `-`: `plan_2026-07-14_79ee0f59` → `[plan-2026-07-14-79ee0f59/iter-3/step-2] desc`.
+  - **The changelog `step` field stays bare `iter-N/step-M`** — do not "fix" this apparent inconsistency. That field is sourced from `state.md`, never parsed from a commit subject; nothing in the codebase reads a commit message. Prefixing it would drag in `schema.mjs` / `STEP_RE` and the compression `from`/`to` range bounds for zero benefit.
 - PIVOT: keep successful commits if valid under new plan, or `git checkout <checkpoint-commit> -- .` to revert. No partial state. Log choice in `decisions.md`.
 - CLOSE: final commit + tag.
 
