@@ -77,6 +77,8 @@ The union **must be non-capturing**. It is interpolated into the anchor regexes 
 
 **Single source of truth**: the executable definitions live in `src/scripts/shared.mjs` (`PLAN_ID_PATTERN`, `LEGACY_PLAN_ID_PATTERN`, `ANY_PLAN_ID_PATTERN`) and **nowhere else**. Do not re-declare a plan-id regex in a scanner, a test, or a doc — read it from there.
 
+> **The commit tag is NOT the anchor prefix.** They differ by one segment: the EXECUTE commit tag drops `THHMMSS` (dir `plan-YYYY-MM-DDTHHMMSS-XXXXXXXX` → tag `plan-YYYY-MM-DD-XXXXXXXX`). An anchor takes the **full directory name**, `THHMMSS` included. Pasting the commit tag into an anchor produces a prefix that matches *no* anchor regex — the anchor becomes invisible rather than orphaned, so nothing errors. `validate-plan.mjs` reports these as `WARN [anchor-badprefix]`; that WARN means the anchor is currently outside the audit net entirely, not that it is merely untidy.
+
 | Style | Comment marker | Regex (anchor first line) |
 |---|---|---|
 | Hash-comment (Python, Ruby, shell, YAML, TOML, R, Perl, Makefile) | `#` | `^\s*#\s+DECISION\s+(?:<plan-id>\/)?D-\d{3}(\s+\[STALE\])?(:|\s|$)` |

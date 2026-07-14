@@ -1895,6 +1895,68 @@ describe("bootstrap.mjs", () => {
       assert.ok(!r.stdout.includes("anchor-orphan"), "bare anchor with matching D-001 should still resolve");
     });
 
+    // iter-2/step-1 — the commit tag (`plan-YYYY-MM-DD-HASH`) is the plan-dir name minus
+    // `THHMMSS`. Pasted into an anchor it matches NO anchor regex: the read union fails,
+    // the optional prefix group is skipped, then `D-` must match `plan-…` and does not.
+    // Before this check the anchor produced ZERO findings — invisible, not orphaned.
+    it("commit-tag-shaped anchor prefix emits exactly one WARN [anchor-badprefix]", () => {
+      const dir = getTempDir();
+      run(dir, "new", "badprefix commit tag");
+      const planDir = getPointer(dir); // plan-YYYY-MM-DDTHHMMSS-XXXXXXXX
+      const commitTag = planDir.replace(/T\d{6}-/, "-"); // exactly the derivation agents perform
+      assert.notEqual(commitTag, planDir, "fixture must actually drop the THHMMSS segment");
+      writeDecisionsWithEntry(dir, planDir);
+      writeFileSync(join(dir, "src.js"), `// DECISION ${commitTag}/D-001: rationale\nconst x = 1;\n`);
+      const r = runValidate(dir);
+      const bad = r.stdout.split("\n").filter((l) => l.includes("[anchor-badprefix]"));
+      assert.equal(bad.length, 1, `exactly one badprefix WARN expected, got:\n${r.stdout}`);
+      assert.ok(bad[0].trim().startsWith("WARN"), "anchor-badprefix must be WARN, not ERROR");
+      assert.ok(bad[0].includes(commitTag), "message must name the offending prefix");
+      assert.ok(bad[0].includes("commit tag"), "message must hint at the likely cause");
+      // No double-reporting: the line is not ALSO an unqualified/orphan/unknown-plan finding.
+      assert.ok(!r.stdout.includes("anchor-unqualified"), "badprefix must not double-report as unqualified");
+      assert.ok(!r.stdout.includes("anchor-orphan"), "badprefix must not double-report as orphan");
+      assert.ok(!r.stdout.includes("anchor-unknown-plan"), "badprefix must not double-report as unknown-plan");
+      assert.equal(r.exitCode, 0, `a WARN alone must not change the exit code, got:\n${r.stdout}`);
+    });
+
+    it("garbage anchor prefix emits WARN [anchor-badprefix]", () => {
+      const dir = getTempDir();
+      run(dir, "new", "badprefix garbage");
+      const planDir = getPointer(dir);
+      writeDecisionsWithEntry(dir, planDir);
+      writeFileSync(join(dir, "src.py"), `# DECISION foo/D-001: not a plan-id at all\nx = 1\n`);
+      const r = runValidate(dir);
+      const bad = r.stdout.split("\n").filter((l) => l.includes("[anchor-badprefix]"));
+      assert.equal(bad.length, 1, `exactly one badprefix WARN expected, got:\n${r.stdout}`);
+      assert.ok(bad[0].includes('"foo"'), "message must name the offending prefix");
+      assert.equal(r.exitCode, 0, "WARN-only must exit 0");
+    });
+
+    it("both real plan-id grammars produce zero [anchor-badprefix]", () => {
+      const dir = getTempDir();
+      run(dir, "new", "badprefix negative");
+      const planDir = getPointer(dir); // new grammar
+      writeDecisionsWithEntry(dir, planDir);
+      // A legacy-qualified anchor for a legacy plan dir that really exists, plus a
+      // new-grammar anchor for the active plan, plus a bare anchor (owned by
+      // anchor-unqualified, NOT by anchor-badprefix).
+      const legacy = "plan_2026-05-07_7556fb98";
+      mkdirSync(join(dir, "plans", legacy), { recursive: true });
+      writeFileSync(
+        join(dir, "plans", legacy, "decisions.md"),
+        `# Decision Log\n*Plan: ${legacy}*\n\n## D-001 | PLAN | 2026-05-07\n**Context**: c\n**Decision**: d\n**Trade-off**: x **at the cost of** y\n**Reasoning**: r\n`
+      );
+      writeFileSync(
+        join(dir, "src.js"),
+        `// DECISION ${planDir}/D-001: new grammar\n// DECISION ${legacy}/D-001: legacy grammar\n// DECISION D-001: bare\nconst x = 1;\n`
+      );
+      const r = runValidate(dir);
+      const bad = r.stdout.split("\n").filter((l) => l.includes("[anchor-badprefix]"));
+      assert.deepEqual(bad, [], `real grammars must not be flagged, got:\n${r.stdout}`);
+      assert.ok(r.stdout.includes("anchor-unqualified"), "the bare anchor keeps its own WARN");
+    });
+
     it("qualified anchor naming unknown plan emits ERROR [anchor-unknown-plan]", () => {
       const dir = getTempDir();
       run(dir, "new", "unknown plan");

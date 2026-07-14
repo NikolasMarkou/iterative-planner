@@ -1139,13 +1139,44 @@ function walkSourceFiles(root, files = [], depth = 0) {
   return files;
 }
 
+// Loose plan-id prefix: ANY run of non-space, non-slash characters sitting where a
+// plan-id belongs. Used ONLY by the bad-prefix scan below — never to resolve an anchor.
+// It is not a plan-id grammar (D-005's "one grammar" rule is untouched); it is the
+// complement used to see the anchors the real grammar cannot see.
+const LOOSE_ANCHOR_PREFIX_PATTERN = "[^\\s\\/]+";
+
+// The anchor regex family, built ONCE from a single body template so the strict form
+// (prefix = the shared read union) and the loose form (prefix = anything) cannot drift
+// apart. Capture groups: 1=planName(opt), 2=id, 3=stale(opt).
+// The strict prefix is the READ UNION from shared.mjs, which is NON-CAPTURING
+// `(?:new|legacy)` — that is load-bearing, not stylistic: `pushMatch` reads
+// m[1]/m[2]/m[3] by index, so a capture group inside the union shifts all three and
+// mis-parses every anchor in the repo. The decision-id digit run is `\d{3,}(?!\d)` —
+// 3-digit padding is a MINIMUM, so D-1000+ is scannable; the trailing boundary keeps the
+// run maximal. These four MUST stay grammar-identical to bootstrap.mjs retire's stamper,
+// or retire cannot clear an orphan this scanner reports.
+function buildAnchorRegexes(prefixPattern) {
+  const body = `(?:(${prefixPattern})\\/)?D-(${DECISION_ID_NUM_PATTERN})(\\s+\\[STALE\\])?`;
+  return {
+    hashRe: new RegExp(`(?:^|\\s)#\\s+DECISION\\s+${body}(?::|\\s|$)`),
+    slashRe: new RegExp(`(?:^|\\s)\\/\\/\\s+DECISION\\s+${body}(?::|\\s|$)`),
+    sqlRe: new RegExp(`(?:^|\\s)--\\s+DECISION\\s+${body}(?::|\\s|$)`),
+    blockInnerRe: new RegExp(`DECISION\\s+${body}`),
+  };
+}
+
 // Collect all anchor occurrences in a single source file. Returns array of
 // { file, line, planName, id, qualified, stale }:
 //   planName — string plan-id prefix if anchor is qualified, else null
 //   id       — D-NNN integer (just the three-digit number)
 //   qualified — true iff planName is non-null
 //   stale    — true iff anchor carries the [STALE] marker
-function findAnchorsInFile(file, projectRoot) {
+//
+// `prefixPattern` defaults to the shared read union (the real grammar). The bad-prefix
+// scan re-runs this same walk with LOOSE_ANCHOR_PREFIX_PATTERN — same extension gating,
+// same comment spans, same doc-example immunity — so the two scans cannot disagree about
+// what counts as a comment.
+function findAnchorsInFile(file, projectRoot, prefixPattern = ANY_PLAN_ID_PATTERN) {
   let text;
   try {
     text = readFileSync(file, "utf-8");
@@ -1155,18 +1186,7 @@ function findAnchorsInFile(file, projectRoot) {
   const ext = extname(file);
   const out = [];
 
-  // Build per-style regexes once. Capture groups: 1=planName(opt), 2=id, 3=stale(opt).
-  // Both id grammars come from shared.mjs. The plan-id is the READ UNION, which is
-  // NON-CAPTURING `(?:new|legacy)` — that is load-bearing, not stylistic: `pushMatch`
-  // below reads m[1]/m[2]/m[3] by index, so a capture group inside the union shifts all
-  // three and mis-parses every anchor in the repo. The decision-id digit run is
-  // `\d{3,}(?!\d)` — 3-digit padding is a MINIMUM, so D-1000+ is scannable; the trailing
-  // boundary keeps the run maximal. These four MUST stay grammar-identical to
-  // bootstrap.mjs retire's stamper, or retire cannot clear an orphan this scanner reports.
-  const hashRe = new RegExp(`(?:^|\\s)#\\s+DECISION\\s+(?:(${ANY_PLAN_ID_PATTERN})\\/)?D-(${DECISION_ID_NUM_PATTERN})(\\s+\\[STALE\\])?(?::|\\s|$)`);
-  const slashRe = new RegExp(`(?:^|\\s)\\/\\/\\s+DECISION\\s+(?:(${ANY_PLAN_ID_PATTERN})\\/)?D-(${DECISION_ID_NUM_PATTERN})(\\s+\\[STALE\\])?(?::|\\s|$)`);
-  const sqlRe = new RegExp(`(?:^|\\s)--\\s+DECISION\\s+(?:(${ANY_PLAN_ID_PATTERN})\\/)?D-(${DECISION_ID_NUM_PATTERN})(\\s+\\[STALE\\])?(?::|\\s|$)`);
-  const blockInnerRe = new RegExp(`DECISION\\s+(?:(${ANY_PLAN_ID_PATTERN})\\/)?D-(${DECISION_ID_NUM_PATTERN})(\\s+\\[STALE\\])?`);
+  const { hashRe, slashRe, sqlRe, blockInnerRe } = buildAnchorRegexes(prefixPattern);
 
   function pushMatch(m, lineNum) {
     out.push({
@@ -1261,6 +1281,22 @@ function findAnchorsInFile(file, projectRoot) {
   return out;
 }
 
+// DECISION plan_2026-07-14_317362c4/D-005 — anchors whose plan-id prefix is not a legal
+// plan-id are found by a SECOND, loose-prefix pass, and reported as WARN. Do NOT "fix"
+// this by widening the read union (shared.mjs) to also accept the commit-tag shape
+// `plan-YYYY-MM-DD-HASH`: that would make a mis-derived prefix *resolve*, and the anchor
+// would then be silently attributed to a plan directory that does not exist. The union is
+// the grammar of things that ARE plan-ids; this pass is the net under it. And do NOT
+// promote this to ERROR: the anchor still documents a real decision, the id still
+// resolves by eye, and a cosmetic prefix typo must not hard-block a REFLECT→CLOSE gate.
+// Bare anchors (no prefix at all) are NOT reported here — `anchor-unqualified` already
+// owns them; double-reporting the same line under two checks trains people to ignore both.
+// See decisions.md D-005.
+function findBadPrefixAnchorsInFile(file, projectRoot) {
+  return findAnchorsInFile(file, projectRoot, LOOSE_ANCHOR_PREFIX_PATTERN)
+    .filter((a) => a.qualified && !ANY_PLAN_ID_RE.test(a.planName));
+}
+
 // Collect known decision IDs grouped by plan. Returns Map<planName, Set<id>>.
 // The active plan is keyed by `activePlanName`. Cross-plan archive is parsed
 // section-aware: each `## <plan-id>` heading begins a section; `### D-NNN`
@@ -1326,6 +1362,15 @@ function checkReverseAnchors(planDir, planDirName, issues, projectRoot) {
   }
 
   for (const file of files) {
+    for (const b of findBadPrefixAnchorsInFile(file, projectRoot)) {
+      const rel = relative(projectRoot, b.file);
+      const idStr = `D-${String(b.id).padStart(3, "0")}`;
+      issues.push({
+        severity: "WARN",
+        check: "anchor-badprefix",
+        message: `${rel}:${b.line} anchor prefix "${b.planName}" is not a plan-id, so ${idStr} is invisible to the anchor audit — it matches no anchor regex at all, and is not even reported as an orphan. A plan-id is the full plan-DIRECTORY name (\`plan-YYYY-MM-DDTHHMMSS-XXXXXXXX\`, or legacy \`plan_YYYY-MM-DD_XXXXXXXX\`). If it looks like a commit tag: the tag DROPS the \`THHMMSS\` segment, anchors keep it. See references/decision-anchoring.md`,
+      });
+    }
     const anchors = findAnchorsInFile(file, projectRoot);
     for (const a of anchors) {
       const rel = relative(projectRoot, a.file);
