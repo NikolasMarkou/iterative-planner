@@ -221,6 +221,7 @@ lint:
 	node --check src/scripts/check-doc-parity.mjs
 	node --check src/scripts/check-readme-parity.mjs
 	node --check src/scripts/check-test-count.mjs
+	node --check src/scripts/check-agent-wiring.mjs
 	node --check src/scripts/emit-state.mjs
 	node --check src/scripts/emit-template.mjs
 	node --check src/scripts/schema.mjs
@@ -234,7 +235,7 @@ lint:
 .PHONY: test
 test: lint
 	@echo "Running all test suites..."
-	node --test src/scripts/bootstrap.test.mjs src/scripts/validate-plan.test.mjs src/scripts/blast-radius.test.mjs src/scripts/check-doc-parity.test.mjs src/scripts/emit-state.test.mjs src/scripts/emit-template.test.mjs src/scripts/check-readme-parity.test.mjs src/scripts/shared.test.mjs src/scripts/check-test-count.test.mjs src/scripts/schema.test.mjs
+	node --test src/scripts/bootstrap.test.mjs src/scripts/validate-plan.test.mjs src/scripts/blast-radius.test.mjs src/scripts/check-doc-parity.test.mjs src/scripts/emit-state.test.mjs src/scripts/emit-template.test.mjs src/scripts/check-readme-parity.test.mjs src/scripts/shared.test.mjs src/scripts/check-test-count.test.mjs src/scripts/schema.test.mjs src/scripts/check-agent-wiring.test.mjs
 	@echo "Checking TEST_COUNT against the live suite result..."
 	node src/scripts/check-test-count.mjs
 	@echo "Tests passed!"
