@@ -1732,7 +1732,18 @@ function cmdList() {
   const entries = readdirSync(plansDir, { withFileTypes: true })
     .filter((d) => d.isDirectory() && PLAN_DIR_PREFIX_RE.test(d.name))
     .map((d) => d.name)
-    .sort();
+    // Chronological, NOT lexical. A raw name sort is wrong across the read union: `-`
+    // (0x2D) sorts before `_` (0x5F), so every new-format dir would group ahead of every
+    // legacy dir regardless of date. Sort on the extracted date; fall back to the raw
+    // name when it cannot be parsed (those land last — digits sort before letters); and
+    // always tie-break on the full name, since planDateFromId resolves only to the day
+    // and same-day dirs must still print in a stable order.
+    .sort((a, b) => {
+      const ka = planDateFromId(a) ?? a;
+      const kb = planDateFromId(b) ?? b;
+      if (ka !== kb) return ka < kb ? -1 : 1;
+      return a < b ? -1 : a > b ? 1 : 0;
+    });
 
   if (entries.length === 0) {
     console.log("No plan directories found.");

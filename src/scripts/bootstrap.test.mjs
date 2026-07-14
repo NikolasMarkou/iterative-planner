@@ -526,6 +526,44 @@ describe("bootstrap.mjs", () => {
       assert.ok(r.stdout.includes("2 total"), "should show total count");
     });
 
+    // iter-2/step-3 — `-` (0x2D) sorts before `_` (0x5F), so a raw name sort put EVERY
+    // new-format dir ahead of EVERY legacy dir regardless of date. Fixture: the legacy
+    // dir is the NEWER of the two, so a lexical sort would print it first (wrong) and a
+    // chronological sort prints it last (right).
+    it("orders mixed-grammar dirs chronologically, not lexically", () => {
+      const dir = getTempDir();
+      mkdirSync(join(dir, "plans"), { recursive: true });
+      const older = "plan-2020-01-01T000000-aaaaaaaa"; // new grammar, OLDER
+      const newer = "plan_2030-12-31_bbbbbbbb";        // legacy grammar, NEWER
+      for (const name of [older, newer]) {
+        mkdirSync(join(dir, "plans", name), { recursive: true });
+        writeFileSync(join(dir, "plans", name, "state.md"), "# Current State: CLOSED\n");
+        writeFileSync(join(dir, "plans", name, "plan.md"), `# Plan\n\n## Goal\n\ngoal ${name}\n`);
+      }
+      const r = run(dir, "list");
+      assert.equal(r.exitCode, 0);
+      const iOlder = r.stdout.indexOf(older);
+      const iNewer = r.stdout.indexOf(newer);
+      assert.ok(iOlder !== -1 && iNewer !== -1, `both dirs must be listed, got:\n${r.stdout}`);
+      assert.ok(iOlder < iNewer, `2020 (new grammar) must precede 2030 (legacy), got:\n${r.stdout}`);
+    });
+
+    it("breaks same-day ties deterministically (planDateFromId resolves only to the day)", () => {
+      const dir = getTempDir();
+      mkdirSync(join(dir, "plans"), { recursive: true });
+      const early = "plan-2026-07-14T010101-aaaaaaaa";
+      const late = "plan-2026-07-14T235959-bbbbbbbb";
+      for (const name of [late, early]) {
+        mkdirSync(join(dir, "plans", name), { recursive: true });
+        writeFileSync(join(dir, "plans", name, "state.md"), "# Current State: CLOSED\n");
+        writeFileSync(join(dir, "plans", name, "plan.md"), `# Plan\n\n## Goal\n\ngoal\n`);
+      }
+      const a = run(dir, "list");
+      const b = run(dir, "list");
+      assert.equal(a.stdout, b.stdout, "list output must be stable across runs");
+      assert.ok(a.stdout.indexOf(early) < a.stdout.indexOf(late), `same-day tie must order by full name, got:\n${a.stdout}`);
+    });
+
     it("shows closed plans without active marker", () => {
       const dir = getTempDir();
       run(dir, "new", "Closed plan");
