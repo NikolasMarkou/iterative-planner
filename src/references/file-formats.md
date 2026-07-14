@@ -757,8 +757,8 @@ Usage:
 - CLOSE: ip-archivist Step 5 rewrites under 300-line cap. **Demote-by-staleness, not by recency** — drop entries not referenced or reaffirmed by recent plans. Truncating most-recent defeats curation.
 - Contradictions: EXPLORE finding contradicts SYSTEM.md entry → mark in `findings.md` with `[CONTRADICTED iter-N]` → archivist corrects at CLOSE (mirrors `[CORRECTED iter-N]`).
 - Hard cap 300 lines enforced by `validate-plan.mjs` ERROR `[atlas-cap]`. Truncation by writers forbidden.
-- Created by bootstrap on first `new` (skeleton matches schema above).
-- Schema single-source: this section. Bootstrap skeleton in `src/scripts/bootstrap.mjs` must match exactly — update in lockstep.
+- Created by bootstrap on first `new` — but the bytes it writes are **not** the schema above. They are the `<!-- SKELETON:system -->` region under **Bootstrap Skeletons (machine-checked)**, which `check-template-parity.mjs` pins to `PLAN_TEMPLATES.system` byte-for-byte. That is the only gated pair; go there for the literal bytes.
+- The schema above is the **populated form** — what `ip-archivist` fills in at CLOSE, and what `emit-template --name system` serves it. It differs from the skeleton **deliberately**, and the difference is the point: the skeleton keeps the `*Last refreshed: (none yet)*` sentinel and marks every bullet as an unpopulated schema hint, because a fresh atlas is read at EXPLORE/PLAN start and must not be mistaken for established fact. Do not "sync" the two.
 
 <!-- TEMPLATE:index -->
 ## plans/INDEX.md
