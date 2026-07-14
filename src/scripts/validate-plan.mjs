@@ -22,6 +22,7 @@ import {
   unterminatedCommentOpener,
   ANY_PLAN_ID_PATTERN,
   ANY_PLAN_ID_RE,
+  PLAN_SECTION_RE,
   DECISION_ID_NUM_PATTERN,
 } from "./shared.mjs";
 // Changelog field shapes are schema-driven (see checkChangelogFormat / D-001).
@@ -735,8 +736,8 @@ const LESSONS_LINE_CAP = 200;
 // Validate compression-summary marker integrity in consolidated files
 // (plans/FINDINGS.md, plans/DECISIONS.md). Rules from SKILL.md §Consolidated
 // File Management — Compression: markers come in matched pairs, never nested,
-// at most one pair per file, and must sit between H1 and the first `## plan_`
-// section. We enforce pairing + non-nesting strictly, and the "at most one
+// at most one pair per file, and must sit between H1 and the first
+// `## <plan-id>` section. We enforce pairing + non-nesting strictly, and the "at most one
 // pair" rule because the compression protocol REPLACES the block on each
 // regeneration (Step 3, SKILL.md L167); two pairs imply a regeneration bug.
 function checkCompressionMarkers(issues) {
@@ -798,13 +799,16 @@ function checkCompressionMarkers(issues) {
       });
       continue;
     }
-    // One pair: verify it sits before the first ## plan_ section.
-    const firstPlanSection = content.search(/\n## plan_/);
+    // One pair: verify it sits before the first `## <plan-id>` section (BOTH
+    // grammars — shared.mjs PLAN_SECTION_RE). `String.search` is lastIndex-safe on
+    // a global regex (it saves/restores it); `.test()` / `.exec()` are NOT — never
+    // call those on PLAN_SECTION_RE.
+    const firstPlanSection = content.search(PLAN_SECTION_RE);
     if (firstPlanSection !== -1 && opens[0] > firstPlanSection) {
       issues.push({
         severity: "WARN",
         check: "compress-markers",
-        message: `plans/${fname}: compression block appears AFTER the first \`## plan_\` section. Per SKILL.md §Compression Format, the block belongs between the H1 header and the first plan section.`,
+        message: `plans/${fname}: compression block appears AFTER the first \`## <plan-id>\` section. Per SKILL.md §Compression Format, the block belongs between the H1 header and the first plan section.`,
       });
     }
   }

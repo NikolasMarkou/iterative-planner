@@ -26,6 +26,9 @@ import {
   COMPRESSED_SUMMARY_CLOSE,
   CHANGELOG_COMPRESSED_INLINE_RE,
   ANY_PLAN_ID_RE,
+  PLAN_DIR_PREFIX_RE,
+  PLAN_SECTION_RE,
+  planDateFromId,
   DECISION_ID_NUM_PATTERN,
 } from "./shared.mjs";
 // DECISION plan_2026-07-14_79ee0f59/D-002 — THE CHANGELOG IS A MARKDOWN FILE, AND AN APPEND IS ONE
@@ -365,18 +368,16 @@ function trimConsolidatedWindow(filePath) {
   // Old data is still in per-plan directories — no information lost.
   let content;
   try { content = readFileSync(filePath, "utf-8"); } catch { return; }
-  // Find all ## plan_ section positions. Also catch a section that begins
-  // at byte 0 (no preceding newline) — defensive against pathological
-  // consolidated files lacking the boilerplate H1 header.
-  const positions = [];
-  if (/^## plan_/.test(content)) positions.push(0);
-  const re = /\n## plan_/g;
-  let match;
-  while ((match = re.exec(content)) !== null) {
-    // Record the section start AT the heading (skip the leading \n), so that
-    // slicing to `positions[N]` cleanly truncates before the Nth section.
-    positions.push(match.index + 1);
-  }
+  // Find all `## <plan-id>` section positions, BOTH grammars (shared.mjs
+  // PLAN_SECTION_RE). It is line-anchored (`m`), so it also catches a section
+  // that begins at byte 0 with no preceding newline — the pathological
+  // consolidated file that lacks the boilerplate H1 header. Each match.index is
+  // already AT the heading, so slicing to `positions[N]` cleanly truncates
+  // before the Nth section.
+  //
+  // PLAN_SECTION_RE is a module-level GLOBAL regex: `matchAll` is lastIndex-safe
+  // (it clones the regex); `.exec()` / `.test()` are NOT — do not use them here.
+  const positions = [...content.matchAll(PLAN_SECTION_RE)].map((m) => m.index);
   if (positions.length <= MAX_CONSOLIDATED_PLANS) return;
   // Truncate after the Nth section (keep first N, they're the newest)
   const cutoff = positions[MAX_CONSOLIDATED_PLANS];
@@ -1072,8 +1073,9 @@ function appendToIndex(planDirName) {
   // otherwise produce an empty INDEX.md goal column.
   const goalFirstNonBlank = goal.split("\n").find((l) => l.trim().length > 0) || "No goal";
   const goalOneLine = goalFirstNonBlank.slice(0, 60);
-  const dateMatch = planDirName.match(/plan_(\d{4}-\d{2}-\d{2})/);
-  const date = dateMatch ? dateMatch[1] : "unknown";
+  // Date column: both grammars (`plan_YYYY-MM-DD_…` and `plan-YYYY-MM-DDTHHMMSS-…`)
+  // via shared.mjs. A name that is not a plan-id yields null → "unknown", as before.
+  const date = planDateFromId(planDirName) || "unknown";
 
   // Extract key topics from findings.md ## Index section only (first 3 topic slugs).
   // Only pick links of the form `[label](target)` — bare brackets like
@@ -1172,7 +1174,7 @@ function cmdNewInner(goal, force) {
     try { readFileSync(pointerFile, "utf-8"); pointerFileExists = true; } catch { /* no pointer file */ }
     if (!activeName && pointerFileExists) {
       const allPlans = readdirSync(plansDir, { withFileTypes: true })
-        .filter((d) => d.isDirectory() && d.name.startsWith("plan_"))
+        .filter((d) => d.isDirectory() && PLAN_DIR_PREFIX_RE.test(d.name))
         .map((d) => d.name);
       if (allPlans.length > 0) {
         console.error(`WARNING: Pointer file exists but points to non-existent directory. Found ${allPlans.length} plan director${allPlans.length === 1 ? "y" : "ies"}:`);
@@ -1669,7 +1671,7 @@ function cmdList() {
 
   const activeName = readPointer();
   const entries = readdirSync(plansDir, { withFileTypes: true })
-    .filter((d) => d.isDirectory() && d.name.startsWith("plan_"))
+    .filter((d) => d.isDirectory() && PLAN_DIR_PREFIX_RE.test(d.name))
     .map((d) => d.name)
     .sort();
 

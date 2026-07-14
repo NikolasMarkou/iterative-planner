@@ -1175,6 +1175,71 @@ real plan section
     assert.ok(cmErrs.length >= 1, `real unbalanced marker must still ERROR, got:\n${r.stdout}`);
   });
 
+  // v2.36.0 step 2 — the compression-block PLACEMENT check must see `## <plan-id>`
+  // sections in BOTH grammars. Pre-fix it searched the literal `\n## plan_`, so a
+  // misplaced block in a file whose sections are all new-format went unreported.
+  const CM_WARN = /WARN\s+\[compress-markers\]/;
+
+  it("(u) compression block placed AFTER a LEGACY `## plan_` section → WARN", () => {
+    const cwd = getTempDir();
+    writePlan(cwd, { state: "EXPLORE", iteration: 0 });
+    writeFileSync(join(cwd, "plans", "FINDINGS.md"),
+`# Consolidated Findings
+
+## plan_2026-01-01_deadbeef
+real plan section
+
+<!-- COMPRESSED-SUMMARY -->
+## Summary (compressed)
+misplaced — must sit above the first plan section
+<!-- /COMPRESSED-SUMMARY -->
+`);
+    const r = run(cwd);
+    const warns = r.stdout.split("\n").filter((l) => CM_WARN.test(l));
+    assert.ok(warns.length >= 1, `misplaced block (legacy grammar) must WARN, got:\n${r.stdout}`);
+  });
+
+  it("(v) compression block placed AFTER a NEW-format `## plan-…T…` section → WARN", () => {
+    const cwd = getTempDir();
+    writePlan(cwd, { state: "EXPLORE", iteration: 0 });
+    writeFileSync(join(cwd, "plans", "FINDINGS.md"),
+`# Consolidated Findings
+
+## plan-2026-01-01T000000-deadbeef
+real plan section
+
+<!-- COMPRESSED-SUMMARY -->
+## Summary (compressed)
+misplaced — must sit above the first plan section
+<!-- /COMPRESSED-SUMMARY -->
+`);
+    const r = run(cwd);
+    const warns = r.stdout.split("\n").filter((l) => CM_WARN.test(l));
+    assert.ok(warns.length >= 1, `misplaced block (new grammar) must WARN, got:\n${r.stdout}`);
+  });
+
+  it("(w) correctly placed compression block → no WARN, for either grammar", () => {
+    const cwd = getTempDir();
+    writePlan(cwd, { state: "EXPLORE", iteration: 0 });
+    writeFileSync(join(cwd, "plans", "FINDINGS.md"),
+`# Consolidated Findings
+
+<!-- COMPRESSED-SUMMARY -->
+## Summary (compressed)
+correctly placed
+<!-- /COMPRESSED-SUMMARY -->
+
+## plan-2026-01-02T000000-deadbeef
+new-format section
+
+## plan_2026-01-01_deadbeef
+legacy section
+`);
+    const r = run(cwd);
+    const warns = r.stdout.split("\n").filter((l) => CM_WARN.test(l));
+    assert.equal(warns.length, 0, `correctly placed block must NOT warn, got:\n${r.stdout}`);
+  });
+
   it("(h) negative regression: full validator without --pre-step never emits exit code 2", () => {
     const cwd = getTempDir();
     writePlan(cwd, {

@@ -5,7 +5,7 @@
 
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, readFileSync, writeFileSync, existsSync, rmSync, readdirSync, unlinkSync } from "fs";
+import { mkdirSync, readFileSync, writeFileSync, existsSync, rmSync, readdirSync, unlinkSync, renameSync } from "fs";
 import { join, resolve } from "path";
 import { execFileSync, spawnSync } from "child_process";
 import { tmpdir } from "os";
@@ -3580,5 +3580,107 @@ describe("retire: never edits a doc example in an indented code block (CRITICAL 
     assert.equal(r.exitCode, 0, `got:\n${r.stdout}\n${r.stderr}`);
     assert.match(readFileSync(md, "utf-8"), /\/D-001 \[STALE\] — a REAL anchor -->/,
       "an anchor below an unterminated fence is REAL and must be stamped");
+  });
+});
+
+// ===========================================================================
+// Dual-grammar recognition in the four bootstrap sites that used to hardcode
+// the literal "plan_" (v2.36.0, plan_2026-07-14_317362c4 step 2).
+//
+// These four sites fail SILENTLY against a new-format dir — no error, they
+// simply stop matching: the sliding window never trims (plans/FINDINGS.md
+// grows unbounded), the INDEX.md date column goes blank, `list` stops listing,
+// the orphan scan goes blind. Each test below drives a NEW-format id through
+// the site and asserts the legacy behavior is unchanged alongside it.
+// ===========================================================================
+describe("bootstrap.mjs: plan-id grammar union at the four enumeration/scan sites", () => {
+  const tempDirs = [];
+  function getTempDir() { const d = makeTempDir(); tempDirs.push(d); return d; }
+  afterEach(() => { while (tempDirs.length) removeTempDir(tempDirs.pop()); });
+
+  const NEW_A = "plan-2026-01-05T101112-eeeeeeee"; // newest
+  const NEW_B = "plan-2026-01-03T090000-cccccccc";
+  const LEG_A = "plan_2026-01-04_dddddddd";
+  const LEG_B = "plan_2026-01-02_bbbbbbbb";
+  const LEG_C = "plan_2026-01-01_aaaaaaaa";        // oldest — must be trimmed
+
+  it("sliding-window trim keeps the 4 newest sections across a MIX of both grammars", () => {
+    const dir = getTempDir();
+    mkdirSync(join(dir, "plans"), { recursive: true });
+    // Consolidated files are newest-first by protocol invariant. 5 sections in,
+    // 4 out. Pre-fix (`/\n## plan_/`) the two `## plan-…` sections were invisible,
+    // so only 3 positions were found, `positions.length <= 4` held, and the file
+    // was NEVER trimmed.
+    const synthetic = "# Consolidated Findings\n*Archive.*\n\n" +
+      [NEW_A, LEG_A, NEW_B, LEG_B, LEG_C]
+        .map((id) => `## ${id}\n### Index\n- from ${id}\n`)
+        .join("\n");
+    writeFileSync(join(dir, "plans", "FINDINGS.md"), synthetic);
+    run(dir, "new", "trigger trim");
+    const planDir = getPointer(dir);
+    // Empty findings.md → prependToConsolidated is a no-op, so we observe trim in isolation.
+    writeFileSync(join(dir, "plans", planDir, "findings.md"), "# Findings\n");
+    run(dir, "close");
+    const merged = readFileSync(join(dir, "plans", "FINDINGS.md"), "utf-8");
+    const sections = merged.match(/(^|\n)## plan[-_]/g) || [];
+    assert.equal(sections.length, 4,
+      `expected exactly 4 plan sections after trim, got ${sections.length}; content=${JSON.stringify(merged.slice(0, 300))}`);
+    for (const kept of [NEW_A, LEG_A, NEW_B, LEG_B]) {
+      assert.ok(merged.includes(kept), `section ${kept} must be retained`);
+    }
+    assert.ok(!merged.includes(LEG_C), "oldest section must be trimmed by the sliding window");
+  });
+
+  it("INDEX.md date column is populated for a NEW-format plan id", () => {
+    const dir = getTempDir();
+    run(dir, "new", "New-format index date");
+    const legacy = getPointer(dir);
+    renameSync(join(dir, "plans", legacy), join(dir, "plans", NEW_A));
+    writeFileSync(join(dir, "plans", ".current_plan"), `${NEW_A}\n`);
+    run(dir, "close");
+    const index = readFileSync(join(dir, "plans", "INDEX.md"), "utf-8");
+    const row = index.split("\n").find((l) => l.includes(`| ${NEW_A} |`));
+    assert.ok(row, `INDEX.md must carry a row for ${NEW_A}, got:\n${index}`);
+    assert.ok(row.includes("2026-01-05"),
+      `date column must read 2026-01-05 for ${NEW_A}, got: ${row}`);
+    assert.ok(!row.includes("unknown"), `date column must not be "unknown", got: ${row}`);
+  });
+
+  it("INDEX.md date column still works for a LEGACY plan id", () => {
+    const dir = getTempDir();
+    run(dir, "new", "Legacy index date");
+    const legacy = getPointer(dir);
+    const expected = legacy.slice("plan_".length, "plan_".length + 10); // YYYY-MM-DD
+    run(dir, "close");
+    const index = readFileSync(join(dir, "plans", "INDEX.md"), "utf-8");
+    const row = index.split("\n").find((l) => l.includes(`| ${legacy} |`));
+    assert.ok(row, `INDEX.md must carry a row for ${legacy}, got:\n${index}`);
+    assert.ok(row.includes(expected), `date column must read ${expected}, got: ${row}`);
+  });
+
+  it("list enumerates BOTH a legacy and a new-format plan directory", () => {
+    const dir = getTempDir();
+    run(dir, "new", "Legacy plan");
+    const legacy = getPointer(dir);
+    run(dir, "close");
+    mkdirSync(join(dir, "plans", NEW_A), { recursive: true });
+    const r = run(dir, "list");
+    assert.equal(r.exitCode, 0, `list must exit 0, got:\n${r.stdout}${r.stderr}`);
+    assert.ok(r.stdout.includes(legacy), `list must show the legacy dir, got:\n${r.stdout}`);
+    assert.ok(r.stdout.includes(NEW_A), `list must show the new-format dir, got:\n${r.stdout}`);
+    assert.ok(r.stdout.includes("(2 total)"), `list must count 2 plans, got:\n${r.stdout}`);
+  });
+
+  it("orphan scan sees a NEW-format directory when the pointer is stale", () => {
+    const dir = getTempDir();
+    mkdirSync(join(dir, "plans", NEW_A), { recursive: true });
+    // Pointer names a syntactically valid but NON-EXISTENT dir → readPointer() → null,
+    // pointer file present → orphan scan runs and must enumerate the new-format dir.
+    writeFileSync(join(dir, "plans", ".current_plan"), "plan-2026-01-01T000000-ffffffff\n");
+    const r = runFull(dir, "new", "after orphan");
+    assert.equal(r.exitCode, 0, `new must still succeed, got:\n${r.stdout}${r.stderr}`);
+    assert.ok(r.stderr.includes("WARNING"), `orphan warning expected, got:\n${r.stderr}`);
+    assert.ok(r.stderr.includes(NEW_A),
+      `orphan scan must name the new-format directory ${NEW_A}, got:\n${r.stderr}`);
   });
 });
