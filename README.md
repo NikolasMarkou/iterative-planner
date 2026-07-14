@@ -1,8 +1,8 @@
 # Iterative Planner
 
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Skill](https://img.shields.io/badge/Skill-v2.32.0-green.svg)](CHANGELOG.md)
-[![Tests](https://img.shields.io/badge/tests-302%20passing-brightgreen.svg)](src/scripts/bootstrap.test.mjs)
+[![Skill](https://img.shields.io/badge/Skill-v2.33.0-green.svg)](CHANGELOG.md)
+[![Tests](https://img.shields.io/badge/tests-584%20passing-brightgreen.svg)](src/scripts/bootstrap.test.mjs)
 [![Sponsored by Electi](https://img.shields.io/badge/Sponsored%20by-Electi-red.svg)](https://www.electiconsulting.com)
 
 A [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skill that turns ad-hoc agent runs into structured, recoverable, evidence-driven work.
@@ -452,9 +452,17 @@ node --test src/scripts/bootstrap.test.mjs \
             src/scripts/emit-state.test.mjs \
             src/scripts/emit-template.test.mjs \
             src/scripts/check-readme-parity.test.mjs \
-            src/scripts/shared.test.mjs
-# 302 tests total: bootstrap 183, validate-plan 45, blast-radius 23, check-doc-parity 4, emit-state 12, emit-template 10, check-readme-parity 4, shared 21
+            src/scripts/check-test-count.test.mjs \
+            src/scripts/shared.test.mjs \
+            src/scripts/xml.test.mjs \
+            src/scripts/schema.test.mjs \
+            src/scripts/changelog.test.mjs
+# 584 tests total: bootstrap 204, xml 90, validate-plan 83, schema 50, changelog 40,
+#                  blast-radius 37, shared 33, check-test-count 17, emit-state 12,
+#                  emit-template 10, check-doc-parity 4, check-readme-parity 4
 ```
+
+`node src/scripts/check-test-count.mjs` re-runs the suite and fails if the live pass count disagrees with the `TEST_COUNT` file. It runs as part of `make test` (not `make validate`, which stays suite-free and fast).
 
 </details>
 
@@ -501,7 +509,7 @@ make help
 <summary><strong>Before submitting changes</strong></summary>
 
 - [ ] `make validate` (or `.\build.ps1 validate`) passes
-- [ ] `node --test src/scripts/bootstrap.test.mjs src/scripts/validate-plan.test.mjs src/scripts/blast-radius.test.mjs src/scripts/check-doc-parity.test.mjs src/scripts/emit-state.test.mjs src/scripts/emit-template.test.mjs src/scripts/check-readme-parity.test.mjs src/scripts/shared.test.mjs` passes (302 tests)
+- [ ] `node --test src/scripts/*.test.mjs` passes (584 tests, 0 failing) and `node src/scripts/check-test-count.mjs` exits 0
 - [ ] `src/SKILL.md` has `name:` and `description:` in YAML frontmatter
 - [ ] All cross-references in `src/SKILL.md` point to existing files in `src/references/`
 - [ ] State machine diagram matches transition rules table
@@ -548,11 +556,19 @@ iterative-planner/
     │   ├── check-doc-parity.test.mjs # doc-parity test suite (node:test)
     │   ├── check-readme-parity.mjs         # README version badge and test count parity gate (used by make/build.ps1 validate; Node.js 18+)
     │   ├── check-readme-parity.test.mjs    # Test suite (node:test)
+    │   ├── check-test-count.mjs    # TEST_COUNT vs live `node --test` pass-count gate (run via make test)
+    │   ├── check-test-count.test.mjs # check-test-count test suite (node:test)
+    │   ├── xml.mjs                 # zero-dependency XML parser + serializer (restricted subset; no namespaces/DTD)
+    │   ├── xml.test.mjs            # xml test suite (node:test)
+    │   ├── schema.mjs              # declarative element/attribute spec + validateDoc() (hosts the changelog spec)
+    │   ├── schema.test.mjs         # schema test suite (node:test)
+    │   ├── changelog.mjs           # changelog.xml write-through CLI: append / import / render (no agent hand-writes XML)
+    │   ├── changelog.test.mjs      # changelog test suite (node:test)
     │   ├── emit-state.mjs          # per-state rule router; emits scripts/modules/state-<s>.md on demand
     │   ├── emit-state.test.mjs     # emit-state test suite (node:test)
     │   ├── emit-template.mjs       # per-template slicer; emits one plan-file template from references/file-formats.md via --name <slug>
     │   ├── emit-template.test.mjs  # emit-template test suite (node:test)
-    │   ├── shared.mjs              # shared helpers (field extraction, changelog field split, compression markers)
+    │   ├── shared.mjs              # shared helpers (field extraction, changelog field split, compression markers, id grammars)
     │   └── modules/                # verbatim per-state rule bodies (EXPLORE/PLAN/EXECUTE/REFLECT/PIVOT), emitted on demand
     └── references/
         ├── file-formats.md         # templates for every plan directory file + Presentation Contracts
