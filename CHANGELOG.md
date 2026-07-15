@@ -4,6 +4,33 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.42.0] - 2026-07-15
+
+**A reflexive audit of the 7 sub-agent definitions found 13 contract/ownership defects that no mechanical gate could see — the wiring layer (`check-agent-wiring`, `check-template-parity`) was fully green, but the *semantics* were not.** Two were bugs (an instruction an agent cannot execute; a double-`bootstrap.mjs close` race), five were safety/capability gaps (a missing `<skill-path>` block, an uncreated nuclear checkpoint, an incomplete failure revert, an unrouted verifier signal, a drifted lessons vocabulary), six were dead-prose / DRY / clarity cleanups. All 13 fixed and then **adversarially reviewed before release** — that pass caught 3 half-applied edits, all remediated in the same iteration. `bootstrap.mjs` untouched (the one F7 "high-risk byte-gated" edit turned out to be a misread — the lessons seed is intentionally header-only, like `system`). Suite **607**, 0 failures; **0 files added, 0 new abstractions, net +7 lines**.
+
+### Fixed
+
+- **ip-plan-writer was told to run a script it cannot execute (F1).** Its `emit-template.mjs` fallback requires Bash, but the agent's frontmatter sets `disallowedTools: Bash` and its own rules forbid running code. Removed the dead fallback — it now points only to the Read-able `references/file-formats.md`.
+- **`bootstrap.mjs close` could be invoked twice → `ENOCLOSE` crash (F2).** Both ip-archivist and ip-orchestrator claimed to run `close`. Made ip-archivist the single owner (it needs a genuinely post-close consolidated-compression step), reordered its steps so the SYSTEM.md rewrite precedes the one `close` call and compression follows it, and downgraded the orchestrator to confirm-only — **with a fallback that runs `close` itself only if the pointer still exists** (archivist demonstrably skipped it), restoring the pre-plan close guarantee without the double-close race.
+- **ip-executor's failure revert was incomplete on manifest-touching steps (F5).** `git checkout -- …; git clean -fd` alone does not restore installed dependencies; added the strict manifest reinstall (`npm ci` / `cargo build` / `poetry install --sync` / …) the checkpoint lockfile-snapshot machinery was built to support, citing `code-hygiene.md § Revert procedures`.
+
+### Added
+
+- **ip-reviewer gained the standard `<skill-path>` resolution block (F3)** every other agent carries — it cites `references/*.md` and previously had no way to resolve them in a consuming project. All 7 agents now carry the block.
+- **The mandatory iteration-1 nuclear checkpoint `cp-000-iter1.md` now has a named doer (F4).** The rule lived only in the EXECUTE state-module; neither ip-executor nor the orchestrator dispatch operationalized it, so the "revert to cp-000" safety net could silently never exist. ip-executor now creates it on the first EXECUTE step; the orchestrator's dispatch notes it.
+- **ip-verifier's "Concerns" (suspicious-but-PASS observations) now relay into PC-REFLECT Item 4 (F6),** matching the reviewer's concerns path — previously they had no route into the user-visible gate-out and could be silently dropped.
+
+### Changed
+
+- **The LESSONS.md worked example uses the canonical category names (F7)** — Recurring Patterns / Failed Approaches (+ why) / Successful Strategies / Codebase Gotchas — that the archivist synthesis guide and the live file already use, instead of a drifted set. The bootstrap seed is intentionally header-only (sections are added by the archivist at CLOSE, the same unpopulated-seed pattern as `system`), so this is a documentation-example fix, **not** a bootstrap/byte-gated change; `check-template-parity` confirms the seed pair is byte-unchanged. Two pinned-sentinel tests updated in lockstep.
+- **ip-verifier dropped its unused `Write` tool (F8)** — it only returns a table as text; the orchestrator owns the `verification.md` merge. Tools are now `Read, Bash, Grep, Glob`, matching its read/report-only role.
+- **PC-PLAN now lists "Context" as a distinct required item (F13)** in both the canonical `file-formats.md` contract *and* the orchestrator's inlined copy that drives the render (the two had diverged).
+- **Dead / duplicated prose cleared:** removed ip-plan-writer's dead PC-EXPLORE digest role and its mirrored cross-reference (F9); deduped the triplicated commit-tag-derivation paragraph to a single pointer to `SKILL.md § Git Integration` (F10); clarified ip-executor's first-vs-second failure report shape (F11); softened ip-explorer's unconfirmed "the orchestrator passes you SYSTEM.md" claim to match the actual dispatch (F12).
+
+### Note
+
+- The 13 fixes were adversarially reviewed before the version bump (not after). The review confirmed F4/F5/F6/F10/F11 and the F2 step-reorder correct, and flagged 3 half-applied edits — F13's orchestrator-side copy, an F7 vocabulary leftover in ip-archivist, and F2's missing close-fallback — all fixed in the same iteration before release. Green mechanical gates were, once again, not evidence the goal was met; the attack-before-release pass earned its cost.
+
 ## [2.41.0] - 2026-07-15
 
 **Five consecutive iterations shipped or drafted a guard against a doc that lies to agents about bootstrap's bytes, and five reviewers each broke it the same way: the guard checked a PROXY for what `emit-template` serves — a region, a phrase set, a boundary — and every proxy was a hand-approximation of the slicer (`resolveTemplate`) that diverged from it on the first attempt.** The skeleton half nobody reads (iter-1), a 4-phrase prose set (iter-2), the first-of-two `<!-- TEMPLATE:END -->` boundary (iter-3), the last-exact-END boundary (iter-4a), an anchored whole-line marker grammar parallel to the slicer (iter-4b/5). v2.41.0 stops approximating: `[header-copy]` now runs over the SERVED ARTIFACTS themselves — `resolveTemplate(slug).body` for all 17 `VALID_TEMPLATES` slugs, the exact bytes `emit-template --name <slug>` hands an agent. The check CALLS the slicer, so **the thing checked IS the thing served** — there is no boundary, region, or grammar left between them to diverge. The entire boundary apparatus accreted across iters 3–4 is deleted (net −21 logic lines). This is the first adversarial review in six rounds that could not drive a poisoned header to an agent with the board green. **0 files added, 0 new abstractions, `bootstrap.mjs` diff empty, 17 slices byte-unchanged.** Suite **607**, 0 failures.
