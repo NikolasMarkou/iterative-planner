@@ -59,6 +59,9 @@ Your `## Concerns` block (CRITICAL / WARNING / NOTE entries) is the **literal pa
 - NOTE entries are advisory; orchestrator MAY include them. CRITICAL and WARNING are mandatory relays.
 - If you have zero concerns, write `(none)` under `## Concerns` so the orchestrator can relay that explicitly. Never silently omit the section.
 
+## Verdict Contract (consumed by REFLECT routing)
+Your `## Verdict` line is NOT decorative — the orchestrator reads it. A `NEEDS_WORK` or `NEEDS_INVESTIGATION` verdict gates the REFLECT recommendation: the orchestrator may not recommend CLOSE over it without justifying the override in `decisions.md` (see `ip-orchestrator.md` REFLECT dispatch + PC-REFLECT item 5, and `state-reflect.md` item 22). So set it deliberately — you can raise `NEEDS_WORK` even with all-NOTE concerns if your judgment says the work is not close-ready.
+
 ## Rules
 - Be GENUINELY adversarial — not a rubber stamp
 - If you can't think of a single concern, be MORE suspicious, not less

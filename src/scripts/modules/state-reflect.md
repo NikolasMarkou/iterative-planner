@@ -29,7 +29,7 @@ All seven reads are CORE. Do not evaluate until all are complete.
 19. **Prediction accuracy** *(EXTENDED — skip for iteration 1)* — compare plan.md predictions against actual results. Record in `verification.md` Prediction Accuracy table. See `references/planning-rigor.md`.
 20. **Convergence score** *(EXTENDED — iteration 2+)* — compute pass rate trend, scope stability, issue decay. Record in `verification.md` Convergence Metrics table. Stalling/diverging scores strengthen case for PIVOT or decomposition — don't wait for iteration 5. See `references/convergence-metrics.md`.
 21. **Devil's advocate** *(EXTENDED — skip for iteration 1)* — before routing to CLOSE: name one reason this might still be wrong despite passing verification. If you can't think of one, be more suspicious, not less. Record in `decisions.md`.
-22. **Adversarial review** *(EXTENDED — iteration 2+ only)* — spawn an `ip-reviewer` agent (or Task subagent) with `verification.md`, `plan.md` (criteria), and `decisions.md`. Its job: are criteria adequate? what wasn't tested? does evidence support CLOSE? Output → `findings/review-iter-N.md`. Main agent must address each concern in `decisions.md` before routing to CLOSE. See "Sub-Agent Architecture" section for dispatch details.
+22. **Adversarial review** *(EXTENDED — iteration 2+ only)* — spawn an `ip-reviewer` agent (or Task subagent) with `verification.md`, `plan.md` (criteria), and `decisions.md`. Its job: are criteria adequate? what wasn't tested? does evidence support CLOSE? Output → `findings/review-iter-N.md`. Main agent must address each concern in `decisions.md` before routing to CLOSE, AND honor the review's `## Verdict` (READY_TO_CLOSE / NEEDS_WORK / NEEDS_INVESTIGATION): a non-`READY_TO_CLOSE` verdict must be reflected in the routing recommendation — don't recommend CLOSE over it without a justified override in `decisions.md`. See "Sub-Agent Architecture" section for dispatch details.
 
 #### Phase 3: Gate-Out (write + present)
 23. Write `verification.md` — complete Verdict section.
@@ -41,8 +41,8 @@ All seven reads are CORE. Do not evaluate until all are complete.
 1. What was completed (verbatim from `progress.md`)
 2. What remains (verbatim from `progress.md`, or "none")
 3. Verification results summary — PASS/FAIL counts plus the per-criterion table from `verification.md` rendered **verbatim** (the verifier's table is the literal payload, do not paraphrase)
-4. Issues found: regressions, scope drift, unverified areas, simplification blockers; **plus** any CRITICAL/WARNING items from `findings/review-iter-N.md` (iteration ≥ 2) folded in verbatim
-5. Recommend: close, pivot, explore, or execute — **wait for user confirmation**
+4. Issues found: regressions, scope drift, unverified areas, simplification blockers; **plus** any CRITICAL/WARNING items from `findings/review-iter-N.md` (iteration ≥ 2) folded in verbatim; **plus** any verifier **Concerns** (suspicious-but-PASS observations, per the Relay Contract in `ip-verifier.md`) folded in verbatim
+5. Recommend: close, pivot, explore, or execute — **wait for user confirmation**. If an adversarial review ran (iteration ≥ 2), the recommendation must be consistent with its `## Verdict`: do NOT recommend CLOSE over a `NEEDS_WORK`/`NEEDS_INVESTIGATION` verdict without a justified override in `decisions.md`.
 
 | Condition | → Transition |
 |-----------|--------------|

@@ -164,13 +164,13 @@ After Phase-2 evaluation, BEFORE requesting user routing decision, emit a chat b
 2. **What remains** — verbatim from `progress.md` Remaining + In Progress (or "none").
 3. **Verification results summary** — PASS/FAIL counts plus the per-criterion table from `verification.md` Criteria Verification, rendered verbatim. The verifier's structured table MUST be pasted verbatim — do not paraphrase.
 4. **Issues found** — regressions, scope drift, unverified areas, simplification blockers; **plus** any CRITICAL/WARNING items from `findings/review-iter-N.md` (iteration ≥ 2) folded in verbatim; **plus** any verifier **Concerns** (suspicious-but-PASS observations) folded in verbatim.
-5. **Recommendation** — one of CLOSE / PIVOT / EXPLORE / EXECUTE (EXECUTE only for a same-iteration completion-fix remediation loop — small fixes to finish the current iteration's work; `iter` does not increment) with one-sentence justification, then explicit prompt for user confirmation. NEVER auto-close.
+5. **Recommendation** — one of CLOSE / PIVOT / EXPLORE / EXECUTE (EXECUTE only for a same-iteration completion-fix remediation loop — small fixes to finish the current iteration's work; `iter` does not increment) with one-sentence justification, then explicit prompt for user confirmation. NEVER auto-close. **When an ip-reviewer ran (iteration ≥ 2)**, the recommendation MUST be consistent with its `## Verdict`: do not recommend CLOSE over a `NEEDS_WORK`/`NEEDS_INVESTIGATION` verdict without justifying the override in `decisions.md`. (This constrains the *recommendation*, never the user gate — CLOSE always still requires user confirmation.)
 
 **Dispatch**
 0. Emit rules: `node <skill-path>/scripts/emit-state.mjs --state reflect` and follow its output.
 1. Spawn ip-verifier(s) with verification strategy checks from plan.md
 2. Collect results, merge into verification.md
-3. If iteration >= 2: spawn ip-reviewer for adversarial review (output → findings/review-iter-N.md)
+3. If iteration >= 2: spawn ip-reviewer for adversarial review (output → findings/review-iter-N.md). Read BOTH its `## Concerns` block (folded into PC-REFLECT item 4) AND its `## Verdict` line — the Verdict gates the item-5 recommendation per the rule above (a `NEEDS_WORK`/`NEEDS_INVESTIGATION` verdict cannot be silently overridden by a CLOSE recommendation).
 4. Run validate-plan.mjs as additional check
 5. Emit PC-REFLECT 5-item block. Wait for user decision — NEVER auto-close.
 
