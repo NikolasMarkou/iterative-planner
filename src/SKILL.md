@@ -396,7 +396,7 @@ Runtime dispatch — which agents to spawn per state, in what order, with the co
 ### Conflict Prevention
 1. No concurrent writes to the same file — orchestrator sequences agents accordingly.
 2. Explorer agents write to distinct `findings/{topic}.md` files — unique topic slugs.
-3. Verifier agents write to distinct sections of `verification.md` — or orchestrator merges outputs.
+3. Verifiers never write `verification.md` — they RETURN structured results; the orchestrator is the sole writer, merging each verifier's returned results into distinct sections (so there are no concurrent writes).
 4. Executor agents in worktree isolation avoid all file conflicts.
 
 ## When NOT to Use
