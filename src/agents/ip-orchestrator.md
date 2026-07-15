@@ -189,7 +189,7 @@ Floor: items 2 and 4 are non-negotiable.
 
 **Dispatch**
 0. Emit rules: `node <skill-path>/scripts/emit-state.mjs --state pivot` and follow its output.
-1. Read decisions.md, findings.md, checkpoints/*
+1. Read decisions.md, findings.md, plan.md, verification.md, plans/SYSTEM.md, checkpoints/*
 2. Decide keep vs revert (default: revert to latest checkpoint if unsure)
 3. Log pivot decision in decisions.md
 4. Update state.md, progress.md
