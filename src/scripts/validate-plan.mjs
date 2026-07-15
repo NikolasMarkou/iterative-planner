@@ -108,6 +108,7 @@ const VALID_TRANSITIONS = new Set([
   "REFLECT→CLOSE",
   "REFLECT→PIVOT",
   "REFLECT→EXPLORE",
+  "REFLECT→EXECUTE",
   "PIVOT→PLAN",
   // Bootstrap-generated transitions
   "EXPLORE→CLOSE",   // bootstrap close from EXPLORE

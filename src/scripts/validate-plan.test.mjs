@@ -794,6 +794,22 @@ describe("validate-plan.mjs --pre-step gate", () => {
     assert.equal(iterErrs.length, 0, `derived=3 must not trigger cap, got:\n${r.stdout}`);
   });
 
+  // T-01 / D-002 — the REFLECT → EXECUTE same-iteration completion-fix edge is a
+  // LEGAL transition. A Transition-History line recording it must produce ZERO
+  // [transition] issues (adjacency is permitted in VALID_TRANSITIONS; the narrow
+  // completion-fix trigger is enforced by prose, not the validator).
+  it("(r) T-01: REFLECT → EXECUTE completion-fix transition → zero [transition] ERRORs", () => {
+    const cwd = getTempDir();
+    const transitionHistory = [
+      "- EXECUTE → REFLECT (phase ended)",
+      "- REFLECT → EXECUTE (same-iteration completion-fix remediation, 2026-07-15T05:00:00Z)",
+    ].join("\n");
+    writePlan(cwd, { state: "EXECUTE", iteration: 1, transitionHistoryExtra: transitionHistory });
+    const r = run(cwd);
+    const transitionErrs = r.stdout.split("\n").filter((l) => /\[transition\]/.test(l));
+    assert.equal(transitionErrs.length, 0, `REFLECT→EXECUTE must be a legal transition, got:\n${transitionErrs.join("\n")}`);
+  });
+
   // -------------------------------------------------------------------------
   // Defect #8 / D-003 — state.md Transition-History scanners must be comment-blind.
   // bootstrap.mjs's own state.md template embeds an EXAMPLE `- EXPLORE → PLAN (...)`

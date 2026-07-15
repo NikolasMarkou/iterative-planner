@@ -164,7 +164,7 @@ After Phase-2 evaluation, BEFORE requesting user routing decision, emit a chat b
 2. **What remains** — verbatim from `progress.md` Remaining + In Progress (or "none").
 3. **Verification results summary** — PASS/FAIL counts plus the per-criterion table from `verification.md` Criteria Verification, rendered verbatim. The verifier's structured table MUST be pasted verbatim — do not paraphrase.
 4. **Issues found** — regressions, scope drift, unverified areas, simplification blockers; **plus** any CRITICAL/WARNING items from `findings/review-iter-N.md` (iteration ≥ 2) folded in verbatim; **plus** any verifier **Concerns** (suspicious-but-PASS observations) folded in verbatim.
-5. **Recommendation** — one of CLOSE / PIVOT / EXPLORE with one-sentence justification, then explicit prompt for user confirmation. NEVER auto-close.
+5. **Recommendation** — one of CLOSE / PIVOT / EXPLORE / EXECUTE (EXECUTE only for a same-iteration completion-fix remediation loop — small fixes to finish the current iteration's work; `iter` does not increment) with one-sentence justification, then explicit prompt for user confirmation. NEVER auto-close.
 
 **Dispatch**
 0. Emit rules: `node <skill-path>/scripts/emit-state.mjs --state reflect` and follow its output.
