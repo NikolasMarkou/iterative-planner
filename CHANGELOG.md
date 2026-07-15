@@ -4,6 +4,14 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.49.0] - 2026-07-15
+
+**A new domain-agnostic Root-Cause-Analysis methods reference — five structured techniques for the "why did this fail" work that REFLECT already mandates but never taught how to do.** `src/references/root-cause-analysis.md` gives the analyst a real toolkit: 5 Whys (with the Toyoda/Toyota lineage and IP's own boundary/lever stop rule in place of a fixed question count), a Fishbone/Ishikawa 6-category scan — People/Process/Tooling/Dependency/Environment/Data — that operationalizes the existing "Multiple roots are normal" rule, an opt-in Fault Tree for multi-cause failures, and a Cynefin selector note on when a linear cause-chain misleads. The doc holds *methods only*: it EXTENDS the canonical 4-part RCA schema in `planning-rigor.md` rather than restating it, and is wired via `state-reflect.md` item 16 + SKILL References using the `python-software.md` conditional-citation shape minus the domain gate. Suite **610**, 0 failures; **1 file added, 0 new abstractions, 0 scripts/agents/plan-file artifacts.**
+
+### Added
+
+- **`src/references/root-cause-analysis.md` — RCA methods reference.** Five domain-agnostic techniques (5 Whys, Fishbone/Ishikawa, opt-in Fault Tree, Cynefin selector) drawn only from canonical frameworks. Cross-references the canonical 4-part schema in `planning-rigor.md` (single prose link, no schema duplication) and is cited from `state-reflect.md` item 16, the SKILL References section, and the CLAUDE.md reference tree. No new agent, plan-file, script, or gate.
+
 ## [2.48.0] - 2026-07-15
 
 **A sixth deep review of the 7 sub-agent definitions — three parallel explorers, every finding re-validated firsthand by the orchestrator — fixing 11 cross-agent contract defects (one BUG, plus drift, a dead signal, ownership-table gaps, and an unpersisted signal) that all prior passes and every mechanical gate stayed green through.** The citation layer came back clean (the stable-symbol discipline already held); the yield was semantic contract drift no gate can see. `[IRREVERSIBLE]`-tagged steps were previously un-executable (the executor flat-refused, contradicting the tag/dry-run/rollback machinery the rest of the protocol builds); the reviewer's `## Blind Spots` was written every iter≥2 and read by nobody; the File Ownership table under-listed real readers/writers; and verifier Concerns were shown once then discarded. Suite **610**, 0 failures; **0 files added, 0 new abstractions.**
