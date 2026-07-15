@@ -2028,6 +2028,7 @@ Commands:
                           (orphan ERROR→WARN) and drop its plan directory
   reset-attempts          Clear the active plan's Fix Attempts section (unjams a
                           stale pre-step leash counter after a PIVOT/new step)
+  banner                  Print the version + credit banner (no active plan needed)
 
 Backward-compatible:
   node bootstrap.mjs "goal"   Same as: node bootstrap.mjs new "goal"`);
@@ -2047,7 +2048,7 @@ import { fileURLToPath } from "url";
 
 function runCli() {
   const args = process.argv.slice(2);
-  const subcommands = new Set(["new", "resume", "status", "close", "list", "retire", "reset-attempts", "help"]);
+  const subcommands = new Set(["new", "resume", "status", "close", "list", "retire", "reset-attempts", "banner", "help"]);
 
   if (args.length === 0) {
     printUsage();
@@ -2099,6 +2100,8 @@ function runCli() {
     cmdRetire(args[1]);
   } else if (cmd === "reset-attempts") {
     cmdResetAttempts();
+  } else if (cmd === "banner") {
+    console.log(creditBanner(resolveSkillVersion()));
   } else if (cmd === "help") {
     printUsage();
   }
