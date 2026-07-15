@@ -25,7 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - The T-01 fix was itself an N-place edit, and its **own remediation was also an N-place edit** — the second adversarial pass (run after the first remediation per the "attack again after remediation" discipline) found a 9th stale site two lines below the one the first remediation had just fixed, in the same file. Re-sweep every instance after each patch: a green `make validate` never sees a missed sibling copy. The `REFLECT→EXECUTE` edge legalized here was first exercised by this very plan.
 
-
+## [2.42.0] - 2026-07-15
 
 **A reflexive audit of the 7 sub-agent definitions found 13 contract/ownership defects that no mechanical gate could see — the wiring layer (`check-agent-wiring`, `check-template-parity`) was fully green, but the *semantics* were not.** Two were bugs (an instruction an agent cannot execute; a double-`bootstrap.mjs close` race), five were safety/capability gaps (a missing `<skill-path>` block, an uncreated nuclear checkpoint, an incomplete failure revert, an unrouted verifier signal, a drifted lessons vocabulary), six were dead-prose / DRY / clarity cleanups. All 13 fixed and then **adversarially reviewed before release** — that pass caught 3 half-applied edits, all remediated in the same iteration. `bootstrap.mjs` untouched (the one F7 "high-risk byte-gated" edit turned out to be a misread — the lessons seed is intentionally header-only, like `system`). Suite **607**, 0 failures; **0 files added, 0 new abstractions, net +7 lines**.
 
