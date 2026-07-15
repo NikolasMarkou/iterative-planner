@@ -674,24 +674,23 @@ Cross-plan institutional memory. **Rewritten** (not appended) at CLOSE to stay �
 *The example below shows the file **below its header** — the header lines are elided. Bootstrap's header bytes are stated exactly once, in the `<!-- SKELETON:lessons -->` region under "Bootstrap Skeletons (machine-checked)". Restating them here would be a second, un-gated copy (gate rule `[header-copy]`).*
 
 ```markdown
-## Patterns That Work
-- Token-based auth is simpler than session migration — prefer stateless when possible [I:3]
+## Recurring Patterns
 - Always check format coupling before assuming storage changes are isolated [I:4]
 - Checkpoint before any 3+ file change — rollback cost is near zero, re-work cost is high [I:5]
 
-## What To Avoid
-- Dual-write strategies with long TTLs (storage grows unbounded)
-- In-place format migrations when serializer is shared across subsystems [I:4]
-- Adapters/wrappers as fixes — they accumulate and obscure the real problem [I:5]
+## Failed Approaches (+ why)
+- Dual-write strategies with long TTLs — storage grows unbounded [I:3]
+- In-place format migrations when the serializer is shared across subsystems [I:4]
+- Adapters/wrappers as fixes — they accumulate and obscure the real problem; "just add an adapter" is a 3-strike signal — simplify instead [I:5]
+
+## Successful Strategies
+- Token-based auth is simpler than session migration — prefer stateless when possible [I:3]
+- Run EXPLORE even when "I already know this" — it surfaces missed constraints every time [I:4]
 
 ## Codebase Gotchas
 - SessionSerializer is shared between cookie middleware AND API auth — changes affect both [I:5]
 - rack-session gem pins cookie-compatible format; upgrading requires Rails 7.1+ [I:3]
 - Foreign key constraints on users table prevent cascade delete
-
-## Recurring Traps
-- "Just add an adapter" → 3-strike pattern. Simplify instead. [I:5]
-- Skipping EXPLORE because "I already know this" → missed constraints every time [I:4]
 ```
 
 Usage:

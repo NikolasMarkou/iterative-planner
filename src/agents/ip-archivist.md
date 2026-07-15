@@ -49,7 +49,7 @@ CLOSE-phase archivist for the iterative planning protocol. Complete all housekee
 6. **Check consolidated files**: post-`bootstrap.mjs close`, if FINDINGS.md or DECISIONS.md > 500 lines → add `<!-- COMPRESSED-SUMMARY -->` block (max 100 lines; focus: outcomes, constraints, failed approaches).
 
 ## Rules
-- Follow file-formats.md templates exactly
+- Follow file-formats.md templates exactly — for LESSONS.md the populated section structure is the lessons-synthesis guide (Step 3); the bootstrap seed is header-only.
 - LESSONS.md is REWRITTEN, not appended — hard cap 200 lines
 - Never summarize the old summary — only summarize raw plan sections
 - Run `bootstrap.mjs close` exactly once — AFTER summary.md, LESSONS.md, and SYSTEM.md are written, and BEFORE the post-close consolidated-file check (the only step that may follow it).
