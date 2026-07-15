@@ -374,19 +374,19 @@ Each file has a clear owner. Only the owner writes. Others read. Co-ownership (m
 | File | Owner (Writes) | Readers |
 |------|----------------|---------|
 | `state.md` | Orchestrator | All agents |
-| `plan.md` | Plan-writer (full rewrite) + Orchestrator (Post-Step Gate: step checkbox, marker, complexity budget) | Executor, Verifier |
-| `decisions.md` | Orchestrator + Plan-writer (author entries) + Executor (back-fills `Anchor-Refs` on anchored entries, records DRY exceptions) | All agents |
+| `plan.md` | Plan-writer (full rewrite) + Orchestrator (Post-Step Gate: step checkbox, marker, complexity budget) | Executor, Verifier, Reviewer |
+| `decisions.md` | Orchestrator + Plan-writer (author entries) + Executor (back-fills `Anchor-Refs` on anchored entries, records DRY exceptions) + Archivist (CLOSE-time Anchor-Refs backfill remediation, ip-archivist.md Step 2) | All agents |
 | `findings.md` (index) | Orchestrator | Plan-writer, Reviewer |
 | `findings/{topic}.md` | Explorer (one per file) | Orchestrator, Plan-writer |
 | `findings/review-iter-N.md` | Reviewer | Orchestrator |
 | `progress.md` | Orchestrator (Post-Step Gate) | All agents |
 | `verification.md` | Plan-writer (template) + Orchestrator (merges Verifier's returned results) | Orchestrator, Reviewer |
-| `changelog.md` | Executor (append per edit) + Orchestrator (Post-Step Gate: confirm one line per edited file) | Reviewer (REFLECT scan) |
-| `checkpoints/*` | Executor | Orchestrator (for PIVOT) |
+| `changelog.md` | Executor (append per edit) + Orchestrator (Post-Step Gate: confirm one line per edited file) | Orchestrator (REFLECT Gate-In), Reviewer (REFLECT scan) |
+| `checkpoints/*` | Executor | Orchestrator (for PIVOT + EXECUTE leash-hit) |
 | `summary.md` | Archivist | — |
 | `plans/FINDINGS.md` | Archivist (via bootstrap) | Orchestrator, Plan-writer |
-| `plans/DECISIONS.md` | Archivist (via bootstrap) | Plan-writer |
-| `plans/LESSONS.md` | Archivist | Explorer, Plan-writer |
+| `plans/DECISIONS.md` | Archivist (via bootstrap) | Orchestrator, Plan-writer |
+| `plans/LESSONS.md` | Archivist | Orchestrator, Explorer, Plan-writer |
 | `plans/SYSTEM.md` | Archivist | Orchestrator, Plan-writer, Explorer |
 | `plans/INDEX.md` | Archivist (via bootstrap) | Orchestrator |
 

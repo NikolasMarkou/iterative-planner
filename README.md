@@ -287,18 +287,18 @@ Each file has a single owner. Only the owner writes; others read. This prevents 
 | File | Owner | Readers |
 |------|-------|---------|
 | `state.md` | Orchestrator | All agents |
-| `plan.md` | Plan-writer (full rewrite) + Orchestrator (Post-Step Gate) | Executor, Verifier |
-| `decisions.md` | Orchestrator + Plan-writer (author entries) + Executor (back-fills `Anchor-Refs` on anchored entries, records DRY exceptions) | All agents |
+| `plan.md` | Plan-writer (full rewrite) + Orchestrator (Post-Step Gate) | Executor, Verifier, Reviewer |
+| `decisions.md` | Orchestrator + Plan-writer (author entries) + Executor (back-fills `Anchor-Refs` on anchored entries, records DRY exceptions) + Archivist (CLOSE-time Anchor-Refs backfill remediation, ip-archivist.md Step 2) | All agents |
 | `findings.md` (index) | Orchestrator | Plan-writer, Reviewer |
 | `findings/{topic}.md` | Explorer (one file per explorer) | Orchestrator, Plan-writer |
 | `findings/review-iter-N.md` | Reviewer | Orchestrator |
 | `progress.md` | Orchestrator (Post-Step Gate) | All agents |
 | `verification.md` | Plan-writer (template) + Orchestrator (merges Verifier's returned results) | Orchestrator, Reviewer |
-| `changelog.md` | Executor (append per edit) + Orchestrator (Post-Step Gate) | Reviewer |
-| `checkpoints/*` | Executor | Orchestrator (for PIVOT) |
+| `changelog.md` | Executor (append per edit) + Orchestrator (Post-Step Gate) | Orchestrator, Reviewer |
+| `checkpoints/*` | Executor | Orchestrator (for PIVOT + EXECUTE leash-hit) |
 | `summary.md` | Archivist | — |
 | `plans/FINDINGS.md` | Archivist (via bootstrap) | Orchestrator, Plan-writer |
-| `plans/DECISIONS.md` | Archivist (via bootstrap) | Plan-writer |
+| `plans/DECISIONS.md` | Archivist (via bootstrap) | Orchestrator, Plan-writer |
 | `plans/LESSONS.md`, `plans/SYSTEM.md` | Archivist | All planning agents |
 | `plans/INDEX.md` | Archivist (via bootstrap) | Orchestrator |
 
