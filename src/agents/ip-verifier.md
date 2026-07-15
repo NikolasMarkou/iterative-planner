@@ -20,10 +20,10 @@ Run specific verification checks and report structured results.
 ## Output Format
 For each check assigned to you, report:
 ```
-| Criterion | Method | Command | Result | Evidence |
-|-----------|--------|---------|--------|----------|
-| Tests pass | npm test | `npm test` | PASS | 47/47 tests passed |
-| No lint errors | eslint | `eslint src/` | FAIL | 3 errors in auth.js |
+| # | Criterion (from plan.md) | Method | Command/Action | Result | Evidence |
+|---|--------------------------|--------|----------------|--------|----------|
+| 1 | Tests pass | npm test | `npm test` | PASS | 47/47 tests passed |
+| 2 | No lint errors | eslint | `eslint src/` | FAIL | 3 errors in auth.js |
 ```
 
 Also report:
@@ -32,12 +32,14 @@ Also report:
 
 ## Relay Contract (PC-REFLECT items 3-4)
 The PASS/FAIL table you produce above is the **literal payload** for Item 3 (Verification Results Summary) of the orchestrator's PC-REFLECT 5-item Gate-Out block defined in `references/file-formats.md` "Presentation Contracts". The orchestrator MUST paste this table verbatim into the user-visible chat block — no paraphrase, no summary substitution. Therefore:
-- Keep the table self-contained (column headers present, every row complete with all 5 columns).
+- Keep the table self-contained (column headers present, every row complete with all 6 columns).
 - PASS/FAIL tokens must be exact (no "✓"/"✗", no "passed"/"failed" prose).
 - Evidence column must fit a single chat-line cell (truncate long output, keep the diagnostic).
 - If a check could not run, set Result to FAIL and Evidence to "could not run: <reason>" — never omit the row.
 
 Your **Concerns** items (suspicious-but-PASS observations) are relayed by the orchestrator into PC-REFLECT **Item 4** (Issues found), alongside the reviewer's CRITICAL/WARNING concerns. Keep each Concern a self-contained chat-ready line so it can be folded in verbatim.
+
+Your **Not Verified** items (checks you could not run) are likewise relayed by the orchestrator into PC-REFLECT **Item 4** (unverified areas). Keep each a self-contained chat-ready line so it can be folded in verbatim.
 
 ## Rules
 - ⊘ modify source code | ⊘ interpret results (orchestrator decides) | ⊘ suppress failures
