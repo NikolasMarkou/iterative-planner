@@ -484,7 +484,7 @@ Written during PLAN (initial template with criteria), updated during EXECUTE (pe
 2. **Regressions (yes/no — list)** — `Regressions: none` or `Regressions: yes — <list>`
 3. **Scope drift (yes/no — list)** — `Scope drift: none` or `Scope drift: yes — <list>`
 4. **Simplification blockers (yes/no — list)** — `Simplification blockers: none` or `Simplification blockers: yes — <list>`
-5. **Recommended transition (CLOSE / PIVOT / EXPLORE)** — `Recommendation: → CLOSE` (or PIVOT, or EXPLORE)
+5. **Recommended transition (CLOSE / PIVOT / EXPLORE / EXECUTE)** — `Recommendation: → CLOSE` (or PIVOT, or EXPLORE, or EXECUTE)
 
 Plans with no testable criteria: write "N/A — manual review only" in Method column. Still record the manual review outcome in Result + Evidence.
 
@@ -1196,7 +1196,7 @@ See references/planning-rigor.md for definitions. -->
 - Regressions: PENDING
 - Scope drift: PENDING
 - Simplification blockers: PENDING
-- Recommendation: PENDING (→ CLOSE / PIVOT / EXPLORE)
+- Recommendation: PENDING (→ CLOSE / PIVOT / EXPLORE / EXECUTE)
 ```
 
 <!-- SKELETON:changelog -->

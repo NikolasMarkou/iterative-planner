@@ -248,7 +248,7 @@ Implement one step at a time: run the Pre-Step Checklist, create the iteration-1
 → Operative rules: `node <skill-path>/scripts/emit-state.mjs --state execute` (module: `scripts/modules/state-execute.md`).
 
 ### REFLECT
-Run the 3-phase gate: Gate-In (7 mandatory reads), Evaluate (cross-validate, diff review, run verification + regression + scope-drift + simplification checks + `validate-plan.mjs`), then Gate-Out (write `verification.md`/`decisions.md`/`progress.md`/`state.md`), and present the 5-item PC-REFLECT contract before routing to CLOSE / PIVOT / EXPLORE.
+Run the 3-phase gate: Gate-In (7 mandatory reads), Evaluate (cross-validate, diff review, run verification + regression + scope-drift + simplification checks + `validate-plan.mjs`), then Gate-Out (write `verification.md`/`decisions.md`/`progress.md`/`state.md`), and present the 5-item PC-REFLECT contract before routing to CLOSE / PIVOT / EXPLORE / EXECUTE.
 → Operative rules: `node <skill-path>/scripts/emit-state.mjs --state reflect` (module: `scripts/modules/state-reflect.md`).
 
 ### PIVOT
@@ -345,7 +345,7 @@ Sub-agents are invisible to the user — only the orchestrator's chat text reach
 | EXPLORE | **PC-EXPLORE** (Findings Digest) | Ask focused questions, one at a time. At handoff, emit findings index + key constraints (HARD/SOFT/GHOST) verbatim, plus exploration confidence and a synthesis paragraph. |
 | PLAN | **PC-PLAN** (Plan Presentation) | Render `plan.md` verbatim. Floor (always render): Steps, Success Criteria, Verification Strategy, Failure Modes, Assumptions. Wait for approval. Re-present same contract if modified. |
 | EXECUTE | **PC-EXECUTE-STEP** (Per-Step Status) / **PC-EXECUTE-LEASH** (Leash Failure) | After each successful step: 5 fields (step + files + commit + surprises + next-preview). On leash hit: 5 fields (step intent + 2 attempts + root-cause guess + checkpoint registry + prompt). |
-| REFLECT | **PC-REFLECT** (Phase-3 Gate-Out 5-Item Block) | Exactly 5 items: completed / remaining / verification table verbatim / issues + reviewer concerns / recommendation + prompt. **Ask** user: close, pivot, or explore. Never auto-close. |
+| REFLECT | **PC-REFLECT** (Phase-3 Gate-Out 5-Item Block) | Exactly 5 items: completed / remaining / verification table verbatim / issues + reviewer concerns / recommendation + prompt. **Ask** user: close, pivot, explore, or execute. Never auto-close. |
 | PIVOT | **PC-PIVOT** (Pivot Options) | Pivot reason + checkpoint registry (verbatim) + ghost constraints + 1-3 candidate directions ("X at the cost of Y") + explicit prompt for direction and keep-vs-revert. |
 
 ## Sub-Agent Architecture

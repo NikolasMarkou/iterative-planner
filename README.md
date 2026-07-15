@@ -70,6 +70,7 @@ stateDiagram-v2
     REFLECT --> CLOSE : criteria PASS, user confirms
     REFLECT --> PIVOT : failed or better approach
     REFLECT --> EXPLORE : need more context
+    REFLECT --> EXECUTE : same-iteration completion-fix
     PIVOT --> PLAN : new approach ready
     CLOSE --> [*]
 ```
@@ -166,7 +167,7 @@ Claude presents the plan as a **PC-PLAN** block (verbatim — not a paraphrase).
 
 If a step fails: **revert uncommitted**, two fix attempts max, each constrained by the Revert-First and 10-Line rules. Both fail → STOP, present, ask you.
 
-**Claude (REFLECT)** runs the verifier. The PASS/FAIL table from `verification.md` is rendered **verbatim** in the **PC-REFLECT** block. If it is iteration 2+, an `ip-reviewer` sub-agent runs an adversarial review and its concerns are folded in verbatim. Claude recommends close, pivot, or explore. **You** decide.
+**Claude (REFLECT)** runs the verifier. The PASS/FAIL table from `verification.md` is rendered **verbatim** in the **PC-REFLECT** block. If it is iteration 2+, an `ip-reviewer` sub-agent runs an adversarial review and its concerns are folded in verbatim. Claude recommends close, pivot, or explore (or execute for a same-iteration completion-fix loop). **You** decide.
 
 **Claude (CLOSE)** spawns `ip-archivist` to write `summary.md`, audit `# DECISION plan-2026-05-07T091743-a3f1b2c9/D-NNN` anchors in source, rewrite `plans/LESSONS.md` (≤200 lines), and rewrite the `plans/SYSTEM.md` atlas (≤300 lines). Then `bootstrap.mjs close` merges per-plan findings and decisions into the consolidated cross-plan files (sliding window of the 4 most recent plans).
 

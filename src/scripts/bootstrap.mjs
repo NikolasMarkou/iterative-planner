@@ -412,7 +412,7 @@ See references/planning-rigor.md for definitions. -->
 - Regressions: PENDING
 - Scope drift: PENDING
 - Simplification blockers: PENDING
-- Recommendation: PENDING (→ CLOSE / PIVOT / EXPLORE)
+- Recommendation: PENDING (→ CLOSE / PIVOT / EXPLORE / EXECUTE)
 `,
 
   changelog: `# Changelog
