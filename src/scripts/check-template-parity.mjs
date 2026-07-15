@@ -144,7 +144,7 @@ export function locateTemplateKey(srcText, slug) {
 // Pure check. `compared` is the number of slugs ACTUALLY byte-compared — a gate that
 // passes having compared nothing is the exact failure this script exists to prevent,
 // so the count is reported, never implied.
-export function checkParity(templates, docText, srcText = "", expectedSlugs = EXPECTED_SLUGS, servedScope = VALID_TEMPLATES) {
+export function checkParity(templates, docText, srcText = "", expectedSlugs = EXPECTED_SLUGS, servedScope = VALID_TEMPLATES, docBuf = Buffer.from(docText || "")) {
   const issues = [];
   const push = (file, line, rule, message) => issues.push({ file, line, rule, message });
   const { regions, endLine, duplicates } = parseSkeletons(docText);
@@ -175,7 +175,8 @@ export function checkParity(templates, docText, srcText = "", expectedSlugs = EX
   // docText line-window scan here — five reviewers broke every proxy for the served region because
   // each diverged from this UNANCHORED slicer. A slug that fails to resolve is a LOUD FAIL naming it
   // (a removed/renamed/redirected marker can NEVER silently drop a slug), never a bare `continue`.
-  const docBuf = Buffer.from(docText || "");
+  // `docBuf` defaults to Buffer.from(docText) but the CLI passes the RAW file bytes it read once, so
+  // the served substrate is byte-identical to emit-template's own raw read even for invalid UTF-8.
   let servedChecked = 0;
   for (const served of servedScope) {
     const r = resolveTemplate(served, docBuf);
@@ -273,9 +274,12 @@ const isEntryPoint = (() => {
 
 if (isEntryPoint) {
   const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-  const docText = readFileSync(join(repoRoot, DOC_REL), "utf8");
+  // Read the doc ONCE as raw bytes — byte-identical to emit-template's CLI read — then derive the
+  // string for parity comparisons and pass the raw Buffer to the served-artifact loop (NOTE 2).
+  const docRaw = readFileSync(join(repoRoot, DOC_REL));
+  const docText = docRaw.toString("utf8");
   const srcText = readFileSync(join(repoRoot, SRC_REL), "utf8");
-  const { issues, compared, served } = checkParity(PLAN_TEMPLATES, docText, srcText);
+  const { issues, compared, served } = checkParity(PLAN_TEMPLATES, docText, srcText, EXPECTED_SLUGS, VALID_TEMPLATES, docRaw);
   if (issues.length === 0) {
     console.log(
       `check-template-parity: PASS (${compared} slugs compared byte-for-byte — ` +
