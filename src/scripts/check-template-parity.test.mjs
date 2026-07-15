@@ -471,7 +471,7 @@ test("the elided worked examples still serve agents their populated bodies", () 
   assert.match(index, /\|------\|------\|------\|------------\|/); // divider
   assert.equal((index.match(/\| plan-2026-02-\d\d/g) || []).length, 2); // both rows survive
   const lessons = resolveTemplate("lessons").body.toString();
-  for (const s of ["## Patterns That Work", "## What To Avoid", "## Codebase Gotchas", "## Recurring Traps"]) {
+  for (const s of ["## Recurring Patterns", "## Failed Approaches (+ why)", "## Successful Strategies", "## Codebase Gotchas"]) {
     assert.ok(lessons.includes(s), `lessons lost its ${s} section to the elision`);
   }
   for (const slug of ["findings-consolidated", "decisions-consolidated"]) {

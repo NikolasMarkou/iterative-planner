@@ -56,7 +56,7 @@ const SENTINELS = {
   // legitimately owns — keying it on bootstrap's bytes is the coupling the gate exists to break.
   "findings-consolidated": "plans/FINDINGS.md (consolidated)",
   "decisions-consolidated": "plans/DECISIONS.md (consolidated)",
-  lessons: "Patterns That Work",
+  lessons: "Recurring Patterns",
   system: "System Atlas",
   index: "plans/INDEX.md",
   "lessons-snapshot": "Automatic snapshot of",
