@@ -154,7 +154,7 @@ Floor: all 5 items. None may be omitted.
 3. Read result:
    - SUCCESS: run Post-Step Gate (update plan.md, progress.md, state.md, changelog.md), then run `node <skill-path>/scripts/bootstrap.mjs reset-attempts` to clear the Fix Attempts section before the next step, then emit PC-EXECUTE-STEP. **The reset is not optional**: the pre-step gate (`validate-plan.mjs --pre-step`) counts attempt lines section-wide, NOT per-step, so a stale counter from a step that used ≥1 attempt then succeeded would spuriously HARD-trip `leash-cap` on the next step (SKILL.md Autonomy Leash — "Resets on: user direction | new step | PIVOT").
    - FAILURE: increment fix attempts in state.md, then **re-run step 1.5's pre-step gate before the re-spawn** — the gate guards EVERY spawn, not just a step's first; this is exactly where a 2nd recorded attempt HARD-trips `leash-cap` and mechanically enforces the 2-attempt cap. Then re-spawn with failure context.
-4. After 2 failures on same step: STOP, revert uncommitted, emit PC-EXECUTE-LEASH, transition to REFLECT. (This is the same outcome the step-1.5 exit-2 handler produces mechanically once the 2nd attempt is recorded — one flow, not two: both revert-first, both emit PC-EXECUTE-LEASH, both route to REFLECT.) If the user then chooses **continue** (overriding the leash), run `node <skill-path>/scripts/bootstrap.mjs reset-attempts` before the next spawn — otherwise the re-run pre-step gate re-trips `leash-cap` immediately (this is the "user direction" reset the SKILL.md Autonomy Leash names).
+4. After 2 failures on same step — **descriptive summary, not a second imperative**: the step-1.5 exit-2 handler above has ALREADY performed the revert-first, the PC-EXECUTE-LEASH emission, and the REFLECT transition (the 2nd recorded attempt trips the gate on the step-3 re-run). Do NOT double-revert or double-emit here. The continue/pivot/rollback choice is handled in REFLECT; a **continue** (leash-override) routes REFLECT→EXECUTE, and REFLECT dispatch step 6 clears the leash counter before re-entry.
 5. Transition to REFLECT when all steps done, failure, surprise, or leash hit
 
 ### REFLECT State
@@ -174,6 +174,7 @@ After Phase-2 evaluation, BEFORE requesting user routing decision, emit a chat b
 3. If iteration >= 2: spawn ip-reviewer for adversarial review (output → findings/review-iter-N.md). Read BOTH its `## Concerns` block (folded into PC-REFLECT item 4) AND its `## Verdict` line — the Verdict gates the item-5 recommendation per the rule above (a `NEEDS_WORK`/`NEEDS_INVESTIGATION` verdict cannot be silently overridden by a CLOSE recommendation).
 4. Run validate-plan.mjs as additional check
 5. Emit PC-REFLECT 5-item block. Wait for user decision — NEVER auto-close.
+6. On the user's routing choice, if it is **EXECUTE** (a same-iteration completion-fix loop, or a **continue** past a leash hit), run `node <skill-path>/scripts/bootstrap.mjs reset-attempts` BEFORE re-entering EXECUTE. The leash counter must not carry into the EXECUTE re-entry, or step 1.5's pre-step gate re-trips `leash-cap` on the stale count before any spawn — the same reason PIVOT dispatch resets (this is the "user direction" reset the SKILL.md Autonomy Leash names). PIVOT resets in its own dispatch; EXPLORE/CLOSE need no reset.
 
 ### PIVOT State
 

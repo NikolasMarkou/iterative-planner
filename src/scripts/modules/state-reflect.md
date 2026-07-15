@@ -51,3 +51,5 @@ All seven reads are CORE. Do not evaluate until all are complete.
 | Failure understood, new approach clear | → PIVOT |
 | Unknowns need investigation, or findings contradicted | → EXPLORE (update findings first) |
 
+> **Before re-entering EXECUTE** (the → EXECUTE row above, OR a user "continue" past a leash hit): run `node <skill-path>/scripts/bootstrap.mjs reset-attempts`. The leash counter must not carry into the re-entry, or EXECUTE's pre-step gate re-trips `leash-cap` on the stale count before any spawn (mirrors the PIVOT reset; this is the "user direction" reset the Autonomy Leash names).
+
