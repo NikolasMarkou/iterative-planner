@@ -171,6 +171,19 @@ describe("bootstrap.mjs", () => {
       );
     });
 
+    it("prints the credit banner via the banner subcommand (no active plan needed)", () => {
+      const dir = getTempDir();
+      const r = run(dir, "banner");
+      assert.equal(r.exitCode, 0, `stderr: ${r.stderr}`);
+      // Version asserted as a pattern (\S+), not a hardcoded semver — bump-proof and
+      // covers the resolveSkillVersion() "unknown" degrade path (D-004).
+      assert.match(
+        r.stdout,
+        /iterative-planner v\S+ — Developed by Nikolas Markou @ Electi Consulting/,
+        "banner subcommand should print the credit banner",
+      );
+    });
+
     it("LESSONS.md has correct initial content", () => {
       const dir = getTempDir();
       run(dir, "new", "Test goal");
