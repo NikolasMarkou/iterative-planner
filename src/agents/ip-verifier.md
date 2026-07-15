@@ -37,6 +37,8 @@ The PASS/FAIL table you produce above is the **literal payload** for Item 3 (Ver
 - Evidence column must fit a single chat-line cell (truncate long output, keep the diagnostic).
 - If a check could not run, set Result to FAIL and Evidence to "could not run: <reason>" — never omit the row.
 
+Your **Concerns** items (suspicious-but-PASS observations) are relayed by the orchestrator into PC-REFLECT **Item 4** (Issues found), alongside the reviewer's CRITICAL/WARNING concerns. Keep each Concern a self-contained chat-ready line so it can be folded in verbatim.
+
 ## Rules
 - ⊘ modify source code | ⊘ interpret results (orchestrator decides) | ⊘ suppress failures
 - Run EXACT commands from verification strategy | include output snippets as evidence

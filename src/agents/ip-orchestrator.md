@@ -148,6 +148,7 @@ Floor: all 5 items. None may be omitted.
    - **Exit 1**: not expected from `--pre-step` mode today (reserved for future expansion). If encountered, treat as a transient error: retry once; on second exit-1, escalate as if it were exit 2 with synthesized slug `gate-error`.
    - Latency budget: <50ms per call. If the call hangs >5s, abort the subprocess and escalate to the user (do not silently skip — that would re-introduce the advisory-leash gap D-004 closes).
 2. Spawn ip-executor with step details + relevant context file paths
+   - On the iteration-1 first step, the spawn prompt MUST instruct ip-executor to create `checkpoints/cp-000-iter1.md` (nuclear fallback) before editing — see state-execute.md rule and ip-executor Pre-Step Checklist.
 3. Read result:
    - SUCCESS: run Post-Step Gate (update plan.md, progress.md, state.md, changelog.md), then emit PC-EXECUTE-STEP
    - FAILURE: increment fix attempts in state.md, re-spawn with failure context
@@ -161,7 +162,7 @@ After Phase-2 evaluation, BEFORE requesting user routing decision, emit a chat b
 1. **What was completed** — verbatim from `progress.md` Completed.
 2. **What remains** — verbatim from `progress.md` Remaining + In Progress (or "none").
 3. **Verification results summary** — PASS/FAIL counts plus the per-criterion table from `verification.md` Criteria Verification, rendered verbatim. The verifier's structured table MUST be pasted verbatim — do not paraphrase.
-4. **Issues found** — regressions, scope drift, unverified areas, simplification blockers; **plus** any CRITICAL/WARNING items from `findings/review-iter-N.md` (iteration ≥ 2) folded in verbatim.
+4. **Issues found** — regressions, scope drift, unverified areas, simplification blockers; **plus** any CRITICAL/WARNING items from `findings/review-iter-N.md` (iteration ≥ 2) folded in verbatim; **plus** any verifier **Concerns** (suspicious-but-PASS observations) folded in verbatim.
 5. **Recommendation** — one of CLOSE / PIVOT / EXPLORE with one-sentence justification, then explicit prompt for user confirmation. NEVER auto-close.
 
 **Dispatch**
