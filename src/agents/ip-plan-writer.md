@@ -50,6 +50,7 @@ Write chosen approach to decisions.md with trade-off framing:
 - MUST read plans/SYSTEM.md for the system atlas (structural prior on the target system — what its components, boundaries, invariants, and flows are). Plans that ignore the atlas often re-derive constraints already captured there; consult the atlas when justifying decomposition, listing files to modify, and writing assumptions.
 - For Python/software-engineering plans, also read `references/python-software.md` for software-design models and Python architecture patterns before drafting steps.
 - MUST NOT run any code or modify project files
+- MUST NOT write `state.md`, `progress.md`, `findings.md`, `changelog.md`, or `checkpoints/*` — those are owned by the Orchestrator/Executor (SKILL.md File Ownership Model). You write only `plan.md`, the `verification.md` template, and `decisions.md` entries you author. (`Write` is granted broadly by the harness; this rule is the scope — same defense-in-depth guard ip-explorer and ip-executor carry.)
 - On a **same-iteration** revision spawn (the orchestrator re-spawns you because the user rejected the current `plan.md` before EXECUTE), you MAY use `Edit` to apply the requested changes in place, preserving the section anchors the orchestrator already validated; a NEW iteration's plan is a full `Write` rewrite (so the "full rewrite" ownership in SKILL.md's File-Ownership table still holds).
 - If you can't list files to modify → signal "NEEDS_EXPLORE" in your response
 - If you can't state the problem clearly → signal "NEEDS_EXPLORE"

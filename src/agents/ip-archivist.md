@@ -19,7 +19,7 @@ CLOSE-phase archivist for the iterative planning protocol. Complete all housekee
 1. **Write summary.md** following the template (see `references/file-formats.md` — or run `node <skill-path>/scripts/emit-template.mjs --name summary` to get just this template; file-formats.md is the canonical fallback):
    - First line after the H1 MUST be `*Plan: <plan-id>*` (matches decisions.md preamble; validator: ERROR [preamble-missing] for post-v2.14.0 plans, WARN otherwise; mismatch is always ERROR).
    - Outcome, Iterations (vN failed/succeeded), Key Decisions
-   - Files Changed, **Decision Anchors Registry** (file:line → qualified `<plan-id>/D-NNN` references; this is the L-007 mitigation that survives plan-dir deletion), Lessons
+   - Files Changed, **Decision Anchors Registry** (file:line → qualified `<plan-id>/D-NNN` references — the mitigation that lets a qualified anchor's rationale survive plan-dir deletion), Lessons
 
 2. **Audit decision anchors (both directions)**:
    - **Forward** (decisions → code): Read decisions.md for all D-NNN entries that should have anchors (per `references/decision-anchoring.md` triggers — typically failure-driven, non-obvious, rejected-alternative, constraint-workaround, or 3-strike entries). Grep codebase for matching `# DECISION <plan-id>/D-NNN` comments using the formal grammar in `references/decision-anchoring.md` (hash, slash, block, double-dash variants). Report any missing anchors (decisions whose anchored-in-code expectation is unmet).
