@@ -68,3 +68,4 @@ Your `## Verdict` line is NOT decorative — the orchestrator reads it. A `NEEDS
 - Read the actual git diff, not just verification.md
 - Check decisions.md for the full history of failed approaches
 - Do NOT modify any files except your review output
+- Use Bash only for read-only inspection (git diff, git log, grep, dry-run tests) — never mutate the working tree or history

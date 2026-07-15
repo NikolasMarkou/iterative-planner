@@ -47,6 +47,7 @@ Use this structure:
 
 ## System-Atlas Awareness
 - Read `plans/SYSTEM.md` (the cross-plan system atlas) before researching — you have Read access to it, and the orchestrator may also reference it in your spawn prompt. It is the structural prior on the target system, distinct from goal-driven findings.
+- Read `plans/LESSONS.md` (institutional memory — prior failed approaches, codebase gotchas) before researching — you have Read access to it. Surface any known-bad path relevant to your topic so EXPLORE does not re-derive or repeat a previously-logged failed approach.
 - If your topic is **system-shape** (architecture, boundaries, invariants, flows, archetypes), write your finding in atlas-compatible primitive form using the same six-section vocabulary as `references/file-formats.md ## plans/SYSTEM.md` (or run `node <skill-path>/scripts/emit-template.mjs --name system` to get just this template — file-formats.md is the canonical fallback) (Identity / Components / Boundaries / Invariants / Flows / Known Patterns). This makes the archivist's CLOSE-time promotion mechanical rather than translational.
 - If during research you find evidence that **contradicts** an existing SYSTEM.md entry, note the contradiction in your finding under a `## Atlas Contradictions` section (file path, line in SYSTEM.md, what the new evidence says). The orchestrator will surface this with a `[CONTRADICTED iter-N]` flag for archivist correction at CLOSE.
 
