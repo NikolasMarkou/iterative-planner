@@ -33,11 +33,9 @@ CLOSE-phase archivist for the iterative planning protocol. Complete all housekee
    - REWRITE entire file (don't append) — max 200 lines
    - Focus on: patterns that work, what to avoid, codebase gotchas, recurring traps
    - **Importance scoring**: assign each retained/new lesson an inline `[I:N]` tag (1-5; 5=critical/caused a failure, 3=default useful pattern, 1=one-off). An untagged legacy entry is treated as implicit `[I:3]` — score it when you rewrite it.
-   - **Over-cap trim = importance then recency**: when the rewrite would exceed 200 lines, drop lowest-`[I:N]` entries first, and within the same importance tier drop oldest first. Never drop an `[I:5]` entry — tighten or merge wording instead. (Distinct from SYSTEM.md's demote-by-staleness in Step 5.)
+   - **Over-cap trim = importance then recency**: when the rewrite would exceed 200 lines, drop lowest-`[I:N]` entries first, and within the same importance tier drop oldest first. Never drop an `[I:5]` entry — tighten or merge wording instead. (Distinct from SYSTEM.md's demote-by-staleness in Step 4.)
 
-4. **Check consolidated files**: post-`bootstrap.mjs close`, if FINDINGS.md or DECISIONS.md > 500 lines → add `<!-- COMPRESSED-SUMMARY -->` block (max 100 lines; focus: outcomes, constraints, failed approaches).
-
-5. **Update plans/SYSTEM.md (system atlas)**:
+4. **Update plans/SYSTEM.md (system atlas)**:
    - Read current `plans/SYSTEM.md`. Read this plan's `findings.md` + `findings/*` for system-shape facts (component inventory, boundaries, invariants, flows, archetypes — NOT goal-specific findings).
    - Read this plan's `findings.md` Corrections section for `[CONTRADICTED iter-N]` flags raised against existing SYSTEM.md entries during EXPLORE; reconcile each (correct, demote, or remove).
    - **REWRITE** the entire file (don't append) under the **300-line hard cap**. Schema follows `references/file-formats.md ## plans/SYSTEM.md` exactly (or run `node <skill-path>/scripts/emit-template.mjs --name system` to get just this template — file-formats.md is the canonical fallback): Identity / Components / Boundaries / Invariants / Flows / Known Patterns + optional Codebase Specialization (only when domain=codebase).
@@ -46,8 +44,12 @@ CLOSE-phase archivist for the iterative planning protocol. Complete all housekee
    - Keep the schema **domain-neutral** — the six core sections must work for non-codebase systems (research pipelines, ops runbooks, strategy). Codebase-specific content goes ONLY in the optional Codebase Specialization section.
    - The validator (`validate-plan.mjs`) ERRORs `[atlas-cap]` if SYSTEM.md exceeds 300 lines. The cap forces curation; truncation is forbidden.
 
+5. **Run `bootstrap.mjs close` (ONCE)**: Run `node <skill-path>/scripts/bootstrap.mjs close` exactly once, after summary.md, LESSONS.md, and SYSTEM.md are written. It merges per-plan findings/decisions into the consolidated files, snapshots LESSONS.md, appends INDEX.md, and removes the .current_plan pointer. It is NON-IDEMPOTENT — a second call throws ENOCLOSE (bootstrap.mjs:1697), so the orchestrator must NOT re-run it.
+
+6. **Check consolidated files**: post-`bootstrap.mjs close`, if FINDINGS.md or DECISIONS.md > 500 lines → add `<!-- COMPRESSED-SUMMARY -->` block (max 100 lines; focus: outcomes, constraints, failed approaches).
+
 ## Rules
 - Follow file-formats.md templates exactly
 - LESSONS.md is REWRITTEN, not appended — hard cap 200 lines
 - Never summarize the old summary — only summarize raw plan sections
-- Run bootstrap.mjs close AFTER writing summary.md and updating LESSONS.md
+- Run `bootstrap.mjs close` exactly once — AFTER summary.md, LESSONS.md, and SYSTEM.md are written, and BEFORE the post-close consolidated-file check (the only step that may follow it).

@@ -196,8 +196,8 @@ Floor: items 2 and 4 are non-negotiable.
 
 ### CLOSE State
 1. Spawn ip-archivist with all plan files
-2. Verify: summary.md written, LESSONS.md updated, decision anchors audited
-3. Run bootstrap.mjs close
+2. Verify: summary.md written, LESSONS.md + SYSTEM.md updated, decision anchors audited, close ran
+3. Confirm ip-archivist already ran `bootstrap.mjs close` (the .current_plan pointer is gone) — do NOT run it again; a second call throws ENOCLOSE (bootstrap.mjs:1697).
 
 ## Critical Rules
 - NEVER skip EXPLORE — even if the answer seems obvious

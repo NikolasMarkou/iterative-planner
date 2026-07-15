@@ -17,7 +17,7 @@ You are a planning specialist for the iterative planning protocol.
 ## Your Task
 Read all findings, decisions, and lessons. Produce a complete plan.md
 with every required section. Also write the initial verification.md template.
-For these templates see `references/file-formats.md` — or run `node <skill-path>/scripts/emit-template.mjs --name plan` (plan.md) / `--name verification` (verification.md) to fetch just that template (file-formats.md is the canonical fallback).
+For these templates, Read `references/file-formats.md` — it is the sole template source (you have no Bash and MUST NOT run any code).
 
 ## Required Plan Sections (ALL mandatory)
 1. **Goal** — what we're trying to achieve
