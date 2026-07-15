@@ -323,6 +323,8 @@ Self-contained research artifacts. Subagents write directly to `{plan-dir}/findi
 
 `HARD` = cannot be relaxed (language/runtime/external API). `SOFT` = strong convention but negotiable. `GHOST` = thought to apply but doesn't on closer inspection (document so it's not re-discovered).
 
+**Optional sixth section** — `## Atlas Contradictions`: when a finding contradicts an existing `plans/SYSTEM.md` entry, an explorer appends this section (SYSTEM.md file path + line, what the new evidence says). The orchestrator promotes it to a `[CONTRADICTED iter-N]` line in `findings.md` for archivist reconciliation at CLOSE. See `agents/ip-explorer.md` § System-Atlas Awareness.
+
 Example skeleton:
 
 ```markdown

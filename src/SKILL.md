@@ -168,7 +168,7 @@ R = read only | W = update (implicit read + write) | R+W = distinct read and wri
 | findings.md | W | R | — | R | R+W | R |
 | findings/* | W | R | — | R | R+W | R |
 | progress.md | — | W | R+W | R+W | W | R |
-| verification.md | — | W | W | W | R | R |
+| verification.md | — | W | — | W | R | R |
 | changelog.md | — | W* | W (append) | R | W (append REVERT) | R |
 | checkpoints/* | — | — | W | R | R | — |
 | summary.md | — | — | — | — | — | W |
