@@ -4,6 +4,24 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.48.0] - 2026-07-15
+
+**A sixth deep review of the 7 sub-agent definitions — three parallel explorers, every finding re-validated firsthand by the orchestrator — fixing 11 cross-agent contract defects (one BUG, plus drift, a dead signal, ownership-table gaps, and an unpersisted signal) that all prior passes and every mechanical gate stayed green through.** The citation layer came back clean (the stable-symbol discipline already held); the yield was semantic contract drift no gate can see. `[IRREVERSIBLE]`-tagged steps were previously un-executable (the executor flat-refused, contradicting the tag/dry-run/rollback machinery the rest of the protocol builds); the reviewer's `## Blind Spots` was written every iter≥2 and read by nobody; the File Ownership table under-listed real readers/writers; and verifier Concerns were shown once then discarded. Suite **610**, 0 failures; **0 files added, 0 new abstractions.**
+
+### Fixed
+
+- **A1 (BUG) — executor irreversible-ops now executable-with-safeguards.** `ip-executor.md`'s "Irreversible operations: refuse and report back" flatly contradicted `state-execute.md`, `code-hygiene.md § Irreversible Operations`, and `file-formats.md` (all describe execute-WITH-safeguards). As written, any legitimately `[IRREVERSIBLE]`-tagged step dead-ended at the executor. Rewritten to: follow the safeguard procedure (checkpoint rollback plan + dry-run), report back to the orchestrator for user confirmation, and execute only after confirmation — never a flat permanent refusal.
+- **A2 — Post-Step Gate changelog verb.** `ip-orchestrator.md` said the gate "updates" changelog.md; the authoritative `state-execute.md` says "confirm" (changelog is Executor-owned). Aligned to "confirm … do not write it" to prevent a concurrent-write.
+- **A3 — reviewer `## Blind Spots` wired into PC-REFLECT item 4** across all 4 sites (ip-reviewer Relay Contract, ip-orchestrator, file-formats, state-reflect), ending a dead signal (same class as the previously-fixed Verdict/NEEDS_EXPLORE).
+- **A4/A5/A7 — File Ownership table accuracy** (SKILL.md + README.md, hand-mirrored): Archivist added as a `decisions.md` writer (CLOSE-time Anchor-Refs backfill); Reviewer added as a `plan.md` reader; Orchestrator added to the readers of `changelog.md`/`plans/DECISIONS.md`/`plans/LESSONS.md`; `checkpoints/*` scope broadened to "PIVOT + EXECUTE leash-hit".
+- **A6 — explorer now reads `plans/LESSONS.md`** before researching (the ownership table already claimed it did), so EXPLORE surfaces prior failed approaches / gotchas.
+- **A8 — executor failure-report field count** corrected ("report all 5 fields" → 4; the 5th, the user prompt, is orchestrator-authored).
+- **A9 — verifier Concerns now persist.** Added a `## Concerns` section to the `verification.md` schema (byte-gated `bootstrap.mjs` seed ↔ `file-formats.md` SKELETON, plus the served worked-example) and wired the orchestrator to merge Concerns into it — durable across iterations, not only relayed to chat once.
+- **A10 — reviewer read-only-Bash rail** added (mirroring ip-explorer's), closing an asymmetric guardrail.
+- **A11 — verifier cross-checks plan.md.** The verifier now independently reads plan.md's Verification Strategy and reports any assigned-but-missing criterion under Not Verified rather than silently skipping it.
+
+Deferred (explicit user decision): A12, a build gate verifying cited symbol names still exist — all currently resolve.
+
 ## [2.47.0] - 2026-07-15
 
 **A fifth deep-consistency review of the 7 sub-agent definitions — three parallel explorers, every finding re-verified firsthand — fixing three cross-file inconsistencies that all prior passes and every mechanical gate missed.** The Lifecycle Matrix claimed `verification.md` is writable during EXECUTE when nothing writes it there (only PLAN seeds it and REFLECT merges it); a stale `bootstrap.mjs:1698-1699` line citation for the ENOCLOSE throw had drifted identically in **two** files (the real throw is in `cmdCloseInner`), a silent-drift class no gate re-verifies; and the optional `## Atlas Contradictions` findings section — written by `ip-explorer`, consumed by the orchestrator — was undocumented in the canonical findings template. All localized prose/doc edits behind green parity gates. One sub-explorer over-flag ("six-section vocabulary") was investigated and rejected as a non-bug. Suite **610**, 0 failures; **0 files added, 0 new abstractions.**
