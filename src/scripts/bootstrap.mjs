@@ -85,6 +85,15 @@ function resolveSkillVersion() {
   return "unknown";
 }
 
+// Attribution banner shown on the human-facing CLI "load-up" moments (`new`, `resume`).
+// Pure string return (no console.log) so it stays unit-testable and side-effect-free, and
+// so the credit renders only where the caller logs it — never on an `import()` of this module
+// (D-001). Shared by cmdNewInner + cmdResume (≥2 call sites, earned abstraction — D-002).
+// Two leading spaces match the sibling `  Pointer:`/`  Goal:` banner indentation.
+function creditBanner(version) {
+  return `  iterative-planner v${version} — Developed by Nikolas Markou @ Electi Consulting`;
+}
+
 // NOTE: concurrent-new race fix (OBS-003).
 // Pre-fix: two parallel `bootstrap.mjs new` invocations both passed
 // `readPointer() === null`, both created plan dirs, last writer won the
@@ -1550,6 +1559,7 @@ function cmdNewInner(goal, force) {
   }
 
   console.log(`Initialized plans/${planDirName}/`);
+  console.log(creditBanner(skillVersion));
   console.log(`  Pointer: plans/.current_plan → ${planDirName}`);
   console.log(`  Goal: ${goal}`);
   console.log(`  State: EXPLORE (iteration 0)`);
@@ -1576,6 +1586,8 @@ function cmdResume() {
   const goal = extractField(plan, /\n## Goal\s*\n([\s\S]+?)(?=\n## |$)/) || "No goal found";
 
   console.log(`Resuming plans/${planDirName}/`);
+  const skillVersion = resolveSkillVersion();
+  console.log(creditBanner(skillVersion));
   console.log(`  State:      ${currentState}`);
   console.log(`  Iteration:  ${iteration}`);
   console.log(`  Step:       ${step}`);
