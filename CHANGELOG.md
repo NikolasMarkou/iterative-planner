@@ -4,7 +4,28 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [2.42.0] - 2026-07-15
+## [2.43.0] - 2026-07-15
+
+**A second deep review of the 7 sub-agent definitions — going past the v2.42.0 audit — found one real state-machine bug and a cluster of the same N-place-drift class the codebase keeps paying for.** The headline: the state machine had **no legal `REFLECT→EXECUTE` edge**, so `validate-plan.mjs` ERRORed `[transition]` on a completion-fix loop the protocol actually uses — v2.42.0 itself shipped over that live ERROR (D-005 of plan `0fcf9d47`). This release legalizes that edge across every definition site, then — fittingly — **uses it**: the plan's own adversarial review found the T-01 fix was incomplete (8, then 9, stale enumerations of REFLECT's outcome menu), and the remediation looped `REFLECT→EXECUTE` twice to finish. Two adversarial passes converged the stale-site count 8 → 1 → 0; the second pass caught a miss in the *same file* the first remediation had just edited. `bootstrap.mjs` diff = **one gated seed line** (the `state.md` Recommendation template, byte-paired with `file-formats.md` and enforced by `check-template-parity`). Suite **608**, 0 failures; **0 files added, 0 new abstractions.**
+
+### Fixed
+
+- **The state machine had no `REFLECT→EXECUTE` edge, yet the protocol uses one (T-01).** A same-iteration completion-fix loop (finish small REFLECT-surfaced fixes without a full PIVOT) was performed in practice and dispatched by the orchestrator, but absent from all sources of transition truth — the mermaid diagram, the Transitions table, `VALID_TRANSITIONS`, and the PC-REFLECT recommendation menu — so `validate-plan.mjs` ERRORed `[transition]` on it (blocking). Legalized the edge, narrowly scoped to same-iteration completion-fix remediation (`iter` does not increment; not a general re-loop), across **all** of: SKILL.md mermaid + Transitions table, `VALID_TRANSITIONS`, the canonical + orchestrator-inlined PC-REFLECT item 5, the operative `state-reflect.md` routing table + prose, the `state.md` Recommendation seed (byte-gated `bootstrap.mjs`/`file-formats.md` pair), and the README mermaid + prose. Added a regression test. The narrowness is documentation-level (the validator only checks adjacency, as it does for every edge); the real bound on the loop is per-hop user confirmation, not the iteration cap.
+- **ip-verifier's `Write` grant was removed in v2.42.0 but both mirror tables still listed it (C-01).** SKILL.md's and README's Agent-Definitions tables still granted `Write` to a subagent whose frontmatter no longer has it — a half-applied fix, invisible because no gate compares the Tools column to frontmatter. Both cells now read `Read, Bash, Grep, Glob`.
+- **README still claimed ip-verifier "fills `verification.md`" (C-02)** — the exact ghost `dcd9a34e`/D-004 killed in the File-Ownership table, surviving in the Agent-Definitions table. It returns a table the orchestrator merges; the role text now says so.
+- **ip-archivist contradicted its own cited reference on STALE anchors (A-01).** It said they "must be removed before CLOSE — list any remaining as blockers"; `decision-anchoring.md` says a STALE anchor is a **non-blocking WARN** the agent may remove, keep with rationale, or convert. Reworded to match.
+- **Stale `bootstrap.mjs:1697` ENOCLOSE citation (A-02)** in ip-orchestrator and ip-archivist — the throw is at `:1698-1699`; `:1697` only constructs the Error. Both corrected.
+
+### Changed
+
+- **The canonical PC-REFLECT item 4 now names the verifier-Concerns relay (C-03)** that ip-orchestrator and ip-verifier both already implement — the canonical doc was the stale one; the two live consumers had converged on richer behavior undocumented in the file they cite as authoritative.
+- **Freshening (A-04, A-05, T-02):** ip-plan-writer's `Edit` grant now has an explicit same-iteration-revision purpose (reconciled with the "full rewrite" ownership claim); ip-executor cites the full `§ Revert procedures — manifest-touching reverts` heading; a misleading duplicate `REFLECT→CLOSE` comment was removed from `VALID_TRANSITIONS`.
+
+### Note
+
+- The T-01 fix was itself an N-place edit, and its **own remediation was also an N-place edit** — the second adversarial pass (run after the first remediation per the "attack again after remediation" discipline) found a 9th stale site two lines below the one the first remediation had just fixed, in the same file. Re-sweep every instance after each patch: a green `make validate` never sees a missed sibling copy. The `REFLECT→EXECUTE` edge legalized here was first exercised by this very plan.
+
+
 
 **A reflexive audit of the 7 sub-agent definitions found 13 contract/ownership defects that no mechanical gate could see — the wiring layer (`check-agent-wiring`, `check-template-parity`) was fully green, but the *semantics* were not.** Two were bugs (an instruction an agent cannot execute; a double-`bootstrap.mjs close` race), five were safety/capability gaps (a missing `<skill-path>` block, an uncreated nuclear checkpoint, an incomplete failure revert, an unrouted verifier signal, a drifted lessons vocabulary), six were dead-prose / DRY / clarity cleanups. All 13 fixed and then **adversarially reviewed before release** — that pass caught 3 half-applied edits, all remediated in the same iteration. `bootstrap.mjs` untouched (the one F7 "high-risk byte-gated" edit turned out to be a misread — the lessons seed is intentionally header-only, like `system`). Suite **607**, 0 failures; **0 files added, 0 new abstractions, net +7 lines**.
 
