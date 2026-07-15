@@ -117,6 +117,7 @@ node <skill-path>/scripts/bootstrap.mjs resume               # Re-entry summary 
 node <skill-path>/scripts/bootstrap.mjs status               # One-line state summary
 node <skill-path>/scripts/bootstrap.mjs close                # Close plan (preserves directory)
 node <skill-path>/scripts/bootstrap.mjs list                 # Show all plan directories
+node <skill-path>/scripts/bootstrap.mjs banner               # Print version + credit banner (no active plan needed)
 node <skill-path>/scripts/bootstrap.mjs retire <plan-id>     # Mark a removed plan's DECISION anchors [STALE], drop its dir
 node <skill-path>/scripts/bootstrap.mjs reset-attempts       # Clear active plan's Fix Attempts (unjam stale leash counter)
 node <skill-path>/scripts/validate-plan.mjs                  # Validate active plan compliance

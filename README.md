@@ -1,7 +1,7 @@
 # Iterative Planner
 
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Skill](https://img.shields.io/badge/Skill-v2.45.0-green.svg)](CHANGELOG.md)
+[![Skill](https://img.shields.io/badge/Skill-v2.46.0-green.svg)](CHANGELOG.md)
 [![Tests](https://img.shields.io/badge/tests-610%20passing-brightgreen.svg)](src/scripts/bootstrap.test.mjs)
 [![Sponsored by Electi](https://img.shields.io/badge/Sponsored%20by-Electi-red.svg)](https://www.electiconsulting.com)
 
@@ -315,6 +315,7 @@ node <skill-path>/scripts/bootstrap.mjs resume               # output current pl
 node <skill-path>/scripts/bootstrap.mjs status               # one-line state summary
 node <skill-path>/scripts/bootstrap.mjs close                # close active plan (merges + preserves)
 node <skill-path>/scripts/bootstrap.mjs list                 # show all plan directories
+node <skill-path>/scripts/bootstrap.mjs banner               # print version + credit banner (no active plan needed)
 node <skill-path>/scripts/bootstrap.mjs retire <plan-id>     # mark a removed plan's DECISION anchors [STALE], drop its dir
 node <skill-path>/scripts/bootstrap.mjs reset-attempts       # clear active plan's Fix Attempts (unjam stale leash counter)
 node <skill-path>/scripts/validate-plan.mjs                  # validate active plan compliance

@@ -4,6 +4,15 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.46.0] - 2026-07-15
+
+**The orchestrator now surfaces the version + credit banner at its in-thread load-up (engagement) moment, via a new `banner` subcommand.** A dedicated `bootstrap.mjs banner` subcommand prints `creditBanner(resolveSkillVersion())` with no active plan required (it reads only `VERSION`), and all 3 orchestrator announcement sites now emit `iterative-planner v<VERSION> — Developed by Nikolas Markou @ Electi Consulting` before their existing `[iterative-planner] …` mode line — so the attribution is visible the moment the orchestrator engages, not only on `new`/`resume`. `creditBanner()` stays side-effect-free (D-001); the version flows through `resolveSkillVersion()`'s `unknown` degrade path (D-004). Suite **610**, 0 failures; **0 files added, 0 new abstractions.**
+
+### Added
+
+- **`bootstrap.mjs banner` subcommand.** Prints `creditBanner(resolveSkillVersion())`; requires no active plan (reads only `VERSION`). The log happens in the dispatch branch, outside the helper, preserving `creditBanner()`'s side-effect-freedom.
+- **Version + credit banner at all 3 orchestrator announcement sites.** `SKILL.md` modes 2 & 3 and `ip-orchestrator.md` now emit a `node <skill-path>/scripts/bootstrap.mjs banner` load-up line before the `[iterative-planner] …` mode line. Covered by a pattern-based test (`v\S+`, bump-proof); TEST_COUNT 609→610.
+
 ## [2.45.0] - 2026-07-15
 
 **A user-facing bootstrap CLI attribution banner, bundled with a fourth deep review of the 7 sub-agent definitions that fixed ten contract-drift / dead-wiring / freshening gaps three prior passes missed.** `bootstrap.mjs new` and `resume` now print `iterative-planner v<VERSION> — Developed by Nikolas Markou @ Electi Consulting` directly under their load-up banner, via an earned `creditBanner()` helper (≥2 call sites; `cmdStatus` left pipe-clean by design). The agent review — three parallel explorers, every finding re-verified firsthand — landed two real bugs (PIVOT context-loss, verifier table schema) plus eight smaller contract/clarity fixes, all localized prose edits behind green parity gates. Suite **609**, 0 failures; **0 files added, 1 earned abstraction.**
