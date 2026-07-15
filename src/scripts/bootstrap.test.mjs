@@ -158,6 +158,19 @@ describe("bootstrap.mjs", () => {
       assert.ok(existsSync(join(dir, "plans", "SYSTEM.md")), "SYSTEM.md should exist");
     });
 
+    it("prints the credit banner directly under the init line", () => {
+      const dir = getTempDir();
+      const r = run(dir, "new", "Test goal banner");
+      assert.equal(r.exitCode, 0, `stderr: ${r.stderr}`);
+      // Version asserted as a pattern (\S+), not a hardcoded semver — bump-proof and
+      // also covers the resolveSkillVersion() "unknown" degrade path (D-004).
+      assert.match(
+        r.stdout,
+        /iterative-planner v\S+ — Developed by Nikolas Markou @ Electi Consulting/,
+        "should print credit banner",
+      );
+    });
+
     it("LESSONS.md has correct initial content", () => {
       const dir = getTempDir();
       run(dir, "new", "Test goal");
