@@ -144,8 +144,9 @@ Floor: all 5 items. None may be omitted.
      2. Append a line to `{plan-dir}/state.md` under `## Fix Attempts (resets per plan step)`:
         `- Step N: LEASH HIT via pre-step gate. Slug: <slug>. Stdout: <verbatim>.`
         (Where N is the current step number from `## Current Plan Step:`.)
-     3. Present to user per the **PC-EXECUTE-LEASH** contract above — emit all 5 items in that block's canonical order and vocabulary (step intent → both attempts → root-cause guess → checkpoints registry → the `continue / pivot / rollback` prompt). Do not reorder or reword them here; the block above is the single source.
-     4. Transition state to REFLECT.
+     3. Revert uncommitted changes to the last clean commit (revert-first — the codebase must be known-good BEFORE presenting, per the Autonomy Leash; this is the same revert step 4 mandates, so the gate-trip path and step 4 stay one consistent flow).
+     4. Present to user per the **PC-EXECUTE-LEASH** contract above — emit all 5 items in that block's canonical order and vocabulary (step intent → both attempts → root-cause guess → checkpoints registry → the `continue / pivot / rollback` prompt). Do not reorder or reword them here; the block above is the single source.
+     5. Transition state to REFLECT.
    - **Exit 1**: not expected from `--pre-step` mode today (reserved for future expansion). If encountered, treat as a transient error: retry once; on second exit-1, escalate as if it were exit 2 with synthesized slug `gate-error`.
    - Latency budget: <50ms per call. If the call hangs >5s, abort the subprocess and escalate to the user (do not silently skip — that would re-introduce the advisory-leash gap D-004 closes).
 2. Spawn ip-executor with step details + relevant context file paths
@@ -153,7 +154,7 @@ Floor: all 5 items. None may be omitted.
 3. Read result:
    - SUCCESS: run Post-Step Gate (update plan.md, progress.md, state.md, changelog.md), then run `node <skill-path>/scripts/bootstrap.mjs reset-attempts` to clear the Fix Attempts section before the next step, then emit PC-EXECUTE-STEP. **The reset is not optional**: the pre-step gate (`validate-plan.mjs --pre-step`) counts attempt lines section-wide, NOT per-step, so a stale counter from a step that used ≥1 attempt then succeeded would spuriously HARD-trip `leash-cap` on the next step (SKILL.md Autonomy Leash — "Resets on: user direction | new step | PIVOT").
    - FAILURE: increment fix attempts in state.md, then **re-run step 1.5's pre-step gate before the re-spawn** — the gate guards EVERY spawn, not just a step's first; this is exactly where a 2nd recorded attempt HARD-trips `leash-cap` and mechanically enforces the 2-attempt cap. Then re-spawn with failure context.
-4. After 2 failures on same step: STOP, revert uncommitted, emit PC-EXECUTE-LEASH, transition to REFLECT
+4. After 2 failures on same step: STOP, revert uncommitted, emit PC-EXECUTE-LEASH, transition to REFLECT. (This is the same outcome the step-1.5 exit-2 handler produces mechanically once the 2nd attempt is recorded — one flow, not two: both revert-first, both emit PC-EXECUTE-LEASH, both route to REFLECT.) If the user then chooses **continue** (overriding the leash), run `node <skill-path>/scripts/bootstrap.mjs reset-attempts` before the next spawn — otherwise the re-run pre-step gate re-trips `leash-cap` immediately (this is the "user direction" reset the SKILL.md Autonomy Leash names).
 5. Transition to REFLECT when all steps done, failure, surprise, or leash hit
 
 ### REFLECT State
@@ -163,7 +164,7 @@ After Phase-2 evaluation, BEFORE requesting user routing decision, emit a chat b
 1. **What was completed** — verbatim from `progress.md` Completed.
 2. **What remains** — verbatim from `progress.md` Remaining + In Progress (or "none").
 3. **Verification results summary** — PASS/FAIL counts plus the per-criterion table from `verification.md` Criteria Verification, rendered verbatim. The verifier's structured table MUST be pasted verbatim — do not paraphrase.
-4. **Issues found** — regressions, scope drift, unverified areas, simplification blockers; **plus** any CRITICAL/WARNING items from `findings/review-iter-N.md` (iteration ≥ 2) folded in verbatim; **plus** any verifier **Concerns** (suspicious-but-PASS observations) folded in verbatim.
+4. **Issues found** — regressions, scope drift, unverified areas, simplification blockers; **plus** any CRITICAL/WARNING items from `findings/review-iter-N.md` (iteration ≥ 2) folded in verbatim; **plus** any verifier **Concerns** (suspicious-but-PASS observations, per the Relay Contract in `ip-verifier.md`) folded in verbatim.
 5. **Recommendation** — one of CLOSE / PIVOT / EXPLORE / EXECUTE (EXECUTE only for a same-iteration completion-fix remediation loop — small fixes to finish the current iteration's work; `iter` does not increment) with one-sentence justification, then explicit prompt for user confirmation. NEVER auto-close. **When an ip-reviewer ran (iteration ≥ 2)**, the recommendation MUST be consistent with its `## Verdict`: do not recommend CLOSE over a `NEEDS_WORK`/`NEEDS_INVESTIGATION` verdict without justifying the override in `decisions.md`. (This constrains the *recommendation*, never the user gate — CLOSE always still requires user confirmation.)
 
 **Dispatch**

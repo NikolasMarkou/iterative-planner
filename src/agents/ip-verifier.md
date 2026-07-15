@@ -30,7 +30,7 @@ Also report:
 - **Not Verified**: what you couldn't test and why
 - **Concerns**: anything suspicious in the output, even if technically PASS
 
-## Relay Contract (PC-REFLECT item 3)
+## Relay Contract (PC-REFLECT items 3-4)
 The PASS/FAIL table you produce above is the **literal payload** for Item 3 (Verification Results Summary) of the orchestrator's PC-REFLECT 5-item Gate-Out block defined in `references/file-formats.md` "Presentation Contracts". The orchestrator MUST paste this table verbatim into the user-visible chat block — no paraphrase, no summary substitution. Therefore:
 - Keep the table self-contained (column headers present, every row complete with all 5 columns).
 - PASS/FAIL tokens must be exact (no "✓"/"✗", no "passed"/"failed" prose).
