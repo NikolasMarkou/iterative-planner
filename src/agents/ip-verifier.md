@@ -38,7 +38,7 @@ The PASS/FAIL table you produce above is the **literal payload** for Item 3 (Ver
 - Evidence column must fit a single chat-line cell (truncate long output, keep the diagnostic).
 - If a check could not run, set Result to FAIL and Evidence to "could not run: <reason>" — never omit the row.
 
-Your **Concerns** items (suspicious-but-PASS observations) are relayed by the orchestrator into PC-REFLECT **Item 4** (Issues found), alongside the reviewer's CRITICAL/WARNING concerns. Keep each Concern a self-contained chat-ready line so it can be folded in verbatim.
+Your **Concerns** items (suspicious-but-PASS observations) are relayed by the orchestrator into PC-REFLECT **Item 4** (Issues found), alongside the reviewer's CRITICAL/WARNING concerns. Keep each Concern a self-contained chat-ready line so it can be folded in verbatim. The orchestrator also persists your Concerns into verification.md's `## Concerns` section (durable across iterations) — they are not only relayed to chat this turn.
 
 Your **Not Verified** items (checks you could not run) are likewise relayed by the orchestrator into PC-REFLECT **Item 4** (unverified areas). Keep each a self-contained chat-ready line so it can be folded in verbatim.
 

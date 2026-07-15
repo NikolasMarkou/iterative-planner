@@ -397,6 +397,11 @@ See references/planning-rigor.md for definitions. -->
 |------|-----|
 | *To be populated during REFLECT* | - |
 
+## Concerns
+*Suspicious-but-PASS observations from the verifier (persisted across iterations, relayed to PC-REFLECT item 4). Empty is fine.*
+
+- *To be populated during REFLECT (or "none")*
+
 ## Prediction Accuracy
 *Compare plan.md predictions against actual results during REFLECT.*
 

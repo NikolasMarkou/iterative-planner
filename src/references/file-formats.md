@@ -442,6 +442,9 @@ Written during PLAN (initial template with criteria), updated during EXECUTE (pe
 | Clock skew handling in token validation | No multi-node test environment available |
 | Concurrent session limits | Out of scope for this iteration |
 
+## Concerns
+- Full suite passes but 3 specs are skipped (known-flaky) — PASS may mask a real failure in those paths
+
 ## Prediction Accuracy
 | Predicted (from plan.md) | Actual | Delta |
 |--------------------------|--------|-------|
@@ -1173,6 +1176,11 @@ See references/planning-rigor.md for definitions. -->
 | What | Why |
 |------|-----|
 | *To be populated during REFLECT* | - |
+
+## Concerns
+*Suspicious-but-PASS observations from the verifier (persisted across iterations, relayed to PC-REFLECT item 4). Empty is fine.*
+
+- *To be populated during REFLECT (or "none")*
 
 ## Prediction Accuracy
 *Compare plan.md predictions against actual results during REFLECT.*

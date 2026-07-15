@@ -171,7 +171,7 @@ After Phase-2 evaluation, BEFORE requesting user routing decision, emit a chat b
 **Dispatch**
 0. Emit rules: `node <skill-path>/scripts/emit-state.mjs --state reflect` and follow its output.
 1. Spawn ip-verifier(s) with verification strategy checks from plan.md
-2. Collect results, merge into verification.md
+2. Collect results, merge into verification.md (including the verifier's Concerns into the `## Concerns` section — persisted across iterations, not only relayed to PC-REFLECT item 4)
 3. If iteration >= 2: spawn ip-reviewer for adversarial review (output → findings/review-iter-N.md). Read BOTH its `## Concerns` block (folded into PC-REFLECT item 4) AND its `## Verdict` line — the Verdict gates the item-5 recommendation per the rule above (a `NEEDS_WORK`/`NEEDS_INVESTIGATION` verdict cannot be silently overridden by a CLOSE recommendation).
 4. Run validate-plan.mjs as additional check
 5. Emit PC-REFLECT 5-item block. Wait for user decision — NEVER auto-close.
