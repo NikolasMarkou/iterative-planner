@@ -41,7 +41,7 @@ All seven reads are CORE. Do not evaluate until all are complete.
 1. What was completed (verbatim from `progress.md`)
 2. What remains (verbatim from `progress.md`, or "none")
 3. Verification results summary — PASS/FAIL counts plus the per-criterion table from `verification.md` rendered **verbatim** (the verifier's table is the literal payload, do not paraphrase)
-4. Issues found: regressions, scope drift, unverified areas, simplification blockers; **plus** any CRITICAL/WARNING items from `findings/review-iter-N.md` (iteration ≥ 2) folded in verbatim; **plus** any verifier **Concerns** (suspicious-but-PASS observations, per the Relay Contract in `ip-verifier.md`) folded in verbatim
+4. Issues found: regressions, scope drift, unverified areas, simplification blockers; **plus** any CRITICAL/WARNING items from `findings/review-iter-N.md` (iteration ≥ 2) folded in verbatim; **plus** any verifier **Concerns** (suspicious-but-PASS observations, per the Relay Contract in `ip-verifier.md`) folded in verbatim; **plus** the reviewer's `## Blind Spots` bullets (what wasn't tested and why it matters) folded in
 5. Recommend: close, pivot, explore, or execute — **wait for user confirmation**. If an adversarial review ran (iteration ≥ 2), the recommendation must be consistent with its `## Verdict`: do NOT recommend CLOSE over a `NEEDS_WORK`/`NEEDS_INVESTIGATION` verdict without a justified override in `decisions.md`.
 
 | Condition | → Transition |

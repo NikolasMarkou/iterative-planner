@@ -58,6 +58,7 @@ Your `## Concerns` block (CRITICAL / WARNING / NOTE entries) is the **literal pa
 - Keep wording chat-ready (no markdown that would break inside a list).
 - NOTE entries are advisory; orchestrator MAY include them. CRITICAL and WARNING are mandatory relays.
 - If you have zero concerns, write `(none)` under `## Concerns` so the orchestrator can relay that explicitly. Never silently omit the section.
+- Your `## Blind Spots` bullets are ALSO relayed by the orchestrator into PC-REFLECT item 4 (as unverified-areas / what-wasn't-tested), so that section is a consumed output too — not decorative. Keep each bullet a self-contained, chat-ready line stating what wasn't tested and why it matters.
 
 ## Verdict Contract (consumed by REFLECT routing)
 Your `## Verdict` line is NOT decorative — the orchestrator reads it. A `NEEDS_WORK` or `NEEDS_INVESTIGATION` verdict gates the REFLECT recommendation: the orchestrator may not recommend CLOSE over it without justifying the override in `decisions.md` (see `ip-orchestrator.md` REFLECT dispatch + PC-REFLECT item 5, and `state-reflect.md` item 22). So set it deliberately — you can raise `NEEDS_WORK` even with all-NOTE concerns if your judgment says the work is not close-ready.
