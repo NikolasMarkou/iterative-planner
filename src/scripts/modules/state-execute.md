@@ -1,4 +1,4 @@
-- **Pre-Step Checklist** in `state.md`: reset all boxes `[ ]`, then check each `[x]` as completed before starting the step. This is the file-based enforcement of Mandatory Re-reads.
+- **Pre-Step Checklist** in `state.md`: reset all boxes `[ ]`, then check each `[x]` as completed before starting the step. These boxes are an advisory re-read aid, not a mechanically enforced gate — no agent ticks them automatically; the executor's own Pre-Step Checklist (ip-executor.md) and the orchestrator's Post-Step Gate perform and confirm the actual reads.
 - Iteration 1, first EXECUTE → create `checkpoints/cp-000-iter1.md` (nuclear fallback). "Git State" = commit hash BEFORE changes (the restore point).
 - One step at a time. Post-Step Gate after each (see below).
 - Checkpoint before risky changes (3+ files, shared modules, destructive ops). Name: `cp-NNN-iterN.md` (e.g. `cp-001-iter2.md`). Increment NNN globally across iterations.
