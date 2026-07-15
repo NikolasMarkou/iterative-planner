@@ -926,16 +926,17 @@ Agent files (`agents/ip-orchestrator.md` and contributing sub-agent files) inlin
 - **Required content** (in order):
   1. Goal (verbatim from `plan.md` Goal section).
   2. Problem Statement (verbatim — expected behavior, invariants, edge cases).
-  3. Files To Modify (verbatim table).
-  4. Steps (verbatim — every step, with risk/dependency annotations).
-  5. Assumptions (verbatim table).
-  6. Failure Modes (verbatim table).
-  7. Pre-Mortem & Falsification Signals (verbatim).
-  8. Success Criteria (verbatim table).
-  9. Verification Strategy (verbatim table).
-  10. Complexity Budget (verbatim).
-  11. Explicit prompt: "Approve to enter EXECUTE, or request revisions."
-- **Fidelity**: verbatim for items 1-10. Plan re-presentation after revision uses the same contract.
+  3. Context (verbatim — environment, constraints, pre-made decisions).
+  4. Files To Modify (verbatim table).
+  5. Steps (verbatim — every step, with risk/dependency annotations).
+  6. Assumptions (verbatim table).
+  7. Failure Modes (verbatim table).
+  8. Pre-Mortem & Falsification Signals (verbatim).
+  9. Success Criteria (verbatim table).
+  10. Verification Strategy (verbatim table).
+  11. Complexity Budget (verbatim).
+  12. Explicit prompt: "Approve to enter EXECUTE, or request revisions."
+- **Fidelity**: verbatim for items 1-11. Plan re-presentation after revision uses the same contract.
 - **Minimum sections** (floor — must always render even on token-cost grounds): Steps, Success Criteria, Verification Strategy, Failure Modes, Assumptions. Longer prose sections (Context, Pre-Mortem) may be condensed by reference if and only if the floor is rendered in full.
 
 ### PC-EXECUTE-STEP — Per-Step Status Report
@@ -989,7 +990,7 @@ Agent files (`agents/ip-orchestrator.md` and contributing sub-agent files) inlin
 ### Cross-references
 
 - `agents/ip-orchestrator.md` — inlines the minimum-content list of each contract at the point of dispatch.
-- `agents/ip-plan-writer.md` — Output Format references PC-PLAN and PC-EXPLORE.
+- `agents/ip-plan-writer.md` — Output Format references PC-PLAN.
 - `agents/ip-verifier.md` — Relay Contract references PC-REFLECT item 3.
 - `agents/ip-reviewer.md` — Relay Contract references PC-REFLECT item 4.
 - `agents/ip-executor.md` — Output Format references PC-EXECUTE-STEP and PC-EXECUTE-LEASH.
