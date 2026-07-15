@@ -67,7 +67,7 @@ Floor (must always render): items 1 and 2 verbatim. Items 3-4 may be condensed b
 2. **On-demand**: read plans/INDEX.md ONLY if any of these triggers fires — (a) goal mentions a topic absent from FINDINGS.md, (b) FINDINGS.md/LESSONS.md/SYSTEM.md contains a reference to a trimmed per-plan finding, (c) user references prior work, (d) goal touches files appearing in older plan dirs. Otherwise skip — INDEX.md is a locator, not eager cross-plan memory.
 3. Identify 2-3 research topics from the goal and any existing context
 4. Spawn ip-explorer agents in PARALLEL, one per topic
-5. After all complete: read their findings/* files, update findings.md index
+5. After all complete: read their findings/* files, update findings.md index. For any `findings/{topic}.md` containing a `## Atlas Contradictions` section (ip-explorer writes one when a finding contradicts `plans/SYSTEM.md`), promote it: add a `[CONTRADICTED iter-N]` line to `findings.md`'s Corrections section (mirrors the `[CORRECTED iter-N]` flow — the explorer cannot write the orchestrator-owned index, so this handoff is yours, and ip-archivist reconciles it into SYSTEM.md at CLOSE).
 6. Check gate: >= 3 indexed findings, exploration confidence adequate+
 7. If gate fails: spawn additional explorers for gaps
 8. Emit PC-EXPLORE block before transitioning to PLAN
@@ -92,7 +92,7 @@ Floor (always render verbatim, even on token-cost grounds): Steps, Success Crite
 
 **Dispatch**
 0. Emit rules: `node <skill-path>/scripts/emit-state.mjs --state plan` and follow its output.
-0.5. **Compression gate** (v2.18.0+, instrumented v2.18.2+): Before reading decisions.md / changelog.md for PLAN work and before spawning ip-plan-writer, invoke the intra-plan compression helpers exported from `bootstrap.mjs` (see `references/file-formats.md` § Intra-plan compression for the full spec; `bootstrap.mjs` guards its CLI dispatch behind an `isEntryPoint` check so a dynamic `import()` of the module does not execute the CLI).
+0.5. **Compression gate** (v2.18.0+, instrumented v2.18.2+): Before reading decisions.md for PLAN work (changelog.md is compressed here but NOT read during PLAN — Lifecycle Matrix marks it `W*`, not `R`) and before spawning ip-plan-writer, invoke the intra-plan compression helpers exported from `bootstrap.mjs` (see `references/file-formats.md` § Intra-plan compression for the full spec; `bootstrap.mjs` guards its CLI dispatch behind an `isEntryPoint` check so a dynamic `import()` of the module does not execute the CLI).
 
    **NOTE**: the dispatch CAPTURES STDOUT JSON and appends a `- Compression: …` line to `{plan-dir}/state.md` Transition History. Pre-v2.18.2 the dispatch was failure-silent (no `.catch()`, no exit-code check, helpers return `{reason: "missing"}` on bad paths) — successes AND errors were invisible. Now both are observable.
 
@@ -144,7 +144,7 @@ Floor: all 5 items. None may be omitted.
      2. Append a line to `{plan-dir}/state.md` under `## Fix Attempts (resets per plan step)`:
         `- Step N: LEASH HIT via pre-step gate. Slug: <slug>. Stdout: <verbatim>.`
         (Where N is the current step number from `## Current Plan Step:`.)
-     3. Present to user per the **PC-EXECUTE-LEASH** contract above (5-item block): the step intent verbatim from plan.md, the attempts log, the available checkpoints registry verbatim from `checkpoints/*`, a root-cause guess, and the explicit prompt asking whether to PIVOT, REFLECT, or revert.
+     3. Present to user per the **PC-EXECUTE-LEASH** contract above — emit all 5 items in that block's canonical order and vocabulary (step intent → both attempts → root-cause guess → checkpoints registry → the `continue / pivot / rollback` prompt). Do not reorder or reword them here; the block above is the single source.
      4. Transition state to REFLECT.
    - **Exit 1**: not expected from `--pre-step` mode today (reserved for future expansion). If encountered, treat as a transient error: retry once; on second exit-1, escalate as if it were exit 2 with synthesized slug `gate-error`.
    - Latency budget: <50ms per call. If the call hangs >5s, abort the subprocess and escalate to the user (do not silently skip — that would re-introduce the advisory-leash gap D-004 closes).
@@ -152,7 +152,7 @@ Floor: all 5 items. None may be omitted.
    - On the iteration-1 first step, the spawn prompt MUST instruct ip-executor to create `checkpoints/cp-000-iter1.md` (nuclear fallback) before editing — see state-execute.md rule and ip-executor Pre-Step Checklist.
 3. Read result:
    - SUCCESS: run Post-Step Gate (update plan.md, progress.md, state.md, changelog.md), then run `node <skill-path>/scripts/bootstrap.mjs reset-attempts` to clear the Fix Attempts section before the next step, then emit PC-EXECUTE-STEP. **The reset is not optional**: the pre-step gate (`validate-plan.mjs --pre-step`) counts attempt lines section-wide, NOT per-step, so a stale counter from a step that used ≥1 attempt then succeeded would spuriously HARD-trip `leash-cap` on the next step (SKILL.md Autonomy Leash — "Resets on: user direction | new step | PIVOT").
-   - FAILURE: increment fix attempts in state.md, re-spawn with failure context
+   - FAILURE: increment fix attempts in state.md, then **re-run step 1.5's pre-step gate before the re-spawn** — the gate guards EVERY spawn, not just a step's first; this is exactly where a 2nd recorded attempt HARD-trips `leash-cap` and mechanically enforces the 2-attempt cap. Then re-spawn with failure context.
 4. After 2 failures on same step: STOP, revert uncommitted, emit PC-EXECUTE-LEASH, transition to REFLECT
 5. Transition to REFLECT when all steps done, failure, surprise, or leash hit
 
