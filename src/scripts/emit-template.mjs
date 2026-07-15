@@ -34,58 +34,31 @@ import { fileURLToPath } from "node:url";
 
 export const VALID_TEMPLATES = ["state","plan","decisions","findings","progress","verification","checkpoints","findings-consolidated","decisions-consolidated","lessons","system","index","lessons-snapshot","changelog","summary","presentation-contracts","lessons-synthesis"];
 
-// DECISION plan-2026-07-14T141152-113d5b92/D-008: the single owner of the marker grammar.
-// This literal governs BOTH resolveTemplate's per-slice terminator scan AND servedRegionEnd's
-// served-region boundary. Do NOT re-declare "<!-- TEMPLATE:" anywhere else (esp. NOT in the
-// checker) — the whole failure class this fixes is two hand-maintained copies of one grammar
-// diverging. One definition, imported by every consumer.
+// DECISION plan-2026-07-14T141152-113d5b92/D-008: the single owner of the marker literal.
+// This literal governs resolveTemplate's per-slice terminator scan; the checker imports it for
+// its `BANNED` (encodability) list. Do NOT re-declare "<!-- TEMPLATE:" anywhere else (esp. NOT in
+// the checker) — the whole failure class this fixes is two hand-maintained copies of one grammar
+// diverging. One definition, imported by every consumer. (D-009 deleted the old served-region
+// boundary function — the checker no longer derives a boundary at all; it checks resolveTemplate's
+// served bytes directly, for all 17 slugs.)
 export const TEMPLATE_MARKER = "<!-- TEMPLATE:";
-
-// DECISION plan-2026-07-14T141152-113d5b92/D-008: the boundary between the half emit-template
-// serves to agents and the skeleton half, under emit-template's OWN terminator grammar. The
-// checker IMPORTS this and uses it for its scan `stop` — it must NOT re-derive the boundary with
-// an exact-line `<!-- TEMPLATE:END -->` match (that hand-derivation diverged from this substring
-// grammar four times; Reviewer 4 renamed the terminator + planted an early decoy END to shrink
-// the checker's scan while this served region stayed put).
-//
-// Definition: the point past which no slug slice extends = the terminator of the LAST valid slug.
-// That terminator is the FIRST line containing TEMPLATE_MARKER strictly AFTER the last-positioned
-// `<!-- TEMPLATE:<slug> -->` marker with slug ∈ VALID_TEMPLATES. Anchoring to the last SLUG's
-// terminator (not "the last TEMPLATE_MARKER substring in the doc") is load-bearing: in the real
-// doc the terminator `<!-- TEMPLATE:END -->` (line 1016) is followed by prose lines that also
-// contain the substring `<!-- TEMPLATE:` (~1029/1031); a naive last-substring definition would
-// land there and widen the scan into the skeleton regions (false positives). Returns a 0-BASED
-// LINE INDEX the checker assigns directly to `stop`. No slug marker at all → end-of-doc
-// (fail-closed: scan everything).
-const SLUG_MARKER_RE = /^<!-- TEMPLATE:([A-Za-z-]+) -->$/;
-export function servedRegionEnd(text) {
-  const lines = (text || "").split("\n");
-  let lastSlugLine = -1;
-  for (let i = 0; i < lines.length; i++) {
-    const m = SLUG_MARKER_RE.exec(lines[i].trim());
-    if (m && VALID_TEMPLATES.includes(m[1])) lastSlugLine = i;
-  }
-  if (lastSlugLine === -1) return lines.length;
-  for (let i = lastSlugLine + 1; i < lines.length; i++) {
-    if (lines[i].includes(TEMPLATE_MARKER)) return i;
-  }
-  return lines.length;
-}
 
 const USAGE = "Usage: node emit-template.mjs --name <" + VALID_TEMPLATES.join("|") + ">";
 
 // Pure, injectable seam: resolve and validate a template slice, returning a tagged
-// result instead of throwing or process.exit-ing. fileFormatsUrl is dependency
-// injection for testability — NOT a config/env toggle; the default arg reproduces
-// the production path byte-identically. Slicing is done on the raw Buffer so the
-// emitted slice is byte-identical to the source region (multibyte-safe).
-export function resolveTemplate(slug, fileFormatsUrl = new URL("../references/file-formats.md", import.meta.url)) {
+// result instead of throwing or process.exit-ing. `source` is dependency injection for
+// testability — NOT a config/env toggle. It may be a URL/path (read here) OR a pre-read
+// Buffer of file-formats.md's bytes: the checker reads the doc ONCE and resolves all 17
+// served bodies from that Buffer, and tests resolve from an in-memory mutated doc. Passing
+// a Buffer is behavior-preserving — the byte-faithful Buffer.indexOf slicing below is
+// untouched, so resolveTemplate(slug) (no 2nd arg) is byte-identical to before.
+export function resolveTemplate(slug, source = new URL("../references/file-formats.md", import.meta.url)) {
   if (!VALID_TEMPLATES.includes(slug)) {
     return { ok: false, code: 1, message: `unknown template '${slug}'; valid: ${VALID_TEMPLATES.join("|")}` };
   }
   let buf;
   try {
-    buf = readFileSync(fileFormatsUrl);
+    buf = Buffer.isBuffer(source) ? source : readFileSync(source);
   } catch (err) {
     return { ok: false, code: 1, message: `cannot read file-formats.md: ${err.code || err.message}` };
   }

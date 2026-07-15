@@ -18,32 +18,29 @@
 //                      emit-template.mjs's last slice). This keeps rule (a) expressible.
 //   (d) typing       — a non-string template is REPORTED, not thrown on.
 //   (e) line-endings — one CRLF hint instead of 12 byte-parity failures with no stated cause.
-//   (f) duplicate-region — a repeated load-bearing marker, in EITHER family. For `<!-- SKELETON:x -->`,
-//                      silently last-wins meant a garbage first region (the one a HUMAN reads) could
-//                      hide behind a clean second one, and the gate still printed PASS. For
-//                      `<!-- TEMPLATE:END -->`, a duplicate moves rule (h)'s scan boundary — see (h).
+//   (f) duplicate-region — a repeated `<!-- SKELETON:x -->` marker. Silently last-wins meant a
+//                      garbage first region (the one a HUMAN reads) could hide behind a clean
+//                      second one, and the gate still printed PASS.
 //   (g) coverage     — the gate must compare at least EXPECTED_SLUGS slugs. Without this,
 //                      checkParity({}, "") reports issues=0 and PASSES, comparing nothing.
 //                      A gate that cannot fail vacuously must enforce its own floor: `make
 //                      validate` runs this CLI, not the suite, so an assertion in the tests
 //                      would have left the floor to a human reading stdout.
-//   (h) header-copy  — no run of 2+ consecutive lines of any template's HEADER (its leading
-//                      lines up to its first blank line) may appear BEFORE `<!-- TEMPLATE:END -->`.
-//                      That half is what `emit-template` serves to agents; the SKELETON half is
-//                      what this gate compares. A restatement over there is a SECOND, UN-GATED
-//                      copy — free to drift, and served to every agent when it does. This
-//                      COMPARES BYTES against PLAN_TEMPLATES; it does not classify prose. Its
-//                      predecessor was a 4-phrase prose set, and it fell to the first synonym
-//                      tried: a phrase list guesses at intent, and a guess is evadable. It was
-//                      DELETED, not extended — a successful synonym proves the category is wrong.
-//                      THE BOUNDARY IS PART OF THE RULE. No TEMPLATE:END marker => no provable
-//                      boundary => scan the whole doc. MORE than one => the doc is ambiguous: rule
-//                      (f) FAILs it, and the scan stops at the LAST one, never the first. Taking the
-//                      first was a hole: a decoy `<!-- TEMPLATE:END -->` inserted early truncated no
-//                      slice (emit-template splits on ANY `<!-- TEMPLATE:` marker) and shrank this
-//                      scan to nothing, so bootstrap's header bytes plus a fabricated line could sit
-//                      in a worked example with the whole board green. A boundary an attacker can
-//                      move must only ever WIDEN the scan. Fail closed in both directions.
+//   (h) header-copy  — no run of 2+ consecutive lines of any template's HEADER (its leading lines
+//                      up to its first blank line) may appear in any SERVED ARTIFACT. The substrate
+//                      is resolveTemplate(slug).body for all 17 VALID_TEMPLATES — the EXACT bytes
+//                      `emit-template --name <slug>` serves agents — NOT a doc region or boundary.
+//                      A restatement in a served body is a SECOND, UN-GATED copy of bootstrap's
+//                      bytes, free to drift and served to every agent. COMPARES BYTES against
+//                      PLAN_TEMPLATES; it does not classify prose. Five predecessors each checked a
+//                      PROXY for the served region (skeleton half, phrase set, first/last boundary,
+//                      anchored-line grammar), and each diverged from the UNANCHORED slicer on the
+//                      first reviewer attempt; D-009 eliminated the proxy — the check now CALLS the
+//                      slicer, so the thing checked IS the thing served.
+//   (i) served-resolve — every one of the 17 VALID_TEMPLATES slugs must resolve. A slug whose
+//                      marker was removed/renamed/redirected so resolveTemplate returns !ok is a
+//                      LOUD FAIL naming it — never a silently dropped slug (that silent drop was the
+//                      enabling half of the fifth consecutive break).
 //
 // Region<->bytes contract: a body is the lines strictly between the opening ```markdown fence
 // and its closing fence, joined with "\n", plus a trailing "\n". A marker NOT followed by a
@@ -58,13 +55,14 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PLAN_TEMPLATES } from "./bootstrap.mjs";
-// DECISION plan-2026-07-14T141152-113d5b92/D-008: import the served-region boundary from its single
-// owner (emit-template.mjs). Do NOT re-derive it here with an exact-line `<!-- TEMPLATE:END -->`
-// match — that hand-derivation diverged from emit-template's `<!-- TEMPLATE:` prefix terminator
-// grammar four times, and the fourth break (Reviewer 4) renamed the terminator + planted an early
-// decoy END to SHRINK this checker's scan while emit-template's served region stayed put. One
-// definition, both consumers: the boundary cannot disagree with itself. See decisions.md D-008.
-import { servedRegionEnd, TEMPLATE_MARKER } from "./emit-template.mjs";
+// DECISION plan-2026-07-14T141152-113d5b92/D-009: import the SLICER itself (resolveTemplate) and
+// check its OUTPUT for all 17 slugs — the union of what emit-template serves agents — instead of
+// approximating where that output ends with a doc boundary. Five guards fell because each derived a
+// PROXY for the served region (a skeleton half, a phrase set, a boundary, an anchored-line grammar)
+// and every proxy diverged from resolveTemplate's UNANCHORED substring slicer. There is no boundary
+// left to import; the thing checked IS the thing served. TEMPLATE_MARKER stays (shared literal,
+// used by BANNED below). See decisions.md D-009.
+import { resolveTemplate, VALID_TEMPLATES, TEMPLATE_MARKER } from "./emit-template.mjs";
 
 export const DOC_REL = "src/references/file-formats.md";
 export const SRC_REL = "src/scripts/bootstrap.mjs";
@@ -72,11 +70,6 @@ export const SRC_REL = "src/scripts/bootstrap.mjs";
 const MARKER_RE = /^<!-- SKELETON:([A-Za-z-]+) -->$/;
 const FENCE = "```";
 const BANNED = [FENCE, TEMPLATE_MARKER];
-const TEMPLATE_END = "<!-- TEMPLATE:END -->";
-// A standalone <!-- TEMPLATE:* --> marker line: the WHOLE trimmed line is the marker. Distinguishes
-// a real marker from prose that merely CONTAINS `<!-- TEMPLATE:` (file-formats.md ~1029/1031), so
-// the marker-grammar rule below never false-positives on the skeleton half's prose.
-const TEMPLATE_MARKER_LINE_RE = /^<!-- TEMPLATE:[A-Za-z-]+ -->$/;
 
 // The floor. A gate that PASSES having compared fewer slugs than exist is the defect this
 // script exists to prevent, so the expected count is enforced here, not by a human reading
@@ -151,7 +144,7 @@ export function locateTemplateKey(srcText, slug) {
 // Pure check. `compared` is the number of slugs ACTUALLY byte-compared — a gate that
 // passes having compared nothing is the exact failure this script exists to prevent,
 // so the count is reported, never implied.
-export function checkParity(templates, docText, srcText = "", expectedSlugs = EXPECTED_SLUGS) {
+export function checkParity(templates, docText, srcText = "", expectedSlugs = EXPECTED_SLUGS, servedScope = VALID_TEMPLATES) {
   const issues = [];
   const push = (file, line, rule, message) => issues.push({ file, line, rule, message });
   const { regions, endLine, duplicates } = parseSkeletons(docText);
@@ -165,56 +158,44 @@ export function checkParity(templates, docText, srcText = "", expectedSlugs = EX
       `${DOC_REL} has CRLF line endings; parity compares bytes. Normalize to LF (\`core.autocrlf=input\`).`);
   }
 
-  // (h) header-copy — bootstrap's header bytes, compared. Every adjacent line-pair of every
-  // header is a key; any such pair reappearing before `<!-- TEMPLATE:END -->` is an un-gated
-  // second copy. Threshold 2, not 1: a 1-line run would fire on every `# Progress` heading in the
-  // doc. That cost is NAMED, not hidden — `plan` and `progress` have 1-line headers and sit below
-  // it (CLAUDE.md says so). No allowlist, no exception, no skip: if this fires on something the doc
-  // cannot give up, the RULE's scope is wrong — re-scope it, never exempt the line.
+  // (h) header-copy + (i) served-resolve — check the SERVED ARTIFACTS THEMSELVES. Every adjacent
+  // line-pair of every PLAN_TEMPLATES header is a key; any such pair reappearing inside a served
+  // body is an un-gated second copy of bootstrap's bytes, served to agents. Threshold 2, not 1: a
+  // 1-line run would fire on every `# Progress` heading. That cost is NAMED — `plan` and `progress`
+  // have 1-line headers (CLAUDE.md says so). No allowlist, no exception, no skip.
   const pairs = new Map(); // "<lineA>\n<lineB>" -> slug, over every header of length >= 2
   for (const slug of slugs.filter((s) => typeof templates[s] === "string")) {
     const h = header(templates[slug]);
     for (let i = 0; i + 1 < h.length; i++) if (!pairs.has(pair(h, i))) pairs.set(pair(h, i), slug);
   }
-  // The boundary is IMPORTED, not re-derived (D-008). servedRegionEnd owns "where the half
-  // emit-template serves to agents ends" under emit-template's OWN terminator grammar; this checker
-  // cannot disagree with it, because it IS that function. Returns a 0-based line index used as `stop`.
-  const lines = (docText || "").split("\n");
-  const stop = servedRegionEnd(docText);
-  for (let i = 0; i + 1 < stop; i++) {
-    const slug = pairs.get(pair(lines, i));
-    // A 3+-line header overlaps its own windows: report each run once, at its first line.
-    if (!slug || (i > 0 && pairs.get(pair(lines, i - 1)) === slug)) continue;
-    push(DOC_REL, i + 1, "header-copy",
-      `lines ${i + 1}-${i + 2} restate PLAN_TEMPLATES.${slug}'s header bytes before the served-region ` +
-      `boundary — an un-gated second copy, and emit-template serves THAT half to agents. State ` +
-      `bootstrap's bytes only in the <!-- SKELETON:${slug} --> region; point here instead.`);
-  }
-
-  // (f) template-markers — marker-grammar HYGIENE for the <!-- TEMPLATE:* --> family. This is NOT
-  // the boundary detector (servedRegionEnd is, above) — it is defense-in-depth. servedRegionEnd
-  // already makes the scan correct regardless of what this finds, but a doc author who RENAMES the
-  // terminator (Reviewer 4: <!-- TEMPLATE:END --> -> <!-- TEMPLATE:END-OF-LIST -->, its END lost but
-  // its `<!-- TEMPLATE:` prefix kept) or inserts a <!-- TEMPLATE:* --> marker PAST the END must fail
-  // LOUDLY rather than let the two consumers drift toward disagreement. STANDALONE-MARKER-LINE
-  // semantics keep prose substrings (~1029/1031) from tripping it. Grammar: exactly ONE standalone
-  // <!-- TEMPLATE:END --> line, and it is the LAST standalone <!-- TEMPLATE: --> marker line.
-  const standalone = lines
-    .map((l, i) => ({ t: l.trim(), i }))
-    .filter((x) => TEMPLATE_MARKER_LINE_RE.test(x.t));
-  const endMarkers = standalone.filter((x) => x.t === TEMPLATE_END);
-  if (endMarkers.length !== 1) {
-    push(DOC_REL, endMarkers.length ? endMarkers[endMarkers.length - 1].i + 1 : endLine, "template-markers",
-      `expected exactly one standalone ${TEMPLATE_END} marker line, found ${endMarkers.length}` +
-      (endMarkers.length === 0
-        ? ` — the terminator may have been renamed (its <!-- TEMPLATE: prefix kept, its END dropped); ` +
-          `it bounds the half emit-template serves to agents`
-        : ` (lines ${endMarkers.map((x) => x.i + 1).join(", ")}); only one may exist`));
-  } else if (standalone.length && standalone[standalone.length - 1].t !== TEMPLATE_END) {
-    const last = standalone[standalone.length - 1];
-    push(DOC_REL, last.i + 1, "template-markers",
-      `${last.t} is a standalone <!-- TEMPLATE: --> marker AFTER ${TEMPLATE_END} — ${TEMPLATE_END} must ` +
-      `be the LAST one (a marker past it would widen the served region into the SKELETON half)`);
+  // DECISION plan-2026-07-14T141152-113d5b92/D-009: the SUBSTRATE is resolveTemplate's OUTPUT, not a
+  // doc region/boundary. For each slug in servedScope (default VALID_TEMPLATES — fail-closed: all 17,
+  // never a silent subset), resolveTemplate(slug, docBuf) returns the EXACT bytes emit-template
+  // serves that slug's agents; we scan THAT body. Do NOT reintroduce a boundary / served-region /
+  // docText line-window scan here — five reviewers broke every proxy for the served region because
+  // each diverged from this UNANCHORED slicer. A slug that fails to resolve is a LOUD FAIL naming it
+  // (a removed/renamed/redirected marker can NEVER silently drop a slug), never a bare `continue`.
+  const docBuf = Buffer.from(docText || "");
+  let servedChecked = 0;
+  for (const served of servedScope) {
+    const r = resolveTemplate(served, docBuf);
+    if (!r.ok) {
+      push(DOC_REL, endLine, "served-resolve",
+        `emit-template cannot serve '${served}' (${r.message}) — a slug whose marker was removed, ` +
+        `renamed, or redirected must fail LOUDLY, never drop silently from the served-artifact check`);
+      continue;
+    }
+    servedChecked++;
+    const body = r.body.toString().split("\n");
+    for (let i = 0; i + 1 < body.length; i++) {
+      const slug = pairs.get(pair(body, i));
+      // A 3+-line header overlaps its own windows: report each run once, at its first line.
+      if (!slug || (i > 0 && pairs.get(pair(body, i - 1)) === slug)) continue;
+      push(DOC_REL, endLine, "header-copy",
+        `emit-template --name ${served} serves a body that restates PLAN_TEMPLATES.${slug}'s header ` +
+        `bytes — an un-gated second copy served to agents. State bootstrap's bytes only in the ` +
+        `<!-- SKELETON:${slug} --> region; point there from the ${served} worked example instead.`);
+    }
   }
 
   // (f) duplicate-region — a repeated marker means the doc a human reads and the region a
@@ -275,7 +256,7 @@ export function checkParity(templates, docText, srcText = "", expectedSlugs = EX
       `a gate that compares nothing passes vacuously`);
   }
 
-  return { issues, compared };
+  return { issues, compared, served: servedChecked };
 }
 
 export function report(issues) {
@@ -294,11 +275,12 @@ if (isEntryPoint) {
   const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
   const docText = readFileSync(join(repoRoot, DOC_REL), "utf8");
   const srcText = readFileSync(join(repoRoot, SRC_REL), "utf8");
-  const { issues, compared } = checkParity(PLAN_TEMPLATES, docText, srcText);
+  const { issues, compared, served } = checkParity(PLAN_TEMPLATES, docText, srcText);
   if (issues.length === 0) {
     console.log(
       `check-template-parity: PASS (${compared} slugs compared byte-for-byte — ` +
-      `PLAN_TEMPLATES == ${DOC_REL} SKELETON regions)`,
+      `PLAN_TEMPLATES == ${DOC_REL} SKELETON regions; ${served} served artifacts checked for ` +
+      `header-copy via resolveTemplate)`,
     );
     process.exit(0);
   }
