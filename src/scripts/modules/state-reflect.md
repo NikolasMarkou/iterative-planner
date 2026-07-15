@@ -47,6 +47,7 @@ All seven reads are CORE. Do not evaluate until all are complete.
 | Condition | → Transition |
 |-----------|--------------|
 | All criteria verified PASS in `verification.md`, no regressions, no simplification blockers + **user confirms** | → CLOSE |
+| Completion-fix remediation surfaced during REFLECT: small fixes to finish the SAME iteration's work (not a new approach → not PIVOT; not more context → not EXPLORE) + **user confirms** | → EXECUTE (same iteration; `iter` does not increment) |
 | Failure understood, new approach clear | → PIVOT |
 | Unknowns need investigation, or findings contradicted | → EXPLORE (update findings first) |
 
