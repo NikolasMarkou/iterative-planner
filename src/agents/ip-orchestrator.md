@@ -106,9 +106,10 @@ Floor (always render verbatim, even on token-cost grounds): Steps, Success Crite
    - Thresholds: `decisions.md` > 300 lines, `changelog.md` > 200 lines (defaults; tunable via opts).
    - Failure-tolerant: if compression throws for any reason (corrupted file, unexpected schema, missing module), the `.catch` emits `{error: <msg>}` and CONTINUES — never block PLAN on a compression failure. Raw entries remain readable below the marker even if the summary block is malformed. The error string lands in the state.md observability line.
    - First PLAN of a new plan: files are empty, both helpers no-op silently (visible as `{decisions: missing, changelog: missing}` in the log line — not an error).
-1. Read all findings/*, decisions.md, plans/LESSONS.md, plans/DECISIONS.md (limit: 600), plans/SYSTEM.md
+1. Read findings.md (index) + all findings/*, decisions.md, plans/LESSONS.md, plans/DECISIONS.md (limit: 600), plans/SYSTEM.md
 2. Spawn ip-plan-writer with goal + findings summary
 3. Read its plan.md output (path + section anchors returned by sub-agent), verify all required sections exist
+   - If the plan-writer returns a `NEEDS_EXPLORE` signal (it could not state the problem or list files-to-modify), do NOT emit PC-PLAN. Transition PLAN→EXPLORE with the named gap as the new research topic (SKILL.md PLAN→EXPLORE edge), then re-dispatch explorers per the EXPLORE dispatch.
 4. Emit PC-PLAN block (render plan.md verbatim per floor). Wait for explicit user approval.
 5. If rejected: relay feedback, re-spawn plan-writer, re-emit PC-PLAN
 
