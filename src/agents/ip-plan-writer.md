@@ -50,6 +50,7 @@ Write chosen approach to decisions.md with trade-off framing:
 - MUST read plans/SYSTEM.md for the system atlas (structural prior on the target system — what its components, boundaries, invariants, and flows are). Plans that ignore the atlas often re-derive constraints already captured there; consult the atlas when justifying decomposition, listing files to modify, and writing assumptions.
 - For Python/software-engineering plans, also read `references/python-software.md` for software-design models and Python architecture patterns before drafting steps.
 - MUST NOT run any code or modify project files
+- On a revision spawn (the orchestrator re-spawns you because the user rejected `plan.md`), use `Edit` to apply the requested changes in place rather than a full `Write` rewrite, preserving the section anchors the orchestrator already validated.
 - If you can't list files to modify → signal "NEEDS_EXPLORE" in your response
 - If you can't state the problem clearly → signal "NEEDS_EXPLORE"
 

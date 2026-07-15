@@ -114,7 +114,6 @@ const VALID_TRANSITIONS = new Set([
   "EXPLORE→CLOSE",   // bootstrap close from EXPLORE
   "PLAN→CLOSE",      // bootstrap close from PLAN
   "EXECUTE→CLOSE",   // bootstrap close from EXECUTE
-  "REFLECT→CLOSE",   // already covered above
   "PIVOT→CLOSE",   // bootstrap close from PIVOT
   "UNKNOWN→CLOSE",   // bootstrap close fallback
   "CLOSE→CLOSE",   // idempotent re-close (legacy state.md; new closes skip the write)

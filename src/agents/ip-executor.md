@@ -39,7 +39,7 @@ Before writing any code:
 - Commit after success: `[plan-YYYY-MM-DD-HASH/iter-N/step-M] description`. Derive the tag id from the plan-dir name by dropping the `THHMMSS` segment (`plan-2026-07-14T051317-317362c4` → `[plan-2026-07-14-317362c4/iter-3/step-2] …`). Legacy `plan_YYYY-MM-DD_XXXXXXXX` dirs derive identically (normalize `_`→`-`); full rule in `SKILL.md` § Git Integration.
   - **The changelog `step` field stays bare `iter-N/step-M`** — do not "fix" this. It is sourced from `state.md`, never parsed from the commit subject.
 - **Iteration 1, first EXECUTE step (MANDATORY)**: before any edit, create `checkpoints/cp-000-iter1.md` — the nuclear fallback / full-revert restore point. Set its 'Git State' to the commit hash BEFORE any changes. This is the checkpoint the Nuclear Option (Complexity Control) reverts to. Consistent with the EXECUTE per-state rules (`emit-state --state execute`).
-- Create checkpoint before risky changes (3+ files): `checkpoints/cp-NNN-iterN.md`. Template + sibling-directory convention: `references/file-formats.md` § checkpoints/cp-NNN-iterN.md — or run `node <skill-path>/scripts/emit-template.mjs --name checkpoints` to get just this template (file-formats.md is the canonical fallback). Revert order (git first, then reinstall): `references/code-hygiene.md` § Revert procedures.
+- Create checkpoint before risky changes (3+ files): `checkpoints/cp-NNN-iterN.md`. Template + sibling-directory convention: `references/file-formats.md` § checkpoints/cp-NNN-iterN.md — or run `node <skill-path>/scripts/emit-template.mjs --name checkpoints` to get just this template (file-formats.md is the canonical fallback). Revert order (git first, then reinstall): `references/code-hygiene.md` § Revert procedures — manifest-touching reverts.
 
 ### Checkpoint Lockfile Snapshot (MANDATORY when step touches a manifest)
 1. **Manifest detection**: lockfile snapshotting is REQUIRED when the planned step modifies any of these manifest files (or equivalent for the project's stack):
@@ -109,7 +109,7 @@ If `blast-radius.mjs` is missing or errors:
 - 10-Line Rule: fix needs >10 new lines → not a fix → report failure
 - You have MAX 2 fix attempts. After 2 failures, report to orchestrator.
 - Revert uncommitted changes: `git checkout -- <files>; git clean -fd`
-- **Manifest-touching steps**: `git checkout` alone does NOT restore installed dependencies. If the reverted step modified a package manifest/lockfile, follow the git revert with the ecosystem's strict reinstall (`npm ci` / `cargo build` / `poetry install --sync` / `bundle install` / `go mod download` / etc.) to reconcile the working tree with the restored lockfile. Full sequence: `references/code-hygiene.md` § Revert procedures.
+- **Manifest-touching steps**: `git checkout` alone does NOT restore installed dependencies. If the reverted step modified a package manifest/lockfile, follow the git revert with the ecosystem's strict reinstall (`npm ci` / `cargo build` / `poetry install --sync` / `bundle install` / `go mod download` / etc.) to reconcile the working tree with the restored lockfile. Full sequence: `references/code-hygiene.md` § Revert procedures — manifest-touching reverts.
 - For each reverted file, append a `REVERT(file)` line to `changelog.md` with reason `revert: <what failed>`.
 
 ## Output Format
