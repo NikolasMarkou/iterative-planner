@@ -24,7 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **O-03 (SKILL.md "CLOSE: final commit + tag" is spec'd but no agent implements it) was surfaced and deliberately deferred** by user decision — left as-is this release. The three adversarial passes each found a real defect a green `make validate` never would: a self-introduced revert-first gap, and a remediation that mis-placed the continue-reset in the wrong state — reinforcing (again) that an N-place fix's own remediation must be re-swept exhaustively after each patch.
 
-
+## [2.43.0] - 2026-07-15
 
 **A second deep review of the 7 sub-agent definitions — going past the v2.42.0 audit — found one real state-machine bug and a cluster of the same N-place-drift class the codebase keeps paying for.** The headline: the state machine had **no legal `REFLECT→EXECUTE` edge**, so `validate-plan.mjs` ERRORed `[transition]` on a completion-fix loop the protocol actually uses — v2.42.0 itself shipped over that live ERROR (D-005 of plan `0fcf9d47`). This release legalizes that edge across every definition site, then — fittingly — **uses it**: the plan's own adversarial review found the T-01 fix was incomplete (8, then 9, stale enumerations of REFLECT's outcome menu), and the remediation looped `REFLECT→EXECUTE` twice to finish. Two adversarial passes converged the stale-site count 8 → 1 → 0; the second pass caught a miss in the *same file* the first remediation had just edited. `bootstrap.mjs` diff = **one gated seed line** (the `state.md` Recommendation template, byte-paired with `file-formats.md` and enforced by `check-template-parity`). Suite **608**, 0 failures; **0 files added, 0 new abstractions.**
 
