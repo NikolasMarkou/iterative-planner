@@ -121,12 +121,12 @@ Report back with:
   3. Commit hash + commit message
   4. Surprises encountered (or "none")
   5. Next step preview (one line)
-- If FAILURE: **First failure**: report fields 1-3 only (step intent, what happened, root-cause guess) — the orchestrator will re-spawn you with failure context. **Second failure (leash hit)**: report all 5 fields below — the orchestrator pastes them into PC-EXECUTE-LEASH.
+- If FAILURE: **First failure**: report fields 1-3 only (step intent, what happened, root-cause guess) — the orchestrator will re-spawn you with failure context. **Second failure (leash hit)**: report the 4 fields below (the 5th PC-EXECUTE-LEASH field — the user prompt — is authored by the orchestrator, not you) — the orchestrator pastes them into PC-EXECUTE-LEASH.
   1. What the step was supposed to do (verbatim from plan.md)
   2. What actually happened (per attempt — list both attempts on the second failure)
   3. Root-cause guess (one paragraph)
   4. Available checkpoints (id + git hash + reason) from `checkpoints/*`
-  5. (Orchestrator owns the user prompt — you do not author it.)
+  - (Field 5 of PC-EXECUTE-LEASH, the user prompt, is orchestrator-owned — you do not author it.)
 
 ## Relay Contract (PC-EXECUTE-STEP / PC-EXECUTE-LEASH)
 The 5 fields above are the **literal payload** for the orchestrator's per-step status report (PC-EXECUTE-STEP) and leash-hit failure block (PC-EXECUTE-LEASH) defined in `references/file-formats.md` "Presentation Contracts". The orchestrator MUST paste each field verbatim — do not author prose substitutes for any field. Keep each field self-contained and chat-ready.
@@ -136,4 +136,7 @@ The 5 fields above are the **literal payload** for the orchestrator's per-step s
 - Do NOT update state.md (orchestrator does this)
 - Do NOT skip ahead to the next step
 - Do NOT modify plan.md
-- Irreversible operations (DB migrations, external APIs): refuse and report back
+- Irreversible operations (steps tagged `[IRREVERSIBLE]` in plan.md — DB migrations, external API calls with side effects, service config, non-tracked file deletion): do NOT unilaterally or permanently refuse — execute WITH safeguards per `references/code-hygiene.md` § Irreversible Operations:
+  - Before executing: ensure the checkpoint records the manual rollback plan; run a dry-run (`--dry-run`/`--check`/`--plan`) if available; report the dry-run output + rollback plan back to the orchestrator so the user can confirm.
+  - Perform the irreversible side effect ONLY after the orchestrator relays explicit user confirmation. Never perform an irreversible / un-git-revertable side effect without that confirmation.
+  - On failure: do the manual rollback per the checkpoint; do NOT retry without user direction.
