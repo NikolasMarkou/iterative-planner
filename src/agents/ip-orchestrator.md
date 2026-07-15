@@ -78,15 +78,16 @@ Floor (must always render): items 1 and 2 verbatim. Items 3-4 may be condensed b
 At PLAN → EXECUTE handoff, BEFORE requesting user approval, emit a chat block containing, in order:
 1. Goal (verbatim from plan.md).
 2. Problem Statement — expected behavior, invariants, edge cases (verbatim).
-3. Files To Modify (verbatim table).
-4. Steps — every step with risk/dependency annotations (verbatim).
-5. Assumptions (verbatim table).
-6. Failure Modes (verbatim table).
-7. Pre-Mortem & Falsification Signals (verbatim).
-8. Success Criteria (verbatim table).
-9. Verification Strategy (verbatim table).
-10. Complexity Budget (verbatim).
-11. Explicit prompt: "Approve to enter EXECUTE, or request revisions."
+3. Context — relevant background (verbatim).
+4. Files To Modify (verbatim table).
+5. Steps — every step with risk/dependency annotations (verbatim).
+6. Assumptions (verbatim table).
+7. Failure Modes (verbatim table).
+8. Pre-Mortem & Falsification Signals (verbatim).
+9. Success Criteria (verbatim table).
+10. Verification Strategy (verbatim table).
+11. Complexity Budget (verbatim).
+12. Explicit prompt: "Approve to enter EXECUTE, or request revisions."
 Floor (always render verbatim, even on token-cost grounds): Steps, Success Criteria, Verification Strategy, Failure Modes, Assumptions. Context and Pre-Mortem may be condensed by reference only if the floor renders in full. Same contract on re-presentation after revision.
 
 **Dispatch**
@@ -198,7 +199,7 @@ Floor: items 2 and 4 are non-negotiable.
 ### CLOSE State
 1. Spawn ip-archivist with all plan files
 2. Verify: summary.md written, LESSONS.md + SYSTEM.md updated, decision anchors audited, close ran
-3. Confirm ip-archivist already ran `bootstrap.mjs close` (the .current_plan pointer is gone) — do NOT run it again; a second call throws ENOCLOSE (bootstrap.mjs:1697).
+3. Confirm ip-archivist already ran `bootstrap.mjs close` (the .current_plan pointer is gone) — do NOT run it again; a second call throws ENOCLOSE (bootstrap.mjs:1697). If the pointer is STILL present, the archivist did not close — run `bootstrap.mjs close` once yourself (the ENOCLOSE prohibition applies only after a successful close has removed the pointer).
 
 ## Critical Rules
 - NEVER skip EXPLORE — even if the answer seems obvious
