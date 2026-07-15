@@ -151,7 +151,7 @@ Floor: all 5 items. None may be omitted.
 2. Spawn ip-executor with step details + relevant context file paths
    - On the iteration-1 first step, the spawn prompt MUST instruct ip-executor to create `checkpoints/cp-000-iter1.md` (nuclear fallback) before editing — see state-execute.md rule and ip-executor Pre-Step Checklist.
 3. Read result:
-   - SUCCESS: run Post-Step Gate (update plan.md, progress.md, state.md, changelog.md), then emit PC-EXECUTE-STEP
+   - SUCCESS: run Post-Step Gate (update plan.md, progress.md, state.md, changelog.md), then run `node <skill-path>/scripts/bootstrap.mjs reset-attempts` to clear the Fix Attempts section before the next step, then emit PC-EXECUTE-STEP. **The reset is not optional**: the pre-step gate (`validate-plan.mjs --pre-step`) counts attempt lines section-wide, NOT per-step, so a stale counter from a step that used ≥1 attempt then succeeded would spuriously HARD-trip `leash-cap` on the next step (SKILL.md Autonomy Leash — "Resets on: user direction | new step | PIVOT").
    - FAILURE: increment fix attempts in state.md, re-spawn with failure context
 4. After 2 failures on same step: STOP, revert uncommitted, emit PC-EXECUTE-LEASH, transition to REFLECT
 5. Transition to REFLECT when all steps done, failure, surprise, or leash hit

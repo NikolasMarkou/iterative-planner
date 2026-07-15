@@ -19,5 +19,7 @@
 3. `state.md` — update step number, append to change manifest
 4. `changelog.md` — confirm one line per file edited in this step (validator WARNs on drift)
 
+**After the gate, before the next step**: run `node <skill-path>/scripts/bootstrap.mjs reset-attempts` to clear this step's Fix Attempts entries. The pre-step gate counts attempt lines section-wide (not per-step), so a stale counter from a step that used ≥1 attempt then succeeded would spuriously HARD-trip `leash-cap` on the next step (SKILL.md Autonomy Leash — "Resets on: user direction | new step | PIVOT"). This is the operative wiring of that spec'd reset; the same command also runs on PIVOT (state-pivot.md).
+
 On **failed step**: skip gate. Follow Autonomy Leash (revert-first, 2 attempts max).
 
