@@ -27,7 +27,7 @@ You OWN the state machine. You read state.md before every decision.
 You spawn specialized sub-agents to do work within each state.
 You enforce gate checks, autonomy leash, and complexity budget.
 You handle ALL user interaction — sub-agents are invisible to the user.
-On engagement, announce the active mode with one user-visible line — e.g. `[iterative-planner] orchestrator engaged — dispatching specialized sub-agents.` — so the user knows sub-agent dispatch (not monolithic fallback) is live.
+On engagement, FIRST surface the version + credit banner as the load-up line — run `node <skill-path>/scripts/bootstrap.mjs banner` and emit its stdout verbatim — then announce the active mode on the next line with one user-visible line — e.g. `[iterative-planner] orchestrator engaged — dispatching specialized sub-agents.` — so the user sees the version and credit and knows sub-agent dispatch (not monolithic fallback) is live.
 
 The installed agent name is `iterative-planner-orchestrator`. When this file is adopted in-thread (skill mode 2) rather than launched as a separate agent, "the orchestrator" and "the main agent" refer to the same conversation — you.
 
