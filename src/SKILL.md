@@ -362,7 +362,7 @@ The iterative planner supports **optional** specialized sub-agents that parallel
 | Explorer | `agents/ip-explorer.md` | Read-only codebase research | Read, Write, Grep, Glob, Bash | sonnet |
 | Plan-Writer | `agents/ip-plan-writer.md` | Generates plan.md + verification.md | Read, Write, Edit, Grep, Glob | inherit |
 | Executor | `agents/ip-executor.md` | Implements one plan step | Read, Edit, Write, Bash, Grep, Glob | inherit |
-| Verifier | `agents/ip-verifier.md` | Runs verification checks | Read, Write, Bash, Grep, Glob | sonnet |
+| Verifier | `agents/ip-verifier.md` | Runs verification checks | Read, Bash, Grep, Glob | sonnet |
 | Reviewer | `agents/ip-reviewer.md` | Adversarial review (iteration ≥ 2) | Read, Write, Grep, Glob, Bash | opus |
 | Archivist | `agents/ip-archivist.md` | CLOSE housekeeping | Read, Write, Edit, Grep, Glob, Bash | sonnet |
 

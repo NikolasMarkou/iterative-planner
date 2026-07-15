@@ -344,7 +344,7 @@ When the skill activates with the agent definitions installed, the conversation 
 | **ip-explorer** | Read-only codebase research (EXPLORE) | Read, Write, Grep, Glob, Bash | sonnet |
 | **ip-plan-writer** | Generates `plan.md` and `verification.md` template (PLAN) | Read, Write, Edit, Grep, Glob | inherit |
 | **ip-executor** | Implements one plan step at a time (EXECUTE) | Read, Edit, Write, Bash, Grep, Glob | inherit |
-| **ip-verifier** | Runs verification checks, fills `verification.md` (REFLECT) | Read, Write, Bash, Grep, Glob | sonnet |
+| **ip-verifier** | Runs verification checks, returns results for Orchestrator to merge into `verification.md` (REFLECT) | Read, Bash, Grep, Glob | sonnet |
 | **ip-reviewer** | Adversarial review, iteration ≥ 2 (REFLECT) | Read, Write, Grep, Glob, Bash | opus |
 | **ip-archivist** | CLOSE housekeeping: `summary.md`, anchor audit, LESSONS, SYSTEM | Read, Write, Edit, Grep, Glob, Bash | sonnet |
 
