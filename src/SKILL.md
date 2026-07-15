@@ -411,6 +411,7 @@ Simple single-file changes, obvious solutions, known-root-cause bugs, or "just d
 - `references/code-hygiene.md` — change manifest, revert procedures
 - `references/decision-anchoring.md` — when/how to anchor decisions in code
 - `references/planning-rigor.md` — assumption tracking, pre-mortem, falsification signals, exploration confidence, prediction accuracy
+- `references/root-cause-analysis.md` — structured methods for the failure-time RCA step (5 Whys, fishbone category scan, optional fault tree, Cynefin selector); domain-agnostic core
 - `references/convergence-metrics.md` — convergence score, momentum tracker, iteration health signals
 - `references/blast-radius.md` — per-edit blast-radius signals + scoring (used by `scripts/blast-radius.mjs`, written to `changelog.md`)
 - `references/python-software.md` — domain caveats for Python/software-engineering tasks (consult only for Python/software work; not part of the domain-neutral core)

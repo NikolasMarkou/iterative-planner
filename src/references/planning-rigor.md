@@ -143,6 +143,8 @@ When REFLECT follows a failure (step failed, leash hit, surprise discovery), str
 - **Stop rule.** Keep asking "but why was that possible?" until further whys either leave the system boundary (out of your control) or stop yielding actionable levers. Don't stop at the first plausible cause — that's premature closure, the most common RCA failure mode.
 - **No prevention without a verification plan.** If step 4 says "add a test" or "check X earlier," the next REFLECT must confirm it actually catches the regression it was meant to catch. Otherwise the lesson is theoretical.
 
+> **Structured methods**: the 4-part block above is the canonical schema kept HERE. For structured techniques to *fill* it — 5 Whys, fishbone category scan, optional fault tree, and a Cynefin domain selector — see `references/root-cause-analysis.md`.
+
 ## Ghost Constraint Hunting (PIVOT)
 
 Ghost constraints = past constraints baked into the current approach that no longer apply. They're the most common source of unnecessarily constrained solution spaces.
