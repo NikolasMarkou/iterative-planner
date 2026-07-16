@@ -359,6 +359,22 @@ describe("bootstrap.mjs", () => {
       assert.equal(r.exitCode, 0);
       assert.ok(r.stdout.includes("No active plan"), "should indicate no plan");
     });
+
+    it("flags INCOMPLETE CLOSE on one line when state.md says CLOSE but pointer remains", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Interrupted close status test");
+      const planDir = getPointer(dir);
+      // Simulate an interrupted close: state.md transitioned to CLOSE but
+      // the .current_plan pointer was never removed (kill between the
+      // state.md write and unlinkSync inside cmdCloseInner).
+      const statePath = join(dir, "plans", planDir, "state.md");
+      const state = readFileSync(statePath, "utf-8");
+      writeFileSync(statePath, state.replace(/^# Current State: EXPLORE$/m, "# Current State: CLOSE"));
+      const r = run(dir, "status");
+      assert.equal(r.exitCode, 0);
+      assert.ok(r.stdout.includes("INCOMPLETE CLOSE"), "should flag the anomaly");
+      assert.equal(r.stdout.trim().split("\n").length, 1, "status output must stay a single line");
+    });
   });
 
   // =========================================================================
@@ -384,6 +400,21 @@ describe("bootstrap.mjs", () => {
       const r = run(dir, "resume");
       assert.notEqual(r.exitCode, 0, "should exit non-zero");
       assert.ok(r.stderr.includes("No active plan"), "should mention no active plan");
+    });
+
+    it("prints the INCOMPLETE CLOSE anomaly when state.md says CLOSE but pointer remains", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Interrupted close resume test");
+      const planDir = getPointer(dir);
+      // Same interrupted-close signature as the status test above.
+      const statePath = join(dir, "plans", planDir, "state.md");
+      const state = readFileSync(statePath, "utf-8");
+      writeFileSync(statePath, state.replace(/^# Current State: EXPLORE$/m, "# Current State: CLOSE"));
+      const r = run(dir, "resume");
+      assert.equal(r.exitCode, 0);
+      assert.ok(r.stdout.includes("ANOMALY: state.md says CLOSE"), "should print the anomaly line");
+      assert.ok(r.stdout.includes("INCOMPLETE CLOSE"), "should print the remediation line");
+      assert.ok(r.stdout.includes("re-run `bootstrap.mjs close` once"), "should name the remediation command");
     });
 
     it("shows checkpoint count", () => {
