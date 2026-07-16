@@ -87,7 +87,7 @@ These limitations are documented but not patched. Radius is **informative**, not
 
 | Actor | When | Action |
 |---|---|---|
-| Reviewer (iter ≥ 2 by default; earlier by orchestrator choice) | REFLECT | Scan changelog for HIGH + tiny-LOC/HIGH-score outliers → surface in `findings/review-iter-N.md` |
+| Reviewer (iter ≥ 2 by default; earlier by orchestrator choice) | REFLECT | Scan changelog for HIGH + tiny-LOC/HIGH-score outliers → surface in `findings/review-iter-N[-passM].md` |
 | Executor | mid-step | Informational only; may log in commit footer. Never gates. |
 | CLOSE | optional | List HIGH edits in `summary.md` |
 

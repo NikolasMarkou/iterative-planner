@@ -27,7 +27,7 @@ iterative-planner/
     │   ├── ip-plan-writer.md         # Plan generation (PLAN phase)
     │   ├── ip-executor.md            # Code execution (EXECUTE phase)
     │   ├── ip-verifier.md            # Verification checks (REFLECT phase)
-    │   ├── ip-reviewer.md            # Adversarial review (REFLECT phase, iteration >= 2)
+    │   ├── ip-reviewer.md            # Adversarial review (REFLECT phase, iteration >= 2 by default; earlier by orchestrator choice)
     │   └── ip-archivist.md           # CLOSE phase housekeeping
     ├── scripts/
     │   ├── bootstrap.mjs             # Initializes plans/plan-YYYY-MM-DDTHHMMSS-XXXXXXXX/ directory (Node.js 18+)
