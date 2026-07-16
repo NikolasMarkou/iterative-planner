@@ -782,6 +782,8 @@ Automatic snapshot of `plans/LESSONS.md` taken at close, saved to the plan direc
 - Created automatically by `close` in `plans/{plan-dir}/lessons_snapshot.md`
 - Read-only reference — not updated after creation
 
+Sibling forensic file — `plans/LESSONS-archive.md`: append-only archive of the lines dropped by the LESSONS.md over-cap trim, appended by `ip-archivist` at CLOSE (each dropped line verbatim + ` [close: <plan-id>]`). Never read by any protocol step by default — a searchability aid only, runtime-created, never committed.
+
 <!-- TEMPLATE:changelog -->
 ## changelog.md
 
