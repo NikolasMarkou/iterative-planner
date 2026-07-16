@@ -66,8 +66,8 @@ Floor (must always render): items 1 and 2 verbatim. Items 3-4 may be condensed b
 1. Read state.md, plans/LESSONS.md, plans/FINDINGS.md (limit: 600), plans/SYSTEM.md, plans/DECISIONS.md (limit: 600)
 2. **On-demand**: read plans/INDEX.md ONLY if any of these triggers fires — (a) goal mentions a topic absent from FINDINGS.md, (b) FINDINGS.md/LESSONS.md/SYSTEM.md contains a reference to a trimmed per-plan finding, (c) user references prior work, (d) goal touches files appearing in older plan dirs. Otherwise skip — INDEX.md is a locator, not eager cross-plan memory.
 3. Identify 2-3 research topics from the goal and any existing context
-4. Spawn ip-explorer agents in PARALLEL, one per topic
-5. After all complete: read their findings/* files, update findings.md index. For any `findings/{topic}.md` containing a `## Atlas Contradictions` section (ip-explorer writes one when a finding contradicts `plans/SYSTEM.md`), promote it: add a `[CONTRADICTED iter-N]` line to `findings.md`'s Corrections section (mirrors the `[CORRECTED iter-N]` flow — the explorer cannot write the orchestrator-owned index, so this handoff is yours, and ip-archivist reconciles it into SYSTEM.md at CLOSE).
+4. Spawn ip-explorer agents in PARALLEL, one per topic. At spawn, assign each topic a distinct kebab-case `findings/{topic-slug}.md` slug and name it in the spawn prompt; first check `findings/` for an existing file with that name — no two live explorers may share a slug.
+5. After all complete: read their findings/* files, update findings.md index. If an expected `findings/{topic-slug}.md` is missing or empty after the spawns complete, re-spawn that topic ONCE before evaluating the step-6 gate; if it is still missing, record the gap explicitly in findings.md rather than silently passing the gate on the other topics' counts. For any `findings/{topic}.md` containing a `## Atlas Contradictions` section (ip-explorer writes one when a finding contradicts `plans/SYSTEM.md`), promote it: add a `[CONTRADICTED iter-N]` line to `findings.md`'s Corrections section (mirrors the `[CORRECTED iter-N]` flow — the explorer cannot write the orchestrator-owned index, so this handoff is yours, and ip-archivist reconciles it into SYSTEM.md at CLOSE).
 6. Check gate: >= 3 indexed findings, exploration confidence adequate+
 7. If gate fails: spawn additional explorers for gaps
 8. Emit PC-EXPLORE block before transitioning to PLAN
@@ -109,9 +109,10 @@ Floor (always render verbatim, even on token-cost grounds): Steps, Success Crite
 1. Read findings.md (index) + all findings/*, decisions.md, plans/LESSONS.md, plans/DECISIONS.md (limit: 600), plans/SYSTEM.md
 2. Spawn ip-plan-writer with goal + findings summary
 3. Read its plan.md output (path + section anchors returned by sub-agent), verify all required sections exist
-   - If the plan-writer returns a `NEEDS_EXPLORE` signal (it could not state the problem or list files-to-modify), do NOT emit PC-PLAN. Transition PLAN→EXPLORE with the named gap as the new research topic (SKILL.md PLAN→EXPLORE edge), then re-dispatch explorers per the EXPLORE dispatch.
+   - If the plan-writer returns a `NEEDS_EXPLORE` signal (it could not state the problem or list files-to-modify), do NOT emit PC-PLAN. Transition PLAN→EXPLORE with the named gap as the new research topic (SKILL.md PLAN→EXPLORE edge), then re-dispatch explorers per the EXPLORE dispatch. Bound: 2 consecutive NEEDS_EXPLORE signals on the same goal → surface a scope/decomposition question to the user instead of a third silent re-dispatch.
+   - If your OWN verification finds a required section missing or malformed and the plan-writer did NOT self-report `NEEDS_EXPLORE`: re-spawn ip-plan-writer naming the defective section(s) — never silently proceed to PC-PLAN.
 4. Emit PC-PLAN block (render plan.md verbatim per floor). Wait for explicit user approval.
-5. If rejected: relay feedback, re-spawn plan-writer, re-emit PC-PLAN
+5. If rejected: relay feedback, re-spawn plan-writer, re-emit PC-PLAN. Bound: 3 consecutive rejections without a materially different plan.md → surface a decomposition / EXPLORE-gap prompt to the user instead of silently re-spawning.
 
 ### EXECUTE State
 
