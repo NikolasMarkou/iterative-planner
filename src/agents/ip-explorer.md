@@ -58,5 +58,7 @@ Use this structure:
 - Do NOT modify any project files
 - Do NOT update findings.md index (orchestrator does this)
 - Do NOT update state.md, decisions.md, or plans/SYSTEM.md (archivist owns the atlas)
+- A topic that yields nothing relevant STILL writes the findings file — put `(none found — see Risks & Unknowns)` under `## Key Findings` and explain why in Risks & Unknowns. Never return without writing the file.
+- If `{plan-dir}/findings/{topic-slug}.md` already exists and was not written by you this run, do NOT overwrite it — append a numeric suffix to your slug (e.g. `{topic-slug}-2.md`) and report the collision in your return text.
 - Be thorough but concise — max 150 lines per findings file
 - Use Bash only for read-only commands (git log, git blame, etc.)
