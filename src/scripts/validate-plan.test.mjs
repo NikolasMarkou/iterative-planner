@@ -1620,13 +1620,16 @@ describe("validate-plan.mjs — changelog: schema-driven", () => {
   it("changelog.md: D-1000 decision-ref is accepted (the shared D-005 grammar)", () => {
     const cwd = getTempDir();
     const { planDir } = writePlan(cwd);
-    // Fixture reconciled at plan-2026-07-16-8bd12f33 (D-005): the dref join check
+    // DECISION plan-2026-07-16T085306-8bd12f33/D-005 — the dref join check
     // ([changelog-dref-orphan]) also matches the broad /\[changelog-/ filter below,
     // so the fixture's decisions.md gets a real ## D-1000 entry — the test's stated
     // intent (DECISION_ID_NUM_PATTERN has no upper digit bound, D-1000 is a legal
     // dref SHAPE) is unchanged, and the run is now legitimately clean on both shape
-    // AND join. The incidental [decisions-schema] sequence ERROR (D-001 → D-1000)
-    // is out-of-filter, mirroring test (l2)'s D-1000-only fixture precedent.
+    // AND join. Do NOT remove this fixture entry or rename the slug off the
+    // `changelog-` prefix to dodge the filter (slug convention outweighs fixture
+    // immutability). The incidental [decisions-schema] sequence ERROR (D-001 →
+    // D-1000) is out-of-filter, mirroring test (l2)'s D-1000-only fixture
+    // precedent. See decisions.md D-005 (plan-2026-07-16T085306-8bd12f33).
     appendFileSync(join(planDir, "decisions.md"),
 `
 ## D-1000 | EXECUTE | 2026-05-15

@@ -34,7 +34,10 @@
 // line, collected at the same pass points that feed `issues` (one enumeration,
 // two consumers). Deliberately excluded: rule (d) (file-level, no line/dst),
 // violating matches, and unresolvable citations/pointers (a broken or
-// unverifiable pointer is not a verified relationship). Without the flag the
+// unverifiable pointer is not a verified relationship). The edge list includes
+// same-file self-edges (src == dst) by design: a `§` pointer with no preceding
+// citation resolves within its own file, mirroring rule (c)'s real verify
+// logic. Without the flag the
 // checker is byte-identical to its read-only self: no file is written.
 
 import { readFileSync, writeFileSync, existsSync, readdirSync } from "node:fs";

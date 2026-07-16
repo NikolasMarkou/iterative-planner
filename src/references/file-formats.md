@@ -823,6 +823,7 @@ Failure modes:
 Validator (`validate-plan.mjs`):
 - WARN `[changelog-malformed]` on lines not matching the 8-field shape, or on a field violating `CHANGELOG_SPEC` (the message names the offending field).
 - WARN `[changelog-drift]` if a commit produced files absent from changelog.
+- WARN `[changelog-dref-orphan]` (join integrity) when a well-formed line's dref does not resolve to a `## D-NNN` entry in the same plan's `decisions.md` (`-` is exempt). The join fires on any 8-field line's non-`-` dref, shape-valid or not — a shape-invalid dref draws both this WARN and `[changelog-malformed]` (accepted double-report).
 - Never blocks CLOSE. Changelog issues are advisory only.
 
 ### Intra-plan compression

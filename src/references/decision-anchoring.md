@@ -81,7 +81,7 @@ The union **must be non-capturing**. It is interpolated into the anchor regexes 
 
 | Style | Comment marker | Regex (anchor first line) |
 |---|---|---|
-| Hash-comment (Python, Ruby, shell, YAML, TOML, R, Perl, Makefile) | `#` | `^\s*#\s+DECISION\s+(?:<plan-id>\/)?D-\d{3}(\s+\[STALE\])?(:|\s|$)` |
+| Hash-comment (Python, Ruby, shell, YAML, TOML, R, Perl) | `#` | `^\s*#\s+DECISION\s+(?:<plan-id>\/)?D-\d{3}(\s+\[STALE\])?(:|\s|$)` |
 | Slash-comment (JS, TS, Go, Rust, C, C++, Java, Swift, Kotlin, Scala, C#, PHP) | `//` | `^\s*//\s+DECISION\s+(?:<plan-id>\/)?D-\d{3}(\s+\[STALE\])?(:|\s|$)` |
 | Block-comment (C, C++, Java, JS, CSS, etc.) — **two-stage; see note below** | `/* */` | outer delimiter-pair scan `/\*([\s\S]*?)\*/`, then a **marker-less** inner match `DECISION\s+(?:<plan-id>\/)?D-NNN(\s+\[STALE\])?` applied to the block body |
 | HTML / Markdown — **two-stage; see note below** | `<!-- -->` | outer delimiter-pair scan `<!--([\s\S]*?)-->`, then a **marker-less** inner match `DECISION\s+(?:<plan-id>\/)?D-NNN(\s+\[STALE\])?` applied to the comment body |
@@ -97,13 +97,15 @@ The plan-id prefix is an **optional non-capturing group** in each regex — `(?:
 
 | Extensions | Marker style |
 |---|---|
-| `.py .rb .sh .bash .zsh .yml .yaml .toml .r .pl .pm Makefile .mk .tf` | Hash |
+| `.py .rb .sh .bash .zsh .yml .yaml .toml .r .pl .pm .tf` | Hash |
 | `.js .jsx .ts .tsx .mjs .cjs .go .rs .c .h .cpp .hpp .cc .java .swift .kt .scala .cs .php` | Slash and Block |
 | `.css .scss .less` | Block |
 | `.html .htm .md .mdx .vue .svelte` | HTML (and Slash inside `<script>`) |
 | `.sql` | Double-dash and Block |
 
 Files outside this matrix are skipped by the reverse-anchor scan.
+
+**Extension-less files (e.g. `Makefile`) are NOT scanned.** File collection is by `extname()` membership in `ANCHOR_SOURCE_EXTS` (`src/scripts/validate-plan.mjs` `walkSourceFiles`); an extension-less file yields `""` and `.mk` is not in the set, so no tool — neither the validator's anchor audit nor `bootstrap.mjs retire`'s `[STALE]` stamper — can ever see an anchor there. An anchor in a Makefile is a ghost: unindexed forever, un-stampable at retire, worse than no anchor. Do not place anchors in such files; use a plain (non-`DECISION`-grammar) comment plus file:line pointers in prose at the end of the decision entry's **Reasoning** line instead (not in **Anchor-Refs**, which is reserved for real, scannable anchors).
 
 ### Markdown and HTML (implemented in v2.32.0)
 

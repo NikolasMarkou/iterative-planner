@@ -1744,10 +1744,13 @@ function checkChangelogFormat(planDir, issues) {
 // flat check, string-set membership only, called ONLY from validate().
 // What NOT to do:
 //   - Do NOT re-validate the dref SHAPE here (no `D-\d{3,}` regex, no new field
-//     constants): the shape is already guaranteed by CHANGELOG_SPEC's DREF_RE in
-//     checkChangelogFormat's loop, and the source-grep test in
+//     constants): checkChangelogFormat REPORTS shape violations via CHANGELOG_SPEC
+//     but does NOT gate them out of this check — the join fires on any 8-field
+//     line's non-`-` dref, shape-valid or not, so a shape-invalid dref (e.g.
+//     `D-1`) draws both [changelog-malformed] and [changelog-dref-orphan]
+//     (accepted double-WARN, WARN-only, by design). The source-grep test in
 //     validate-plan.test.mjs pins this file as regex-free for the six changelog
-//     fields. This check compares the already-validated string against
+//     fields. This check compares the raw dref string against
 //     parseDecisionsEntries()'s idStr set — nothing more.
 //   - Do NOT wire this into runPreStepGate (state.md-only, <50ms, exit-2 contract)
 //     and do NOT promote to ERROR (the changelog is advisory; a stale dref must

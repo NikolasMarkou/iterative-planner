@@ -205,7 +205,7 @@ validate:
 	@echo "Checking README badge parity (version + test count)..."
 	@node src/scripts/check-readme-parity.mjs || exit 1
 	@# Verify agent/module prose wiring: script paths, reference citations, section pointers, skill-path resolution
-	@# DECISION plan-2026-07-16T085306-8bd12f33/D-003: --emit-edges is opt-in at the call sites (this line +
+	@# --emit-edges is opt-in at the call sites (this line +
 	@# build.ps1 Invoke-Validate — a 2-place lockstep fact; edit both together). Do NOT make emission default-on
 	@# in check-agent-wiring.mjs: no-flag runs must stay read-only (first-of-kind writer among check-* gates).
 	@# No explicit path — the default src/references/kg-edges.jsonl applies. See decisions.md D-003.
@@ -295,7 +295,7 @@ sync-skill:
 	cp src/agents/*.md $(AGENTS_INSTALL_DIR)/
 # Verify ALL synced trees, not just agents+modules. The old check diffed only those two, so a
 # stale script or reference could survive a "Sync verified." with no complaint.
-# DECISION plan-2026-07-16T085306-8bd12f33/D-002: kg-edges.jsonl is generated-only (gitignored, regenerated
+# kg-edges.jsonl is generated-only (gitignored, regenerated
 # by every `make validate`, removed by `clean`). It must NOT be committed, synced, or shipped — do NOT drop
 # this exclusion or widen any src/references/*.md copy glob to include it. Gitignore does not hide files
 # from `diff -rq`, hence the explicit exclude here. See decisions.md D-002.
