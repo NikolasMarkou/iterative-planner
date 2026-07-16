@@ -8,7 +8,7 @@
 
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, writeFileSync, rmSync, readdirSync, readFileSync } from "fs";
+import { mkdirSync, writeFileSync, appendFileSync, rmSync, readdirSync, readFileSync } from "fs";
 import { join, resolve } from "path";
 import { spawnSync } from "child_process";
 import { tmpdir } from "os";
@@ -1620,6 +1620,21 @@ describe("validate-plan.mjs — changelog: schema-driven", () => {
   it("changelog.md: D-1000 decision-ref is accepted (the shared D-005 grammar)", () => {
     const cwd = getTempDir();
     const { planDir } = writePlan(cwd);
+    // Fixture reconciled at plan-2026-07-16-8bd12f33 (D-005): the dref join check
+    // ([changelog-dref-orphan]) also matches the broad /\[changelog-/ filter below,
+    // so the fixture's decisions.md gets a real ## D-1000 entry — the test's stated
+    // intent (DECISION_ID_NUM_PATTERN has no upper digit bound, D-1000 is a legal
+    // dref SHAPE) is unchanged, and the run is now legitimately clean on both shape
+    // AND join. The incidental [decisions-schema] sequence ERROR (D-001 → D-1000)
+    // is out-of-filter, mirroring test (l2)'s D-1000-only fixture precedent.
+    appendFileSync(join(planDir, "decisions.md"),
+`
+## D-1000 | EXECUTE | 2026-05-15
+**Context**: fixture — join target for the D-1000 dref below.
+**Decision**: fixture.
+**Trade-off**: a **at the cost of** b.
+**Reasoning**: fixture.
+`);
     writeFileSync(join(planDir, "changelog.md"),
       "# Changelog\n2026-05-30T10:00:00Z | iter-1/step-1 | abc1234 | f.js | EDIT(+1,-0) | radius:LOW(1) | D-1000 | a reason\n");
     const r = run(cwd);
@@ -1633,6 +1648,95 @@ describe("validate-plan.mjs — changelog: schema-driven", () => {
     }
     assert.ok(!/radius:\(LOW\|MED\|HIGH\)/.test(src), "the RADIUS regex body reappeared in validate-plan.mjs");
     assert.ok(!/CREATE\\\(\\\+/.test(src), "the OP regex body reappeared in validate-plan.mjs");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// plan-2026-07-16-8bd12f33 iter-1/step-4 (D-001, D-005) — changelog dref JOIN
+// integrity. Every non-`-` dref on a well-formed changelog line must resolve to
+// a `## D-NNN` entry in the SAME plan's decisions.md, else WARN
+// [changelog-dref-orphan]. WARN-only (never changes the exit code); structurally
+// absent from --pre-step; malformed (≠8-field) lines stay checkChangelogFormat's
+// business and are skipped silently here.
+// ---------------------------------------------------------------------------
+
+describe("validate-plan.mjs — changelog: dref join integrity ([changelog-dref-orphan])", () => {
+  let tempDirs = [];
+  function getTempDir() { const d = makeTempDir(); tempDirs.push(d); return d; }
+  afterEach(() => { for (const d of tempDirs) removeTempDir(d); tempDirs = []; });
+
+  const drefLine = (dref) =>
+    `2026-05-30T10:00:00Z | iter-1/step-1 | abc1234 | f.js | EDIT(+1,-0) | radius:LOW(1) | ${dref} | a reason`;
+  const orphanLines = (stdout) => stdout.split("\n").filter((l) => /\[changelog-dref-orphan\]/.test(l));
+
+  it("orphan dref D-999 (decisions.md has only D-001) → WARN names file:line + dref; exit code UNCHANGED vs clean run", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    // The default fixture carries a pre-existing, unrelated ERROR [verdict], so
+    // "WARN never affects the exit code" is proven by before/after EQUALITY of
+    // exit codes (clean dref vs orphan dref), not by asserting a literal 0.
+    writeFileSync(join(planDir, "changelog.md"), `# Changelog\n*note*\n${drefLine("-")}\n`);
+    const clean = run(cwd);
+    writeFileSync(join(planDir, "changelog.md"), `# Changelog\n*note*\n${drefLine("D-999")}\n`);
+    const r = run(cwd);
+    const lines = orphanLines(r.stdout);
+    assert.equal(lines.length, 1, `expected exactly one dref-orphan line, got:\n${r.stdout}`);
+    assert.match(lines[0], /WARN/, `dref-orphan must be WARN severity, got: ${lines[0]}`);
+    assert.match(lines[0], /changelog\.md:3/, `the WARN must name file:line, got: ${lines[0]}`);
+    assert.match(lines[0], /dref D-999/, `the WARN must name the offending dref, got: ${lines[0]}`);
+    assert.match(lines[0], /no matching entry in decisions\.md/, `the WARN must say what is missing, got: ${lines[0]}`);
+    assert.equal(r.exitCode, clean.exitCode,
+      `WARN must not change the exit code (clean=${clean.exitCode}, orphan=${r.exitCode})\nstdout:\n${r.stdout}`);
+    assert.notEqual(r.exitCode, 2, "exit 2 is --pre-step-exclusive");
+  });
+
+  it("dref `-` → no [changelog-dref-orphan]", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    writeFileSync(join(planDir, "changelog.md"), `# Changelog\n*note*\n${drefLine("-")}\n`);
+    const r = run(cwd);
+    assert.deepEqual(orphanLines(r.stdout), [], `dash dref must be silent, got:\n${r.stdout}`);
+  });
+
+  it("resolving dref D-001 (matches the fixture's own decisions.md) → no [changelog-dref-orphan]", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    writeFileSync(join(planDir, "changelog.md"), `# Changelog\n*note*\n${drefLine("D-001")}\n`);
+    const r = run(cwd);
+    assert.deepEqual(orphanLines(r.stdout), [], `resolving dref must be silent, got:\n${r.stdout}`);
+  });
+
+  it("malformed line (7 fields) with an orphan-looking dref → [changelog-malformed] fires, dref-orphan does NOT (skip-silently contract)", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    // 7 fields — the reason field is missing; the last field LOOKS like an orphan dref.
+    writeFileSync(join(planDir, "changelog.md"),
+      "# Changelog\n2026-05-30T10:00:00Z | iter-1/step-1 | abc1234 | f.js | EDIT(+1,-0) | radius:LOW(1) | D-999\n");
+    const r = run(cwd);
+    assert.match(r.stdout, /WARN.*\[changelog-malformed\].*expected 8 pipe-separated fields, got 7/,
+      `malformed line must stay checkChangelogFormat's business, got:\n${r.stdout}`);
+    assert.deepEqual(orphanLines(r.stdout), [],
+      `a malformed line must be skipped by the join check, got:\n${r.stdout}`);
+  });
+
+  it("missing decisions.md → no crash, no [changelog-dref-orphan] (nothing to join against)", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    rmSync(join(planDir, "decisions.md"), { force: true });
+    writeFileSync(join(planDir, "changelog.md"), `# Changelog\n*note*\n${drefLine("D-999")}\n`);
+    const r = run(cwd);
+    assert.match(r.stdout, /Summary: \d+ error/, `validator must run to completion (no crash), got:\nstdout:\n${r.stdout}\nstderr:\n${r.stderr}`);
+    assert.deepEqual(orphanLines(r.stdout), [], `absent decisions.md must be silent, got:\n${r.stdout}`);
+  });
+
+  it("--pre-step isolation: orphan dref present → no changelog-dref output, GATE:PASS exit 0", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd, { state: "EXECUTE", iteration: 1, currentStep: "1 of 5" });
+    writeFileSync(join(planDir, "changelog.md"), `# Changelog\n*note*\n${drefLine("D-999")}\n`);
+    const r = run(cwd, "--pre-step");
+    assert.equal(r.exitCode, 0, `pre-step must PASS on a healthy state.md regardless of changelog content, got ${r.exitCode}\nstdout:\n${r.stdout}`);
+    assert.ok(r.stdout.trim().startsWith("GATE:PASS"), `expected GATE:PASS prefix, got:\n${r.stdout}`);
+    assert.doesNotMatch(r.stdout, /changelog-dref/, `--pre-step must never run the dref join check, got:\n${r.stdout}`);
   });
 });
 
