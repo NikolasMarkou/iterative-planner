@@ -837,6 +837,90 @@ function checkLessonsCap(issues) {
   }
 }
 
+// v2.53.0 (F1) — lessons-eviction gate. The archivist REWRITES plans/LESSONS.md
+// at every CLOSE with a policy of "never drop an [I:5] entry — tighten or merge
+// wording instead" (ip-archivist.md Step 3), but nothing mechanical held that
+// invariant: the cap checks above count lines only. This rule compares the
+// [I:5]-tagged line COUNT in the current LESSONS.md against the previous
+// close's point-in-time copy (plans/<prev>/lessons_snapshot.md, resolved via
+// plans/INDEX.md's last data row — INDEX is append-only, one row per close,
+// so the last plan-id row IS the most recent close).
+//
+// DECISION plan-2026-07-16T164852-47577439/D-001 — severity is WARN/INFO ONLY,
+// and the trigger is the COUNT invariant alone. Do NOT add a similarity
+// threshold, normalization pass, or any fuzzy content matching to "catch
+// swaps" — that is the proxy-gate failure class the repo's own [I:5] lesson
+// documents (a threshold-dependent approximation never has an unambiguous
+// "the property held" signal), and an equal-count content swap is explicitly
+// a recorded limitation left to human judgment. Do NOT promote to ERROR:
+// merges/tightening of [I:5] entries are legitimate curation, and this gate
+// must never block CLOSE. The verbatim-line diff attached to the WARN is
+// decision-support for a human, not a matcher.
+// See plan-2026-07-16T164852-47577439/decisions.md D-001.
+function checkLessonsEviction(issues) {
+  const lessons = readFile(join(plansDir, "LESSONS.md"));
+  if (lessons === null) return; // absent/unreadable — checkLessonsCap already reports absence
+
+  // Resolve the previous close: LAST plans/INDEX.md data row whose first cell
+  // is a plan-id (either shape). Header/separator rows fail the anchored
+  // ANY_PLAN_ID_RE and are skipped; malformed rows degrade to "no baseline".
+  const index = readFile(join(plansDir, "INDEX.md"));
+  let prevPlanId = null;
+  if (index) {
+    for (const line of index.split("\n")) {
+      const m = /^\|([^|]+)\|/.exec(line);
+      if (!m) continue;
+      const cell = m[1].trim();
+      if (ANY_PLAN_ID_RE.test(cell)) prevPlanId = cell;
+    }
+  }
+  if (!prevPlanId) {
+    issues.push({
+      severity: "INFO",
+      check: "lessons-eviction",
+      message: "no previous close on record in plans/INDEX.md — eviction baseline unavailable",
+    });
+    return;
+  }
+
+  const snapshot = readFile(join(plansDir, prevPlanId, "lessons_snapshot.md"));
+  if (snapshot === null) {
+    issues.push({
+      severity: "INFO",
+      check: "lessons-eviction",
+      message: `previous plan ${prevPlanId} has no lessons_snapshot.md (predates snapshot mechanism) — eviction baseline unavailable`,
+    });
+    return;
+  }
+
+  const i5Lines = (txt) => txt.split("\n").filter((ln) => ln.includes("[I:5]"));
+  const prev = i5Lines(snapshot);
+  const curr = i5Lines(lessons);
+  if (curr.length >= prev.length) return; // equal (even reworded) or grown — silent
+
+  // Diff-style decision-support summary: snapshot [I:5] lines absent verbatim
+  // from the current file, and current [I:5] lines absent from the snapshot.
+  // Verbatim set membership only — rewording shows up as a -/+ pair for a
+  // human to judge, never as a similarity score.
+  const truncate = (s) => (s.length > 120 ? `${s.slice(0, 117)}...` : s);
+  const currSet = new Set(curr);
+  const prevSet = new Set(prev);
+  const diff = [
+    ...prev.filter((ln) => !currSet.has(ln)).map((ln) => `- ${truncate(ln)}`),
+    ...curr.filter((ln) => !prevSet.has(ln)).map((ln) => `+ ${truncate(ln)}`),
+  ];
+  const shown = diff.slice(0, 10);
+  if (diff.length > shown.length) shown.push(`… (${diff.length - shown.length} more changed line(s))`);
+  issues.push({
+    severity: "WARN",
+    check: "lessons-eviction",
+    message:
+      `plans/LESSONS.md has ${curr.length} [I:5] line(s); the previous close's snapshot (${prevPlanId}/lessons_snapshot.md) had ${prev.length}. ` +
+      `Apparent changes:\n    ${shown.join("\n    ")}\n    ` +
+      `Merges/tightening of [I:5] entries are legitimate curation — this is a human judgment call, decision-support only, never a CLOSE blocker.`,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Decisions.md schema checks (Step 3.1 + 3.2 — added in 2.13.0)
 // ---------------------------------------------------------------------------
@@ -1903,6 +1987,7 @@ function validate(planDirName) {
   checkConsolidatedFiles(issues);
   checkSystemAtlasCap(issues);
   checkLessonsCap(issues);
+  checkLessonsEviction(issues); // v2.53.0 (F1) — WARN/INFO only; full-validator path, never --pre-step
   checkCompressionMarkers(issues);
 
   // Step 3 additions (2.13.0): schema and anchor enforcement.

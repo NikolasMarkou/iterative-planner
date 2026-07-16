@@ -2136,3 +2136,108 @@ describe("F2 narrowing: collectKnownDecisionIdsByPlan reads only referenced plan
     assert.equal(after.exitCode, before.exitCode);
   });
 });
+
+// ---------------------------------------------------------------------------
+// F1 / plan-2026-07-16-47577439 D-001 — [lessons-eviction] WARN gate.
+//
+// The archivist's "never drop an [I:5] entry" rewrite policy had zero
+// mechanical backing. The gate compares [I:5]-tagged line COUNTS between the
+// current plans/LESSONS.md and the previous close's lessons_snapshot.md
+// (previous close = last plans/INDEX.md data row). Count decrease → WARN with
+// a verbatim -/+ diff attached as decision-support. Equal count (even fully
+// reworded) or growth → silent: the count invariant is the SOLE trigger — no
+// fuzzy matching, no similarity threshold, and never ERROR (must not block
+// CLOSE on legitimate curation).
+// ---------------------------------------------------------------------------
+
+describe("[lessons-eviction]: [I:5] count invariant vs previous close snapshot (F1 / D-001)", () => {
+  const tempDirs = [];
+  function getTempDir() { const d = makeTempDir(); tempDirs.push(d); return d; }
+  afterEach(() => { while (tempDirs.length) removeTempDir(tempDirs.pop()); });
+
+  const PREV = "plan-2026-07-01T101010-beefcafe";
+  const INDEX_HEADER =
+    "# Plan Index\n*Topic-to-directory mapping.*\n\n" +
+    "| Plan | Date | Goal | Key Topics |\n|------|------|------|------------|\n";
+
+  /** Fixture: active plan + INDEX.md naming PREV + optional snapshot/lessons content. */
+  function writeEvictionFixture(cwd, { lessons, snapshot, index = INDEX_HEADER + `| ${PREV} | 2026-07-01 | fixture goal | |\n` } = {}) {
+    writePlan(cwd);
+    if (index !== null) writeFileSync(join(cwd, "plans", "INDEX.md"), index);
+    if (lessons !== undefined) writeFileSync(join(cwd, "plans", "LESSONS.md"), lessons);
+    if (snapshot !== undefined) {
+      mkdirSync(join(cwd, "plans", PREV), { recursive: true });
+      writeFileSync(join(cwd, "plans", PREV, "lessons_snapshot.md"), snapshot);
+    }
+  }
+
+  it("(a) WARN fires on [I:5] count decrease and names the dropped line verbatim", () => {
+    const cwd = getTempDir();
+    writeEvictionFixture(cwd, {
+      snapshot: "# Lessons\n- [I:5] never trust a proxy gate\n- [I:5] pay parity debt in the causing step\n- [I:5] gates inspect real artifacts\n- [I:3] minor lesson\n",
+      lessons: "# Lessons\n- [I:5] never trust a proxy gate\n- [I:5] pay parity debt in the causing step\n- [I:3] minor lesson\n",
+    });
+    const r = run(cwd);
+    assert.match(r.stdout, /WARN\s+\[lessons-eviction\]/, `expected WARN, got:\n${r.stdout}`);
+    assert.match(r.stdout, /2 \[I:5\] line\(s\)/, `expected current count 2 in message, got:\n${r.stdout}`);
+    assert.match(r.stdout, /had 3/, `expected snapshot count 3 in message, got:\n${r.stdout}`);
+    assert.match(r.stdout, /- - \[I:5\] gates inspect real artifacts/,
+      `dropped line must appear verbatim in the diff summary, got:\n${r.stdout}`);
+    assert.doesNotMatch(r.stdout, /ERROR\s+\[lessons-eviction\]/,
+      "the gate must NEVER emit ERROR (HARD constraint: never blocks CLOSE)");
+  });
+
+  it("(b) silent on equal count with fully reworded content, and on growth", () => {
+    // Equal count, every [I:5] line reworded — a legitimate tighten/merge rewrite.
+    const cwdEqual = getTempDir();
+    writeEvictionFixture(cwdEqual, {
+      snapshot: "# Lessons\n- [I:5] original wording alpha\n- [I:5] original wording beta\n",
+      lessons: "# Lessons\n- [I:5] tightened alpha wording\n- [I:5] merged-and-reworded beta\n",
+    });
+    const rEqual = run(cwdEqual);
+    assert.doesNotMatch(rEqual.stdout, /\[lessons-eviction\]/,
+      `equal [I:5] count must be silent even fully reworded (count is the SOLE trigger), got:\n${rEqual.stdout}`);
+
+    // Growth: current has MORE [I:5] lines than the snapshot.
+    const cwdGrowth = getTempDir();
+    writeEvictionFixture(cwdGrowth, {
+      snapshot: "# Lessons\n- [I:5] one\n",
+      lessons: "# Lessons\n- [I:5] one\n- [I:5] two, newly promoted\n",
+    });
+    const rGrowth = run(cwdGrowth);
+    assert.doesNotMatch(rGrowth.stdout, /\[lessons-eviction\]/,
+      `growth must be silent, got:\n${rGrowth.stdout}`);
+  });
+
+  it("(c) INFO when the previous plan named by INDEX.md lacks lessons_snapshot.md", () => {
+    const cwd = getTempDir();
+    writeEvictionFixture(cwd, {
+      lessons: "# Lessons\n- [I:5] one\n",
+      // snapshot deliberately omitted — PREV dir never created
+    });
+    const r = run(cwd);
+    assert.match(r.stdout, new RegExp(`INFO\\s+\\[lessons-eviction\\][^\\n]*${PREV}[^\\n]*no lessons_snapshot\\.md`),
+      `expected INFO naming ${PREV}, got:\n${r.stdout}`);
+    assert.doesNotMatch(r.stdout, /(WARN|ERROR)\s+\[lessons-eviction\]/,
+      "missing snapshot is INFO only (legacy plan predates the mechanism)");
+  });
+
+  it("(d) INFO (baseline unavailable) when INDEX.md is absent, and when it is header-only", () => {
+    // INDEX.md absent entirely.
+    const cwdAbsent = getTempDir();
+    writeEvictionFixture(cwdAbsent, { lessons: "# Lessons\n- [I:5] one\n", index: null });
+    const rAbsent = run(cwdAbsent);
+    assert.match(rAbsent.stdout, /INFO\s+\[lessons-eviction\][^\n]*no previous close on record/,
+      `expected baseline-unavailable INFO with INDEX.md absent, got:\n${rAbsent.stdout}`);
+
+    // INDEX.md present but header/separator rows only — no data row's first
+    // cell matches the plan-id union.
+    const cwdHeader = getTempDir();
+    writeEvictionFixture(cwdHeader, { lessons: "# Lessons\n- [I:5] one\n", index: INDEX_HEADER });
+    const rHeader = run(cwdHeader);
+    assert.match(rHeader.stdout, /INFO\s+\[lessons-eviction\][^\n]*no previous close on record/,
+      `expected baseline-unavailable INFO with header-only INDEX.md, got:\n${rHeader.stdout}`);
+    assert.doesNotMatch(rHeader.stdout, /(WARN|ERROR)\s+\[lessons-eviction\]/,
+      "no baseline is INFO only");
+  });
+});
