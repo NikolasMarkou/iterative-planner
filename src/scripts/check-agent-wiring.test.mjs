@@ -253,3 +253,235 @@ test("report renders file:line [rule] message", () => {
   const issues = scanScriptPaths("src/agents/ip-archivist.md", "run `node src/scripts/validate-plan.mjs`");
   assert.match(report(issues)[0], /^ {2}src\/agents\/ip-archivist\.md:1 \[script-path\] /);
 });
+
+// --- edge collection + serializeEdges + --emit-edges CLI ---------------------
+// FEATURE 1 coverage: the optional trailing `edges` param on the three scan
+// functions (edges pushed at verified-OK points only), the pure serializer,
+// and the opt-in CLI file write. Spawn style precedent for this repo:
+// check-readme-parity.test.mjs.
+
+import { serializeEdges } from "./check-agent-wiring.mjs";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const EDGE_TYPES = new Set(["script-path", "reference-citation", "section-pointer"]);
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const repoRoot = join(__dirname, "..", "..");
+const checkerPath = join(__dirname, "check-agent-wiring.mjs");
+
+// --- (a) edges ----------------------------------------------------------------
+
+test("(a) edge: a <skill-path> invocation pushes {src, dst, type, line}, dst normalized to src/scripts/", () => {
+  const edges = [];
+  const issues = scanScriptPaths(
+    "src/agents/ip-x.md",
+    "intro\n\nRun `node <skill-path>/scripts/emit-state.mjs --state plan`.",
+    edges,
+  );
+  assert.deepEqual(issues, []);
+  assert.deepEqual(edges, [
+    { src: "src/agents/ip-x.md", dst: "src/scripts/emit-state.mjs", type: "script-path", line: 3 },
+  ]);
+});
+
+test("(a) edge: a violating bare path yields an issue and NO edge", () => {
+  const edges = [];
+  const issues = scanScriptPaths("a.md", "Run `node src/scripts/validate-plan.mjs` to audit.", edges);
+  assert.equal(issues.length, 1);
+  assert.deepEqual(edges, []);
+});
+
+test("(a) edge: omitting the edges array is safe and leaves issues unchanged", () => {
+  const text = "Run `node src/scripts/validate-plan.mjs` then `node <skill-path>/scripts/emit-state.mjs`.";
+  const withEdges = scanScriptPaths("a.md", text, []);
+  const without = scanScriptPaths("a.md", text);
+  assert.deepEqual(without, withEdges);
+  assert.equal(without.length, 1);
+});
+
+test("(a) edge: collected inside fenced code blocks too (rule (a) scans fences)", () => {
+  const edges = [];
+  const issues = scanScriptPaths("a.md", "```\nnode <skill-path>/scripts/blast-radius.mjs <file>\n```", edges);
+  assert.deepEqual(issues, []);
+  assert.deepEqual(edges, [
+    { src: "a.md", dst: "src/scripts/blast-radius.mjs", type: "script-path", line: 2 },
+  ]);
+});
+
+// --- (b) edges ----------------------------------------------------------------
+
+test("(b) edge: a resolving citation pushes dst src/references/<f>.md", () => {
+  const edges = [];
+  const issues = scanReferenceCitations("a.md", "See `references/file-formats.md`.", refExists, edges);
+  assert.deepEqual(issues, []);
+  assert.deepEqual(edges, [
+    { src: "a.md", dst: "src/references/file-formats.md", type: "reference-citation", line: 1 },
+  ]);
+});
+
+test("(b) edge: a dangling citation yields an issue and NO edge", () => {
+  const edges = [];
+  const issues = scanReferenceCitations("a.md", "See `references/nope.md`.", refExists, edges);
+  assert.equal(issues.length, 1);
+  assert.deepEqual(edges, []);
+});
+
+test("(b) edge: non-references citations yield no edge (rule (b) does not validate them)", () => {
+  const edges = [];
+  const issues = scanReferenceCitations("a.md", "See `{plan-dir}/plan.md` and `agents/ip-x.md`.", refExists, edges);
+  assert.deepEqual(issues, []);
+  assert.deepEqual(edges, []);
+});
+
+test("(b) edge: none from inside a fenced code block (rule (b) skips fences)", () => {
+  const edges = [];
+  const issues = scanReferenceCitations("a.md", "```\nsee `references/file-formats.md`\n```\n", refExists, edges);
+  assert.deepEqual(issues, []);
+  assert.deepEqual(edges, []);
+});
+
+// --- (c) edges ----------------------------------------------------------------
+
+test("(c) edge: a verifying code+title pointer pushes the resolved dst", () => {
+  const edges = [];
+  const text = "checklist in `references/python-software.md` § C.12 Anti-pattern checklist is the gate.";
+  const issues = scanSectionPointers("a.md", text, headingsFor, edges);
+  assert.deepEqual(issues, []);
+  assert.deepEqual(edges, [
+    { src: "a.md", dst: "src/references/python-software.md", type: "section-pointer", line: 1 },
+  ]);
+});
+
+test("(c) edge: a verifying title-only pointer pushes the resolved dst", () => {
+  const doc = "## Intra-plan compression\n";
+  const hf = (rel) => (rel === "src/references/file-formats.md" ? parseHeadings(doc) : null);
+  const edges = [];
+  const issues = scanSectionPointers("a.md", "See `references/file-formats.md` § Intra-plan compression.", hf, edges);
+  assert.deepEqual(issues, []);
+  assert.deepEqual(edges, [
+    { src: "a.md", dst: "src/references/file-formats.md", type: "section-pointer", line: 1 },
+  ]);
+});
+
+test("(c) edge: a title-disagree violation yields an issue and NO edge", () => {
+  const edges = [];
+  const text = "checklist in `references/python-software.md` § C.11 Anti-pattern checklist.";
+  const issues = scanSectionPointers("a.md", text, headingsFor, edges);
+  assert.equal(issues.length, 1);
+  assert.deepEqual(edges, []);
+});
+
+test("(c) edge: an unverifiable target (resolveTarget null) yields no edge and no issue", () => {
+  const edges = [];
+  const issues = scanSectionPointers("a.md", "See `{plan-dir}/changelog.md` § Whatever Section.", headingsFor, edges);
+  assert.deepEqual(issues, []);
+  assert.deepEqual(edges, []);
+});
+
+// --- serializeEdges -----------------------------------------------------------
+
+test("serializeEdges emits fixed key order src,dst,type,line regardless of input key order", () => {
+  const out = serializeEdges([{ line: 5, type: "script-path", dst: "src/scripts/x.mjs", src: "a.md" }]);
+  assert.equal(out, '{"src":"a.md","dst":"src/scripts/x.mjs","type":"script-path","line":5}\n');
+});
+
+test("serializeEdges sorts by (src, line, dst, type) — line compared numerically", () => {
+  const e = (src, dst, type, line) => ({ src, dst, type, line });
+  const input = [
+    e("b.md", "a", "script-path", 1), // src tier: sorts after every a.md despite lowest line
+    e("a.md", "a", "script-path", 10), // line tier: 10 after 2 (numeric — string compare would put "10" first)
+    e("a.md", "z", "script-path", 2), // dst tier: z after a at the same line
+    e("a.md", "a", "section-pointer", 2), // type tier: after reference-citation at same src/line/dst
+    e("a.md", "a", "reference-citation", 2),
+  ];
+  const got = serializeEdges(input).trim().split("\n").map((l) => JSON.parse(l));
+  assert.deepEqual(got, [
+    e("a.md", "a", "reference-citation", 2),
+    e("a.md", "a", "section-pointer", 2),
+    e("a.md", "z", "script-path", 2),
+    e("a.md", "a", "script-path", 10),
+    e("b.md", "a", "script-path", 1),
+  ]);
+});
+
+test("serializeEdges dedupes identical edges", () => {
+  const edge = { src: "a.md", dst: "src/SKILL.md", type: "section-pointer", line: 3 };
+  const out = serializeEdges([edge, { ...edge }]);
+  assert.equal(out, '{"src":"a.md","dst":"src/SKILL.md","type":"section-pointer","line":3}\n');
+});
+
+test("serializeEdges: empty/missing input -> empty string; non-empty ends with exactly one newline", () => {
+  assert.equal(serializeEdges([]), "");
+  assert.equal(serializeEdges(undefined), "");
+  const out = serializeEdges([{ src: "a", dst: "b", type: "script-path", line: 1 }]);
+  assert.ok(out.endsWith("}\n"));
+  assert.ok(!out.endsWith("\n\n"));
+});
+
+// --- --emit-edges CLI (spawn) ---------------------------------------------------
+
+test("CLI --emit-edges: exit 0, JSONL file with 4 ordered keys and known types", () => {
+  const tmp = mkdtempSync(join(tmpdir(), "caw-edges-"));
+  try {
+    const out = join(tmp, "kg.jsonl");
+    const r = spawnSync(process.execPath, [checkerPath, "--emit-edges", out], {
+      cwd: repoRoot,
+      encoding: "utf8",
+    });
+    assert.strictEqual(r.status, 0, `exit ${r.status}\nstdout: ${r.stdout}\nstderr: ${r.stderr}`);
+    assert.match(r.stdout, /emit-edges: wrote \d+ edge\(s\) to /);
+    assert.ok(existsSync(out), "edge file was not written");
+    const content = readFileSync(out, "utf8");
+    assert.ok(content.endsWith("\n"));
+    const lines = content.slice(0, -1).split("\n");
+    assert.ok(lines.length > 0, "real repo should produce a non-empty edge set");
+    for (const l of lines) {
+      const o = JSON.parse(l);
+      assert.deepEqual(Object.keys(o), ["src", "dst", "type", "line"]);
+      assert.ok(EDGE_TYPES.has(o.type), `unknown edge type: ${o.type}`);
+      assert.equal(typeof o.line, "number");
+    }
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("CLI --emit-edges: two runs on an unchanged tree are byte-identical", () => {
+  const tmp = mkdtempSync(join(tmpdir(), "caw-edges-"));
+  try {
+    const a = join(tmp, "a.jsonl");
+    const b = join(tmp, "b.jsonl");
+    for (const p of [a, b]) {
+      const r = spawnSync(process.execPath, [checkerPath, "--emit-edges", p], {
+        cwd: repoRoot,
+        encoding: "utf8",
+      });
+      assert.strictEqual(r.status, 0, `exit ${r.status}\nstderr: ${r.stderr}`);
+    }
+    const bufA = readFileSync(a);
+    assert.ok(bufA.length > 0);
+    assert.ok(bufA.equals(readFileSync(b)), "emit-edges output differs between runs");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("CLI no-flag purity: exit 0, PASS line, no emission output, default artifact state unchanged", () => {
+  // Never delete or write working-tree files from tests: record the default
+  // path's state BEFORE the run and assert it is unchanged after.
+  const defaultPath = join(repoRoot, "src", "references", "kg-edges.jsonl");
+  const existedBefore = existsSync(defaultPath);
+  const bytesBefore = existedBefore ? readFileSync(defaultPath) : null;
+  const r = spawnSync(process.execPath, [checkerPath], { cwd: repoRoot, encoding: "utf8" });
+  assert.strictEqual(r.status, 0, `exit ${r.status}\nstdout: ${r.stdout}\nstderr: ${r.stderr}`);
+  assert.match(r.stdout, /^check-agent-wiring: PASS \(\d+ prose files/);
+  assert.ok(!r.stdout.includes("emit-edges:"), "no-flag run must not mention emission");
+  assert.strictEqual(r.stderr, "");
+  assert.strictEqual(existsSync(defaultPath), existedBefore, "no-flag run changed default artifact existence");
+  if (existedBefore) {
+    assert.ok(readFileSync(defaultPath).equals(bytesBefore), "no-flag run changed default artifact bytes");
+  }
+});
