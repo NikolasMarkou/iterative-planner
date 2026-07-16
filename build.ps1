@@ -330,7 +330,7 @@ function Invoke-Validate {
     }
 
     # Verify agent/module prose wiring: script paths, reference citations, section pointers, skill-path resolution
-    # --emit-edges kept in lockstep with the Makefile validate target (see Makefile DECISION anchor D-003)
+    # --emit-edges kept in lockstep with the Makefile validate call site (2-place fact; edit both together) — see plan decisions.md D-003
     if (Test-Path "src/scripts/check-agent-wiring.mjs") {
         Write-Host "Checking agent wiring (script paths, references, section pointers)..."
         node src/scripts/check-agent-wiring.mjs --emit-edges

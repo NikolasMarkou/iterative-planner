@@ -1706,6 +1706,8 @@ function checkChangelogFormat(planDir, issues) {
   for (const raw of lines) {
     lineNo++;
     const line = raw.trim();
+    // These skip conditions are mirrored in checkChangelogDrefIntegrity —
+    // change both together (2-place lockstep, no shared predicate yet).
     if (!line) continue;
     if (line.startsWith("#")) continue;        // header
     if (line.startsWith("*")) continue;        // italic header note
