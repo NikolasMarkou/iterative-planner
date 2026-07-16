@@ -26,8 +26,18 @@
 // (a) does NOT: an invocation is an instruction wherever it is printed. Pure
 // functions are exported for tests; the CLI runs only under isEntryPoint.
 // Zero dependencies: node: builtins only.
+//
+// --emit-edges [path] (opt-in): additionally serialize the cross-reference
+// edges the scan already verifies to a JSONL file (default
+// src/references/kg-edges.jsonl, resolved against repo root). An edge is a
+// verified-OK match of rules (a)(b)(c) — one {src, dst, type, line} object per
+// line, collected at the same pass points that feed `issues` (one enumeration,
+// two consumers). Deliberately excluded: rule (d) (file-level, no line/dst),
+// violating matches, and unresolvable citations/pointers (a broken or
+// unverifiable pointer is not a verified relationship). Without the flag the
+// checker is byte-identical to its read-only self: no file is written.
 
-import { readFileSync, existsSync, readdirSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -88,11 +98,14 @@ function opensWith(rest, title) {
 }
 
 /** (a) Script invocations that do not use the `<skill-path>` placeholder. */
-export function scanScriptPaths(relPath, text) {
+export function scanScriptPaths(relPath, text, edges) {
   const issues = [];
   for (const line of tagLines(text)) {
     for (const m of line.text.matchAll(SCRIPT_ARG_RE)) {
-      if (m[1].startsWith(OK_PREFIX)) continue;
+      if (m[1].startsWith(OK_PREFIX)) {
+        edges?.push({ src: relPath, dst: `src/scripts/${m[1].slice(OK_PREFIX.length)}`, type: "script-path", line: line.no });
+        continue;
+      }
       issues.push(issue("script-path", relPath, line.no,
         `\`node ${m[1]}\` — script invocations must use the \`${OK_PREFIX}\` placeholder (a bare path resolves to nothing from a consuming project's root)`));
     }
@@ -101,13 +114,16 @@ export function scanScriptPaths(relPath, text) {
 }
 
 /** (b) `references/<f>.md` citations that do not resolve. */
-export function scanReferenceCitations(relPath, text, refExists) {
+export function scanReferenceCitations(relPath, text, refExists, edges) {
   const issues = [];
   for (const line of tagLines(text)) {
     if (line.fenced) continue;
     for (const m of line.text.matchAll(CITATION_RE)) {
       if (!m[1].startsWith("references/")) continue;
-      if (refExists(m[1].slice("references/".length))) continue;
+      if (refExists(m[1].slice("references/".length))) {
+        edges?.push({ src: relPath, dst: `src/${m[1]}`, type: "reference-citation", line: line.no });
+        continue;
+      }
       issues.push(issue("reference-citation", relPath, line.no,
         `\`${m[1]}\` does not resolve to a file in src/references/`));
     }
@@ -129,7 +145,7 @@ export function resolveTarget(citation, selfPath) {
  * (c) Section pointers. `headingsFor(repoRelPath)` returns the target's heading
  * list, or null when the target cannot be read (pointer skipped as unverifiable).
  */
-export function scanSectionPointers(relPath, text, headingsFor) {
+export function scanSectionPointers(relPath, text, headingsFor, edges) {
   const issues = [];
   const add = (line, message) =>
     issues.push({ rule: "section-pointer", file: relPath, line: line.no, message });
@@ -164,11 +180,15 @@ export function scanSectionPointers(relPath, text, headingsFor) {
           add(line, `\`§ ${code}\` names no heading in ${target}`);
         } else if (!opensWith(titleRest, h.title)) {
           add(line, `\`§ ${code}\` must be followed by its heading title — ${target} § ${code} is "${headingCore(h.title)}", pointer says "${norm(titleRest).slice(0, 40) || "(nothing)"}"`);
+        } else {
+          edges?.push({ src: relPath, dst: target, type: "section-pointer", line: line.no });
         }
         continue;
       }
       if (!headings.some((h) => opensWith(rest, h.title))) {
         add(line, `\`§ ${rest.trim().slice(0, 40)}\` matches no heading in ${target}`);
+      } else {
+        edges?.push({ src: relPath, dst: target, type: "section-pointer", line: line.no });
       }
     }
 
@@ -197,6 +217,31 @@ export function report(issues) {
   return issues.map((i) => `  ${i.file}:${i.line} [${i.rule}] ${i.message}`);
 }
 
+// DECISION plan-2026-07-16T085306-8bd12f33/D-004
+// Edges are ONLY verified-OK matches of rules (a)(b)(c), pushed from the same
+// match loops that feed `issues` — do NOT add a parallel collector/regex pass
+// (proxy-drift class), do NOT emit rule (d) / violating / unresolvable
+// matches, and do NOT sort with localeCompare (locale-dependent ordering
+// breaks cross-platform byte-identity). See decisions.md D-004.
+/** Serialize edges to deterministic JSONL: dedupe, sort, fixed key order. */
+export function serializeEdges(edges) {
+  const lines = (edges || [])
+    .slice()
+    .sort((a, b) => {
+      if (a.src < b.src) return -1;
+      if (a.src > b.src) return 1;
+      if (a.line !== b.line) return a.line - b.line;
+      if (a.dst < b.dst) return -1;
+      if (a.dst > b.dst) return 1;
+      if (a.type < b.type) return -1;
+      if (a.type > b.type) return 1;
+      return 0;
+    })
+    .map((e) => JSON.stringify({ src: e.src, dst: e.dst, type: e.type, line: e.line }));
+  const unique = [...new Set(lines)];
+  return unique.length === 0 ? "" : unique.join("\n") + "\n";
+}
+
 const isEntryPoint = (() => {
   try {
     return process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
@@ -221,15 +266,38 @@ if (isEntryPoint) {
   };
   const refExists = (name) => existsSync(join(repoRoot, "src", "references", name));
 
+  // --emit-edges [path]: opt-in; without it edges stays undefined and the
+  // scans behave exactly as the read-only gate always has.
+  const argv = process.argv;
+  const emitIdx = argv.indexOf("--emit-edges");
+  let edges;
+  let edgesPath = null;
+  if (emitIdx !== -1) {
+    const next = argv[emitIdx + 1];
+    edgesPath = next && !next.startsWith("--")
+      ? next
+      : join(repoRoot, "src/references/kg-edges.jsonl");
+    edges = [];
+  }
+
   const issues = [];
   for (const rel of files) {
     const text = readFileSync(join(repoRoot, rel), "utf8");
     issues.push(
-      ...scanScriptPaths(rel, text),
-      ...scanReferenceCitations(rel, text, refExists),
-      ...scanSectionPointers(rel, text, headingsFor),
+      ...scanScriptPaths(rel, text, edges),
+      ...scanReferenceCitations(rel, text, refExists, edges),
+      ...scanSectionPointers(rel, text, headingsFor, edges),
       ...(rel.startsWith("src/agents/") ? scanSkillPathResolution(rel, text) : []),
     );
+  }
+
+  if (edgesPath !== null) {
+    // Written on both the PASS and FAIL branches: edges are the *passing*
+    // matches — other files' failures do not invalidate them.
+    const out = serializeEdges(edges);
+    writeFileSync(edgesPath, out);
+    const n = out === "" ? 0 : out.split("\n").length - 1;
+    console.log(`emit-edges: wrote ${n} edge(s) to ${edgesPath}`);
   }
 
   if (issues.length === 0) {
