@@ -206,28 +206,35 @@ make help                    # Show available targets
 - [ ] Changelog field shapes have exactly ONE definition — `CHANGELOG_SPEC` in `src/scripts/schema.mjs`. The six field regexes (ts / step / commit / op / radius / dref) stay **deleted**: none is re-declared in `validate-plan.mjs` or `bootstrap.mjs` (pinned by a source-grep test in `validate-plan.test.mjs`). `validate-plan.mjs` validates each `changelog.md` line by `splitChangelogFields()` → `entryFromFields()` → `validateElement()` against the spec
 - [ ] **The changelog is markdown, and an append is ONE LINE** (`{plan-dir}/changelog.md`, pipe-delimited, 8 fields). It is not re-encoded and writes are not routed through a document library: the v2.33.0 XML encoding turned each append into a whole-file read-modify-write and lost entries under concurrency (reverted in v2.35.0, D-002). `maybeCompressChangelog` keeps its 5-key return shape and is byte-frozen by a golden-bytes test in `bootstrap.test.mjs`
 - [ ] `TEST_COUNT` matches the live `node --test` pass count (`node src/scripts/check-test-count.mjs`, run via `make test` — deliberately NOT in `make validate`, which must stay fast)
+- [ ] Any change adding a full-corpus walk over `plans/` (an operation that reads every plan directory) carries a one-line cost note in its CHANGELOG entry — Big-O in plan-dir count, plus which validator/gate path triggers it and how often (this rule exists because `collectKnownDecisionIdsByPlan`, commit 9b8d405, shipped an unmodeled O(all-plan-dirs) scan — narrowed to O(referenced-plans) in v2.53.0)
 
 ## Updating Local Skill
 
-When asked to "update local skill", copy **everything** from the repo to `~/.claude/skills/iterative-planner/` — no exceptions, no partial copies:
+When asked to "update local skill", run the sync target — THE procedure, not one option among several:
 
 ```bash
-# Full sync — mirrors repo structure exactly
+make sync-skill          # Unix/Linux/macOS
+.\build.ps1 sync-skill   # Windows
+```
+
+`sync-skill` **prunes before copying**, copies everything (SKILL.md, scripts + modules, references, agents, README/LICENSE/CHANGELOG/VERSION — VERSION is required at runtime: bootstrap.mjs stamps it into new plans), then verifies every synced tree with `diff -rq` and fails loudly (`exit 1`) on any mismatch.
+
+Prune-before-copy is the point: `cp` alone cannot remove a file that was DELETED from the repo, so a copy-only sync leaves orphans in the install forever — v2.35.0 removed `xml.mjs`/`changelog.mjs`, and a copy-only sync would have left both live in the install (the exact failure mode named by the Makefile's sync-skill prune comment). Prune scope matters: the skill's own install dirs (`~/.claude/skills/iterative-planner/{scripts,scripts/modules,references,agents}`) are wholly owned by this skill and safely glob-pruned, but the shared `~/.claude/agents/` dir is pruned ONLY of this skill's own `ip-*.md` files — never describe (or reimplement) that as delete-everything-and-copy: a glob prune there would delete other skills' agent definitions.
+
+The Makefile `build` target bundles `src/agents/*.md` into the skill package's `agents/` dir, so the skill-bundled `agents/` is authoritative-by-build; `sync-skill` mirrors it (the manual fallback below must too, or the bundled copy drifts as it did pre-v2.21.0).
+
+### Fallback (no prune) — use only if make/PowerShell is unavailable
+
+This does NOT remove repo-deleted files: after copying, verify with `diff -rq` and delete orphans by hand.
+
+```bash
 cp src/SKILL.md ~/.claude/skills/iterative-planner/SKILL.md
 cp src/scripts/*.mjs ~/.claude/skills/iterative-planner/scripts/
 mkdir -p ~/.claude/skills/iterative-planner/scripts/modules && cp src/scripts/modules/*.md ~/.claude/skills/iterative-planner/scripts/modules/   # the *.mjs glob does NOT copy the modules/ subdir — copy it explicitly
 cp src/references/*.md ~/.claude/skills/iterative-planner/references/
 cp README.md LICENSE CHANGELOG.md VERSION ~/.claude/skills/iterative-planner/   # VERSION is required at runtime: bootstrap.mjs stamps it into new plans
-
-# Install agent definitions (optional — skill works without them)
-mkdir -p ~/.claude/agents
-cp src/agents/*.md ~/.claude/agents/
-
-# Keep the skill-bundled agents/ dir in sync too (authoritative-by-build)
-mkdir -p ~/.claude/skills/iterative-planner/agents
-cp src/agents/*.md ~/.claude/skills/iterative-planner/agents/   # keep skill-bundled agents in sync with the Makefile-bundled package
+mkdir -p ~/.claude/agents && cp src/agents/*.md ~/.claude/agents/               # shared dir: copy only — NEVER glob-delete here (other skills' agents live here too)
+mkdir -p ~/.claude/skills/iterative-planner/agents && cp src/agents/*.md ~/.claude/skills/iterative-planner/agents/   # keep skill-bundled agents in sync (authoritative-by-build)
 ```
 
-The Makefile `build` target bundles `src/agents/*.md` into the skill package's `agents/` dir, so the skill-bundled `agents/` is authoritative-by-build and this manual procedure must mirror it — otherwise the bundled copy drifts (as it did pre-v2.21.0).
-
-Always verify with `diff -rq` after copying. Every file, every time — including `diff -rq --exclude='.claude' src/agents ~/.claude/skills/iterative-planner/agents` and `diff -rq --exclude='.claude' src/scripts/modules ~/.claude/skills/iterative-planner/scripts/modules` (both must be empty — the modules/ subdir is easy to miss because the `*.mjs` glob skips it).
+Always verify with `diff -rq` after the fallback. Every tree, every time — `diff -rq --exclude='.claude' src/agents ~/.claude/skills/iterative-planner/agents`, `diff -rq --exclude='.claude' src/scripts/modules ~/.claude/skills/iterative-planner/scripts/modules` (the modules/ subdir is easy to miss because the `*.mjs` glob skips it), plus the same for `src/scripts` and `src/references` (add `--exclude='kg-edges.jsonl'` for references — generated-only, never synced). All must be empty; any file present only in the install is an orphan the fallback cannot remove — delete it by hand.
