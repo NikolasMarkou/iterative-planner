@@ -140,14 +140,11 @@ Floor: all 5 items. None may be omitted.
 1. Read plan.md, identify next step
 1.5. **Pre-step gate** (v2.18.0+): Run `node <skill-path>/scripts/validate-plan.mjs --pre-step`. Contract: exit code 2 is HARD (see the NOTE above) and `references/file-formats.md` § Presentation Contracts.
    - **Exit 0** (`GATE:PASS`): proceed to spawn ip-executor.
-   - **Exit 2** (`GATE:FAIL [slug] ...`): HALT EXECUTE. Do NOT spawn ip-executor. Actions, in order:
-     1. Parse the slug from stdout (`leash-cap` / `wrong-state` / `iteration-cap` / `no-plan`).
-     2. Append a line to `{plan-dir}/state.md` under `## Fix Attempts (resets per plan step)`:
-        `- Step N: LEASH HIT via pre-step gate. Slug: <slug>. Stdout: <verbatim>.`
-        (Where N is the current step number from `## Current Plan Step:`.)
-     3. Revert uncommitted changes to the last clean commit (revert-first — the codebase must be known-good BEFORE presenting, per the Autonomy Leash; this is the same revert step 4 mandates, so the gate-trip path and step 4 stay one consistent flow).
-     4. Present to user per the **PC-EXECUTE-LEASH** contract above — emit all 5 items in that block's canonical order and vocabulary (step intent → both attempts → root-cause guess → checkpoints registry → the `continue / pivot / rollback` prompt). Do not reorder or reword them here; the block above is the single source.
-     5. Transition state to REFLECT.
+   - **Exit 2** (`GATE:FAIL [slug] ...`): HALT EXECUTE. Do NOT spawn ip-executor. Parse the slug from stdout, then act BY SLUG — only `leash-cap` is a genuine Autonomy-Leash hit; the other three are distinct fault conditions and must NOT emit the leash block (`SKILL.md` § Autonomy Leash names `leash-cap` as the true 2-attempt cap; `references/file-formats.md` scopes PC-EXECUTE-LEASH to leash hits only). This is the full slug→action mapping `SKILL.md` § Autonomy Leash points here for.
+     - **`leash-cap`** (≥2 recorded fix attempts — the genuine leash hit): in order — (a) append a line to `{plan-dir}/state.md` under `## Fix Attempts (resets per plan step)`: `- Step N: LEASH HIT via pre-step gate. Slug: leash-cap. Stdout: <verbatim>.` (N from `## Current Plan Step:`); (b) revert uncommitted changes to the last clean commit (revert-first — the codebase must be known-good BEFORE presenting, per the Autonomy Leash); (c) present per the **PC-EXECUTE-LEASH** contract above — all 5 items in canonical order (step intent → both attempts → root-cause guess → checkpoints registry → the `continue / pivot / rollback` prompt); (d) transition state to REFLECT.
+     - **`iteration-cap`** (`iter >= 6`): do NOT emit PC-EXECUTE-LEASH (there may be zero recorded fix attempts, so "both attempts" cannot be filled). Present the `SKILL.md` § Iteration Limits action instead — "hard STOP; present decomposition to user; break into smaller tasks" — and wait for user direction. No Fix-Attempts append, no root-cause/rollback prompt.
+     - **`wrong-state`** (Current State ≠ EXECUTE): the orchestrator's belief that it is in EXECUTE is unreliable, so do NOT write state.md and do NOT emit the leash. Invoke `SKILL.md` § Recovery from Context Loss and surface a distinct "pre-step gate reported an inconsistent state (wrong-state)" message; reconcile state before any further spawn.
+     - **`no-plan`** (state.md unreadable): do NOT attempt the state.md append — this slug fires precisely because state.md could not be read. Surface the same distinct "inconsistent state (no-plan)" message and invoke `SKILL.md` § Recovery from Context Loss to rebuild the pointer/state.
    - **Exit 1**: not expected from `--pre-step` mode today (reserved for future expansion). If encountered, treat as a transient error: retry once; on second exit-1, escalate as if it were exit 2 with synthesized slug `gate-error`.
    - Latency budget: <50ms per call. If the call hangs >5s, abort the subprocess and escalate to the user (do not silently skip — that would re-introduce the advisory-leash gap D-004 closes).
 2. Spawn ip-executor with step details + relevant context file paths
@@ -201,7 +198,7 @@ Floor: items 2 and 4 are non-negotiable.
 
 ### CLOSE State
 1. Spawn ip-archivist with all plan files
-2. Verify: summary.md written, LESSONS.md + SYSTEM.md updated, decision anchors audited, close ran
+2. Verify: summary.md written, LESSONS.md + SYSTEM.md updated, decision anchors audited, consolidated files compressed if >500 lines (ip-archivist Step 6), close ran
 3. Confirm ip-archivist already ran `bootstrap.mjs close` (the .current_plan pointer is gone) — do NOT run it again; a second call throws ENOCLOSE (thrown by `bootstrap.mjs`'s `cmdCloseInner` no-active-plan branch). If the pointer is STILL present, the archivist did not close — run `bootstrap.mjs close` once yourself (the ENOCLOSE prohibition applies only after a successful close has removed the pointer).
 
 ## Critical Rules
