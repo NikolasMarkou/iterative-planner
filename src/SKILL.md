@@ -265,7 +265,7 @@ These guards operationalize three principles already wired into the protocol —
 **Revert-First** — when something breaks: (1) STOP (2) revert? (3) delete? (4) one-liner? (5) none → REFLECT.
 **10-Line Rule** — fix needs >10 new lines → it's not a fix → REFLECT.
 **3-Strike Rule** — same area breaks 3× → PIVOT with fundamentally different approach. Revert to checkpoint covering the struck area.
-**Complexity Budget** — tracked in plan.md: files added 0/3, abstractions 0/2, lines net-zero target.
+**Complexity Budget** — tracked in plan.md: files added 0/3, abstractions 0/2, lines net negative or neutral target.
 **Forbidden**: wrapper cascades, config toggles, copy-paste, exception swallowing, type escapes, adapters, "temporary" workarounds.
 **Nuclear Option** — iteration 5 + bloat >2× scope → recommend full revert to `cp-000` (or later checkpoint if user agrees). Otherwise proceed with caution. See `references/complexity-control.md`.
 

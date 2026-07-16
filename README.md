@@ -208,7 +208,7 @@ The default response to failure is to **simplify, never to add**: can I fix by r
 |------|-------------|
 | **10-Line Rule** | If a "fix" needs more than 10 new lines, it's not a fix. It needs a plan. |
 | **3-Strike Rule** | Same area breaks 3 times? The approach is wrong. Mandatory PIVOT, with revert to a covering checkpoint. |
-| **Complexity Budget** | Max 3 new files, max 2 new abstractions, target net-zero or negative line count. Tracked in `plan.md`. |
+| **Complexity Budget** | Max 3 new files, max 2 new abstractions, target net negative or neutral line count. Tracked in `plan.md`. |
 | **Nuclear Option** | At iteration 5, scope doubled? Recommend full revert to the iteration-1 checkpoint. The decision log preserves all learnings. |
 | **6 Simplification Checks** | Structured REFLECT diagnostic: delete instead? symptom or root cause? essential or accidental complexity? fighting the framework? worth reverting everything? |
 
