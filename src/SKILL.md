@@ -88,7 +88,7 @@ At CLOSE → audit decision anchors (`references/decision-anchoring.md`). Merge 
 
 ### Protocol Tiers
 
-Check tiers: **CORE** (always enforced) | **EXTENDED** (iter ≥ 2 only; marked *(EXTENDED)* in rules below). EXTENDED checks address anchoring bias, ghost constraints, prediction drift.
+Check tiers: **CORE** (always enforced) | **EXTENDED** (iter ≥ 2 unless a rule's own marker states otherwise; marked *(EXTENDED)* in rules below). EXTENDED checks address anchoring bias, ghost constraints, prediction drift.
 
 ### Mandatory Re-reads (CRITICAL)
 
@@ -326,7 +326,7 @@ See `references/decision-anchoring.md`.
 9. `plans/LESSONS.md` → institutional memory (read before planning)
 10. `plans/SYSTEM.md` → system atlas / structural prior (read before PLAN or EXPLORE)
 11. `plans/INDEX.md` → topic-to-directory mapping (find old findings by topic when sliding window has trimmed them)
-12. Resume from current state. Never start over. When resuming mid-EXECUTE (state.md names a current step), first check `git log --oneline --grep="iter-N/step-M"` for the current step's commit tag; if a commit already exists, the step completed before the interruption — run the Post-Step Gate for it instead of re-executing the step.
+12. Resume from current state. Never start over. When resuming mid-EXECUTE (state.md names a current step), first derive the step's plan-qualified commit tag (Git Integration below: drop the plan-dir name's `THHMMSS` segment) and check `git log --oneline --fixed-strings --grep="plan-YYYY-MM-DD-HASH/iter-N/step-M]"` — keep the closing `]`; a bare `iter-N/step-M` grep false-positives against other plans' commits and `step-1`/`step-10` substrings. If a commit already exists, the step completed before the interruption — run the Post-Step Gate for it instead of re-executing the step.
 
 ## Git Integration
 
