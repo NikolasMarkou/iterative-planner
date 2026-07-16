@@ -167,7 +167,7 @@ Claude presents the plan as a **PC-PLAN** block (verbatim — not a paraphrase).
 
 If a step fails: **revert uncommitted**, two fix attempts max, each constrained by the Revert-First and 10-Line rules. Both fail → STOP, present, ask you.
 
-**Claude (REFLECT)** runs the verifier. The PASS/FAIL table from `verification.md` is rendered **verbatim** in the **PC-REFLECT** block. If it is iteration 2+, an `ip-reviewer` sub-agent runs an adversarial review and its concerns are folded in verbatim. Claude recommends close, pivot, or explore (or execute for a same-iteration completion-fix loop). **You** decide.
+**Claude (REFLECT)** runs the verifier. The PASS/FAIL table from `verification.md` is rendered **verbatim** in the **PC-REFLECT** block. If it is iteration 2+ (or earlier by orchestrator choice — e.g. an iteration-1 attack-before-release pass ahead of a release/version bump), an `ip-reviewer` sub-agent runs an adversarial review and its concerns are folded in verbatim. Claude recommends close, pivot, or explore (or execute for a same-iteration completion-fix loop). **You** decide.
 
 **Claude (CLOSE)** spawns `ip-archivist` to write `summary.md`, audit `# DECISION plan-2026-05-07T091743-a3f1b2c9/D-NNN` anchors in source, rewrite `plans/LESSONS.md` (≤200 lines), and rewrite the `plans/SYSTEM.md` atlas (≤300 lines). Then `bootstrap.mjs close` merges per-plan findings and decisions into the consolidated cross-plan files (sliding window of the 4 most recent plans).
 
@@ -348,10 +348,10 @@ When the skill activates with the agent definitions installed, the conversation 
 | **ip-plan-writer** | Generates `plan.md` and `verification.md` template (PLAN) | Read, Write, Edit, Grep, Glob | inherit |
 | **ip-executor** | Implements one plan step at a time (EXECUTE) | Read, Edit, Write, Bash, Grep, Glob | inherit |
 | **ip-verifier** | Runs verification checks, returns results for Orchestrator to merge into `verification.md` (REFLECT) | Read, Bash, Grep, Glob | sonnet |
-| **ip-reviewer** | Adversarial review, iteration ≥ 2 (REFLECT) | Read, Write, Grep, Glob, Bash | opus |
+| **ip-reviewer** | Adversarial review, iteration ≥ 2 by default; earlier by orchestrator choice, e.g. an iteration-1 attack-before-release pass (REFLECT) | Read, Write, Grep, Glob, Bash | opus |
 | **ip-archivist** | CLOSE housekeeping: `summary.md`, anchor audit, LESSONS, SYSTEM | Read, Write, Edit, Grep, Glob, Bash | sonnet |
 
-**Dispatch by state**: EXPLORE — 1-3 explorers in parallel, one per topic. PLAN — one plan-writer. EXECUTE — one executor per step, sequential by default (independent steps can parallelize via `isolation: "worktree"`). REFLECT — verifier(s) for checks, reviewer (iteration 2+) for adversarial review. CLOSE — archivist for the housekeeping.
+**Dispatch by state**: EXPLORE — 1-3 explorers in parallel, one per topic. PLAN — one plan-writer. EXECUTE — one executor per step, sequential by default (independent steps can parallelize via `isolation: "worktree"`). REFLECT — verifier(s) for checks, reviewer (iteration 2+ by default, or earlier by orchestrator choice — e.g. an iteration-1 attack-before-release pass) for adversarial review. CLOSE — archivist for the housekeeping.
 
 ---
 
@@ -549,7 +549,7 @@ iterative-planner/
     │   ├── ip-plan-writer.md       # plan generation (PLAN)
     │   ├── ip-executor.md          # code execution (EXECUTE)
     │   ├── ip-verifier.md          # verification checks (REFLECT)
-    │   ├── ip-reviewer.md          # adversarial review (REFLECT, iteration ≥ 2)
+    │   ├── ip-reviewer.md          # adversarial review (REFLECT, iteration ≥ 2 by default; earlier by orchestrator choice)
     │   └── ip-archivist.md         # CLOSE housekeeping
     ├── scripts/
     │   ├── bootstrap.mjs           # plan directory lifecycle (Node.js 18+)

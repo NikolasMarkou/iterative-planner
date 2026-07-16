@@ -1,7 +1,7 @@
 ---
 name: ip-reviewer
 description: >
-  Adversarial review agent for the iterative planner REFLECT phase (iteration >= 2).
+  Adversarial review agent for the iterative planner REFLECT phase (iteration >= 2 by default, or earlier by orchestrator choice — e.g. an iteration-1 attack-before-release pass ahead of a release/version bump).
   Challenges verification adequacy and identifies blind spots.
   Use when the orchestrator needs an adversarial perspective on whether work is complete.
 tools: Read, Write, Grep, Glob, Bash
