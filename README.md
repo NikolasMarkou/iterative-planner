@@ -299,7 +299,8 @@ Each file has a single owner. Only the owner writes; others read. This prevents 
 | `summary.md` | Archivist | — |
 | `plans/FINDINGS.md` | Archivist (via bootstrap) | Orchestrator, Plan-writer |
 | `plans/DECISIONS.md` | Archivist (via bootstrap) | Orchestrator, Plan-writer |
-| `plans/LESSONS.md`, `plans/SYSTEM.md` | Archivist | All planning agents |
+| `plans/LESSONS.md` | Archivist | Orchestrator, Explorer, Plan-writer |
+| `plans/SYSTEM.md` | Archivist | Orchestrator, Plan-writer, Explorer |
 | `plans/INDEX.md` | Archivist (via bootstrap) | Orchestrator |
 
 ---

@@ -129,7 +129,7 @@ Report back with:
   - (Field 5 of PC-EXECUTE-LEASH, the user prompt, is orchestrator-owned — you do not author it.)
 
 ## Relay Contract (PC-EXECUTE-STEP / PC-EXECUTE-LEASH)
-The 5 fields above are the **literal payload** for the orchestrator's per-step status report (PC-EXECUTE-STEP) and leash-hit failure block (PC-EXECUTE-LEASH) defined in `references/file-formats.md` "Presentation Contracts". The orchestrator MUST paste each field verbatim — do not author prose substitutes for any field. Keep each field self-contained and chat-ready.
+The 5 fields above are the **literal payload** for the orchestrator's per-step status report (PC-EXECUTE-STEP) and leash-hit failure block (PC-EXECUTE-LEASH) defined in `references/file-formats.md` "Presentation Contracts". Relay each field at the fidelity its own Presentation Contract specifies in `references/file-formats.md` (see each contract's **Fidelity** line) — no field may be silently dropped. Keep each field self-contained and chat-ready.
 
 ## Rules
 - Do NOT transition states

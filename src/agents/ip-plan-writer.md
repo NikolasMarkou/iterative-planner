@@ -30,7 +30,7 @@ For these templates, Read `references/file-formats.md` — it is the sole templa
 8. **Pre-Mortem & Falsification Signals** — 2-3 "STOP IF" scenarios
 9. **Success Criteria** — testable, specific
 10. **Verification Strategy** — for each criterion: test, command, pass condition
-11. **Complexity Budget** — files added: 0/3, abstractions: 0/2, lines: net-zero target
+11. **Complexity Budget** — files added: 0/3, abstractions: 0/2, lines: net-negative-or-neutral target
 
 ## Decision Logging
 Write chosen approach to decisions.md with trade-off framing:
