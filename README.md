@@ -351,7 +351,7 @@ When the skill activates with the agent definitions installed, the conversation 
 | **ip-reviewer** | Adversarial review, iteration ≥ 2 by default; earlier by orchestrator choice, e.g. an iteration-1 attack-before-release pass (REFLECT) | Read, Write, Grep, Glob, Bash | opus |
 | **ip-archivist** | CLOSE housekeeping: `summary.md`, anchor audit, LESSONS, SYSTEM | Read, Write, Edit, Grep, Glob, Bash | sonnet |
 
-**Dispatch by state**: EXPLORE — 1-3 explorers in parallel, one per topic. PLAN — one plan-writer. EXECUTE — one executor per step, sequential by default (independent steps can parallelize via `isolation: "worktree"`). REFLECT — verifier(s) for checks, reviewer (iteration 2+ by default, or earlier by orchestrator choice — e.g. an iteration-1 attack-before-release pass) for adversarial review. CLOSE — archivist for the housekeeping.
+**Dispatch by state**: EXPLORE — 1-3 explorers in parallel, one per topic. PLAN — one plan-writer. EXECUTE — one executor per step, sequential (exactly one executor at a time — plan steps are sequential, so executor file conflicts cannot arise). REFLECT — verifier(s) for checks, reviewer (iteration 2+ by default, or earlier by orchestrator choice — e.g. an iteration-1 attack-before-release pass) for adversarial review. CLOSE — archivist for the housekeeping.
 
 ---
 
@@ -427,7 +427,7 @@ Run `bootstrap.mjs new --force "new goal"`. This closes the active plan (merging
 The protocol forces a decomposition analysis: identify 2-3 independent sub-goals that could each be a separate plan. At iteration 6+, execution stops entirely.
 
 **Can I run the agents in parallel?**
-Explorers always parallelize. Verifiers can parallelize across independent checks. Executors can parallelize via `isolation: "worktree"` for truly independent steps. The orchestrator sequences anything that touches the same plan file.
+Explorers always parallelize. Verifiers can parallelize across independent checks. Executors never parallelize — exactly one executor runs at a time, because plan steps are sequential. The orchestrator sequences anything that touches the same plan file.
 
 **Do I need the sub-agent definitions?**
 No. They are an optimization layer. Without them, the monolithic skill drives the same state machine in a single thread.

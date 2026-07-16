@@ -326,7 +326,7 @@ See `references/decision-anchoring.md`.
 9. `plans/LESSONS.md` → institutional memory (read before planning)
 10. `plans/SYSTEM.md` → system atlas / structural prior (read before PLAN or EXPLORE)
 11. `plans/INDEX.md` → topic-to-directory mapping (find old findings by topic when sliding window has trimmed them)
-12. Resume from current state. Never start over.
+12. Resume from current state. Never start over. When resuming mid-EXECUTE (state.md names a current step), first check `git log --oneline --grep="iter-N/step-M"` for the current step's commit tag; if a commit already exists, the step completed before the interruption — run the Post-Step Gate for it instead of re-executing the step.
 
 ## Git Integration
 
@@ -392,13 +392,13 @@ Each file has a clear owner. Only the owner writes. Others read. Co-ownership (m
 
 ### Dispatch Rules by State
 
-Runtime dispatch — which agents to spawn per state, in what order, with the compression gate (PLAN step 0) and pre-step gate (EXECUTE step 1.5) — is owned by `agents/ip-orchestrator.md` § "Sub-Agent Dispatch Rules". **That file is authoritative; do not duplicate its sequencing here.** The per-state *protocol* (gate checks, leash, rigor) is specified above under the Per-State Rules. Monolithic mode (no agents installed) runs the same sequence single-threaded using `Task` subagents for the parallel steps.
+Runtime dispatch — which agents to spawn per state, in what order, with the compression gate (PLAN step 0.5) and pre-step gate (EXECUTE step 1.5) — is owned by `agents/ip-orchestrator.md` § "Sub-Agent Dispatch Rules". **That file is authoritative; do not duplicate its sequencing here.** The per-state *protocol* (gate checks, leash, rigor) is specified above under the Per-State Rules. Monolithic mode (no agents installed) runs the same sequence single-threaded using `Task` subagents for the parallel steps.
 
 ### Conflict Prevention
 1. No concurrent writes to the same file — orchestrator sequences agents accordingly.
 2. Explorer agents write to distinct `findings/{topic}.md` files — unique topic slugs.
 3. Verifiers never write `verification.md` — they RETURN structured results; the orchestrator is the sole writer, merging each verifier's returned results into distinct sections (so there are no concurrent writes).
-4. Executor agents in worktree isolation avoid all file conflicts.
+4. Exactly one Executor is spawned at a time (plan steps are sequential), so no two executors are ever concurrent and executor file conflicts cannot arise.
 
 ## When NOT to Use
 
