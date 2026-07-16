@@ -1600,6 +1600,15 @@ function cmdResume() {
   console.log(`  Last:       ${lastTransition}`);
   console.log();
 
+  // Interrupted-CLOSE anomaly: cmdResume only runs when the pointer exists
+  // (readPointer guard above), so state=CLOSE means `close` wrote state.md but
+  // died before removing the pointer — merge/index/snapshot may be unfinished.
+  if (currentState === "CLOSE") {
+    console.log(`  ANOMALY: state.md says CLOSE but plans/.current_plan still exists.`);
+    console.log(`  INCOMPLETE CLOSE — re-run \`bootstrap.mjs close\` once (merge/index/snapshot/pointer removal may be unfinished).`);
+    console.log();
+  }
+
   // Print progress summary
   if (progress) {
     const completed = (progress.match(/^- \[x\].+$/gm) || []).length;
@@ -1663,7 +1672,9 @@ function cmdStatus() {
   const step = extractField(state, /^## Current Plan Step:\s*(.+)$/m) || "N/A";
   const goal = extractField(plan, /\n## Goal\s*\n([\s\S]+?)(?=\n## |$)/) || "?";
 
-  console.log(`[${currentState}] iter=${iteration} step=${step} | ${goal.split("\n")[0].slice(0, 60)} | plans/${planDirName}`);
+  // Interrupted-CLOSE anomaly suffix (see cmdResume) — same one-line contract.
+  const closeSuffix = currentState === "CLOSE" ? " | INCOMPLETE CLOSE: re-run close" : "";
+  console.log(`[${currentState}] iter=${iteration} step=${step} | ${goal.split("\n")[0].slice(0, 60)} | plans/${planDirName}${closeSuffix}`);
 }
 
 function cmdClose(opts = {}) {
