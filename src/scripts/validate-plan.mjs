@@ -1300,7 +1300,21 @@ function findBadPrefixAnchorsInFile(file, projectRoot) {
 // The active plan is keyed by `activePlanName`. Cross-plan archive is parsed
 // section-aware: each `## <plan-id>` heading begins a section; `### D-NNN`
 // entries within belong to that plan.
-function collectKnownDecisionIdsByPlan(planDir, activePlanName) {
+//
+// DECISION plan-2026-07-16T164852-47577439/D-001 — the per-plan decisions.md reads are
+// scoped to `referencedPlanIds` (the plan-ids that STRICT qualified anchors actually name
+// in source, collected by checkReverseAnchors's pass 1), NOT a readdirSync walk of every
+// plans/ directory ever created. Do NOT restore the full-corpus walk: it is O(all-plan-dirs)
+// file reads per full validation, unbounded as closed plans accumulate, and the sole
+// consumer only ever looks up plan-ids it found in source anchors. Do NOT replace it with a
+// committed/generated index file either — that adds a staleness surface (index diverging
+// from the per-plan files) plus an artifact class this repo has explicitly rejected. The
+// complete read set is {active plan ∪ referenced plans} + consolidated plans/DECISIONS.md
+// (sliding-window trimming means either source may be the sole holder of a plan's entries).
+// `baseDir` exists solely so tests can point at a fixture tree — the module-level
+// `plansDir` binds to cwd at import time. Exported for the decoy-dirs unit test.
+// See plan-2026-07-16T164852-47577439/decisions.md D-001.
+export function collectKnownDecisionIdsByPlan(planDir, activePlanName, referencedPlanIds, baseDir = plansDir) {
   const map = new Map();
 
   function add(planName, id) {
@@ -1316,25 +1330,22 @@ function collectKnownDecisionIdsByPlan(planDir, activePlanName) {
     for (const e of entries) add(activePlanName, e.id);
   }
 
-  // Walk every per-plan decisions.md (covers archived plans whose sections
-  // have been trimmed from plans/DECISIONS.md).
-  try {
-    const entries = readdirSync(plansDir, { withFileTypes: true });
-    for (const ent of entries) {
-      if (!ent.isDirectory()) continue;
-      if (!ANY_PLAN_ID_RE.test(ent.name)) continue;
-      if (ent.name === activePlanName) continue; // already loaded above
-      const txt = readFile(join(plansDir, ent.name, "decisions.md"));
-      if (!txt) continue;
-      const { entries: pe } = parseDecisionsEntries(txt);
-      for (const e of pe) add(ent.name, e.id);
-    }
-  } catch { /* plans/ may not be scannable */ }
+  // Per-plan decisions.md for each plan-id actually referenced by a strict
+  // qualified anchor (covers archived plans whose sections have been trimmed
+  // from plans/DECISIONS.md).
+  for (const id of referencedPlanIds) {
+    if (!ANY_PLAN_ID_RE.test(id)) continue;
+    if (id === activePlanName) continue; // already loaded above
+    const txt = readFile(join(baseDir, id, "decisions.md"));
+    if (!txt) continue;
+    const { entries: pe } = parseDecisionsEntries(txt);
+    for (const e of pe) add(id, e.id);
+  }
 
   // Consolidated plans/DECISIONS.md, section-aware: track current `## <plan-id>`
   // wrapper, attribute every nested `### D-NNN` (or `## D-NNN` if not nested)
   // to that plan. Matches v2.13.0 sliding-window content shape.
-  const consolidated = readFile(join(plansDir, "DECISIONS.md"));
+  const consolidated = readFile(join(baseDir, "DECISIONS.md"));
   if (consolidated) {
     const lines = consolidated.split("\n");
     let currentPlan = null;
@@ -1352,7 +1363,6 @@ function collectKnownDecisionIdsByPlan(planDir, activePlanName) {
 }
 
 function checkReverseAnchors(planDir, planDirName, issues, projectRoot) {
-  const knownByPlan = collectKnownDecisionIdsByPlan(planDir, planDirName);
   let files;
   try {
     files = walkSourceFiles(projectRoot);
@@ -1360,8 +1370,27 @@ function checkReverseAnchors(planDir, planDirName, issues, projectRoot) {
     return;
   }
 
+  // Pass 1: scan every source file once (same two reads per file as before),
+  // collecting the per-file anchor results and the set of plan-ids that strict
+  // qualified anchors reference. Stale anchors are included (they must keep
+  // resolving); bad-prefix anchors are excluded by construction (their prefix
+  // is not a plan-id, so they never feed a knownByPlan lookup).
+  const scanned = [];
+  const referenced = new Set();
   for (const file of files) {
-    for (const b of findBadPrefixAnchorsInFile(file, projectRoot)) {
+    const badprefix = findBadPrefixAnchorsInFile(file, projectRoot);
+    const anchors = findAnchorsInFile(file, projectRoot);
+    scanned.push({ badprefix, anchors });
+    for (const a of anchors) {
+      if (a.qualified) referenced.add(a.planName);
+    }
+  }
+
+  const knownByPlan = collectKnownDecisionIdsByPlan(planDir, planDirName, referenced);
+
+  // Pass 2: report, in the same per-file order as the single-pass version.
+  for (const { badprefix, anchors } of scanned) {
+    for (const b of badprefix) {
       const rel = relative(projectRoot, b.file);
       const idStr = `D-${String(b.id).padStart(3, "0")}`;
       issues.push({
@@ -1370,7 +1399,6 @@ function checkReverseAnchors(planDir, planDirName, issues, projectRoot) {
         message: `${rel}:${b.line} anchor prefix "${b.planName}" is not a plan-id, so ${idStr} is invisible to the anchor audit — it matches no anchor regex at all, and is not even reported as an orphan. A plan-id is the full plan-DIRECTORY name (\`plan-YYYY-MM-DDTHHMMSS-XXXXXXXX\`, or legacy \`plan_YYYY-MM-DD_XXXXXXXX\`). If it looks like a commit tag: the tag DROPS the \`THHMMSS\` segment, anchors keep it. See references/decision-anchoring.md`,
       });
     }
-    const anchors = findAnchorsInFile(file, projectRoot);
     for (const a of anchors) {
       const rel = relative(projectRoot, a.file);
       const idStr = `D-${String(a.id).padStart(3, "0")}`;

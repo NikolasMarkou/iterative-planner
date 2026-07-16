@@ -15,6 +15,8 @@ import { tmpdir } from "os";
 import { randomBytes } from "crypto";
 
 const VALIDATOR = resolve(import.meta.dirname, "validate-plan.mjs");
+// Import-safe: validate-plan.mjs's CLI dispatch is guarded by isEntryPoint.
+import { collectKnownDecisionIdsByPlan } from "./validate-plan.mjs";
 // Defect #8 / D-003 fixtures use the REAL bootstrap template (the guidance comment that
 // caused the false positive is part of it) rather than a hand-copied approximation —
 // a hand-copied one would drift from bootstrap.mjs and stop testing the actual bug.
@@ -2032,5 +2034,105 @@ ${records}
     const r = run(cwd);
     assert.match(r.stdout, /exceeds hard limit \(6\+\)/,
       `the hard cap must see all 6 real records. Got: ${r.stdout}`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// F2 / plan-2026-07-16-47577439 D-001 — collectKnownDecisionIdsByPlan is scoped
+// to {active ∪ referenced} plan-ids, NOT a full readdirSync walk of plans/.
+// The decoy proof: the old implementation parsed EVERY plans/* decisions.md, so
+// every decoy dir below would appear as a Map key. Key ABSENCE proves the decoy
+// files were never read.
+// ---------------------------------------------------------------------------
+
+/** Write a minimal parseable decisions.md holding exactly one D-NNN entry. */
+function writeDecisionsFixture(planDir, planId, idStr) {
+  mkdirSync(planDir, { recursive: true });
+  writeFileSync(join(planDir, "decisions.md"),
+`# Decision Log
+*Plan: ${planId}*
+
+## ${idStr} | EXECUTE | 2026-06-01
+**Context**: fixture.
+**Decision**: fixture.
+**Trade-off**: a **at the cost of** b.
+**Reasoning**: fixture.
+`);
+}
+
+describe("F2 narrowing: collectKnownDecisionIdsByPlan reads only referenced plans (D-001)", () => {
+  const tempDirs = [];
+  function getTempDir() { const d = makeTempDir(); tempDirs.push(d); return d; }
+  afterEach(() => { while (tempDirs.length) removeTempDir(tempDirs.pop()); });
+
+  it("decoy plan dirs (new + legacy shape) are NOT parsed into the Map — only active + referenced keys exist", () => {
+    const cwd = getTempDir();
+    const plansFix = join(cwd, "plans");
+    const active = "plan-2026-06-01T101010-aaaa1111";
+    const referenced = "plan-2026-06-02T111111-bbbb2222";
+    const decoys = [
+      "plan-2026-06-03T121212-cccc3333",
+      "plan-2026-06-04T131313-dddd4444",
+      "plan_2026-01-05_eeee5555", // legacy shape — must be equally unread
+    ];
+    writeDecisionsFixture(join(plansFix, active), active, "D-001");
+    writeDecisionsFixture(join(plansFix, referenced), referenced, "D-002");
+    for (const d of decoys) writeDecisionsFixture(join(plansFix, d), d, "D-042");
+    // NO consolidated plans/DECISIONS.md — per-plan files are the only source.
+
+    const map = collectKnownDecisionIdsByPlan(
+      join(plansFix, active),
+      active,
+      // Includes the active plan (must be skipped — already loaded) and a
+      // non-plan-id string (must be guarded, not thrown on).
+      new Set([referenced, active, "not-a-plan-id"]),
+      plansFix,
+    );
+
+    assert.deepEqual([...map.keys()].sort(), [active, referenced].sort(),
+      `Map keys must be exactly {active, referenced}, got: ${[...map.keys()].join(", ")}`);
+    assert.ok(map.get(active).has(1), "active plan's D-001 must resolve");
+    assert.ok(map.get(referenced).has(2), "referenced plan's D-002 must resolve");
+    for (const d of decoys) {
+      assert.ok(!map.has(d), `decoy ${d} must be ABSENT — its presence proves a full-corpus walk`);
+    }
+  });
+
+  it("CLI anchor output is byte-identical with and without decoy plan dirs present", () => {
+    const cwd = getTempDir();
+    writePlan(cwd); // active plan_2026-05-15_aaaabbbb with D-001
+    const referenced = "plan_2026-02-02_11223344";
+    const unknown = "plan_2026-03-03_55667788";
+    writeDecisionsFixture(join(cwd, "plans", referenced), referenced, "D-002");
+    // One anchor per resolution class: resolved, orphan (ERROR), unknown plan
+    // (ERROR), stale unknown (WARN downgrade), bad prefix (WARN).
+    writeFileSync(join(cwd, "doc.md"),
+      "# Doc\n\n" +
+      "<!-- DECISION " + referenced + "/D-002 — resolves, no finding -->\n" +
+      "<!-- DECISION " + referenced + "/D-007 — orphan in a known plan -->\n" +
+      "<!-- DECISION " + unknown + "/D-001 — unknown plan -->\n" +
+      "<!-- DECISION " + unknown + "/D-009 [STALE] — stale, severity WARN -->\n" +
+      "<!-- DECISION plan-2026-02-02-11223344/D-002 — commit-tag shape, bad prefix -->\n");
+
+    const before = run(cwd);
+    // Sanity: every class fires as expected before adding decoys.
+    assert.match(before.stdout, /ERROR\s+\[anchor-orphan\][^\n]*plan_2026-02-02_11223344\/D-007/,
+      `expected orphan ERROR for D-007, got:\n${before.stdout}`);
+    assert.match(before.stdout, /ERROR\s+\[anchor-unknown-plan\][^\n]*plan_2026-03-03_55667788\/D-001/,
+      `expected unknown-plan ERROR for D-001, got:\n${before.stdout}`);
+    assert.match(before.stdout, /WARN\s+\[anchor-unknown-plan\][^\n]*D-009 \[STALE\]/,
+      `expected stale WARN downgrade for D-009, got:\n${before.stdout}`);
+    assert.match(before.stdout, /WARN\s+\[anchor-badprefix\][^\n]*plan-2026-02-02-11223344/,
+      `expected badprefix WARN, got:\n${before.stdout}`);
+    assert.ok(!/\[anchor-orphan\][^\n]*D-002/.test(before.stdout),
+      `referenced plan's D-002 must resolve cleanly, got:\n${before.stdout}`);
+
+    for (const d of ["plan-2026-06-03T121212-cccc3333", "plan-2026-06-04T131313-dddd4444", "plan_2026-01-05_eeee5555"]) {
+      writeDecisionsFixture(join(cwd, "plans", d), d, "D-042");
+    }
+    const after = run(cwd);
+    assert.equal(after.stdout, before.stdout,
+      "validator output must not change when unreferenced decoy plan dirs appear");
+    assert.equal(after.exitCode, before.exitCode);
   });
 });
