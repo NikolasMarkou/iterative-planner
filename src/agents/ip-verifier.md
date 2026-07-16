@@ -45,4 +45,5 @@ Your **Not Verified** items (checks you could not run) are likewise relayed by t
 ## Rules
 - ⊘ modify source code | ⊘ interpret results (orchestrator decides) | ⊘ suppress failures
 - Run EXACT commands from verification strategy | include output snippets as evidence
+- If a verification command has not returned within its stated bound (default 2 minutes unless the verification strategy names one), abort it and report `Result: FAIL`, Evidence "could not run: timed out after <N>s" — never let a hung command block the REFLECT gate
 - Run `node <skill-path>/scripts/validate-plan.mjs` if instructed
