@@ -205,8 +205,12 @@ validate:
 	@echo "Checking README badge parity (version + test count)..."
 	@node src/scripts/check-readme-parity.mjs || exit 1
 	@# Verify agent/module prose wiring: script paths, reference citations, section pointers, skill-path resolution
+	@# DECISION plan-2026-07-16T085306-8bd12f33/D-003: --emit-edges is opt-in at the call sites (this line +
+	@# build.ps1 Invoke-Validate — a 2-place lockstep fact; edit both together). Do NOT make emission default-on
+	@# in check-agent-wiring.mjs: no-flag runs must stay read-only (first-of-kind writer among check-* gates).
+	@# No explicit path — the default src/references/kg-edges.jsonl applies. See decisions.md D-003.
 	@echo "Checking agent wiring (script paths, references, section pointers)..."
-	@node src/scripts/check-agent-wiring.mjs || exit 1
+	@node src/scripts/check-agent-wiring.mjs --emit-edges || exit 1
 	@# Verify bootstrap's PLAN_TEMPLATES byte-match file-formats.md's <!-- SKELETON:* --> regions
 	@echo "Checking template parity (bootstrap PLAN_TEMPLATES <-> file-formats.md skeletons)..."
 	@node src/scripts/check-template-parity.mjs || exit 1
@@ -253,6 +257,7 @@ clean:
 	@echo "Cleaning build artifacts..."
 	rm -rf $(BUILD_DIR)
 	rm -rf $(DIST_DIR)
+	rm -f src/references/kg-edges.jsonl
 	@echo "Clean complete"
 
 # Show package contents
@@ -290,8 +295,12 @@ sync-skill:
 	cp src/agents/*.md $(AGENTS_INSTALL_DIR)/
 # Verify ALL synced trees, not just agents+modules. The old check diffed only those two, so a
 # stale script or reference could survive a "Sync verified." with no complaint.
+# DECISION plan-2026-07-16T085306-8bd12f33/D-002: kg-edges.jsonl is generated-only (gitignored, regenerated
+# by every `make validate`, removed by `clean`). It must NOT be committed, synced, or shipped — do NOT drop
+# this exclusion or widen any src/references/*.md copy glob to include it. Gitignore does not hide files
+# from `diff -rq`, hence the explicit exclude here. See decisions.md D-002.
 	@diff -rq --exclude='.claude' src/scripts $(SKILL_INSTALL_DIR)/scripts \
-	  && diff -rq --exclude='.claude' src/references $(SKILL_INSTALL_DIR)/references \
+	  && diff -rq --exclude='.claude' --exclude='kg-edges.jsonl' src/references $(SKILL_INSTALL_DIR)/references \
 	  && diff -rq --exclude='.claude' src/agents $(SKILL_INSTALL_DIR)/agents \
 	  && diff -rq --exclude='.claude' src/scripts/modules $(SKILL_INSTALL_DIR)/scripts/modules \
 	  && diff -q src/SKILL.md $(SKILL_INSTALL_DIR)/SKILL.md \
