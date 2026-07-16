@@ -4,7 +4,7 @@ Three phases: Gate-In (gather context), Evaluate (verify + analyze), Gate-Out (d
 #### Phase 1: Gate-In (mandatory reads before any evaluation)
 1. Read `plan.md` — success criteria, verification strategy, assumptions, pre-mortem signals.
 2. Read `progress.md` — what was completed, what remains, what failed.
-3. Read `verification.md` — previous verification results (if iteration 2+). On re-entry after an interruption: a Criteria table with fewer rows than plan.md's Success Criteria, or a `findings/review-iter-N[-passM].md` missing its `## Verdict` line, is PARTIAL evidence from an interrupted verifier/reviewer — treat it as such and re-spawn per the `-passM` naming rule rather than trusting file existence.
+3. Read `verification.md` — previous verification results (if iteration 2+). On re-entry after an interruption: a Criteria table with fewer rows than plan.md's Success Criteria, or a `findings/review-iter-N[-passM].md` missing its `## Verdict` line, is PARTIAL evidence from an interrupted verifier/reviewer — treat it as such and re-spawn rather than trusting file existence (for a reviewer, per the `-passM` naming rule; a re-spawned verifier just returns results — verification.md has no passM scheme).
 4. Read `findings.md` + relevant `findings/*` — check if EXECUTE discoveries contradict earlier findings. Note contradictions in `decisions.md`.
 5. Read `checkpoints/*` — know rollback options before deciding next transition. Note available restore points in `decisions.md` if transitioning to PIVOT.
 6. Read `decisions.md` — check 3-strike patterns, review previous REFLECT cycles (iteration 2+).

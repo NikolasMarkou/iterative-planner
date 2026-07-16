@@ -314,7 +314,7 @@ See `references/decision-anchoring.md`.
 
 ## Recovery from Context Loss
 
-0. If `plans/.current_plan` is missing or corrupted: run `bootstrap.mjs list` to find plan directories, then recreate the pointer: `echo "plan-YYYY-MM-DDTHHMMSS-XXXXXXXX" > plans/.current_plan` (substitute the actual directory name — a legacy `plan_YYYY-MM-DD_XXXXXXXX` name is equally valid here).
+0. If `plans/.current_plan` is missing or corrupted: run `bootstrap.mjs list` to find plan directories — but BEFORE recreating the pointer, check the newest directory for close evidence (state.md `Current State: CLOSE` and/or `lessons_snapshot.md` present): if found, that plan closed legitimately — item 13 governs (nothing to resume; do not resurrect the pointer). Otherwise recreate it: `echo "plan-YYYY-MM-DDTHHMMSS-XXXXXXXX" > plans/.current_plan` (substitute the actual directory name — a legacy `plan_YYYY-MM-DD_XXXXXXXX` name is equally valid here).
 1. `plans/.current_plan` → plan dir name
 2. `state.md` → where you are
 3. `plan.md` → current plan
@@ -327,7 +327,7 @@ See `references/decision-anchoring.md`.
 10. `plans/SYSTEM.md` → system atlas / structural prior (read before PLAN or EXPLORE)
 11. `plans/INDEX.md` → grep by topic keyword (each row is one line; do not read the whole file) — topic-to-directory mapping (find old findings by topic when sliding window has trimmed them)
 12. Resume from current state. Never start over. When resuming mid-EXECUTE (state.md names a current step), first derive the step's plan-qualified commit tag (Git Integration below: drop the plan-dir name's `THHMMSS` segment) and check `git log --oneline --fixed-strings --grep="plan-YYYY-MM-DD-HASH/iter-N/step-M]"` — keep the closing `]`; a bare `iter-N/step-M` grep false-positives against other plans' commits and `step-1`/`step-10` substrings. If a commit already exists, the step completed before the interruption — run the Post-Step Gate for it instead of re-executing the step. If NO matching commit exists, check `git status --porcelain` before re-executing — a dirty tree means the executor died mid-step: revert uncommitted changes to the last clean commit first. Also cross-check `changelog.md`'s trailing lines against `git log` — a changelog line whose commit field names no existing commit (or says `uncommitted`) is limbo from the interrupted step; note it in `decisions.md` before re-executing.
-13. Resuming at/near CLOSE: check `plans/.current_plan`. Pointer GONE = close completed — nothing to resume. Pointer PRESENT with CLOSE-shaped artifacts (summary.md exists, LESSONS.md/SYSTEM.md freshly rewritten) = the archivist was interrupted — apply `agents/ip-orchestrator.md` CLOSE State step 3 (re-run archivist Steps 1-4 only as needed — they are batch-safe, see ip-archivist Rules — then run `bootstrap.mjs close` once). Note the lag: state.md's CLOSE transition is written INSIDE `bootstrap.mjs close` (archivist Step 5), so a kill during Steps 1-4 leaves state.md at the pre-CLOSE state while the artifacts already look CLOSE-shaped; `bootstrap.mjs resume`/`status` flag the inverse signature (state.md=CLOSE, pointer present) with an explicit `INCOMPLETE CLOSE` line.
+13. Resuming at/near CLOSE: check `plans/.current_plan`. Pointer GONE = close completed — nothing to resume. Pointer PRESENT with CLOSE-shaped artifacts (summary.md exists, LESSONS.md/SYSTEM.md freshly rewritten) = the archivist was interrupted — apply `agents/ip-orchestrator.md` CLOSE State step 3 (re-run archivist Steps 1-4 only as needed — they are batch-safe, see ip-archivist Rules; the Step-3/4 post-rewrite validator gates always re-run, even over rewrites the interrupted run already completed — then run `bootstrap.mjs close` once). Note the lag: state.md's CLOSE transition is written INSIDE `bootstrap.mjs close` (archivist Step 5), so a kill during Steps 1-4 leaves state.md at the pre-CLOSE state while the artifacts already look CLOSE-shaped; `bootstrap.mjs resume`/`status` flag the inverse signature (state.md=CLOSE, pointer present) with an explicit `INCOMPLETE CLOSE` line.
 
 ## Git Integration
 
@@ -363,7 +363,7 @@ A sub-agent can terminate WITHOUT reporting — killed by the user, harness inte
 - **EXPLORE**: expected `findings/{topic-slug}.md` missing or empty → re-spawn that topic once (orchestrator dispatch step 5; delete an empty stale copy first).
 - **PLAN**: `plan.md` truncated or sections missing → orchestrator section-verify catches it (dispatch step 3); re-spawn naming the defective sections.
 - **EXECUTE**: killed executor → Recovery step 12 (commit-tag grep, then dirty-tree check, then changelog-tail cross-check).
-- **REFLECT**: partial `verification.md` (fewer Criteria rows than plan.md's Success Criteria) or a review file missing its `## Verdict` line → treat as interrupted evidence, re-spawn per the `-passM` naming rule (REFLECT Gate-In).
+- **REFLECT**: partial `verification.md` (fewer Criteria rows than plan.md's Success Criteria) or a review file missing its `## Verdict` line → treat as interrupted evidence and re-spawn (for a reviewer, per the `-passM` naming rule; a re-spawned verifier just returns results — verification.md has no passM scheme) (REFLECT Gate-In).
 - **CLOSE**: archivist interrupted → Recovery item 13 (pointer check; archivist Steps 1-4 batch-safe, Step 5 exactly once).
 
 ### Agent Definitions
