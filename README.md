@@ -291,7 +291,7 @@ Each file has a single owner. Only the owner writes; others read. This prevents 
 | `decisions.md` | Orchestrator + Plan-writer (author entries) + Executor (back-fills `Anchor-Refs` on anchored entries, records DRY exceptions) + Archivist (CLOSE-time Anchor-Refs backfill remediation, ip-archivist.md Step 2) | All agents |
 | `findings.md` (index) | Orchestrator | Plan-writer, Reviewer |
 | `findings/{topic}.md` | Explorer (one file per explorer) | Orchestrator, Plan-writer |
-| `findings/review-iter-N.md` | Reviewer | Orchestrator |
+| `findings/review-iter-N[-passM].md` | Reviewer | Orchestrator |
 | `progress.md` | Orchestrator (Post-Step Gate) | All agents |
 | `verification.md` | Plan-writer (template) + Orchestrator (merges Verifier's returned results) | Orchestrator, Reviewer |
 | `changelog.md` | Executor (append per edit) + Orchestrator (Post-Step Gate) | Orchestrator, Reviewer |

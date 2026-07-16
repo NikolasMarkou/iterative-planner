@@ -31,12 +31,12 @@ reasons it might still be wrong, despite passing verification.
 9. **Changelog scan (v2.15.0+)**: read `{plan-dir}/changelog.md` for this iteration. Surface:
    - **HIGH-radius edits** — list them, check each has a sufficiently specific reason; flag thin reasons (e.g. "minor fix", "tweak").
    - **"Tiny edit, big radius" outliers** — `EDIT(+N,-M)` with small N+M but radius MED/HIGH (small change in a hot file). These are the canonical "one-line change in shared util" risk.
-   - **Missing decision-refs** — HIGH-radius edits with `-` in field 7 deserve a closer look at whether one of the 5 anchor-trigger conditions applies.
+   - **Missing decision-refs** — HIGH-radius edits with `-` in field 7 deserve a closer look at whether one of the 5 anchor-trigger conditions applies. Note: `validate-plan.mjs` (v2.51.0+) already WARNs `[changelog-dref-orphan]` when a non-`-` dref resolves to no `## D-NNN` heading in decisions.md — the orphan half is automated; your remaining judgment half is whether a `-` SHOULD have carried a dref (the 5 anchor-trigger conditions in `references/decision-anchoring.md`).
    - **REVERT lines** — confirm reverts match the failure narrative in `decisions.md`.
    The changelog is informational only — concerns surface in the review report; nothing here blocks CLOSE.
 
 ## Output Format
-Write findings to `{plan-dir}/findings/review-iter-N.md`:
+Write findings to `{plan-dir}/findings/review-iter-N.md`. Re-review convention: a re-review of an already-reviewed iteration writes `review-iter-N-passM.md` (M=2,3,…) — NEVER overwrite a prior pass's file. Template:
 ```
 # Adversarial Review — Iteration N
 
