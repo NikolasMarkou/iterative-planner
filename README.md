@@ -290,7 +290,7 @@ Each file has a single owner. Only the owner writes; others read. This prevents 
 | `plan.md` | Plan-writer (full rewrite) + Orchestrator (Post-Step Gate) | Executor, Verifier, Reviewer |
 | `decisions.md` | Orchestrator + Plan-writer (author entries) + Executor (back-fills `Anchor-Refs` on anchored entries, records DRY exceptions) + Archivist (CLOSE-time Anchor-Refs backfill remediation, ip-archivist.md Step 2) | All agents |
 | `findings.md` (index) | Orchestrator | Plan-writer, Reviewer |
-| `findings/{topic}.md` | Explorer (one file per explorer) | Orchestrator, Plan-writer |
+| `findings/{topic}.md` | Explorer (one file per explorer; orchestrator may delete an empty stale copy before a re-spawn) | Orchestrator, Plan-writer |
 | `findings/review-iter-N[-passM].md` | Reviewer | Orchestrator |
 | `progress.md` | Orchestrator (Post-Step Gate) | All agents |
 | `verification.md` | Plan-writer (template) + Orchestrator (merges Verifier's returned results) | Orchestrator, Reviewer |
