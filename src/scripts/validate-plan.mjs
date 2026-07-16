@@ -1738,6 +1738,58 @@ function checkChangelogFormat(planDir, issues) {
 }
 
 // ---------------------------------------------------------------------------
+// v2.51.0 — changelog dref join integrity (WARN-only)
+// ---------------------------------------------------------------------------
+// DECISION plan-2026-07-16T085306-8bd12f33/D-001 — join integrity is a SEPARATE
+// flat check, string-set membership only, called ONLY from validate().
+// What NOT to do:
+//   - Do NOT re-validate the dref SHAPE here (no `D-\d{3,}` regex, no new field
+//     constants): the shape is already guaranteed by CHANGELOG_SPEC's DREF_RE in
+//     checkChangelogFormat's loop, and the source-grep test in
+//     validate-plan.test.mjs pins this file as regex-free for the six changelog
+//     fields. This check compares the already-validated string against
+//     parseDecisionsEntries()'s idStr set — nothing more.
+//   - Do NOT wire this into runPreStepGate (state.md-only, <50ms, exit-2 contract)
+//     and do NOT promote to ERROR (the changelog is advisory; a stale dref must
+//     never block a CLOSE).
+//   - Do NOT add a second decisions.md parser: parseDecisionsEntries is the one
+//     parser (it is already comment/compression-blind — a dref whose decision was
+//     compressed away legitimately WARNs; accepted trade-off).
+// See decisions.md D-001 (plan-2026-07-16T085306-8bd12f33).
+function checkChangelogDrefIntegrity(planDir, issues) {
+  const content = readFile(join(planDir, "changelog.md"));
+  if (!content) return; // Optional file — same convention as checkChangelogFormat.
+  const decisionsContent = readFile(join(planDir, "decisions.md"));
+  if (!decisionsContent) return; // No decisions.md → nothing to join against.
+
+  const known = new Set(parseDecisionsEntries(decisionsContent).entries.map((e) => e.idStr));
+
+  const lines = content.split("\n");
+  let lineNo = 0;
+  for (const raw of lines) {
+    lineNo++;
+    const line = raw.trim();
+    // Same skip conditions as checkChangelogFormat — header, italic note,
+    // comment, and inline-compressed lines are not data lines.
+    if (!line) continue;
+    if (line.startsWith("#")) continue;
+    if (line.startsWith("*")) continue;
+    if (line.startsWith("<!--")) continue;
+    if (CHANGELOG_COMPRESSED_INLINE_RE.test(line)) continue;
+    const fields = splitChangelogFields(line);
+    if (fields.length !== 8) continue; // Malformed lines are checkChangelogFormat's business.
+    const dref = fields[6];
+    if (dref !== "-" && !known.has(dref)) {
+      issues.push({
+        severity: "WARN",
+        check: "changelog-dref-orphan",
+        message: `changelog.md:${lineNo} dref ${dref} has no matching entry in decisions.md (no ## ${dref} heading found)`,
+      });
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // v2.17.0 — Presentation Contract advisory
 // ---------------------------------------------------------------------------
 // Best-effort signal: when state.md records a user-facing transition
@@ -1834,6 +1886,8 @@ function validate(planDirName) {
   checkAnchorRefsValidity(planDir, planId, issues, cwd);
   // v2.15.0 — per-edit changelog (informational; never blocks CLOSE).
   checkChangelogFormat(planDir, issues);
+  // v2.51.0 — changelog dref join integrity (WARN-only; never blocks CLOSE).
+  checkChangelogDrefIntegrity(planDir, issues);
   // v2.17.0 — Presentation Contract advisory (best-effort, WARN-only).
   checkPresentationContractLog(planDir, issues);
 
