@@ -32,7 +32,7 @@ All seven reads are CORE. Do not evaluate until all are complete.
 22. **Adversarial review** *(EXTENDED — iteration 2+ by default; the orchestrator may spawn it earlier by choice, e.g. an iteration-1 attack-before-release pass ahead of a release/version bump — the iteration-2+ default is unchanged)* — spawn an `ip-reviewer` agent (or Task subagent) with `verification.md`, `plan.md` (criteria), and `decisions.md`. Its job: are criteria adequate? what wasn't tested? does evidence support CLOSE? Output → `findings/review-iter-N.md`. Main agent must address each concern in `decisions.md` before routing to CLOSE, AND honor the review's `## Verdict` (READY_TO_CLOSE / NEEDS_WORK / NEEDS_INVESTIGATION): a non-`READY_TO_CLOSE` verdict must be reflected in the routing recommendation — don't recommend CLOSE over it without a justified override in `decisions.md`. See "Sub-Agent Architecture" section for dispatch details.
 
 #### Phase 3: Gate-Out (write + present)
-23. Write `verification.md` — complete Verdict section.
+23. Write `verification.md` — complete Verdict section. 0 verified criteria (an empty or placeholder Verification Strategy) is FAIL-equivalent for the item-5 recommendation below: never recommend CLOSE on an empty Verification Strategy without calling it out explicitly.
 24. Write `decisions.md` — what happened, what was learned, root cause (if failure). Include Simplification Checks output.
 25. Write `progress.md` — update status of all items.
 26. Write `state.md` — log evaluation summary, update transition.
