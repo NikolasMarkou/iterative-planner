@@ -15,6 +15,8 @@ Iterative Planner gives the agent a disk. Every finding, decision, pivot, and de
 
 > The context window is RAM. The filesystem is disk. Truth lives on disk.
 
+And here is the part that sneaks up on you. Those files are not just scratch space for one task — they are a record the *next* task inherits. Every plan leaves behind findings, decisions, hard-won lessons, and a living map of the system it worked on. So the agent stops starting cold. It begins each new job already knowing the terrain, and that knowledge compounds: the tenth plan is sharper than the first because it stands on the nine before it. This tool is least impressive on day one and most valuable on day thirty — it quietly gets better at *your* codebase the more you use it.
+
 Use it for refactors, migrations, debugging, system design, or deep research — anything where "just do it" quietly turns into a mess.
 
 ---
@@ -194,11 +196,13 @@ Five ideas separate this from "ask Claude to make a plan."
 
 Everything that matters lives on disk, not in the conversation. State, decisions, findings, progress, and verification results survive restarts, compression, and topic drift. **Mandatory re-reads** keep the agent anchored: `state.md` is re-read every 10 tool calls; after 50 messages, `state.md` and `plan.md` are re-read before every response. The window can rot. The plan directory is the disk that does not.
 
-### 2. Each plan makes the next one smarter
+### 2. It compounds — the more you use it, the smarter it starts
+
+This is the biggest second-order effect, and the easiest to miss. A single plan is a useful artifact. A *history* of plans is something else entirely: an understanding of your system that deepens every time you run one.
 
 When a plan closes, its findings and decisions merge into consolidated files at the `plans/` root, and the next plan reads them during EXPLORE. Migrations build on earlier debugging sessions; design plans inherit constraints found in prior research; failed approaches stay visible so nobody walks into the same wall twice. A **sliding window** keeps the consolidated files to the 4 most recent plans (older sections stay intact in their own directories, indexed by `plans/INDEX.md`).
 
-Beside the goal-driven findings sits the **system atlas** (`plans/SYSTEM.md`): a curated, domain-neutral map of *what the system being planned against actually is* — Identity, Components, Boundaries, Invariants, Flows, Known Patterns. Capped at 300 lines, rewritten at CLOSE, read at the start of every EXPLORE and PLAN. It is the structural prior the agent carries into every new plan.
+At the center of this sits the **system atlas** (`plans/SYSTEM.md`): a curated, domain-neutral map of *what the system being planned against actually is* — Identity, Components, Boundaries, Invariants, Flows, Known Patterns. Capped at 300 lines, rewritten at CLOSE, read at the start of every EXPLORE and PLAN. It is why the agent walks into each task already understanding your codebase instead of rediscovering it from scratch — and because the atlas is rewritten at the close of every plan, that understanding gets sharper with use. The curve bends the right way: the work gets easier as the map gets better.
 
 ### 3. Research that catches itself lying
 
