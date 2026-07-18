@@ -5,11 +5,17 @@
 [![Tests](https://img.shields.io/badge/tests-643%20passing-brightgreen.svg)](src/scripts/bootstrap.test.mjs)
 [![Sponsored by Electi](https://img.shields.io/badge/Sponsored%20by-Electi-red.svg)](https://www.electiconsulting.com)
 
-A [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skill that turns ad-hoc agent runs into structured, recoverable, evidence-driven work.
+**A [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skill that stops an agent from losing the plot halfway through a hard task.**
 
-Left unstructured, Claude plans once, hits a wall, and layers fix on fix until it loses track of what it already tried. Iterative Planner replaces that with a state machine — **Explore → Plan → Execute → Reflect → Pivot → Close** — and writes every finding, decision, and pivot to disk as it goes. The filesystem is the working memory: the context window can rot mid-task, but the plan directory cannot.
+Turn an agent loose on something big and a familiar failure shows up. It plans once, starts strong, then hits a wall. It patches the wall. The patch breaks something else, so it patches that. A few turns later it has forgotten which fixes it already tried, the codebase is a thicket of half-reverted experiments, and nobody — human or model — can say what state anything is in.
 
-Use it for refactors, migrations, debugging, system design, or deep research — anything where "just do it" turns into a mess.
+The root cause is not intelligence. It is memory. **The context window is RAM: fast, volatile, and it rots mid-task.** Push enough tokens through it and the early decisions blur, the failed approaches fade, and the agent starts relitigating settled ground.
+
+Iterative Planner gives the agent a disk. Every finding, decision, pivot, and dead end is written to the filesystem the moment it happens — structured, indexed, and re-read on a schedule. The work is driven by a six-state machine: **Explore → Plan → Execute → Reflect → Pivot → Close**. The context window can forget. The plan directory does not.
+
+> The context window is RAM. The filesystem is disk. Truth lives on disk.
+
+Use it for refactors, migrations, debugging, system design, or deep research — anything where "just do it" quietly turns into a mess.
 
 ---
 
@@ -41,6 +47,8 @@ Use it for refactors, migrations, debugging, system design, or deep research —
 
 ## When to Use This
 
+Reach for it when the task is big enough that "what did I already try?" is a question you expect to ask. Skip it when the answer is already in front of you.
+
 | Use it | Skip it |
 |--------|---------|
 | Multi-step tasks touching 3+ files or 2+ systems | Single-file, single-step changes |
@@ -57,25 +65,26 @@ Use it for refactors, migrations, debugging, system design, or deep research —
 
 ## How It Works
 
-Six states. Every transition is logged, every decision recorded, and the filesystem is the source of truth.
+Six states, one loop. Every transition is logged, every decision recorded, and the filesystem — not the conversation — is the source of truth.
 
 ```mermaid
 stateDiagram-v2
     [*] --> EXPLORE
     EXPLORE --> PLAN : enough context
     PLAN --> EXPLORE : need more context
-    PLAN --> PLAN : user rejects, revise
+    PLAN --> PLAN : user rejects / revise
     PLAN --> EXECUTE : user approves
-    EXECUTE --> REFLECT : phase ends, fails, or autonomy leash hits
-    REFLECT --> CLOSE : criteria PASS, user confirms
-    REFLECT --> PIVOT : failed or better approach
+    EXECUTE --> REFLECT : phase ends/failed/surprise/leash
+    REFLECT --> CLOSE : all criteria met
+    REFLECT --> PIVOT : failed / better approach
     REFLECT --> EXPLORE : need more context
     REFLECT --> EXECUTE : same-iteration completion-fix
     PIVOT --> PLAN : new approach ready
     CLOSE --> [*]
 ```
 
-> If your viewer does not render mermaid, the table below covers the same states.
+<details>
+<summary><strong>No mermaid renderer? The same six states as a table</strong></summary>
 
 | State | What happens | Guardrails |
 |-------|-------------|------------|
@@ -86,13 +95,15 @@ stateDiagram-v2
 | **PIVOT** | Diagnose the failure, hunt for ghost constraints, propose a new direction. | Must explain what failed and why. User approves new direction. |
 | **CLOSE** | Write summary. Audit decision anchors. Merge knowledge into consolidated files. Rewrite LESSONS.md and SYSTEM.md. | Verify clean output. No leftover artifacts. |
 
-**Iteration limits.** Iterations increment on each PLAN → EXECUTE transition. At **iteration 5** the protocol forces a decomposition analysis — identify 2-3 independent sub-goals that could each be a separate plan. At **iteration 6+** it hard-stops and the task must be broken up. This prevents the runaway "one more iteration" pattern that destroys plans.
+</details>
+
+**The runaway brake.** Iterations increment on each PLAN → EXECUTE transition. At **iteration 5** the protocol forces a decomposition analysis — carve the goal into 2-3 independent sub-goals that could each be their own plan. At **iteration 6+** it hard-stops. This is the deliberate cure for the "just one more iteration" spiral that quietly destroys plans.
 
 ---
 
 ## Get Started in 60 Seconds
 
-**Requires**: Node.js 18+ (for the bootstrap and validator scripts).
+**Requires**: Node.js 18+ (for the bootstrap and validator scripts). No npm install, no runtime dependencies — the scripts are plain ESM on Node builtins.
 
 ### Option 1 — Zip package (recommended)
 
@@ -130,13 +141,13 @@ The skill works without sub-agents — they are an optimization layer, not a req
 
 ### First run
 
-In any project directory, give Claude a complex task or just say **"plan this"**. Claude runs `bootstrap.mjs new "<your goal>"`, drops into EXPLORE, and walks through the cycle.
+In any project directory, give Claude a complex task or just say **"plan this"**. Claude runs `bootstrap.mjs new "<your goal>"`, drops into EXPLORE, and walks the cycle.
 
 ---
 
 ## A Worked Example
 
-A complete cycle, condensed.
+Watch one full cycle, condensed. Nothing here is a mock-up — this is the shape every plan takes.
 
 > **You**: "I want to migrate our auth from session cookies to stateless JWTs. Plan this."
 
@@ -171,38 +182,38 @@ If a step fails: **revert uncommitted**, two fix attempts max, each constrained 
 
 **Claude (CLOSE)** spawns `ip-archivist` to write `summary.md`, audit `# DECISION plan-2026-05-07T091743-a3f1b2c9/D-NNN` anchors in source, rewrite `plans/LESSONS.md` (≤200 lines), and rewrite the `plans/SYSTEM.md` atlas (≤300 lines). Then `bootstrap.mjs close` merges per-plan findings and decisions into the consolidated cross-plan files (sliding window of the 4 most recent plans).
 
-The next plan starts with all of this on disk, available to read.
+The next plan starts with all of this on disk, waiting to be read.
 
 ---
 
 ## Why This Works
 
-Five properties separate this from "ask Claude to make a plan."
+Five ideas separate this from "ask Claude to make a plan."
 
-### 1. Persistent memory
+### 1. Memory that outlives the context window
 
-Everything important lives on disk, not the context window. State, decisions, findings, progress, and verification results survive conversation restarts. **Mandatory re-reads** keep the agent grounded: `state.md` is re-read every 10 tool calls; after 50 messages, `state.md` and `plan.md` are re-read before every response. The context window can rot mid-task; the plan directory cannot.
+Everything that matters lives on disk, not in the conversation. State, decisions, findings, progress, and verification results survive restarts, compression, and topic drift. **Mandatory re-reads** keep the agent anchored: `state.md` is re-read every 10 tool calls; after 50 messages, `state.md` and `plan.md` are re-read before every response. The window can rot. The plan directory is the disk that does not.
 
-### 2. Cross-plan intelligence
+### 2. Each plan makes the next one smarter
 
-When a plan closes, its findings and decisions merge into consolidated files at the `plans/` root, and the next plan reads them during EXPLORE. Migrations build on earlier debugging sessions; design plans inherit constraints discovered during prior research; failed approaches stay visible so future plans don't repeat dead ends. A **sliding window** keeps the consolidated files to the 4 most recent plans (older sections stay intact in their own directories, indexed by `plans/INDEX.md`).
+When a plan closes, its findings and decisions merge into consolidated files at the `plans/` root, and the next plan reads them during EXPLORE. Migrations build on earlier debugging sessions; design plans inherit constraints found in prior research; failed approaches stay visible so nobody walks into the same wall twice. A **sliding window** keeps the consolidated files to the 4 most recent plans (older sections stay intact in their own directories, indexed by `plans/INDEX.md`).
 
-Alongside the goal-driven findings sits the **system atlas** (`plans/SYSTEM.md`): a curated, domain-neutral map of *what the system being planned against actually is* — Identity, Components, Boundaries, Invariants, Flows, Known Patterns. Capped at 300 lines, rewritten at CLOSE, read at the start of every EXPLORE and PLAN. It is the structural prior the agent carries into every new plan.
+Beside the goal-driven findings sits the **system atlas** (`plans/SYSTEM.md`): a curated, domain-neutral map of *what the system being planned against actually is* — Identity, Components, Boundaries, Invariants, Flows, Known Patterns. Capped at 300 lines, rewritten at CLOSE, read at the start of every EXPLORE and PLAN. It is the structural prior the agent carries into every new plan.
 
-### 3. Self-correcting research
+### 3. Research that catches itself lying
 
-Every discovery is written to `findings.md` with file paths, code-path traces, and evidence. The agent cannot transition to PLAN until it has at least 3 indexed findings covering problem scope, affected areas, and existing patterns. When execution proves a finding wrong, it gets a `[CORRECTED iter-N]` marker — the original stays for traceability.
+Every discovery is written to `findings.md` with file paths, code-path traces, and evidence. The agent cannot advance to PLAN until it holds at least 3 indexed findings covering problem scope, affected areas, and existing patterns. When execution proves a finding wrong, that finding gets a `[CORRECTED iter-N]` marker — the original stays put for traceability. Being wrong is recorded, not erased.
 
 ### 4. The autonomy leash
 
-When a step fails during EXECUTE, the agent gets **2 fix attempts**, each constrained to reverting, deleting, or a minimal change. If neither works, it stops, reverts uncommitted changes, presents what happened, and asks you. No silent third attempts. No "one more try." This is the single most important rule for keeping unattended agent work safe.
+When a step fails during EXECUTE, the agent gets **2 fix attempts**, each constrained to reverting, deleting, or a minimal change. If neither lands, it stops, reverts uncommitted changes, presents what happened, and asks you. No silent third attempt. No "one more try." This single rule is what makes unattended agent work safe to leave running.
 
-### 5. Revert-first complexity control
+### 5. When in doubt, subtract
 
-The default response to failure is to **simplify, never to add**: can I fix by reverting? deleting? a one-line change? If none of those — **stop** and enter REFLECT. Hard limits back this up.
+The default response to failure is to **simplify, never to add**: can I fix this by reverting? By deleting? With a one-line change? If none of those — **stop** and enter REFLECT. Hard limits enforce the instinct.
 
 <details>
-<summary><strong>Complexity hard limits</strong></summary>
+<summary><strong>The hard limits that keep complexity from winning</strong></summary>
 
 | Rule | What it does |
 |------|-------------|
@@ -214,12 +225,10 @@ The default response to failure is to **simplify, never to add**: can I fix by r
 
 </details>
 
-### Reasoning frameworks built into each state
-
-Each state embeds domain-agnostic thinking tools so the rigor is structural, not improvised.
+The rigor is not improvised turn by turn — each state ships with domain-agnostic thinking tools baked in.
 
 <details>
-<summary><strong>Framework per state</strong></summary>
+<summary><strong>The reasoning framework wired into each state</strong></summary>
 
 | Framework | State | What it does |
 |-----------|-------|-------------|
@@ -235,12 +244,10 @@ Each state embeds domain-agnostic thinking tools so the rigor is structural, not
 
 </details>
 
-### Audit trail and clean output
-
-Three mechanisms keep the workspace honest, all visible on disk.
+And three mechanisms keep the workspace honest, all of them auditable on disk.
 
 <details>
-<summary><strong>The three mechanisms</strong></summary>
+<summary><strong>The three honesty mechanisms</strong></summary>
 
 - **Decision anchoring** — when code survives a failed alternative, the agent leaves a plan-qualified `# DECISION <plan-id>/D-NNN` comment at the point of impact, stating what *not* to do and why. The plan-id prefix stays resolvable even after the consolidated `plans/DECISIONS.md` sliding-window trim. The validator audits every anchor at CLOSE. (Details: [`src/references/decision-anchoring.md`](src/references/decision-anchoring.md).)
 - **Per-edit changelog + blast-radius scoring** — every file edit appends one line to `{plan-dir}/changelog.md` (timestamp, iter/step, commit, path, op, blast-radius tier, decision-ref, reason). A deterministic scorer tiers each edit LOW/MED/HIGH and surfaces "tiny edit, big radius" outliers that plan-level failure modes miss. Always advisory, never blocks CLOSE. (Details: [`src/references/blast-radius.md`](src/references/blast-radius.md).)
@@ -251,6 +258,8 @@ Three mechanisms keep the workspace honest, all visible on disk.
 ---
 
 ## The Plan Directory
+
+Everything the agent knows about a task lives in one directory. Peek inside and you can reconstruct the entire train of thought.
 
 ```
 plans/
@@ -276,25 +285,28 @@ plans/
 
 **Directory naming** — a plan directory is `plan-YYYY-MM-DDTHHMMSS-XXXXXXXX` (UTC timestamp, colon-free so it is legal on Windows, plus an 8-char hex tail). Directories created before v2.36.0 use the legacy shape `plan_YYYY-MM-DD_XXXXXXXX`; that shape is **never generated again but is always still read** — the pointer, `retire`, the `# DECISION` anchor scan, the consolidated-file sections, and the sliding-window trim all accept both grammars, so old plans and the anchors they left in your source keep resolving.
 
-Templates for every file are in [`src/references/file-formats.md`](src/references/file-formats.md).
-
-**File lifecycle** — each file has a lifecycle: which states write it, which read it, which never touch it. The full matrix is in [`src/SKILL.md`](src/SKILL.md). The protocol enforces a **read-before-write** rule on every plan file — the writing agent must read first, even on the first update after bootstrap.
+Templates for every file are in [`src/references/file-formats.md`](src/references/file-formats.md). Each file also has a **lifecycle** — which states write it, which read it, which never touch it — and the protocol enforces a **read-before-write** rule on every plan file: the writing agent must read first, even on the first update after bootstrap.
 
 ### File ownership
 
-Each file has a single owner. Only the owner writes; others read. This prevents concurrent-write conflicts when sub-agents run in parallel. Co-ownership is permitted where writes are disjoint and never concurrent (the orchestrator sequences the writers), and each co-owner's scope is named in the table. Usually the orchestrator is the non-authoring co-writer, confined to Post-Step Gate cursor/ledger updates. `decisions.md` inverts this — the Orchestrator and Plan-writer author the entries, while the Executor writes into entries it did not author (back-filling `Anchor-Refs`, recording DRY exceptions) inside its own step's commit.
+One rule keeps parallel sub-agents from colliding: **each file has a single owner.** Only the owner writes; everyone else reads. Co-ownership is allowed only where writes are disjoint and never concurrent (the orchestrator sequences the writers), and each co-owner's scope is named explicitly.
 
-| File | Owner | Readers |
-|------|-------|---------|
+<details>
+<summary><strong>Peek under the hood: who owns which file</strong></summary>
+
+Usually the orchestrator is the non-authoring co-writer, confined to Post-Step Gate cursor/ledger updates. `decisions.md` inverts this — the Orchestrator and Plan-writer author the entries, while the Executor writes into entries it did not author (back-filling `Anchor-Refs`, recording DRY exceptions) inside its own step's commit.
+
+| File | Owner (Writes) | Readers |
+|------|----------------|---------|
 | `state.md` | Orchestrator | All agents |
-| `plan.md` | Plan-writer (full rewrite) + Orchestrator (Post-Step Gate) | Executor, Verifier, Reviewer |
+| `plan.md` | Plan-writer (full rewrite) + Orchestrator (Post-Step Gate: step checkbox, marker, complexity budget) | Executor, Verifier, Reviewer |
 | `decisions.md` | Orchestrator + Plan-writer (author entries) + Executor (back-fills `Anchor-Refs` on anchored entries, records DRY exceptions) + Archivist (CLOSE-time Anchor-Refs backfill remediation, ip-archivist.md Step 2) | All agents |
 | `findings.md` (index) | Orchestrator | Plan-writer, Reviewer |
-| `findings/{topic}.md` | Explorer (one file per explorer; orchestrator may delete an empty stale copy before a re-spawn) | Orchestrator, Plan-writer |
+| `findings/{topic}.md` | Explorer (one per file; orchestrator may delete an empty stale copy before a re-spawn) | Orchestrator, Plan-writer |
 | `findings/review-iter-N[-passM].md` | Reviewer | Orchestrator |
 | `progress.md` | Orchestrator (Post-Step Gate) | All agents |
 | `verification.md` | Plan-writer (template) + Orchestrator (merges Verifier's returned results) | Orchestrator, Reviewer |
-| `changelog.md` | Executor (append per edit) + Orchestrator (Post-Step Gate) | Orchestrator, Reviewer |
+| `changelog.md` | Executor (append per edit) + Orchestrator (Post-Step Gate: confirm one line per edited file) | Orchestrator (REFLECT Gate-In), Reviewer (REFLECT scan) |
 | `checkpoints/*` | Executor | Orchestrator (for PIVOT + EXECUTE leash-hit) |
 | `summary.md` | Archivist | — |
 | `plans/FINDINGS.md` | Archivist (via bootstrap) | Orchestrator, Plan-writer |
@@ -303,11 +315,18 @@ Each file has a single owner. Only the owner writes; others read. This prevents 
 | `plans/SYSTEM.md` | Archivist | Orchestrator, Plan-writer, Explorer |
 | `plans/INDEX.md` | Archivist (via bootstrap) | Orchestrator |
 
+</details>
+
 ---
 
 ## Bootstrapping
 
-Manage plan directories from your project root:
+A single Node script manages every plan directory from your project root. You rarely type these by hand — Claude runs them for you — but they are the whole lifecycle, and worth knowing.
+
+The command you will reach for most is **`resume`**: at the start of a new conversation, after compression, or any time the agent seems to have lost track, it reconstructs the current state from disk and prints a structured re-entry summary. The agent never starts over — it picks up from `state.md`.
+
+<details>
+<summary><strong>The full bootstrap CLI</strong></summary>
 
 ```bash
 node <skill-path>/scripts/bootstrap.mjs new "goal"           # create new plan
@@ -322,12 +341,14 @@ node <skill-path>/scripts/bootstrap.mjs reset-attempts       # clear active plan
 node <skill-path>/scripts/validate-plan.mjs                  # validate active plan compliance
 ```
 
-- **`new`** creates the plan directory, writes the `.current_plan` pointer, ensures cross-plan files exist (`FINDINGS.md`, `DECISIONS.md`, `LESSONS.md`, `SYSTEM.md`, `INDEX.md`), adds `plans/` to `.gitignore`, and drops the agent into EXPLORE. Refuses if an active plan already exists — use `resume` to continue, `close` to end it, or `new --force` to close-and-replace.
+- **`new`** creates the plan directory, writes the `.current_plan` pointer, ensures cross-plan files exist (`FINDINGS.md`, `DECISIONS.md`, `LESSONS.md`, `SYSTEM.md`, `INDEX.md`), adds `plans/` to `.gitignore`, and drops the agent into EXPLORE. Refuses if an active plan already exists — use `resume` to continue, `close` to end it, or `new --force` to close-and-replace. The bare form `node bootstrap.mjs "goal"` is a backward-compatible alias for `new "goal"`.
 - **`close`** merges per-plan findings and decisions into the consolidated files (newest first), appends to `INDEX.md`, snapshots `LESSONS.md` to the plan directory, removes the pointer, and preserves the plan directory for reference.
-- **`resume`** is the key command for surviving context-window resets — at the start of a new conversation, after compression, or any time the agent seems to have lost track. It reads `state.md`, `plan.md`, `progress.md`, and `decisions.md` and prints a structured re-entry summary. **`status`** prints a one-line summary; **`list`** shows all plan directories with state and goal.
+- **`resume`** reads `state.md`, `plan.md`, `progress.md`, and `decisions.md` and prints the re-entry summary. **`status`** prints a one-line summary; **`list`** shows all plan directories with state and goal.
+
+</details>
 
 <details>
-<summary><strong>Merge edge cases</strong></summary>
+<summary><strong>What close does when it merges — the edge cases</strong></summary>
 
 When `close` merges per-plan files into `plans/FINDINGS.md` and `plans/DECISIONS.md`: only content at and below the first `##` heading is merged; per-plan files with no `##` headings are skipped as boilerplate; cross-plan boilerplate notes are stripped to avoid duplication; relative links like `(findings/foo.md)` are rewritten to include the plan directory path.
 
@@ -337,30 +358,35 @@ When `close` merges per-plan files into `plans/FINDINGS.md` and `plans/DECISIONS
 
 ## Sub-Agent Architecture
 
-The orchestrator coordinates seven specialized agents. Sub-agents cannot spawn other sub-agents — the orchestrator is the sole coordinator. Sub-agents are **optional**: if their definitions are not installed under `~/.claude/agents/`, the monolithic skill works as before.
+The orchestrator coordinates seven specialized agents. Sub-agents cannot spawn other sub-agents — the orchestrator is the sole coordinator. And the whole layer is **optional**: if the agent definitions are not installed under `~/.claude/agents/`, the monolithic skill drives the same state machine in a single thread.
 
-When the skill activates with the agent definitions installed, the conversation assumes the orchestrator role **in-thread** (it reads `agents/ip-orchestrator.md` and adopts it — it does not spawn a separate orchestrator); when they are not installed, the same conversation runs the full protocol single-threaded. See [`src/SKILL.md`](src/SKILL.md) "Orchestrator Role Assumption."
+When the skill activates with the definitions present, the conversation assumes the orchestrator role **in-thread** — it reads `agents/ip-orchestrator.md` and adopts it, rather than spawning a separate orchestrator. See [`src/SKILL.md`](src/SKILL.md) "Orchestrator Role Assumption."
+
+<details>
+<summary><strong>The seven agents: roles, tools, models</strong></summary>
 
 | Agent | Role | Tools | Model |
 |-------|------|-------|-------|
 | **Orchestrator** | State machine owner, dispatcher, user-facing relay | Agent, Read, Write, Edit, Bash, Grep, Glob | inherit |
 | **ip-explorer** | Read-only codebase research (EXPLORE) | Read, Write, Grep, Glob, Bash | sonnet |
-| **ip-plan-writer** | Generates `plan.md` and `verification.md` template (PLAN) | Read, Write, Edit, Grep, Glob | inherit |
+| **ip-plan-writer** | Generates `plan.md` and the `verification.md` template (PLAN) | Read, Write, Edit, Grep, Glob | inherit |
 | **ip-executor** | Implements one plan step at a time (EXECUTE) | Read, Edit, Write, Bash, Grep, Glob | inherit |
-| **ip-verifier** | Runs verification checks, returns results for Orchestrator to merge into `verification.md` (REFLECT) | Read, Bash, Grep, Glob | sonnet |
+| **ip-verifier** | Runs verification checks, returns results for the Orchestrator to merge into `verification.md` (REFLECT) | Read, Bash, Grep, Glob | sonnet |
 | **ip-reviewer** | Adversarial review, iteration ≥ 2 by default; earlier by orchestrator choice, e.g. an iteration-1 attack-before-release pass (REFLECT) | Read, Write, Grep, Glob, Bash | opus |
 | **ip-archivist** | CLOSE housekeeping: `summary.md`, anchor audit, LESSONS, SYSTEM | Read, Write, Edit, Grep, Glob, Bash | sonnet |
 
 **Dispatch by state**: EXPLORE — 1-3 explorers in parallel, one per topic. PLAN — one plan-writer. EXECUTE — one executor per step, sequential (exactly one executor at a time — plan steps are sequential, so executor file conflicts cannot arise). REFLECT — verifier(s) for checks, reviewer (iteration 2+ by default, or earlier by orchestrator choice — e.g. an iteration-1 attack-before-release pass) for adversarial review. CLOSE — archivist for the housekeeping.
 
+</details>
+
 ---
 
 ## Presentation Contracts
 
-Sub-agents are invisible to the user — only the orchestrator's chat text reaches them, and disk artifacts are memory, not a user-facing channel. To stop the orchestrator from collapsing critical artifacts (the verifier's PASS/FAIL table, the reviewer's concerns, a leash-failure block) into a terse summary, every user-facing state transition is governed by a named **Presentation Contract** that fixes when it fires, the ordered content list, the fidelity (verbatim vs digest), and the minimum sections (the floor).
+Sub-agents are invisible to you — only the orchestrator's chat text reaches you, and disk artifacts are memory, not a user-facing channel. Left to its own devices, an orchestrator will collapse a critical artifact (the verifier's PASS/FAIL table, the reviewer's concerns, a leash-failure block) into a terse summary and quietly drop the detail you needed. **Presentation Contracts** forbid that: every user-facing transition is governed by a named contract that fixes when it fires, the ordered content, the fidelity (verbatim vs digest), and the minimum sections it must include.
 
 <details>
-<summary><strong>The six contracts</strong></summary>
+<summary><strong>The six contracts and what each guarantees</strong></summary>
 
 | Contract | When | Floor |
 |----------|------|-------|
@@ -373,16 +399,16 @@ Sub-agents are invisible to the user — only the orchestrator's chat text reach
 
 </details>
 
-Canonical definitions live in [`src/references/file-formats.md`](src/references/file-formats.md) under "Presentation Contracts." This closes the gap where the protocol once used single verbs ("Present", "Report", "Surface") and the orchestrator defaulted to terse summaries.
+Canonical definitions live in [`src/references/file-formats.md`](src/references/file-formats.md) under "Presentation Contracts." This closes the old gap where the protocol used single verbs ("Present", "Report", "Surface") and the orchestrator defaulted to terse summaries.
 
 ---
 
 ## Validator
 
-`src/scripts/validate-plan.mjs` is a read-only protocol-compliance check. It runs automatically during REFLECT and can be run manually any time. Exit 0 = pass, exit 1 = errors; warnings are non-blocking. A separate `--pre-step` mode runs before each EXECUTE step and HARD-blocks (exit 2) on a leash-cap, wrong-state, iteration-cap, or no-plan condition.
+`src/scripts/validate-plan.mjs` is a read-only protocol-compliance check. It runs automatically during REFLECT and can be run by hand any time. Exit 0 = pass, exit 1 = errors; warnings are non-blocking. A separate `--pre-step` mode runs before each EXECUTE step and HARD-blocks (exit 2) on a leash-cap, wrong-state, iteration-cap, or no-plan condition — the mechanism that turns the autonomy leash from advice into enforcement.
 
 <details>
-<summary><strong>What it checks</strong></summary>
+<summary><strong>Everything the validator checks</strong></summary>
 
 State-transition validity; the mandatory `plan.md` sections (Problem Statement, Verification Strategy, Failure Modes, Assumptions, Pre-Mortem); the ≥3-findings gate before PLAN; cross-file consistency (state ↔ plan ↔ progress ↔ verification); the decisions schema (D-NNN sequential, "X at the cost of Y" trade-off, PIVOT complexity assessment); plan-qualified DECISION anchors in source (forward + reverse audit); the `verification.md` verdict structure; convergence metrics (iteration 2+); iteration limits; the SYSTEM.md cap; and the 8-field changelog format.
 
@@ -394,13 +420,15 @@ The validator cannot inspect chat content — it surfaces metadata signals only.
 
 ## Git Integration
 
+Commits are the agent's undo history, and the protocol is deliberate about when they happen.
+
 | Phase | Git behavior |
 |-------|-------------|
 | EXPLORE / PLAN / REFLECT / PIVOT | No commits. |
 | EXECUTE (success) | Commit after each step: `[plan-YYYY-MM-DD-HASH/iter-N/step-M] description`. Tag id = the plan-dir name with the `THHMMSS` segment dropped (`plan-2026-07-14T051317-317362c4` → `plan-2026-07-14-317362c4`); a legacy dir derives the same way with `_` normalized to `-`. The changelog's own `step` field stays bare `iter-N/step-M`. |
-| EXECUTE (failure) | Revert all uncommitted changes to last clean commit. |
+| EXECUTE (failure) | Revert all uncommitted changes to the last clean commit. |
 | PIVOT | Decide: keep successful commits, or `git checkout <checkpoint-commit> -- .` to revert. Choice logged in `decisions.md`. |
-| CLOSE | Final commit with summary. |
+| CLOSE | Finalizes **on disk**: writes `summary.md`, audits DECISION anchors, rewrites `plans/LESSONS.md` + `plans/SYSTEM.md`, merges the consolidated cross-plan files, then runs `bootstrap.mjs close`. **No git commit or tag is created** — a summarizing commit/tag at CLOSE is a documented, deferred spec item, not yet implemented (no agent or script issues any git commit/tag). |
 
 Bootstrap automatically adds `plans/` to `.gitignore`. Remove that entry if your team wants decision logs versioned for post-mortems.
 
@@ -427,7 +455,7 @@ Run `bootstrap.mjs new --force "new goal"`. This closes the active plan (merging
 The protocol forces a decomposition analysis: identify 2-3 independent sub-goals that could each be a separate plan. At iteration 6+, execution stops entirely.
 
 **Can I run the agents in parallel?**
-Explorers always parallelize. Verifiers can parallelize across independent checks. Executors never parallelize — exactly one executor runs at a time, because plan steps are sequential. The orchestrator sequences anything that touches the same plan file.
+Explorers always parallelize. Verifiers can parallelize across independent checks. Executors never parallelize — exactly one runs at a time, because plan steps are sequential. The orchestrator sequences anything that touches the same plan file.
 
 **Do I need the sub-agent definitions?**
 No. They are an optimization layer. Without them, the monolithic skill drives the same state machine in a single thread.
@@ -436,18 +464,16 @@ No. They are an optimization layer. Without them, the monolithic skill drives th
 Run `bootstrap.mjs resume`. It reconstructs the current state from disk and prints a summary. The agent never starts over — it picks up from `state.md`.
 
 **Why plan-qualified DECISION anchors?**
-The consolidated `plans/DECISIONS.md` uses a 4-plan sliding window. Bare `D-NNN` anchors become orphans once their plan is trimmed. Plan-qualified anchors (`# DECISION <plan-id>/D-NNN`) survive trim and resolve unambiguously.
+The consolidated `plans/DECISIONS.md` uses a 4-plan sliding window. Bare `D-NNN` anchors become orphans once their plan is trimmed. Plan-qualified anchors (`# DECISION <plan-id>/D-NNN`) survive the trim and resolve unambiguously.
 
 ---
 
 ## Contributing
 
-### Running tests
-
-The test suite covers bootstrap operations, state transitions, consolidated file management, sliding-window behavior, anchor validation, and edge cases.
+The test suite covers bootstrap operations, state transitions, consolidated file management, sliding-window behavior, anchor validation, and edge cases — 643 tests across 12 suites, all on `node:test` with zero external dependencies.
 
 <details>
-<summary><strong>Test command</strong></summary>
+<summary><strong>Running the tests (and the per-suite breakdown)</strong></summary>
 
 ```bash
 node --test src/scripts/bootstrap.test.mjs \
@@ -462,22 +488,20 @@ node --test src/scripts/bootstrap.test.mjs \
             src/scripts/check-template-parity.test.mjs \
             src/scripts/shared.test.mjs \
             src/scripts/schema.test.mjs
-# 588 tests total: bootstrap 234, validate-plan 103, shared 71, schema 48,
-#                  blast-radius 37, check-agent-wiring 28, check-template-parity 20,
-#                  check-test-count 17, emit-state 12, emit-template 10,
+# 643 tests total: bootstrap 239, validate-plan 116, shared 71, schema 48,
+#                  blast-radius 37, check-agent-wiring 47, check-template-parity 37,
+#                  check-test-count 17, emit-state 12, emit-template 11,
 #                  check-doc-parity 4, check-readme-parity 4
 ```
 
-`node src/scripts/check-test-count.mjs` re-runs the suite and fails if the live pass count disagrees with the `TEST_COUNT` file. It runs as part of `make test` (not `make validate`, which stays suite-free and fast).
+`node src/scripts/check-test-count.mjs` re-runs the suite and fails if the live pass count disagrees with the `TEST_COUNT` file. It runs as part of `make test` (not `make validate`, which stays suite-free and fast). The per-suite numbers above are hand-maintained prose — if they drift, `TEST_COUNT` and the badge remain the machine-checked source of truth.
 
 </details>
-
-### Build and package
 
 `VERSION` is the single source of truth for the version number. Both `Makefile` and `build.ps1` read from it. Bump `VERSION` and `CHANGELOG.md`; nothing else.
 
 <details>
-<summary><strong>Build commands (Make / PowerShell)</strong></summary>
+<summary><strong>Build and package commands (Make / PowerShell)</strong></summary>
 
 ```bash
 # Windows (PowerShell)
@@ -509,13 +533,11 @@ make help
 
 </details>
 
-### Validation checklist
-
 <details>
-<summary><strong>Before submitting changes</strong></summary>
+<summary><strong>Validation checklist before submitting changes</strong></summary>
 
 - [ ] `make validate` (or `.\build.ps1 validate`) passes
-- [ ] `node --test src/scripts/*.test.mjs` passes (588 tests, 0 failing) and `node src/scripts/check-test-count.mjs` exits 0
+- [ ] `node --test src/scripts/*.test.mjs` passes (643 tests, 0 failing) and `node src/scripts/check-test-count.mjs` exits 0
 - [ ] `src/SKILL.md` has `name:` and `description:` in YAML frontmatter
 - [ ] All cross-references in `src/SKILL.md` point to existing files in `src/references/`
 - [ ] State machine diagram matches transition rules table
@@ -530,7 +552,7 @@ make help
 ## Project Structure
 
 <details>
-<summary><strong>Full file tree</strong></summary>
+<summary><strong>The full file tree</strong></summary>
 
 ```
 iterative-planner/
@@ -577,14 +599,15 @@ iterative-planner/
     │   ├── shared.mjs              # shared helpers (field extraction, changelog field split, compression markers, id grammars)
     │   └── modules/                # verbatim per-state rule bodies (EXPLORE/PLAN/EXECUTE/REFLECT/PIVOT), emitted on demand
     └── references/
-        ├── file-formats.md         # templates for every plan directory file + Presentation Contracts
+        ├── blast-radius.md         # tiers, signals, scoring formula for the per-edit ledger
         ├── code-hygiene.md         # change manifests, revert procedures, cleanup rules
         ├── complexity-control.md   # anti-complexity protocol and forbidden patterns
         ├── convergence-metrics.md  # convergence score, momentum tracker, iteration health
         ├── decision-anchoring.md   # when and how to anchor decisions in code (plan-qualified)
+        ├── file-formats.md         # templates for every plan directory file + Presentation Contracts
         ├── planning-rigor.md       # assumptions, pre-mortem, falsification, root cause, decomposition
-        ├── blast-radius.md         # tiers, signals, scoring formula for the per-edit ledger
-        └── python-software.md      # Python/software-engineering caveat (conditional)
+        ├── python-software.md      # Python/software-engineering caveat (conditional)
+        └── root-cause-analysis.md  # 5 Whys, fishbone, opt-in fault tree, Cynefin selector (extends planning-rigor.md)
 ```
 
 </details>
