@@ -336,7 +336,7 @@ See `references/decision-anchoring.md`.
   - **Deriving the tag id**: take the plan-dir name and **drop the `THHMMSS` segment**. `plan-2026-07-14T051317-317362c4` → `[plan-2026-07-14-317362c4/iter-3/step-2] desc`. A **legacy** plan dir (`plan_YYYY-MM-DD_XXXXXXXX`, still executing under this protocol) derives identically, normalizing the `_` separators to `-`: `plan_2026-07-14_79ee0f59` → `[plan-2026-07-14-79ee0f59/iter-3/step-2] desc`.
   - **The changelog `step` field stays bare `iter-N/step-M`** — do not "fix" this apparent inconsistency. That field is sourced from `state.md`, never parsed from a commit subject; nothing in the codebase reads a commit message. Prefixing it would drag in `schema.mjs` / `STEP_RE` and the compression `from`/`to` range bounds for zero benefit.
 - PIVOT: keep successful commits if valid under new plan, or `git checkout <checkpoint-commit> -- .` to revert. No partial state. Log choice in `decisions.md`.
-- CLOSE: final commit + tag.
+- CLOSE: finalizes on disk only — writes `summary.md`, audits DECISION anchors, rewrites `plans/LESSONS.md` + `plans/SYSTEM.md`, merges the consolidated cross-plan files, then runs `bootstrap.mjs close`. **No git commit or tag is created** — a summarizing commit/tag at CLOSE is a documented, deferred spec item, not yet implemented (no agent or script issues any git commit/tag).
 
 ## User Interaction
 
