@@ -260,9 +260,9 @@ test("report renders file:line [rule] message", () => {
 // and the opt-in CLI file write. Spawn style precedent for this repo:
 // check-readme-parity.test.mjs.
 
-import { serializeEdges } from "./check-agent-wiring.mjs";
+import { serializeEdges, EXPECTED_MIN_PROSE_FILES } from "./check-agent-wiring.mjs";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -466,6 +466,75 @@ test("CLI --emit-edges: two runs on an unchanged tree are byte-identical", () =>
     assert.ok(bufA.equals(readFileSync(b)), "emit-edges output differs between runs");
   } finally {
     rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+// --- scan floor + IP_CHECK_AGENT_WIRING_ROOT (plan-2026-07-21-38d0cd87 step 2) --
+
+/**
+ * Build a temp fixture root with the three scanned dirs (+ src/SKILL.md) and
+ * the given number of trivial .md files per dir. Caller removes it.
+ */
+function makeWiringFixtureRoot({ agents = 0, modules = 0, references = 0 } = {}) {
+  const root = mkdtempSync(join(tmpdir(), "caw-fixture-"));
+  const dirs = [
+    ["src/agents", agents],
+    ["src/scripts/modules", modules],
+    ["src/references", references],
+  ];
+  for (const [rel, n] of dirs) {
+    mkdirSync(join(root, rel), { recursive: true });
+    for (let i = 0; i < n; i++) {
+      writeFileSync(join(root, rel, `f${i}.md`), "# Fixture\n\nNo wiring here.\n");
+    }
+  }
+  writeFileSync(join(root, "src", "SKILL.md"), "# Fixture SKILL\n");
+  return root;
+}
+
+/** Spawn the REAL CLI against a root via the opt-in env override. */
+function runWiringCliAgainst(root) {
+  return spawnSync(process.execPath, [checkerPath], {
+    cwd: repoRoot,
+    encoding: "utf8",
+    timeout: 30_000,
+    env: { ...process.env, IP_CHECK_AGENT_WIRING_ROOT: root },
+  });
+}
+
+test("real CLI PASS: IP_CHECK_AGENT_WIRING_ROOT pointing at the real repo -> exit 0 (override path itself works)", () => {
+  const res = runWiringCliAgainst(repoRoot);
+  assert.strictEqual(res.status, 0, `exit ${res.status}\nstdout: ${res.stdout}\nstderr: ${res.stderr}`);
+  assert.match(res.stdout, /^check-agent-wiring: PASS \(\d+ prose files/);
+});
+
+test("real CLI FAIL [scan-floor]: an emptied scan dir -> exit 1 naming the empty source", () => {
+  const root = makeWiringFixtureRoot({ agents: 0, modules: 1, references: 1 });
+  try {
+    const res = runWiringCliAgainst(root);
+    assert.strictEqual(res.status, 1, `exit ${res.status}\nstdout: ${res.stdout}\nstderr: ${res.stderr}`);
+    assert.match(res.stderr, /check-agent-wiring: FAIL \[scan-floor\]/);
+    assert.match(res.stderr, /src\/agents contributed 0 \.md files/);
+    assert.ok(!res.stdout.includes("PASS"), "a floored run must not print PASS");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("real CLI FAIL [scan-floor]: all dirs contribute but total is below EXPECTED_MIN_PROSE_FILES", () => {
+  const root = makeWiringFixtureRoot({ agents: 1, modules: 1, references: 1 });
+  try {
+    const res = runWiringCliAgainst(root);
+    assert.strictEqual(res.status, 1, `exit ${res.status}\nstdout: ${res.stdout}\nstderr: ${res.stderr}`);
+    assert.match(
+      res.stderr,
+      new RegExp(
+        `scanned only 4 prose file\\(s\\), below EXPECTED_MIN_PROSE_FILES = ${EXPECTED_MIN_PROSE_FILES}`,
+      ),
+    );
+    assert.ok(!res.stderr.includes("contributed 0"), "no per-dir failure expected when every dir contributes");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
 });
 

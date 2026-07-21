@@ -10,6 +10,8 @@
 // whitespace normalization ONLY (trim + collapse internal whitespace runs —
 // no other normalization, no fuzzy matching). The readers column (col 3) is
 // deliberately out of scope (see plan-2026-07-21-38d0cd87 decisions.md D-001).
+// Anti-vacuity: either side parsing fewer than EXPECTED_MIN_KEYS keys is a
+// loud `FAIL [doc-parity-floor]`, never a vacuous PASS.
 //
 // Scope: the File Ownership table ONLY. Pure `comparison()` is reused by the
 // CLI wrapper and the test suite; the CLI runs only under the isEntryPoint
@@ -18,6 +20,17 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+// The floor (anti-vacuity), mirroring EXPECTED_SLUGS in
+// check-template-parity.mjs. A renamed "File Ownership" heading, a
+// BOM-prefixed heading line, or a <details> wrapper without a real heading
+// all make the parser find NO table — zero keys on both sides used to compare
+// nothing and print PASS. A side parsing fewer keys than this floor is a loud
+// `FAIL [doc-parity-floor]` naming the side and count. Real count today: 16
+// keys per side. Bump deliberately when the real count changes. Enforced in
+// the CLI (isEntryPoint) only — importers and the pure comparison() are
+// unchanged.
+export const EXPECTED_MIN_KEYS = 10;
 
 /**
  * Normalize a table-cell's text for comparison: trim + collapse internal
@@ -133,7 +146,18 @@ if (isEntryPoint) {
   const skillText = readFileSync(join(repoRoot, "src", "SKILL.md"), "utf8");
   const readmeText = readFileSync(join(repoRoot, "README.md"), "utf8");
   const { missing, extra, ownerMismatches } = comparison(skillText, readmeText);
-  if (missing.length === 0 && extra.length === 0 && ownerMismatches.length === 0) {
+  // Anti-vacuity floor: parse each side independently so the failure names
+  // WHICH doc's table went missing (parity alone cannot — two sides both
+  // parsing 0 keys agree perfectly and used to PASS).
+  const floorFailures = [];
+  for (const [side, text] of [["SKILL.md", skillText], ["README.md", readmeText]]) {
+    const n = parseOwnershipTable(text).keys.size;
+    if (n < EXPECTED_MIN_KEYS) floorFailures.push({ side, n });
+  }
+  if (
+    missing.length === 0 && extra.length === 0 &&
+    ownerMismatches.length === 0 && floorFailures.length === 0
+  ) {
     const n = parseOwnershipKeys(skillText).size;
     console.log(
       `check-doc-parity: PASS (README File Ownership table mirrors SKILL.md — ${n} keys, owner cells match)`,
@@ -160,6 +184,13 @@ if (isEntryPoint) {
       console.error(`\`${key}\``);
       console.error(`  SKILL.md:  ${skill}`);
       console.error(`  README.md: ${readme}`);
+    }
+  }
+  if (floorFailures.length > 0) {
+    for (const { side, n } of floorFailures) {
+      console.error(
+        `check-doc-parity: FAIL [doc-parity-floor] — ${side} side parsed ${n} key(s), below EXPECTED_MIN_KEYS = ${EXPECTED_MIN_KEYS} (File Ownership heading renamed/missing, BOM-prefixed, or table not found?)`,
+      );
     }
   }
   process.exit(1);

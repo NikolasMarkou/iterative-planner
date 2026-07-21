@@ -51,6 +51,18 @@ const CITATION_RE = /`([A-Za-z0-9_<][A-Za-z0-9_.<>/-]*\.md)`/g;
 const SECTION_CODE_RE = /(?<![\w.])([A-Z]\.\d+(?:\.\d+)*)(?!\w)/g;
 const OK_PREFIX = "<skill-path>/scripts/";
 
+// The floor (anti-vacuity), mirroring EXPECTED_SLUGS in
+// check-template-parity.mjs. The scanned file set is DISCOVERED at runtime
+// (readdir over three dirs), so a renamed/emptied dir used to shrink the walk
+// silently and the gate still printed PASS over whatever was left. The CLI
+// fails loud (`FAIL [scan-floor]`) when any of the three scanned dirs
+// contributes zero .md files or the total file count sinks below this floor.
+// Real count today: 22 files (7 agents + 5 modules + SKILL.md + 9 references).
+// Bump deliberately when the real count changes. Enforced in the CLI
+// (isEntryPoint) only — the pure scan functions take explicit text and have
+// no discovery step to floor, so importers are unchanged.
+export const EXPECTED_MIN_PROSE_FILES = 15;
+
 const issue = (rule, file, line, message) => ({ rule, file, line, message });
 
 /** Split into lines tagged with fenced-code membership (1-based numbers). */
@@ -254,11 +266,42 @@ const isEntryPoint = (() => {
 })();
 
 if (isEntryPoint) {
-  const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+  // DECISION plan-2026-07-21T092933-3295714d/D-003: repoRoot override is an
+  // opt-in env var read HERE only (inside isEntryPoint) so tests can spawn the
+  // REAL CLI FAIL branches against fixture roots. Do NOT hoist this read to
+  // module scope, add an argv flag, or reintroduce a wrapper reimplementation:
+  // importers and the default (env-unset) CLI must stay byte-identical. See
+  // plan-2026-07-21T092933-3295714d decisions.md D-003.
+  const repoRoot =
+    process.env.IP_CHECK_AGENT_WIRING_ROOT ??
+    join(dirname(fileURLToPath(import.meta.url)), "..", "..");
   const mds = (rel) =>
     readdirSync(join(repoRoot, rel)).filter((f) => f.endsWith(".md")).sort()
       .map((f) => `${rel}/${f}`);
-  const files = [...mds("src/agents"), ...mds("src/scripts/modules"), "src/SKILL.md", ...mds("src/references")];
+  const sources = [
+    ["src/agents", mds("src/agents")],
+    ["src/scripts/modules", mds("src/scripts/modules")],
+    ["src/references", mds("src/references")],
+  ];
+  const files = [...sources[0][1], ...sources[1][1], "src/SKILL.md", ...sources[2][1]];
+
+  // Anti-vacuity scan floor: runs BEFORE the scan loops, so a passing run's
+  // stdout is byte-identical to the pre-floor gate and a shrunken discovery
+  // never reaches the scans at all.
+  const floorFailures = [];
+  for (const [dir, list] of sources) {
+    if (list.length === 0) {
+      floorFailures.push(`${dir} contributed 0 .md files (each scanned dir must contribute >= 1)`);
+    }
+  }
+  if (files.length < EXPECTED_MIN_PROSE_FILES) {
+    floorFailures.push(`scanned only ${files.length} prose file(s), below EXPECTED_MIN_PROSE_FILES = ${EXPECTED_MIN_PROSE_FILES}`);
+  }
+  if (floorFailures.length > 0) {
+    console.error(`check-agent-wiring: FAIL [scan-floor] — ${floorFailures.length} discovery failure(s):`);
+    for (const f of floorFailures) console.error(`  ${f}`);
+    process.exit(1);
+  }
   const cache = new Map();
   const headingsFor = (rel) => {
     if (!cache.has(rel)) {

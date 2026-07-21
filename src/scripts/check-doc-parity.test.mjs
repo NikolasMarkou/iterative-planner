@@ -12,7 +12,11 @@ import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
-import { comparison } from "./check-doc-parity.mjs";
+import {
+  comparison,
+  parseOwnershipTable,
+  EXPECTED_MIN_KEYS,
+} from "./check-doc-parity.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..", "..");
@@ -213,14 +217,19 @@ test("owner cells: merged-cell tokens inherit the row owner cell", () => {
 });
 
 test("real CLI PASS: owner cells identical modulo whitespace -> exit 0", () => {
+  // Filler rows keep the fixture above EXPECTED_MIN_KEYS so the anti-vacuity
+  // floor stays out of this test's way.
+  const filler = Array.from({ length: 10 }, (_, i) => [`\`f${i}.md\``, "Owner F"]);
   const root = makeFixtureRoot(
     ownershipTableWithOwners([
       ["`a.md`", "Owner One  (scope)"],
       ["`b.md`", "Owner Two"],
+      ...filler,
     ]),
     ownershipTableWithOwners([
       ["`a.md`", "Owner One (scope)"],
       ["`b.md`", "Owner  Two"],
+      ...filler,
     ]),
   );
   try {
@@ -253,6 +262,85 @@ test("real CLI FAIL [doc-parity-owner]: drifted owner cell -> exit 1 + slug + ke
     assert.match(res.stderr, /^`b\.md`$/m);
     assert.match(res.stderr, /^ {2}SKILL\.md: {2}Executor \(append per edit\)$/m);
     assert.match(res.stderr, /^ {2}README\.md: Executor$/m);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// --- anti-vacuity floor + CRLF/BOM tolerance (plan-2026-07-21-38d0cd87 step 2)
+
+test("CRLF doc parses the same keys and owners as LF (A7: whitespace handling absorbs \\r)", () => {
+  const lf = ownershipTableWithOwners([
+    ["`a.md`", "Owner One"],
+    ["`b.md`", "Owner Two (scope)"],
+  ]);
+  const crlf = lf.replace(/\n/g, "\r\n");
+  const fromLf = parseOwnershipTable(lf);
+  const fromCrlf = parseOwnershipTable(crlf);
+  assert.deepEqual([...fromCrlf.keys].sort(), [...fromLf.keys].sort());
+  assert.deepEqual(
+    Object.fromEntries(fromCrlf.owners),
+    Object.fromEntries(fromLf.owners),
+  );
+});
+
+test("BOM determinism: BOM on the heading line hides the table (0 keys); BOM elsewhere is harmless", () => {
+  const table = ownershipTable(["a.md", "b.md"]);
+  // BOM directly prefixes the File Ownership heading -> the heading regex
+  // misses -> no table found. Deterministic: the CLI floor turns this into a
+  // loud FAIL (pinned by the spawn test below).
+  assert.equal(parseOwnershipTable("\uFEFF" + table).keys.size, 0);
+  // BOM prefixes a different first line -> the heading still matches.
+  assert.equal(parseOwnershipTable("\uFEFF# Title\n" + table).keys.size, 2);
+});
+
+test("real CLI PASS: CRLF README at/above the floor -> exit 0 (A7 pinned end-to-end)", () => {
+  const keys = Array.from({ length: 12 }, (_, i) => `k${i}.md`);
+  const root = makeFixtureRoot(
+    ownershipTable(keys),
+    ownershipTable(keys).replace(/\n/g, "\r\n"),
+  );
+  try {
+    const res = runCliAgainst(root);
+    assert.equal(res.status, 0, `expected exit 0; stdout=${res.stdout} stderr=${res.stderr}`);
+    assert.match(res.stdout, /12 keys/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("real CLI FAIL [doc-parity-floor]: parity-clean tables below the floor -> exit 1 naming both sides", () => {
+  // The silent-pass class: both sides agree perfectly (parity finds nothing)
+  // but almost nothing was parsed. Used to print PASS.
+  const root = makeFixtureRoot(
+    ownershipTable(["a.md", "b.md", "c.md"]),
+    ownershipTable(["a.md", "b.md", "c.md"]),
+  );
+  try {
+    const res = runCliAgainst(root);
+    assert.equal(res.status, 1, `expected exit 1; stdout=${res.stdout} stderr=${res.stderr}`);
+    assert.match(
+      res.stderr,
+      new RegExp(
+        `check-doc-parity: FAIL \\[doc-parity-floor\\] — SKILL\\.md side parsed 3 key\\(s\\), below EXPECTED_MIN_KEYS = ${EXPECTED_MIN_KEYS}`,
+      ),
+    );
+    assert.match(res.stderr, /README\.md side parsed 3 key\(s\)/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("real CLI FAIL [doc-parity-floor]: BOM-prefixed SKILL.md heading -> loud FAIL naming SKILL.md (0 keys)", () => {
+  const keys = Array.from({ length: 12 }, (_, i) => `k${i}.md`);
+  const root = makeFixtureRoot(
+    "\uFEFF" + ownershipTable(keys),
+    ownershipTable(keys),
+  );
+  try {
+    const res = runCliAgainst(root);
+    assert.equal(res.status, 1, `expected exit 1; stdout=${res.stdout} stderr=${res.stderr}`);
+    assert.match(res.stderr, /\[doc-parity-floor\] — SKILL\.md side parsed 0 key\(s\)/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
