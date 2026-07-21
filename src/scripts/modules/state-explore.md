@@ -5,7 +5,7 @@
   3. The user explicitly references prior work ("we tried this before", "the X migration plan", etc.).
   4. The current plan touches files that appear in older plan directories' change manifests.
   See `references/file-formats.md` `plans/INDEX.md` section for the schema. Default is **do not read** — INDEX.md is a locator, not a cross-plan memory.
-- **System-atlas contradiction flag**: if an EXPLORE finding contradicts an existing `plans/SYSTEM.md` entry, mark the contradiction in `findings.md` with `[CONTRADICTED iter-N]` (mirrors the `[CORRECTED iter-N]` rule for findings) — the archivist will reconcile at CLOSE in Step 5.
+- **System-atlas contradiction flag**: if an EXPLORE finding contradicts an existing `plans/SYSTEM.md` entry, mark the contradiction in `findings.md` with `[CONTRADICTED iter-N]` (mirrors the `[CORRECTED iter-N]` rule for findings) — the archivist will reconcile at CLOSE in Step 4.
 - Read code, grep, glob, search. One focused question at a time.
 - Flush to `findings.md` + `findings/` after every 2 reads. **Read the file first** before each write.
 - Include file paths + code path traces (e.g. `auth.rb:23` → `SessionStore#find` → `redis_store.rb:get`).

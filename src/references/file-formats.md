@@ -748,7 +748,7 @@ Cross-plan **system atlas** — a curated map of *what the system being planned 
 
 Usage:
 - Read: EXPLORE start + PLAN start (orchestrator + ip-plan-writer). Structural prior — avoids re-deriving system shape every plan.
-- CLOSE: ip-archivist Step 5 rewrites under 300-line cap. **Demote-by-staleness, not by recency** — drop entries not referenced or reaffirmed by recent plans. Truncating most-recent defeats curation.
+- CLOSE: ip-archivist Step 4 rewrites under 300-line cap. **Demote-by-staleness, not by recency** — drop entries not referenced or reaffirmed by recent plans. Truncating most-recent defeats curation.
 - Contradictions: EXPLORE finding contradicts SYSTEM.md entry → mark in `findings.md` with `[CONTRADICTED iter-N]` → archivist corrects at CLOSE (mirrors `[CORRECTED iter-N]`).
 - Hard cap 300 lines enforced by `validate-plan.mjs` ERROR `[atlas-cap]`. Truncation by writers forbidden.
 - Created by bootstrap on first `new` — but the bytes it writes are **not** the schema above. They are the `<!-- SKELETON:system -->` region under **Bootstrap Skeletons (machine-checked)**, which `check-template-parity.mjs` pins to `PLAN_TEMPLATES.system` byte-for-byte. That is the only gated pair; go there for the literal bytes.
