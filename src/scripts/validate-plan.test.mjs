@@ -1724,6 +1724,29 @@ describe("validate-plan.mjs — changelog: dref join integrity ([changelog-dref-
       `a malformed line must be skipped by the join check, got:\n${r.stdout}`);
   });
 
+  it("8-field line, shape-invalid non-`-` dref (D-1) → BOTH [changelog-malformed] AND [changelog-dref-orphan] on the same line (accepted double-WARN contract)", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    // The line has 8 fields, so the join check does NOT skip it; `D-1` fails
+    // CHANGELOG_SPEC's dref shape (D-\d{3,}) so checkChangelogFormat WARNs,
+    // and `D-1` matches no ## D-NNN heading so the join check WARNs too.
+    // checkChangelogDrefIntegrity's header comment documents this double-WARN
+    // as intentional (shape is NOT re-validated there) — this test pins it.
+    writeFileSync(join(planDir, "changelog.md"), `# Changelog\n*note*\n${drefLine("D-1")}\n`);
+    const r = run(cwd);
+    const malformed = r.stdout.split("\n").filter((l) => /\[changelog-malformed\]/.test(l));
+    assert.equal(malformed.length, 1, `expected exactly one changelog-malformed line, got:\n${r.stdout}`);
+    assert.match(malformed[0], /WARN/, `changelog-malformed must be WARN severity, got: ${malformed[0]}`);
+    assert.match(malformed[0], /changelog\.md:3/, `shape WARN must name the same line, got: ${malformed[0]}`);
+    assert.match(malformed[0], /attribute "dref"/, `shape WARN must name the dref field, got: ${malformed[0]}`);
+    const orphans = orphanLines(r.stdout);
+    assert.equal(orphans.length, 1, `expected exactly one dref-orphan line, got:\n${r.stdout}`);
+    assert.match(orphans[0], /WARN/, `dref-orphan must be WARN severity, got: ${orphans[0]}`);
+    assert.match(orphans[0], /changelog\.md:3/, `join WARN must name the same line, got: ${orphans[0]}`);
+    assert.match(orphans[0], /dref D-1 /, `join WARN must name the offending dref, got: ${orphans[0]}`);
+    assert.notEqual(r.exitCode, 2, "exit 2 is --pre-step-exclusive");
+  });
+
   it("missing decisions.md → no crash, no [changelog-dref-orphan] (nothing to join against)", () => {
     const cwd = getTempDir();
     const { planDir } = writePlan(cwd);
