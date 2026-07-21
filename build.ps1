@@ -329,6 +329,15 @@ function Invoke-Validate {
         }
     }
 
+    # Verify CHANGELOG.md's first "## [X.Y.Z]" entry matches the VERSION file
+    if (Test-Path "src/scripts/check-changelog-parity.mjs") {
+        Write-Host "Checking CHANGELOG parity (top entry <-> VERSION)..."
+        node src/scripts/check-changelog-parity.mjs
+        if ($LASTEXITCODE -ne 0) {
+            $errors += "ERROR: CHANGELOG.md top entry out of parity with VERSION (see check-changelog-parity.mjs)"
+        }
+    }
+
     # Verify agent/module prose wiring: script paths, reference citations, section pointers, skill-path resolution
     # --emit-edges kept in lockstep with the Makefile validate call site (2-place fact; edit both together) — see plan decisions.md D-003
     if (Test-Path "src/scripts/check-agent-wiring.mjs") {
@@ -358,7 +367,7 @@ function Invoke-Validate {
 
 function Invoke-Lint {
     Write-Host "Checking script syntax..." -ForegroundColor Yellow
-    foreach ($script in @("bootstrap.mjs", "validate-plan.mjs", "blast-radius.mjs", "shared.mjs", "check-doc-parity.mjs", "check-readme-parity.mjs", "check-test-count.mjs", "check-agent-wiring.mjs", "check-template-parity.mjs", "emit-state.mjs", "emit-template.mjs", "schema.mjs")) {
+    foreach ($script in @("bootstrap.mjs", "validate-plan.mjs", "blast-radius.mjs", "shared.mjs", "check-doc-parity.mjs", "check-readme-parity.mjs", "check-changelog-parity.mjs", "check-test-count.mjs", "check-agent-wiring.mjs", "check-template-parity.mjs", "emit-state.mjs", "emit-template.mjs", "schema.mjs")) {
         node --check "src/scripts/$script"
         if ($LASTEXITCODE -ne 0) {
             Write-Host "Syntax check failed: $script" -ForegroundColor Red
@@ -397,7 +406,7 @@ function Invoke-Test {
 
     Write-Host "Running all test suites..." -ForegroundColor Yellow
 
-    node --test src/scripts/bootstrap.test.mjs src/scripts/validate-plan.test.mjs src/scripts/blast-radius.test.mjs src/scripts/check-doc-parity.test.mjs src/scripts/emit-state.test.mjs src/scripts/emit-template.test.mjs src/scripts/check-readme-parity.test.mjs src/scripts/shared.test.mjs src/scripts/check-test-count.test.mjs src/scripts/schema.test.mjs src/scripts/check-agent-wiring.test.mjs src/scripts/check-template-parity.test.mjs
+    node --test src/scripts/bootstrap.test.mjs src/scripts/validate-plan.test.mjs src/scripts/blast-radius.test.mjs src/scripts/check-doc-parity.test.mjs src/scripts/emit-state.test.mjs src/scripts/emit-template.test.mjs src/scripts/check-readme-parity.test.mjs src/scripts/check-changelog-parity.test.mjs src/scripts/shared.test.mjs src/scripts/check-test-count.test.mjs src/scripts/schema.test.mjs src/scripts/check-agent-wiring.test.mjs src/scripts/check-template-parity.test.mjs
     if ($LASTEXITCODE -ne 0) {
         Write-Host "Tests failed!" -ForegroundColor Red
         exit 1

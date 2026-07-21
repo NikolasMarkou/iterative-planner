@@ -204,6 +204,9 @@ validate:
 	@# Verify README version badge and test-count badge match VERSION and TEST_COUNT files
 	@echo "Checking README badge parity (version + test count)..."
 	@node src/scripts/check-readme-parity.mjs || exit 1
+	@# Verify CHANGELOG.md's first "## [X.Y.Z]" entry matches the VERSION file
+	@echo "Checking CHANGELOG parity (top entry <-> VERSION)..."
+	@node src/scripts/check-changelog-parity.mjs || exit 1
 	@# Verify agent/module prose wiring: script paths, reference citations, section pointers, skill-path resolution
 	@# --emit-edges is opt-in at the call sites (this line +
 	@# build.ps1 Invoke-Validate — a 2-place lockstep fact; edit both together). Do NOT make emission default-on
@@ -230,6 +233,7 @@ lint:
 	node --check src/scripts/shared.mjs
 	node --check src/scripts/check-doc-parity.mjs
 	node --check src/scripts/check-readme-parity.mjs
+	node --check src/scripts/check-changelog-parity.mjs
 	node --check src/scripts/check-test-count.mjs
 	node --check src/scripts/check-agent-wiring.mjs
 	node --check src/scripts/check-template-parity.mjs
@@ -246,7 +250,7 @@ lint:
 .PHONY: test
 test: lint
 	@echo "Running all test suites..."
-	node --test src/scripts/bootstrap.test.mjs src/scripts/validate-plan.test.mjs src/scripts/blast-radius.test.mjs src/scripts/check-doc-parity.test.mjs src/scripts/emit-state.test.mjs src/scripts/emit-template.test.mjs src/scripts/check-readme-parity.test.mjs src/scripts/shared.test.mjs src/scripts/check-test-count.test.mjs src/scripts/schema.test.mjs src/scripts/check-agent-wiring.test.mjs src/scripts/check-template-parity.test.mjs
+	node --test src/scripts/bootstrap.test.mjs src/scripts/validate-plan.test.mjs src/scripts/blast-radius.test.mjs src/scripts/check-doc-parity.test.mjs src/scripts/emit-state.test.mjs src/scripts/emit-template.test.mjs src/scripts/check-readme-parity.test.mjs src/scripts/check-changelog-parity.test.mjs src/scripts/shared.test.mjs src/scripts/check-test-count.test.mjs src/scripts/schema.test.mjs src/scripts/check-agent-wiring.test.mjs src/scripts/check-template-parity.test.mjs
 	@echo "Checking TEST_COUNT against the live suite result..."
 	node src/scripts/check-test-count.mjs
 	@echo "Tests passed!"

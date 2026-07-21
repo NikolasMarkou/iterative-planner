@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Skill](https://img.shields.io/badge/Skill-v2.55.0-green.svg)](CHANGELOG.md)
-[![Tests](https://img.shields.io/badge/tests-667%20passing-brightgreen.svg)](src/scripts/bootstrap.test.mjs)
+[![Tests](https://img.shields.io/badge/tests-675%20passing-brightgreen.svg)](src/scripts/bootstrap.test.mjs)
 [![Sponsored by Electi](https://img.shields.io/badge/Sponsored%20by-Electi-red.svg)](https://www.electiconsulting.com)
 
 **A [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skill that stops an agent from losing the plot halfway through a hard task.**
@@ -474,7 +474,7 @@ The consolidated `plans/DECISIONS.md` uses a 4-plan sliding window. Bare `D-NNN`
 
 ## Contributing
 
-The test suite covers bootstrap operations, state transitions, consolidated file management, sliding-window behavior, anchor validation, and edge cases — 667 tests across 12 suites, all on `node:test` with zero external dependencies.
+The test suite covers bootstrap operations, state transitions, consolidated file management, sliding-window behavior, anchor validation, and edge cases — 675 tests across 13 suites, all on `node:test` with zero external dependencies.
 
 <details>
 <summary><strong>Running the tests (and the per-suite breakdown)</strong></summary>
@@ -487,15 +487,16 @@ node --test src/scripts/bootstrap.test.mjs \
             src/scripts/emit-state.test.mjs \
             src/scripts/emit-template.test.mjs \
             src/scripts/check-readme-parity.test.mjs \
+            src/scripts/check-changelog-parity.test.mjs \
             src/scripts/check-test-count.test.mjs \
             src/scripts/check-agent-wiring.test.mjs \
             src/scripts/check-template-parity.test.mjs \
             src/scripts/shared.test.mjs \
             src/scripts/schema.test.mjs
-# 667 tests total: bootstrap 239, validate-plan 116, shared 71, schema 48,
+# 675 tests total: bootstrap 239, validate-plan 116, shared 71, schema 48,
 #                  check-agent-wiring 50, blast-radius 41, check-template-parity 40,
 #                  check-test-count 17, check-doc-parity 16, emit-state 12,
-#                  emit-template 11, check-readme-parity 6
+#                  emit-template 11, check-changelog-parity 8, check-readme-parity 6
 ```
 
 `node src/scripts/check-test-count.mjs` re-runs the suite and fails if the live pass count disagrees with the `TEST_COUNT` file. It runs as part of `make test` (not `make validate`, which stays suite-free and fast). The per-suite numbers above are hand-maintained prose — if they drift, `TEST_COUNT` and the badge remain the machine-checked source of truth.
@@ -541,7 +542,7 @@ make help
 <summary><strong>Validation checklist before submitting changes</strong></summary>
 
 - [ ] `make validate` (or `.\build.ps1 validate`) passes
-- [ ] `node --test src/scripts/*.test.mjs` passes (667 tests, 0 failing) and `node src/scripts/check-test-count.mjs` exits 0
+- [ ] `node --test src/scripts/*.test.mjs` passes (675 tests, 0 failing) and `node src/scripts/check-test-count.mjs` exits 0
 - [ ] `src/SKILL.md` has `name:` and `description:` in YAML frontmatter
 - [ ] All cross-references in `src/SKILL.md` point to existing files in `src/references/`
 - [ ] State machine diagram matches transition rules table
@@ -588,6 +589,8 @@ iterative-planner/
     │   ├── check-doc-parity.test.mjs # doc-parity test suite (node:test)
     │   ├── check-readme-parity.mjs         # README version badge and test count parity gate (used by make/build.ps1 validate; Node.js 18+)
     │   ├── check-readme-parity.test.mjs    # Test suite (node:test)
+    │   ├── check-changelog-parity.mjs      # CHANGELOG.md top-entry version and VERSION file parity gate (run via make validate)
+    │   ├── check-changelog-parity.test.mjs # Test suite (node:test)
     │   ├── check-test-count.mjs    # TEST_COUNT vs live `node --test` pass-count gate (run via make test)
     │   ├── check-test-count.test.mjs # check-test-count test suite (node:test)
     │   ├── check-agent-wiring.mjs  # prose-layer gate: script paths, reference citations, section pointers, anti-vacuity scan floor (run via make validate)
