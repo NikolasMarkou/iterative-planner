@@ -4,8 +4,12 @@
 // check-doc-parity — executable gate enforcing README.md <-> src/SKILL.md
 // "File Ownership" table parity. The two tables drifted (README was missing 6
 // rows present in SKILL.md) with no automated check. This script parses the
-// File Ownership table out of each doc and asserts every path-key present in
-// SKILL.md also appears in README.md.
+// File Ownership table out of each doc and asserts (1) every path-key present
+// in SKILL.md also appears in README.md and vice versa, and (2) for every key
+// present in BOTH docs, the column-2 owner-cell text matches exactly after
+// whitespace normalization ONLY (trim + collapse internal whitespace runs —
+// no other normalization, no fuzzy matching). The readers column (col 3) is
+// deliberately out of scope (see plan-2026-07-21-38d0cd87 decisions.md D-001).
 //
 // Scope: the File Ownership table ONLY. Pure `comparison()` is reused by the
 // CLI wrapper and the test suite; the CLI runs only under the isEntryPoint
@@ -16,8 +20,23 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /**
- * Parse the File Ownership table out of a markdown doc and return the set of
- * column-1 path-keys (backtick-wrapped tokens). Handles:
+ * Normalize a table-cell's text for comparison: trim + collapse internal
+ * whitespace runs to a single space. This is the ONLY normalization applied —
+ * exact match otherwise (no case folding, no punctuation/markdown stripping,
+ * no fuzzy matching).
+ */
+function normalizeCell(text) {
+  return (text || "").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Parse the File Ownership table out of a markdown doc and return
+ * `{ keys, owners }`:
+ *   - `keys`: Set of column-1 path-keys (backtick-wrapped tokens).
+ *   - `owners`: Map<key, ownerCellText> — column-2 owner-cell text,
+ *     whitespace-normalized (see normalizeCell). Merged-cell rows: each
+ *     backtick token in the cell inherits the row's owner cell.
+ * Handles:
  *   - merged cells: README joins `plans/LESSONS.md, plans/SYSTEM.md` in one cell
  *     -> every backtick token in the cell is added.
  *   - plain-text suffixes: `findings.md` (index) -> only the backtick token is
@@ -25,8 +44,9 @@ import { fileURLToPath } from "node:url";
  * Table boundary: starts after the heading line containing "File Ownership"
  * (case-insensitive), stops at the next `## `/`### ` section or end of file.
  */
-export function parseOwnershipKeys(markdownText) {
+export function parseOwnershipTable(markdownText) {
   const keys = new Set();
+  const owners = new Map();
   const lines = (markdownText || "").split("\n");
   let inTable = false;
   for (const line of lines) {
@@ -47,27 +67,49 @@ export function parseOwnershipKeys(markdownText) {
     const cellNorm = firstCell.trim().toLowerCase();
     if (cellNorm === "file") continue;
     if (/^:?-{3,}:?$/.test(firstCell.trim())) continue;
+    // Second column cell = owner cell (whole row's owner for merged cells).
+    const ownerCell = normalizeCell(cells.length > 2 ? cells[2] : "");
     // Extract ALL backtick-wrapped tokens (a cell may hold more than one).
     const re = /`([^`]+)`/g;
     let m;
     while ((m = re.exec(firstCell)) !== null) {
       const tok = m[1].trim();
-      if (tok) keys.add(tok);
+      if (tok) {
+        keys.add(tok);
+        if (!owners.has(tok)) owners.set(tok, ownerCell);
+      }
     }
   }
-  return keys;
+  return { keys, owners };
+}
+
+/**
+ * Back-compat wrapper: return only the set of column-1 path-keys.
+ * Delegates to parseOwnershipTable so existing importers are untouched.
+ */
+export function parseOwnershipKeys(markdownText) {
+  return parseOwnershipTable(markdownText).keys;
 }
 
 /**
  * Pure comparison: returns path-keys present in SKILL but absent from README
- * (`missing`) and path-keys present in README but absent from SKILL (`extra`).
+ * (`missing`), path-keys present in README but absent from SKILL (`extra`),
+ * and — for keys present in BOTH — owner cells whose whitespace-normalized
+ * text differs (`ownerMismatches`: [{ key, skill, readme }]).
  */
 export function comparison(skillText, readmeText) {
-  const skillKeys = parseOwnershipKeys(skillText);
-  const readmeKeys = parseOwnershipKeys(readmeText);
-  const missing = [...skillKeys].filter((k) => !readmeKeys.has(k));
-  const extra = [...readmeKeys].filter((k) => !skillKeys.has(k));
-  return { missing, extra };
+  const skill = parseOwnershipTable(skillText);
+  const readme = parseOwnershipTable(readmeText);
+  const missing = [...skill.keys].filter((k) => !readme.keys.has(k));
+  const extra = [...readme.keys].filter((k) => !skill.keys.has(k));
+  const ownerMismatches = [];
+  for (const k of skill.keys) {
+    if (!readme.keys.has(k)) continue;
+    const s = skill.owners.get(k) ?? "";
+    const r = readme.owners.get(k) ?? "";
+    if (s !== r) ownerMismatches.push({ key: k, skill: s, readme: r });
+  }
+  return { missing, extra, ownerMismatches };
 }
 
 const isEntryPoint = (() => {
@@ -90,11 +132,11 @@ if (isEntryPoint) {
     join(dirname(fileURLToPath(import.meta.url)), "..", "..");
   const skillText = readFileSync(join(repoRoot, "src", "SKILL.md"), "utf8");
   const readmeText = readFileSync(join(repoRoot, "README.md"), "utf8");
-  const { missing, extra } = comparison(skillText, readmeText);
-  if (missing.length === 0 && extra.length === 0) {
+  const { missing, extra, ownerMismatches } = comparison(skillText, readmeText);
+  if (missing.length === 0 && extra.length === 0 && ownerMismatches.length === 0) {
     const n = parseOwnershipKeys(skillText).size;
     console.log(
-      `check-doc-parity: PASS (README File Ownership table mirrors SKILL.md — ${n} keys)`,
+      `check-doc-parity: PASS (README File Ownership table mirrors SKILL.md — ${n} keys, owner cells match)`,
     );
     process.exit(0);
   }
@@ -109,6 +151,16 @@ if (isEntryPoint) {
       `check-doc-parity: FAIL — README File Ownership table has ${extra.length} row(s) not present in SKILL.md:`,
     );
     for (const k of extra) console.error(k);
+  }
+  if (ownerMismatches.length > 0) {
+    console.error(
+      `check-doc-parity: FAIL [doc-parity-owner] — owner cell differs for ${ownerMismatches.length} key(s) (exact match after whitespace normalization):`,
+    );
+    for (const { key, skill, readme } of ownerMismatches) {
+      console.error(`\`${key}\``);
+      console.error(`  SKILL.md:  ${skill}`);
+      console.error(`  README.md: ${readme}`);
+    }
   }
   process.exit(1);
 }

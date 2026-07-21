@@ -51,6 +51,18 @@ function ownershipTable(rows) {
   ].join("\n");
 }
 
+/** Like ownershipTable but rows are [keyCellText, ownerCellText] pairs. */
+function ownershipTableWithOwners(rows) {
+  return [
+    "### File Ownership Model",
+    "| File | Owner | Readers |",
+    "|------|-------|---------|",
+    ...rows.map(([k, o]) => `| ${k} | ${o} | Y |`),
+    "",
+    "## Next Section",
+  ].join("\n");
+}
+
 test("real repo: README mirrors SKILL.md File Ownership -> exit 0", () => {
   const res = spawnSync("node", [script], { cwd: repoRoot, encoding: "utf8" });
   assert.equal(
@@ -165,6 +177,82 @@ test("real CLI FAIL: extra row -> exit 1 + stderr names the extra key", () => {
       /check-doc-parity: FAIL — README File Ownership table has 1 row\(s\) not present in SKILL\.md:/,
     );
     assert.match(res.stderr, /^z\.md$/m);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("owner cells: whitespace-only differences are NOT a mismatch", () => {
+  const skill = ownershipTableWithOwners([
+    ["`a.md`", "Owner  One (Post-Step   Gate)"],
+    ["`b.md`", "Owner Two"],
+  ]);
+  const readme = ownershipTableWithOwners([
+    ["`a.md`", "Owner One   (Post-Step Gate)"],
+    ["`b.md`", " Owner Two "],
+  ]);
+  const { missing, extra, ownerMismatches } = comparison(skill, readme);
+  assert.deepEqual(missing, []);
+  assert.deepEqual(extra, []);
+  assert.deepEqual(ownerMismatches, []);
+});
+
+test("owner cells: merged-cell tokens inherit the row owner cell", () => {
+  const skill = ownershipTableWithOwners([
+    ["`x.md`", "Archivist"],
+    ["`y.md`", "Orchestrator"],
+  ]);
+  const readme = ownershipTableWithOwners([
+    ["`x.md`, `y.md`", "Archivist"],
+  ]);
+  const { ownerMismatches } = comparison(skill, readme);
+  assert.equal(ownerMismatches.length, 1);
+  assert.equal(ownerMismatches[0].key, "y.md");
+  assert.equal(ownerMismatches[0].skill, "Orchestrator");
+  assert.equal(ownerMismatches[0].readme, "Archivist");
+});
+
+test("real CLI PASS: owner cells identical modulo whitespace -> exit 0", () => {
+  const root = makeFixtureRoot(
+    ownershipTableWithOwners([
+      ["`a.md`", "Owner One  (scope)"],
+      ["`b.md`", "Owner Two"],
+    ]),
+    ownershipTableWithOwners([
+      ["`a.md`", "Owner One (scope)"],
+      ["`b.md`", "Owner  Two"],
+    ]),
+  );
+  try {
+    const res = runCliAgainst(root);
+    assert.equal(res.status, 0, `expected exit 0; stdout=${res.stdout} stderr=${res.stderr}`);
+    assert.match(res.stdout, /owner cells match/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("real CLI FAIL [doc-parity-owner]: drifted owner cell -> exit 1 + slug + key + both cells", () => {
+  const root = makeFixtureRoot(
+    ownershipTableWithOwners([
+      ["`a.md`", "Orchestrator"],
+      ["`b.md`", "Executor (append per edit)"],
+    ]),
+    ownershipTableWithOwners([
+      ["`a.md`", "Orchestrator"],
+      ["`b.md`", "Executor"],
+    ]),
+  );
+  try {
+    const res = runCliAgainst(root);
+    assert.equal(res.status, 1, `expected exit 1; stdout=${res.stdout} stderr=${res.stderr}`);
+    assert.match(
+      res.stderr,
+      /check-doc-parity: FAIL \[doc-parity-owner\] — owner cell differs for 1 key\(s\) \(exact match after whitespace normalization\):/,
+    );
+    assert.match(res.stderr, /^`b\.md`$/m);
+    assert.match(res.stderr, /^ {2}SKILL\.md: {2}Executor \(append per edit\)$/m);
+    assert.match(res.stderr, /^ {2}README\.md: Executor$/m);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

@@ -40,7 +40,7 @@ iterative-planner/
     │   ├── schema.test.mjs           # Test suite (node:test)
     │   ├── check-test-count.mjs      # TEST_COUNT vs live `node --test` pass-count gate (used by make/build.ps1 test, NOT validate; Node.js 18+)
     │   ├── check-test-count.test.mjs # Test suite (node:test)
-    │   ├── check-doc-parity.mjs      # README<->SKILL.md File Ownership table parity gate (used by make/build.ps1 validate; Node.js 18+)
+    │   ├── check-doc-parity.mjs      # README<->SKILL.md File Ownership table parity gate: path-keys both directions + owner-cell text (exact match after whitespace normalization; readers column not gated) (used by make/build.ps1 validate; Node.js 18+)
     │   ├── check-doc-parity.test.mjs # Test suite (node:test)
     │   ├── check-readme-parity.mjs   # README version badge + TEST_COUNT parity gate (used by make/build.ps1 validate; Node.js 18+)
     │   ├── check-readme-parity.test.mjs # Test suite (node:test)
@@ -188,7 +188,7 @@ make help                    # Show available targets
 - [ ] File Ownership Model table in src/SKILL.md matches agent tool permissions
 - [ ] src/SKILL.md "Orchestrator Role Assumption" section names `iterative-planner-orchestrator` and matches `src/agents/ip-orchestrator.md` frontmatter `name:`
 - [ ] src/SKILL.md does not duplicate ip-orchestrator.md dispatch sequencing (pointer only — "Dispatch Rules by State" is a pointer, not a per-state spawn narrative)
-- [ ] README.md and src/SKILL.md File Ownership tables agree (same co-ownership for `plan.md` and `changelog.md`); full row parity between the two File Ownership tables is now enforced automatically by `node src/scripts/check-doc-parity.mjs` (run via `make validate`)
+- [ ] README.md and src/SKILL.md File Ownership tables agree (same co-ownership for `plan.md` and `changelog.md`); enforced automatically by `node src/scripts/check-doc-parity.mjs` (run via `make validate`): path-key parity in both directions AND owner-cell (column 2) text parity — exact match after whitespace normalization only (trim + collapse runs; no fuzzy matching), mismatch → `FAIL [doc-parity-owner]`. The readers column (col 3) is deliberately NOT gated
 - [ ] README.md version badge and test count match `VERSION` and `TEST_COUNT` files (enforced by `node src/scripts/check-readme-parity.mjs`, run via `make validate`)
 - [ ] Agent/module prose wiring is intact — every `node <skill-path>/scripts/<x>.mjs` invocation carries `<skill-path>` (never a bare `node src/scripts/…`, which is correct HERE but breaks in a consuming project), every `references/<file>.md` citation resolves, and every `§ <Code> <Title>` section pointer resolves to a heading whose title agrees (enforced by `node src/scripts/check-agent-wiring.mjs`, run via `make validate`; scope is `src/agents/*.md`, `src/scripts/modules/*.md`, `src/SKILL.md`, `src/references/*.md` — README.md and CLAUDE.md are deliberately OUT of scope)
 - [ ] Skill-bundled `~/.claude/skills/iterative-planner/agents/` mirrors `src/agents/` (`diff -rq --exclude='.claude' src/agents ~/.claude/skills/iterative-planner/agents` empty) — kept in sync by "Updating Local Skill"
