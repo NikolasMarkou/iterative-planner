@@ -81,9 +81,9 @@ The union **must be non-capturing**. It is interpolated into the anchor regexes 
 
 | Style | Comment marker | Regex (anchor first line) |
 |---|---|---|
-| Hash-comment (Python, Ruby, shell, YAML, TOML, R, Perl) | `#` | `^\s*#\s+DECISION\s+(?:<plan-id>\/)?D-\d{3}(\s+\[STALE\])?(:|\s|$)` |
-| Slash-comment (JS, TS, Go, Rust, C, C++, Java, Swift, Kotlin, Scala, C#, PHP) | `//` | `^\s*//\s+DECISION\s+(?:<plan-id>\/)?D-\d{3}(\s+\[STALE\])?(:|\s|$)` |
-| Block-comment (C, C++, Java, JS, CSS, etc.) — **two-stage; see note below** | `/* */` | outer delimiter-pair scan `/\*([\s\S]*?)\*/`, then a **marker-less** inner match `DECISION\s+(?:<plan-id>\/)?D-NNN(\s+\[STALE\])?` applied to the block body |
+| Hash-comment (Python, Ruby) | `#` | `^\s*#\s+DECISION\s+(?:<plan-id>\/)?D-\d{3}(\s+\[STALE\])?(:|\s|$)` |
+| Slash-comment (JS, TS, Go, Rust, C, C++, Java, Kotlin) | `//` | `^\s*//\s+DECISION\s+(?:<plan-id>\/)?D-\d{3}(\s+\[STALE\])?(:|\s|$)` |
+| Block-comment (every scanned non-Markdown extension) — **two-stage; see note below** | `/* */` | outer delimiter-pair scan `/\*([\s\S]*?)\*/`, then a **marker-less** inner match `DECISION\s+(?:<plan-id>\/)?D-NNN(\s+\[STALE\])?` applied to the block body |
 | HTML / Markdown — **two-stage; see note below** | `<!-- -->` | outer delimiter-pair scan `<!--([\s\S]*?)-->`, then a **marker-less** inner match `DECISION\s+(?:<plan-id>\/)?D-NNN(\s+\[STALE\])?` applied to the comment body |
 | SQL | `--` | `^\s*--\s+DECISION\s+(?:<plan-id>\/)?D-\d{3}(\s+\[STALE\])?(:|\s|$)` |
 
@@ -91,19 +91,20 @@ The plan-id prefix is an **optional non-capturing group** in each regex — `(?:
 
 **The Block-comment row is two-stage and marker-less.** The scanner first locates a `/* … */` delimiter pair with the outer scan, then applies the inner regex — which has **no `/*` prefix** — to the block body. An anchor therefore matches **anywhere inside the block**, not only immediately after the opener: a comment of the shape `/* foo DECISION <plan-id>/D-NNN bar */` is an anchor even though `DECISION` sits mid-block. This is why a comment that merely *quotes* a block-comment example, in any scanned C-family file, is read as a real anchor — the mandatory placeholder-id rule below exists for exactly this reason.
 
-**The Block and HTML rows are mutually exclusive by file extension** (since v2.32.0). The block scan is gated off for `HTML_STYLE_EXTS` (`.md`, `.markdown`, `.mdx`, `.html`, `.htm`); in those files the only recognized form is the `<!-- DECISION … -->` HTML comment. The five styles are no longer peers applied uniformly to every file — a given file receives either the block scan or the HTML scan, never both.
+**The Block and HTML rows are mutually exclusive by file extension** (since v2.32.0). The block scan is gated off for `HTML_STYLE_EXTS` (`.md`, `.markdown`, `.mdx`, `.html`, `.htm` — of these, only `.md` is also in `ANCHOR_SOURCE_EXTS`, so only `.md` files ever reach any scan; the constant names the others so the gate stays correct if they are ever added to the scanned set); in those files the only recognized form is the `<!-- DECISION … -->` HTML comment. The five styles are no longer peers applied uniformly to every file — a given file receives either the block scan or the HTML scan, never both.
 
-**Extension matrix** — validator dispatches by file extension:
+**Extension matrix** — validator dispatches by file extension. The rows below are exactly the 17 members of `ANCHOR_SOURCE_EXTS`, the one authoritative collection set — defined identically in `src/scripts/validate-plan.mjs` (`walkSourceFiles`) and `src/scripts/bootstrap.mjs` (`retire`). No other extension is ever collected:
 
 | Extensions | Marker style |
 |---|---|
-| `.py .rb .sh .bash .zsh .yml .yaml .toml .r .pl .pm .tf` | Hash |
-| `.js .jsx .ts .tsx .mjs .cjs .go .rs .c .h .cpp .hpp .cc .java .swift .kt .scala .cs .php` | Slash and Block |
-| `.css .scss .less` | Block |
-| `.html .htm .md .mdx .vue .svelte` | HTML (and Slash inside `<script>`) |
+| `.py .rb` | Hash and Block |
+| `.js .ts .tsx .mjs .cjs .go .rs .c .h .cpp .hpp .java .kt` | Slash and Block |
+| `.md` | HTML (the sole recognized form in Markdown — see the v2.32.0 section below) |
 | `.sql` | Double-dash and Block |
 
-Files outside this matrix are skipped by the reverse-anchor scan.
+"Block" appears in every non-`.md` row because the block scan is gated by complement (every scanned extension except the `HTML_STYLE_EXTS` ones), not by a per-language allowlist. Write anchors in the file's native comment style regardless — a `/* … */` pair in a `.py` file is matched, but reads as noise.
+
+**Not scanned — anchors in these files are ghosts.** Every extension outside the 17 above. In particular, earlier revisions of this matrix listed extensions no tool ever visited — `.sh .bash .zsh .yml .yaml .toml .r .pl .pm .tf` (hash-style), `.jsx .cc .swift .scala .cs .php` (slash-style), `.css .scss .less` (block-style), `.html .htm .mdx .vue .svelte` (HTML-style). That was an overpromise: file collection has always been by `ANCHOR_SOURCE_EXTS` membership, so an anchor in any of these files is invisible to the validator's anchor audit and un-stampable by `bootstrap.mjs retire` — exactly the ghost condition of the extension-less case below. Do not place anchors there; use the plain-comment-plus-**Reasoning**-pointer fallback described below.
 
 **Extension-less files (e.g. `Makefile`) are NOT scanned.** File collection is by `extname()` membership in `ANCHOR_SOURCE_EXTS` (`src/scripts/validate-plan.mjs` `walkSourceFiles`); an extension-less file yields `""` and `.mk` is not in the set, so no tool — neither the validator's anchor audit nor `bootstrap.mjs retire`'s `[STALE]` stamper — can ever see an anchor there. An anchor in a Makefile is a ghost: unindexed forever, un-stampable at retire, worse than no anchor. Do not place anchors in such files; use a plain (non-`DECISION`-grammar) comment plus file:line pointers in prose at the end of the decision entry's **Reasoning** line instead (not in **Anchor-Refs**, which is reserved for real, scannable anchors).
 
