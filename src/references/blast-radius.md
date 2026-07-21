@@ -23,7 +23,7 @@ A small change in a shared module can ripple to dozens of callers. A large chang
 |---|---|---|
 | LOC churn | 0–3 | `git diff --numstat` (added + removed): ≤20 → 0, 21–80 → 1, 81–200 → 2, >200 → 3 |
 | Reverse-dep count | 0–3 | grep across repo for imports/requires of this file. 0 → 0, 1–5 → 1, 6–20 → 2, >20 → 3 |
-| Shared-path flag | 0 or 2 | path matches `(^|/)(lib|core|shared|common|utils|types)/` (case-insensitive) |
+| Shared-path flag | 0 or 2 | repo-root-relative path matches `(^|/)(lib|core|shared|common|utils|types)/` (case-insensitive) |
 | Public-API touch | 0 or 2 | diff added line matches `^\+\s*(export\b|pub\s|public\s|def\s+[a-z]|func\s+[A-Z])` (extension-aware; `func\s+[A-Z]` covers Go exported funcs) |
 | Test coverage delta | 0 or -1 | tests in same iteration added/modified for this file (subtracts 1 — testing reduces effective radius) |
 | Iteration history | 0 or 1 | file appeared in a previous iteration's manifest in the same plan (proximity to 3-strike) |
@@ -55,6 +55,8 @@ node <skill-path>/scripts/blast-radius.mjs <file>              # default — sin
 node <skill-path>/scripts/blast-radius.mjs <file> --verbose    # add per-signal breakdown
 node <skill-path>/scripts/blast-radius.mjs <file> --json       # machine-readable JSON
 ```
+`<file>` may be any path form (CWD-relative or absolute), invoked from any CWD — the script derives the repo root itself and scores in the repo-root frame.
+
 Stdout (default, single line, exit 0):
 ```
 radius:LOW(2)
