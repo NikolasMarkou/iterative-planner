@@ -989,7 +989,7 @@ Agent files (`agents/ip-orchestrator.md` and contributing sub-agent files) inlin
 - **Required content** (in order):
   1. Pivot reason — what failed, what was learned (digest of `decisions.md` PIVOT entry).
   2. Available checkpoints (id + git hash + reason), copied from `checkpoints/*`. Default-revert recommendation if uncertain.
-  3. Ghost constraints surfaced (if any) — copied from `decisions.md` Ghost Constraint Scan.
+  3. Ghost constraints surfaced (if any) — copied from `decisions.md` Ghost-constraint discovery entries.
   4. Candidate new directions — 1-3 options with one-sentence trade-off framing each ("X at the cost of Y").
   5. Explicit prompt: which direction + keep-vs-revert decision.
 - **Fidelity**: verbatim for items 2-3 (checkpoint registry + ghost constraints); digest for items 1, 4-5.

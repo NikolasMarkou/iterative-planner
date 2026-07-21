@@ -184,7 +184,7 @@ After Phase-2 evaluation, BEFORE requesting user routing decision, emit a chat b
 At REFLECT → PIVOT routing, BEFORE transitioning to PLAN, emit a chat block with all 5 items:
 1. Pivot reason — what failed, what was learned (digest of `decisions.md` PIVOT entry).
 2. Available checkpoints (id + git hash + reason) verbatim from `checkpoints/*`. Default-revert recommendation if uncertain.
-3. Ghost constraints surfaced (if any) — verbatim from `decisions.md` Ghost Constraint Scan.
+3. Ghost constraints surfaced (if any) — verbatim from `decisions.md` Ghost-constraint discovery entries.
 4. Candidate new directions — 1-3 options, each framed "X at the cost of Y".
 5. Explicit prompt: which direction + keep-vs-revert decision.
 Floor: items 2 and 4 are non-negotiable.
