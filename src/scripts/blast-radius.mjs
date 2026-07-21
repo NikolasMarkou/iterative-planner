@@ -318,12 +318,17 @@ function testDelta() {
   ]);
   if (candidates.size === 0) return { score: 0, hit: false };
   const escaped = base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  // Root frame (D-002, extended step 8): `f` values come from `git diff
+  // --name-only` / untrackedPaths(), both ROOT-relative from any cwd — so the
+  // self-skip compares rootRel and the read joins root, never cwd. Pre-fix a
+  // subdir invocation joined cwd with a root-relative f, readFileSync threw,
+  // and the -1 test-coverage credit silently vanished (reviewer finding 1).
   for (const f of candidates) {
     if (!f) continue;
-    if (f === repoRel) continue;
+    if (f === rootRel) continue;
     if (!/(^|\/)(tests?|specs?|__tests__)\//i.test(f) && !/\.(test|spec)\./.test(f)) continue;
     const content = (() => {
-      try { return readFileSync(join(cwd, f), "utf-8"); } catch { return ""; }
+      try { return readFileSync(join(root, f), "utf-8"); } catch { return ""; }
     })();
     if (new RegExp(escaped).test(content)) return { score: -1, hit: true };
   }
@@ -389,8 +394,10 @@ if (!isGitRepo()) emitUnknown("no-git");
 // CWD frame (pre-fix behavior exactly — no new failure path, exit stays 0).
 // Do NOT move git pathspec args (`-- repoRel`) or display output to rootRel:
 // git resolves cwd-relative pathspecs itself, and root-invoked output is pinned
-// by existing tests. Only sharedPath(), reverseDeps()'s exclude pathspec, and
-// iterationHistory() consume the root frame. See decisions.md D-002.
+// by existing tests. Only sharedPath(), reverseDeps()'s exclude pathspec,
+// testDelta()'s self-skip + file reads (fourth consumer, missed by the first
+// pass and caught by the iteration-1 review — the [I:5] N-place-fix class),
+// and iterationHistory() consume the root frame. See decisions.md D-002.
 const root = tryExecArgs("git", ["rev-parse", "--show-toplevel"]) ?? cwd;
 const rootRel = relative(root, filePath);
 if (!existsSync(filePath)) {

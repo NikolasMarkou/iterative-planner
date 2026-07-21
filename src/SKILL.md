@@ -64,7 +64,7 @@ stateDiagram-v2
 | EXECUTE | Implement step-by-step | Edit files, run commands, write code. |
 | REFLECT | Evaluate results | Read outputs, run tests, review diffs. Update verification.md, decisions.md. |
 | PIVOT | Revise direction | Log pivot in decisions.md. Do NOT write plan.md yet. |
-| CLOSE | Finalize | Write summary.md. Audit decision anchors. Merge findings/decisions. Rewrite LESSONS.md (trim by importance-then-recency, never drop `[I:5]` — see ip-archivist Step 3) + SYSTEM.md atlas (demote-by-staleness — see ip-archivist Step 4). Compress consolidated files if needed. Caps: Lifecycle Matrix. |
+| CLOSE | Finalize | Audit decision anchors. Write summary.md. Merge findings/decisions. Rewrite LESSONS.md (trim by importance-then-recency, never drop `[I:5]` — see ip-archivist Step 3) + SYSTEM.md atlas (demote-by-staleness — see ip-archivist Step 4). Compress consolidated files if needed. Caps: Lifecycle Matrix. |
 
 ### Transitions
 

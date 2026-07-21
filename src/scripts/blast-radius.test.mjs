@@ -747,6 +747,28 @@ describe("blast-radius.mjs — F1: CWD-invariant scoring (root-frame signals)", 
     } finally { removeTempDir(cwd); }
   });
 
+  it("tests signal: module + its NEW untracked test score an IDENTICAL tests=-1 line from root and from inside lib/", () => {
+    const cwd = makeTempDir();
+    try {
+      mkdirSync(join(cwd, "lib"));
+      writeFileSync(join(cwd, "lib", "mod.js"), "export const a=1;\n");
+      commitAll(cwd);
+      writeFileSync(join(cwd, "lib", "mod.js"), "export const a=1;\nexport function f(){}\n"); // unstaged edit
+      writeFileSync(join(cwd, "lib", "mod.test.js"), 'import { a } from "./mod.js";\n'); // NEW untracked test
+      const fromRoot = run(cwd, join("lib", "mod.js"), "--verbose");
+      const fromSub = run(join(cwd, "lib"), "mod.js", "--verbose");
+      assert.equal(fromRoot.exitCode, 0);
+      assert.equal(fromSub.exitCode, 0);
+      // Pre-fix from lib/: testDelta joined cwd with the ROOT-relative
+      // "lib/mod.test.js", readFileSync threw, the catch swallowed it, and the
+      // -1 credit vanished — tests=0 and a total one point higher than root
+      // (MED(5) vs MED(4)). Post-fix both frames grant the credit identically.
+      assert.match(fromRoot.stdout, /tests=-1/, "untracked test must earn the -1 credit from the root");
+      assert.equal(fromSub.stdout.trim(), fromRoot.stdout.trim(),
+        `tests= signal and total/tier must be CWD-invariant:\nroot: ${fromRoot.stdout}sub:  ${fromSub.stdout}`);
+    } finally { removeTempDir(cwd); }
+  });
+
   it("hist signal: subdir invocation still finds plans/ at the root and matches the root-relative manifest path", () => {
     const cwd = makeTempDir();
     try {
