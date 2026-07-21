@@ -79,7 +79,15 @@ const isEntryPoint = (() => {
 })();
 
 if (isEntryPoint) {
-  const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+  // DECISION plan-2026-07-21T092933-3295714d/D-003: repoRoot override is an
+  // opt-in env var read HERE only (inside isEntryPoint) so tests can spawn the
+  // REAL CLI FAIL branches against fixture roots. Do NOT hoist this read to
+  // module scope, add an argv flag, or reintroduce a wrapper reimplementation:
+  // importers and the default (env-unset) CLI must stay byte-identical. See
+  // decisions.md D-003.
+  const repoRoot =
+    process.env.IP_CHECK_DOC_PARITY_ROOT ??
+    join(dirname(fileURLToPath(import.meta.url)), "..", "..");
   const skillText = readFileSync(join(repoRoot, "src", "SKILL.md"), "utf8");
   const readmeText = readFileSync(join(repoRoot, "README.md"), "utf8");
   const { missing, extra } = comparison(skillText, readmeText);

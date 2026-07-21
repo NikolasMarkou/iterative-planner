@@ -3,7 +3,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,6 +12,33 @@ import { checkVersionBadge, checkTestCount } from "./check-readme-parity.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, "..", "..");
+const script = join(__dirname, "check-readme-parity.mjs");
+
+/**
+ * Build a temp fixture root with the layout the CLI expects
+ * (VERSION, TEST_COUNT, README.md) and return its path. Caller removes it.
+ */
+function makeFixtureRoot({ version, testCount, badgeVersion, badgeCount }) {
+  const root = mkdtempSync(join(tmpdir(), "crp-fixture-"));
+  writeFileSync(join(root, "VERSION"), `${version}\n`);
+  writeFileSync(join(root, "TEST_COUNT"), `${testCount}\n`);
+  writeFileSync(
+    join(root, "README.md"),
+    `[![Skill](https://img.shields.io/badge/Skill-v${badgeVersion}-green.svg)](CHANGELOG.md)\n` +
+      `[![Tests](https://img.shields.io/badge/tests-${badgeCount}%20passing-brightgreen.svg)](src/scripts/bootstrap.test.mjs)\n`,
+  );
+  return root;
+}
+
+/** Spawn the REAL CLI against a fixture root via the opt-in env override. */
+function runCliAgainst(root) {
+  return spawnSync(process.execPath, [script], {
+    cwd: repoRoot,
+    encoding: "utf8",
+    timeout: 30_000,
+    env: { ...process.env, IP_CHECK_README_PARITY_ROOT: root },
+  });
+}
 
 describe("check-readme-parity", () => {
   it("real-repo: VERSION and TEST_COUNT match README badges — exits 0", () => {
@@ -43,49 +70,85 @@ describe("check-readme-parity", () => {
     assert.ok(Number.isFinite(result.readmeCount));
   });
 
-  it("CLI: mismatched version in temp README -> exits 1", () => {
-    const tmpDir = join(tmpdir(), `crp-test-${Date.now()}`);
-    mkdirSync(tmpDir, { recursive: true });
-
-    // VERSION that does NOT match the badge in the temp README
-    writeFileSync(join(tmpDir, "VERSION"), "9.9.9\n");
-    // TEST_COUNT that DOES match the badge (so only the version check fails)
-    writeFileSync(join(tmpDir, "TEST_COUNT"), "269\n");
-    // README with correct test count badge but wrong version
-    writeFileSync(
-      join(tmpDir, "README.md"),
-      "[![Skill](https://img.shields.io/badge/Skill-v2.26.0-green.svg)](CHANGELOG.md)\n" +
-        "[![Tests](https://img.shields.io/badge/tests-269%20passing-brightgreen.svg)](src/scripts/bootstrap.test.mjs)\n",
-    );
-
-    // Inline wrapper: uses pure functions with temp-dir files (avoids re-spawning the full CLI)
-    const wrapperSrc =
-      `import { readFileSync } from "node:fs";\n` +
-      `import { join } from "node:path";\n` +
-      `import { checkVersionBadge, checkTestCount } from ${JSON.stringify(join(__dirname, "check-readme-parity.mjs"))};\n` +
-      `const root = ${JSON.stringify(tmpDir)};\n` +
-      `const version = readFileSync(join(root, "VERSION"), "utf8").trim();\n` +
-      `const testCount = parseInt(readFileSync(join(root, "TEST_COUNT"), "utf8").trim(), 10);\n` +
-      `const readmeText = readFileSync(join(root, "README.md"), "utf8");\n` +
-      `const vResult = checkVersionBadge(readmeText, version);\n` +
-      `const tResult = checkTestCount(readmeText, testCount);\n` +
-      `let failed = !vResult.ok || !tResult.ok;\n` +
-      `process.exit(failed ? 1 : 0);\n`;
-
-    const wrapperFile = join(tmpDir, "wrapper.mjs");
-    writeFileSync(wrapperFile, wrapperSrc);
-
-    const result = spawnSync(process.execPath, [wrapperFile], {
-      cwd: tmpDir,
-      encoding: "utf8",
+  it("real CLI FAIL: version mismatch -> exit 1 + FAIL version badge on stderr", () => {
+    // VERSION does NOT match the badge; TEST_COUNT DOES (only the version check fails).
+    const root = makeFixtureRoot({
+      version: "9.9.9",
+      testCount: 269,
+      badgeVersion: "2.26.0",
+      badgeCount: 269,
     });
+    try {
+      const result = runCliAgainst(root);
+      assert.strictEqual(
+        result.status,
+        1,
+        `Expected exit 1 (version mismatch); got ${result.status}.\nstdout: ${result.stdout}\nstderr: ${result.stderr}`,
+      );
+      assert.match(
+        result.stderr,
+        /check-readme-parity: FAIL version badge — README has v2\.26\.0, expected v9\.9\.9/,
+      );
+      // The passing half still reports PASS on stdout.
+      assert.match(result.stdout, /check-readme-parity: PASS test count \(269 == 269\)/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 
-    rmSync(tmpDir, { recursive: true, force: true });
+  it("real CLI FAIL: test-count mismatch -> exit 1 + FAIL test count on stderr", () => {
+    // TEST_COUNT does NOT match the badge; VERSION DOES (only the count check fails).
+    const root = makeFixtureRoot({
+      version: "2.26.0",
+      testCount: 999,
+      badgeVersion: "2.26.0",
+      badgeCount: 269,
+    });
+    try {
+      const result = runCliAgainst(root);
+      assert.strictEqual(
+        result.status,
+        1,
+        `Expected exit 1 (count mismatch); got ${result.status}.\nstdout: ${result.stdout}\nstderr: ${result.stderr}`,
+      );
+      assert.match(
+        result.stderr,
+        /check-readme-parity: FAIL test count — README has 269, expected 999/,
+      );
+      assert.match(result.stdout, /check-readme-parity: PASS version badge \(v2\.26\.0 == v2\.26\.0\)/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 
-    assert.strictEqual(
-      result.status,
-      1,
-      `Expected exit 1 (version mismatch); got ${result.status}.\nstdout: ${result.stdout}\nstderr: ${result.stderr}`,
-    );
+  it("real CLI FAIL: version AND count mismatch -> exit 1 + both FAIL lines", () => {
+    const root = makeFixtureRoot({
+      version: "9.9.9",
+      testCount: 999,
+      badgeVersion: "2.26.0",
+      badgeCount: 269,
+    });
+    try {
+      const result = runCliAgainst(root);
+      assert.strictEqual(
+        result.status,
+        1,
+        `Expected exit 1 (both mismatches); got ${result.status}.\nstdout: ${result.stdout}\nstderr: ${result.stderr}`,
+      );
+      assert.match(
+        result.stderr,
+        /check-readme-parity: FAIL version badge — README has v2\.26\.0, expected v9\.9\.9/,
+      );
+      assert.match(
+        result.stderr,
+        /check-readme-parity: FAIL test count — README has 269, expected 999/,
+      );
+      const failLines = result.stderr
+        .split("\n")
+        .filter((l) => l.includes("check-readme-parity: FAIL"));
+      assert.strictEqual(failLines.length, 2, `expected exactly 2 FAIL lines:\n${result.stderr}`);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
