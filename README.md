@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Skill](https://img.shields.io/badge/Skill-v2.55.0-green.svg)](CHANGELOG.md)
-[![Tests](https://img.shields.io/badge/tests-664%20passing-brightgreen.svg)](src/scripts/bootstrap.test.mjs)
+[![Tests](https://img.shields.io/badge/tests-667%20passing-brightgreen.svg)](src/scripts/bootstrap.test.mjs)
 [![Sponsored by Electi](https://img.shields.io/badge/Sponsored%20by-Electi-red.svg)](https://www.electiconsulting.com)
 
 **A [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skill that stops an agent from losing the plot halfway through a hard task.**
@@ -474,7 +474,7 @@ The consolidated `plans/DECISIONS.md` uses a 4-plan sliding window. Bare `D-NNN`
 
 ## Contributing
 
-The test suite covers bootstrap operations, state transitions, consolidated file management, sliding-window behavior, anchor validation, and edge cases — 664 tests across 12 suites, all on `node:test` with zero external dependencies.
+The test suite covers bootstrap operations, state transitions, consolidated file management, sliding-window behavior, anchor validation, and edge cases — 667 tests across 12 suites, all on `node:test` with zero external dependencies.
 
 <details>
 <summary><strong>Running the tests (and the per-suite breakdown)</strong></summary>
@@ -492,8 +492,8 @@ node --test src/scripts/bootstrap.test.mjs \
             src/scripts/check-template-parity.test.mjs \
             src/scripts/shared.test.mjs \
             src/scripts/schema.test.mjs
-# 664 tests total: bootstrap 239, validate-plan 116, shared 71, schema 48,
-#                  check-agent-wiring 50, blast-radius 41, check-template-parity 37,
+# 667 tests total: bootstrap 239, validate-plan 116, shared 71, schema 48,
+#                  check-agent-wiring 50, blast-radius 41, check-template-parity 40,
 #                  check-test-count 17, check-doc-parity 16, emit-state 12,
 #                  emit-template 11, check-readme-parity 6
 ```
@@ -541,7 +541,7 @@ make help
 <summary><strong>Validation checklist before submitting changes</strong></summary>
 
 - [ ] `make validate` (or `.\build.ps1 validate`) passes
-- [ ] `node --test src/scripts/*.test.mjs` passes (664 tests, 0 failing) and `node src/scripts/check-test-count.mjs` exits 0
+- [ ] `node --test src/scripts/*.test.mjs` passes (667 tests, 0 failing) and `node src/scripts/check-test-count.mjs` exits 0
 - [ ] `src/SKILL.md` has `name:` and `description:` in YAML frontmatter
 - [ ] All cross-references in `src/SKILL.md` point to existing files in `src/references/`
 - [ ] State machine diagram matches transition rules table

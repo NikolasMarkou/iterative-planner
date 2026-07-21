@@ -3,7 +3,9 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -487,4 +489,65 @@ test("the LIVE bootstrap templates byte-match the LIVE file-formats.md skeletons
   assert.equal(compared, 12);
   assert.equal(served, 17);
   assert.equal(Object.keys(PLAN_TEMPLATES).length, 12);
+});
+
+// --- the real CLI (isEntryPoint branch), spawned -----------------------------
+// D-003 pattern: the CLI's repoRoot is overridable via IP_CHECK_TEMPLATE_PARITY_ROOT,
+// read inside isEntryPoint ONLY, so the FAIL exit is provable against a fixture root
+// without touching checkParity/resolveTemplate. The CLI reads exactly two files from
+// repoRoot — DOC_REL (raw bytes) and SRC_REL (utf8); PLAN_TEMPLATES stays an
+// in-process import from the REAL bootstrap.mjs regardless of the override, so a
+// tampered fixture DOC drifts from the real templates and parity fires.
+
+const script = join(ROOT, "src", "scripts", "check-template-parity.mjs");
+
+test("real CLI, env unset: PASS on the live repo with exit 0 and the exact PASS line", () => {
+  const env = { ...process.env };
+  delete env.IP_CHECK_TEMPLATE_PARITY_ROOT; // default path — no override in play
+  const res = spawnSync(process.execPath, [script], { cwd: ROOT, encoding: "utf8", timeout: 30_000, env });
+  assert.equal(res.status, 0, `expected exit 0; stdout=${res.stdout} stderr=${res.stderr}`);
+  assert.equal(
+    res.stdout,
+    `check-template-parity: PASS (${EXPECTED_SLUGS} slugs compared byte-for-byte — ` +
+    `PLAN_TEMPLATES == ${DOC_REL} SKELETON regions; ${VALID_TEMPLATES.length} served artifacts ` +
+    `checked for header-copy via resolveTemplate)\n`,
+  );
+});
+
+test("real CLI, override pointing at the real repo root: exit 0 (the override path itself works)", () => {
+  const res = spawnSync(process.execPath, [script], {
+    cwd: tmpdir(), // cwd deliberately elsewhere — only the env override selects the root
+    encoding: "utf8",
+    timeout: 30_000,
+    env: { ...process.env, IP_CHECK_TEMPLATE_PARITY_ROOT: ROOT },
+  });
+  assert.equal(res.status, 0, `expected exit 0; stdout=${res.stdout} stderr=${res.stderr}`);
+  assert.match(res.stdout, /^check-template-parity: PASS /);
+});
+
+test("real CLI, override at a fixture root with one tampered SKELETON region: exit 1, stderr names the slug", () => {
+  const root = mkdtempSync(join(tmpdir(), "ctp-fixture-"));
+  try {
+    // The CLI reads DOC_REL + SRC_REL from repoRoot — mirror exactly that structure.
+    mkdirSync(dirname(join(root, DOC_REL)), { recursive: true });
+    mkdirSync(dirname(join(root, SRC_REL)), { recursive: true });
+    const lines = REAL_DOC.split("\n");
+    const at = lines.findIndex((l) => l.trim() === "<!-- SKELETON:state -->");
+    assert.notEqual(at, -1, "fixture premise: the real doc has a state SKELETON region");
+    lines[at + 2] += " TAMPERED"; // marker, ```markdown fence, then the first body line
+    writeFileSync(join(root, DOC_REL), lines.join("\n"));
+    writeFileSync(join(root, SRC_REL), REAL_SRC); // srcText source for locateTemplateKey
+    const res = spawnSync(process.execPath, [script], {
+      cwd: ROOT,
+      encoding: "utf8",
+      timeout: 30_000,
+      env: { ...process.env, IP_CHECK_TEMPLATE_PARITY_ROOT: root },
+    });
+    assert.equal(res.status, 1, `expected exit 1; stdout=${res.stdout} stderr=${res.stderr}`);
+    assert.match(res.stderr, /^check-template-parity: FAIL — 1 issue\(s\):/);
+    assert.match(res.stderr, /\[parity\] PLAN_TEMPLATES\.state/); // the tampered slug, named
+    assert.match(res.stderr, /TAMPERED/); // and both sides of the drift shown
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
