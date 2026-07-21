@@ -1,7 +1,7 @@
 # Iterative Planner
 
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Skill](https://img.shields.io/badge/Skill-v2.54.0-green.svg)](CHANGELOG.md)
+[![Skill](https://img.shields.io/badge/Skill-v2.55.0-green.svg)](CHANGELOG.md)
 [![Tests](https://img.shields.io/badge/tests-651%20passing-brightgreen.svg)](src/scripts/bootstrap.test.mjs)
 [![Sponsored by Electi](https://img.shields.io/badge/Sponsored%20by-Electi-red.svg)](https://www.electiconsulting.com)
 
@@ -474,7 +474,7 @@ The consolidated `plans/DECISIONS.md` uses a 4-plan sliding window. Bare `D-NNN`
 
 ## Contributing
 
-The test suite covers bootstrap operations, state transitions, consolidated file management, sliding-window behavior, anchor validation, and edge cases — 643 tests across 12 suites, all on `node:test` with zero external dependencies.
+The test suite covers bootstrap operations, state transitions, consolidated file management, sliding-window behavior, anchor validation, and edge cases — 651 tests across 12 suites, all on `node:test` with zero external dependencies.
 
 <details>
 <summary><strong>Running the tests (and the per-suite breakdown)</strong></summary>
@@ -492,10 +492,10 @@ node --test src/scripts/bootstrap.test.mjs \
             src/scripts/check-template-parity.test.mjs \
             src/scripts/shared.test.mjs \
             src/scripts/schema.test.mjs
-# 643 tests total: bootstrap 239, validate-plan 116, shared 71, schema 48,
-#                  blast-radius 37, check-agent-wiring 47, check-template-parity 37,
+# 651 tests total: bootstrap 239, validate-plan 116, shared 71, schema 48,
+#                  blast-radius 40, check-agent-wiring 47, check-template-parity 37,
 #                  check-test-count 17, emit-state 12, emit-template 11,
-#                  check-doc-parity 4, check-readme-parity 4
+#                  check-doc-parity 7, check-readme-parity 6
 ```
 
 `node src/scripts/check-test-count.mjs` re-runs the suite and fails if the live pass count disagrees with the `TEST_COUNT` file. It runs as part of `make test` (not `make validate`, which stays suite-free and fast). The per-suite numbers above are hand-maintained prose — if they drift, `TEST_COUNT` and the badge remain the machine-checked source of truth.
@@ -541,7 +541,7 @@ make help
 <summary><strong>Validation checklist before submitting changes</strong></summary>
 
 - [ ] `make validate` (or `.\build.ps1 validate`) passes
-- [ ] `node --test src/scripts/*.test.mjs` passes (643 tests, 0 failing) and `node src/scripts/check-test-count.mjs` exits 0
+- [ ] `node --test src/scripts/*.test.mjs` passes (651 tests, 0 failing) and `node src/scripts/check-test-count.mjs` exits 0
 - [ ] `src/SKILL.md` has `name:` and `description:` in YAML frontmatter
 - [ ] All cross-references in `src/SKILL.md` point to existing files in `src/references/`
 - [ ] State machine diagram matches transition rules table
