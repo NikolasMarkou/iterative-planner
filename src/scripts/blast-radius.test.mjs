@@ -59,7 +59,7 @@ function which(cmd) {
   return spawnSync("sh", ["-c", `command -v ${cmd}`], { encoding: "utf-8" }).stdout.trim();
 }
 
-function makeShimDir({ failGitGrep = false } = {}) {
+function makeShimDir({ failGitGrep = false, failRevParseToplevel = false } = {}) {
   const dir = join(tmpdir(), `radius-shim-${randomBytes(4).toString("hex")}`);
   mkdirSync(dir, { recursive: true });
   const log = join(dir, "grep-argv.log");
@@ -72,6 +72,14 @@ function makeShimDir({ failGitGrep = false } = {}) {
 
   if (failGitGrep) {
     const gitShim = `#!/bin/sh\nif [ "$1" = "grep" ]; then exit 128; fi\nexec '${realGit}' "$@"\n`;
+    writeFileSync(join(dir, "git"), gitShim);
+    chmodSync(join(dir, "git"), 0o755);
+  }
+  if (failRevParseToplevel) {
+    // Fail ONLY `git rev-parse --show-toplevel` (the F1 root derivation);
+    // `rev-parse --is-inside-work-tree` and every other subcommand pass through,
+    // so isGitRepo() still succeeds and the script must fall back to the CWD frame.
+    const gitShim = `#!/bin/sh\nif [ "$1" = "rev-parse" ] && [ "$2" = "--show-toplevel" ]; then exit 128; fi\nexec '${realGit}' "$@"\n`;
     writeFileSync(join(dir, "git"), gitShim);
     chmodSync(join(dir, "git"), 0o755);
   }
@@ -704,5 +712,76 @@ describe("blast-radius.mjs — defect #2: git-grep no-match is a result, not an 
       assert.equal(o.signals.deps.count, 6, JSON.stringify(o.signals.deps));
       assert.equal(o.signals.deps.score, 2, JSON.stringify(o.signals.deps));
     } finally { removeTempDir(cwd); }
+  });
+});
+
+// F1 — three signals were CWD-framed while the tool's contract is root-framed:
+// sharedPath() regexed the cwd-relative arg (lib/thing.js scored shared=0 when
+// invoked from inside lib/), reverseDeps() excluded the WRONG self path via
+// `:(top,exclude)${cwd-relative}` AND searched only the cwd subtree (git grep
+// with exclude-only pathspecs does NOT widen to the repo root — verified live,
+// hence the explicit inclusive `:(top)`; see D-002), and iterationHistory()
+// resolved plans/ against cwd and matched the cwd-relative path against
+// manifests that record root-relative paths. These tests score the SAME edit
+// from the repo root and from a subdirectory and require identical results.
+describe("blast-radius.mjs — F1: CWD-invariant scoring (root-frame signals)", () => {
+  it("same edit scores an IDENTICAL verbose line from repo root and from inside lib/", () => {
+    const cwd = makeTempDir();
+    try {
+      mkdirSync(join(cwd, "lib"));
+      writeFileSync(join(cwd, "lib", "thing.js"), "export const a=1;\n");
+      writeFileSync(join(cwd, "one.js"), 'import { a } from "./lib/thing.js";\n'); // importer at ROOT
+      commitAll(cwd);
+      writeFileSync(join(cwd, "lib", "thing.js"), "export const a=1;\nexport function f(){}\n"); // unstaged edit
+      const fromRoot = run(cwd, join("lib", "thing.js"), "--verbose");
+      const fromSub = run(join(cwd, "lib"), "thing.js", "--verbose");
+      assert.equal(fromRoot.exitCode, 0);
+      assert.equal(fromSub.exitCode, 0);
+      // Pre-fix from lib/: shared=0 (regex saw "thing.js") and deps=0 (subtree
+      // search missed ../one.js) -> LOW(2). Post-fix both invocations agree.
+      assert.equal(fromSub.stdout.trim(), fromRoot.stdout.trim(),
+        `verbose line must be CWD-invariant:\nroot: ${fromRoot.stdout}sub:  ${fromSub.stdout}`);
+      assert.match(fromRoot.stdout, /shared=2/, "lib/ file must flag shared from any cwd");
+      assert.match(fromRoot.stdout, /deps=1\(1\)/, "the root-level importer must be counted from any cwd");
+      assert.match(fromRoot.stdout.trim(), /^radius:MED\(5\)/); // shared=2 + api=2 + deps=1
+    } finally { removeTempDir(cwd); }
+  });
+
+  it("hist signal: subdir invocation still finds plans/ at the root and matches the root-relative manifest path", () => {
+    const cwd = makeTempDir();
+    try {
+      mkdirSync(join(cwd, "sub"));
+      writeFileSync(join(cwd, "tracked.js"), "export const t=1;\n");
+      commitAll(cwd);
+      const planId = "plan_2026-01-01_aaaaaaaa";
+      const planDir = join(cwd, "plans", planId);
+      mkdirSync(planDir, { recursive: true });
+      writeFileSync(join(cwd, "plans", ".current_plan"), planId + "\n");
+      writeFileSync(join(planDir, "state.md"), [
+        "# Current State: EXECUTE",
+        "## Change Manifest (current iteration)",
+        "- step-1: tracked.js — some change (abc1234)", // root-relative, as manifests record
+      ].join("\n") + "\n");
+      // Pre-fix from sub/: plans/ lookup hit join(cwd, "plans") (nonexistent) and
+      // the regex matched "../tracked.js" against the manifest -> hist=0.
+      const o = JSON.parse(run(join(cwd, "sub"), join("..", "tracked.js"), "--json").stdout.trim());
+      assert.equal(o.signals.hist.score, 1, JSON.stringify(o.signals.hist));
+      assert.equal(o.signals.hist.prior, true, JSON.stringify(o.signals.hist));
+    } finally { removeTempDir(cwd); }
+  });
+
+  it("failing `rev-parse --show-toplevel` falls back to the CWD frame: normal output, exit 0", POSIX_ONLY, () => {
+    const cwd = makeTempDir();
+    const { dir: shim } = makeShimDir({ failRevParseToplevel: true });
+    try {
+      mkdirSync(join(cwd, "lib"));
+      writeFileSync(join(cwd, "lib", "thing.js"), "export const a=1;\n");
+      commitAll(cwd);
+      const r = runShimmed(cwd, shim, join("lib", "thing.js"), "--verbose");
+      assert.equal(r.exitCode, 0, `must exit 0 when rev-parse fails; got ${r.exitCode}\n${r.stderr}`);
+      // cwd IS the root here, so the fallback frame is still correct: shared=2.
+      assert.match(r.stdout.trim(), /^radius:(LOW|MED|HIGH)\(\d+\)/, r.stdout);
+      assert.match(r.stdout, /shared=2/, "CWD-frame fallback from the root must keep root-invoked scores");
+    } finally { removeTempDir(cwd); removeTempDir(shim); }
   });
 });

@@ -214,8 +214,17 @@ function reverseDeps() {
   // .git — without them, a basename mentioned in prose inside plans/*/changelog.md
   // (or a vendored copy under node_modules/) inflates the deps count for the
   // fallback path only, making the two paths disagree on the same file.
+  // DECISION plan-2026-07-21T092933-3295714d/D-002 — the pathspec set is
+  // root-framed: the exclude uses rootRel (a cwd-relative repoRel silently
+  // excluded the WRONG path when invoked from a subdir), and the inclusive
+  // `:(top)` is REQUIRED, not decorative — verified live: with only exclude
+  // pathspecs, git grep still limits the search to the cwd subtree, so a
+  // subdir invocation missed every importer outside it. Do NOT drop `:(top)`
+  // and do NOT swap the `-- repoRel` diff pathspecs elsewhere to rootRel
+  // (git resolves those against cwd). Output stays cwd-relative; the
+  // `l !== repoRel` filter below is kept as defense in depth.
   const gitGrep = execArgs("git", ["grep", "-E", "-l", "--untracked", "--no-color", pat,
-                                   "--", `:(top,exclude)${repoRel}`, ":(top,exclude)plans/"]);
+                                   "--", ":(top)", `:(top,exclude)${rootRel}`, ":(top,exclude)plans/"]);
   if (gitGrep.noMatch) return { score: 0, count: 0 };
   const out = gitGrep.ok
     ? gitGrep.stdout
@@ -241,7 +250,9 @@ function reverseDeps() {
 // -----------------------------------------------------------------------------
 
 function sharedPath() {
-  const norm = repoRel.replace(/\\/g, "/").toLowerCase();
+  // Root-relative frame: `lib/x.js` scored from inside lib/ (repoRel "x.js")
+  // must still flag as shared. See D-002 anchor at the root derivation below.
+  const norm = rootRel.replace(/\\/g, "/").toLowerCase();
   const match = /(^|\/)(lib|core|shared|common|utils|types)\//.test(norm);
   return { score: match ? 2 : 0, match };
 }
@@ -328,9 +339,11 @@ function testDelta() {
 
 function iterationHistory() {
   try {
-    const ptr = readFileSync(join(cwd, "plans", ".current_plan"), "utf-8").trim();
+    // Root frame (D-002): plans/ lives at the repo root, and manifests record
+    // root-relative paths — a subdir invocation must still find both.
+    const ptr = readFileSync(join(root, "plans", ".current_plan"), "utf-8").trim();
     if (!ptr) return { score: 0, prior: false };
-    const planDir = join(cwd, "plans", ptr);
+    const planDir = join(root, "plans", ptr);
     // Look in checkpoints/ for prior iteration markers and decisions.md mentions.
     const candidates = [];
     const stPath = join(planDir, "state.md");
@@ -344,8 +357,9 @@ function iterationHistory() {
     for (const p of candidates) {
       try {
         const c = readFileSync(p, "utf-8");
-        // Match repoRel as a backtick-fenced or whitespace-bounded path.
-        const re = new RegExp(`(\`|\\s)${repoRel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\`|\\s|$)`);
+        // Match rootRel (the manifests' frame) as a backtick-fenced or
+        // whitespace-bounded path.
+        const re = new RegExp(`(\`|\\s)${rootRel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\`|\\s|$)`);
         if (re.test(c)) return { score: 1, prior: true };
       } catch {}
     }
@@ -367,6 +381,18 @@ function emitUnknown(reason) {
 }
 
 if (!isGitRepo()) emitUnknown("no-git");
+
+// DECISION plan-2026-07-21T092933-3295714d/D-002 — root-frame derivation.
+// The tool's contract (`<repo-rel-path>` changelog field, root-relative state.md
+// manifests) is ROOT-framed, but cwd may be any subdirectory. Derive the repo
+// root ONCE, after the isGitRepo() gate; on rev-parse failure fall back to the
+// CWD frame (pre-fix behavior exactly — no new failure path, exit stays 0).
+// Do NOT move git pathspec args (`-- repoRel`) or display output to rootRel:
+// git resolves cwd-relative pathspecs itself, and root-invoked output is pinned
+// by existing tests. Only sharedPath(), reverseDeps()'s exclude pathspec, and
+// iterationHistory() consume the root frame. See decisions.md D-002.
+const root = tryExecArgs("git", ["rev-parse", "--show-toplevel"]) ?? cwd;
+const rootRel = relative(root, filePath);
 if (!existsSync(filePath)) {
   // File may have been deleted as part of edit; still try to score from diff.
   // If git diff returns nothing, give up.
