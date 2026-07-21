@@ -469,6 +469,27 @@ test("CLI --emit-edges: two runs on an unchanged tree are byte-identical", () =>
   }
 });
 
+test("CLI --emit-edges FAIL [emit-edges-write-failed]: missing parent dir -> exit 1, named slug, no file, no mkdir", () => {
+  const tmp = mkdtempSync(join(tmpdir(), "caw-edges-"));
+  try {
+    const missingDir = join(tmp, "no-such-dir");
+    const out = join(missingDir, "x.jsonl");
+    const r = spawnSync(process.execPath, [checkerPath, "--emit-edges", out], {
+      cwd: repoRoot,
+      encoding: "utf8",
+    });
+    assert.strictEqual(r.status, 1, `exit ${r.status}\nstdout: ${r.stdout}\nstderr: ${r.stderr}`);
+    assert.match(r.stderr, /check-agent-wiring: FAIL \[emit-edges-write-failed\] /);
+    assert.ok(r.stderr.includes(out), "stderr must name the failed path");
+    assert.match(r.stderr, /\(ENOENT\)/, "stderr must report err.code verbatim");
+    assert.ok(!r.stdout.includes("emit-edges: wrote"), "a failed write must not claim success");
+    assert.ok(!existsSync(out), "no edge file may be created on failure");
+    assert.ok(!existsSync(missingDir), "the guard must NOT mkdir the missing parent (D-001)");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 // --- scan floor + IP_CHECK_AGENT_WIRING_ROOT (plan-2026-07-21-38d0cd87 step 2) --
 
 /**

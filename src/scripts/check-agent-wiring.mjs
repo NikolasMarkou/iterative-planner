@@ -341,7 +341,17 @@ if (isEntryPoint) {
     // Written on both the PASS and FAIL branches: edges are the *passing*
     // matches — other files' failures do not invalidate them.
     const out = serializeEdges(edges);
-    writeFileSync(edgesPath, out);
+    try {
+      writeFileSync(edgesPath, out);
+    } catch (err) {
+      // DECISION plan-2026-07-21T111733-38d0cd87/D-001: fail LOUD on any write
+      // failure — do NOT mkdirSync the parent. A typo'd --emit-edges path must
+      // exit 1 with a named slug, not silently create directories. err.code is
+      // reported verbatim (ENOENT, EACCES, ...) so non-ENOENT failures are not
+      // swallowed either. See decisions.md D-001.
+      console.error(`check-agent-wiring: FAIL [emit-edges-write-failed] ${edgesPath} (${err.code})`);
+      process.exit(1);
+    }
     const n = out === "" ? 0 : out.split("\n").length - 1;
     console.log(`emit-edges: wrote ${n} edge(s) to ${edgesPath}`);
   }
