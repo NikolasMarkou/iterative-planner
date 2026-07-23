@@ -279,6 +279,7 @@ When a step fails during EXECUTE:
 5. Transition → REFLECT. Log leash hit in `state.md`. Wait for user.
 
 Attempt counter in `state.md`. Resets on: user direction | new step | PIVOT. **Reset mechanically** — run `bootstrap.mjs reset-attempts` (clears the `## Fix Attempts` section to placeholder) rather than hand-editing state.md; a stale counter carried across a PIVOT or new step otherwise HARD-blocks the pre-step gate on the next step (`GATE:FAIL [leash-cap]`).
+**Known reset gap**: the mechanical `reset-attempts` fires at three orchestrator sites — EXECUTE success, PIVOT dispatch, and REFLECT→EXECUTE re-entry. The path REFLECT→EXPLORE→PLAN→EXECUTE that starts a NEW iteration (no PIVOT, no completion-fix) passes through none of them, so a stale counter from a prior iteration's failed step can trip the leash-cap gate on the new iteration's first step. This is an accepted gap — clear it by running `bootstrap.mjs reset-attempts` when you start a new iteration after a leash hit.
 **No exceptions.** Unguided fix chains derail projects.
 
 **Pre-step gate** (v2.18.0+): `node <skill-path>/scripts/validate-plan.mjs --pre-step` runs in the orchestrator before each ip-executor spawn. Exit code 2 emits one of four `GATE:FAIL` slugs — `[no-plan]`, `[wrong-state]`, `[leash-cap]`, `[iteration-cap]`. `[leash-cap]` mechanically halts EXECUTE when 2 fix attempts are recorded — converting the leash from advisory to enforced. See `agents/ip-orchestrator.md` EXECUTE dispatch for the integration point and the full slug→action mapping.
