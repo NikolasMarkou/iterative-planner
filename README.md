@@ -474,7 +474,7 @@ The consolidated `plans/DECISIONS.md` uses a 4-plan sliding window. Bare `D-NNN`
 
 ## Contributing
 
-The test suite covers bootstrap operations, state transitions, consolidated file management, sliding-window behavior, anchor validation, and edge cases — 677 tests across 13 suites, all on `node:test` with zero external dependencies.
+The test suite covers bootstrap operations, state transitions, consolidated file management, sliding-window behavior, anchor validation, and edge cases — see the tests badge above for the current total, all on `node:test` with zero external dependencies.
 
 <details>
 <summary><strong>Running the tests (and the per-suite breakdown)</strong></summary>
@@ -488,15 +488,17 @@ node --test src/scripts/bootstrap.test.mjs \
             src/scripts/emit-template.test.mjs \
             src/scripts/check-readme-parity.test.mjs \
             src/scripts/check-changelog-parity.test.mjs \
+            src/scripts/shared.test.mjs \
             src/scripts/check-test-count.test.mjs \
+            src/scripts/schema.test.mjs \
             src/scripts/check-agent-wiring.test.mjs \
             src/scripts/check-template-parity.test.mjs \
-            src/scripts/shared.test.mjs \
-            src/scripts/schema.test.mjs
-# 677 tests total: bootstrap 239, validate-plan 117, shared 71, schema 48,
+            src/scripts/check-register.test.mjs
+# 688 tests across 14 suites: bootstrap 239, validate-plan 117, shared 71, schema 48,
 #                  check-agent-wiring 51, blast-radius 41, check-template-parity 40,
 #                  check-test-count 17, check-doc-parity 16, emit-state 12,
-#                  emit-template 11, check-changelog-parity 8, check-readme-parity 6
+#                  emit-template 11, check-register 11, check-changelog-parity 8,
+#                  check-readme-parity 6
 ```
 
 `node src/scripts/check-test-count.mjs` re-runs the suite and fails if the live pass count disagrees with the `TEST_COUNT` file. It runs as part of `make test` (not `make validate`, which stays suite-free and fast). The per-suite numbers above are hand-maintained prose — if they drift, `TEST_COUNT` and the badge remain the machine-checked source of truth.
@@ -542,7 +544,7 @@ make help
 <summary><strong>Validation checklist before submitting changes</strong></summary>
 
 - [ ] `make validate` (or `.\build.ps1 validate`) passes
-- [ ] `node --test src/scripts/*.test.mjs` passes (677 tests, 0 failing) and `node src/scripts/check-test-count.mjs` exits 0
+- [ ] `node --test src/scripts/*.test.mjs` passes (0 failing; the total is the tests badge / `TEST_COUNT`) and `node src/scripts/check-test-count.mjs` exits 0
 - [ ] `src/SKILL.md` has `name:` and `description:` in YAML frontmatter
 - [ ] All cross-references in `src/SKILL.md` point to existing files in `src/references/`
 - [ ] State machine diagram matches transition rules table
