@@ -152,10 +152,10 @@ Floor: all 5 items. None may be omitted.
    - **Exit 1**: not expected from `--pre-step` mode today (reserved for future expansion). If encountered, treat as a transient error: retry once; on second exit-1, escalate as if it were exit 2 with synthesized slug `gate-error`.
    - Latency budget: <50ms per call. If the call hangs >5s, abort the subprocess and escalate to the user (do not silently skip — that would re-introduce the advisory-leash gap D-004 closes).
 2. Spawn ip-executor with step details + relevant context file paths
-   - On the iteration-1 first step, the spawn prompt MUST instruct ip-executor to create `checkpoints/cp-000-iter1.md` (nuclear fallback) before editing — see state-execute.md rule and ip-executor Pre-Step Checklist.
+   - On the iteration-1 first step, the spawn prompt MUST instruct ip-executor to create `checkpoints/cp-000-iter1.md` (nuclear fallback) before editing — see state-execute.md rule and ip-executor Execution Rules.
 3. Read result:
    - SUCCESS: run Post-Step Gate (update plan.md/progress.md/state.md; confirm changelog.md — Executor-owned, do not write it), then run `node <skill-path>/scripts/bootstrap.mjs reset-attempts` to clear the Fix Attempts section before the next step, then emit PC-EXECUTE-STEP. **The reset is not optional**: the pre-step gate (`validate-plan.mjs --pre-step`) counts attempt lines section-wide, NOT per-step, so a stale counter from a step that used ≥1 attempt then succeeded would spuriously HARD-trip `leash-cap` on the next step (SKILL.md Autonomy Leash — "Resets on: user direction | new step | PIVOT").
-   - FAILURE: increment fix attempts in state.md, then **re-run step 1.5's pre-step gate before the re-spawn** — the gate guards EVERY spawn, not just a step's first; this is exactly where a 2nd recorded attempt HARD-trips `leash-cap` and mechanically enforces the 2-attempt cap. Then re-spawn with failure context.
+   - FAILURE: increment fix attempts in state.md, then **re-run step 1.5's pre-step gate before the re-spawn** — the gate guards EVERY spawn, not just a step's first; this is exactly where a 2nd recorded attempt HARD-trips `leash-cap` and mechanically enforces the 2-attempt cap. Then, **only if the re-run gate returns exit 0**, re-spawn with failure context; if it returns exit 2 (`leash-cap`), do NOT re-spawn — follow step 1.5's exit-2 handler (revert-first, PC-EXECUTE-LEASH, transition to REFLECT).
 4. After 2 failures on same step — **descriptive summary, not a second imperative**: the step-1.5 exit-2 handler above has ALREADY performed the revert-first, the PC-EXECUTE-LEASH emission, and the REFLECT transition (the 2nd recorded attempt trips the gate on the step-3 re-run). Do NOT double-revert or double-emit here. The continue/pivot/rollback choice is handled in REFLECT; a **continue** (leash-override) routes REFLECT→EXECUTE, and REFLECT dispatch step 6 clears the leash counter before re-entry.
 5. Transition to REFLECT when all steps done, failure, surprise, or leash hit
 
@@ -191,7 +191,7 @@ Floor: items 2 and 4 are non-negotiable.
 
 **Dispatch**
 0. Emit rules: `node <skill-path>/scripts/emit-state.mjs --state pivot` and follow its output.
-1. Read decisions.md, findings.md, plan.md, verification.md, plans/SYSTEM.md, checkpoints/*
+1. Read decisions.md, findings.md, relevant findings/*, plan.md, verification.md, plans/LESSONS.md, plans/SYSTEM.md, checkpoints/*
 2. Decide keep vs revert (default: revert to latest checkpoint if unsure)
 3. Log pivot decision in decisions.md
 4. Update state.md, progress.md
