@@ -54,7 +54,7 @@ export function jargonMarkers(text) {
   const bracket = (t.match(bracketRe) || []).length;
   const coded = (t.match(/\b(?:PC-[A-Z]+|D-\d{2,3}|[A-Z]-\d{3}|[UFWNS]\d)\b/g) || [])
     .length;
-  // DECISION plan-2026-07-23-b8d237ed/D-001: strip bracket-tag spans BEFORE the
+  // DECISION plan-2026-07-23T191907-b8d237ed/D-001: strip bracket-tag spans BEFORE the
   // compound regex — do NOT range-dedupe overlapping matches or add a shared
   // dedupe helper. A 3+-segment bracket tag's inner slug (e.g. [doc-parity-floor])
   // would otherwise be double-counted by both bracket AND compound. bracket↔compound
