@@ -217,6 +217,9 @@ validate:
 	@# Verify bootstrap's PLAN_TEMPLATES byte-match file-formats.md's <!-- SKELETON:* --> regions
 	@echo "Checking template parity (bootstrap PLAN_TEMPLATES <-> file-formats.md skeletons)..."
 	@node src/scripts/check-template-parity.mjs || exit 1
+	@# Verify register density (jargon-marker ratchet) against committed per-file ceilings
+	@echo "Checking register density (jargon-marker ratchet)..."
+	@node src/scripts/check-register.mjs || exit 1
 	@echo "Validation passed!"
 
 # Check script syntax
@@ -237,6 +240,7 @@ lint:
 	node --check src/scripts/check-test-count.mjs
 	node --check src/scripts/check-agent-wiring.mjs
 	node --check src/scripts/check-template-parity.mjs
+	node --check src/scripts/check-register.mjs
 	node --check src/scripts/emit-state.mjs
 	node --check src/scripts/emit-template.mjs
 	node --check src/scripts/schema.mjs
@@ -250,7 +254,7 @@ lint:
 .PHONY: test
 test: lint
 	@echo "Running all test suites..."
-	node --test src/scripts/bootstrap.test.mjs src/scripts/validate-plan.test.mjs src/scripts/blast-radius.test.mjs src/scripts/check-doc-parity.test.mjs src/scripts/emit-state.test.mjs src/scripts/emit-template.test.mjs src/scripts/check-readme-parity.test.mjs src/scripts/check-changelog-parity.test.mjs src/scripts/shared.test.mjs src/scripts/check-test-count.test.mjs src/scripts/schema.test.mjs src/scripts/check-agent-wiring.test.mjs src/scripts/check-template-parity.test.mjs
+	node --test src/scripts/bootstrap.test.mjs src/scripts/validate-plan.test.mjs src/scripts/blast-radius.test.mjs src/scripts/check-doc-parity.test.mjs src/scripts/emit-state.test.mjs src/scripts/emit-template.test.mjs src/scripts/check-readme-parity.test.mjs src/scripts/check-changelog-parity.test.mjs src/scripts/shared.test.mjs src/scripts/check-test-count.test.mjs src/scripts/schema.test.mjs src/scripts/check-agent-wiring.test.mjs src/scripts/check-template-parity.test.mjs src/scripts/check-register.test.mjs
 	@echo "Checking TEST_COUNT against the live suite result..."
 	node src/scripts/check-test-count.mjs
 	@echo "Tests passed!"
