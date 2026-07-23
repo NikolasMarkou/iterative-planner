@@ -1,0 +1,21 @@
+{
+  "CLAUDE.md": 15.1,
+  "README.md": 11.6,
+  "src/SKILL.md": 8.4,
+  "src/agents/ip-archivist.md": 16.5,
+  "src/agents/ip-executor.md": 12.5,
+  "src/agents/ip-explorer.md": 4.1,
+  "src/agents/ip-orchestrator.md": 14.1,
+  "src/agents/ip-plan-writer.md": 9,
+  "src/agents/ip-reviewer.md": 10.8,
+  "src/agents/ip-verifier.md": 9.9,
+  "src/references/blast-radius.md": 6.7,
+  "src/references/code-hygiene.md": 4.4,
+  "src/references/complexity-control.md": 2.5,
+  "src/references/convergence-metrics.md": 4.1,
+  "src/references/decision-anchoring.md": 5.8,
+  "src/references/file-formats.md": 9.8,
+  "src/references/planning-rigor.md": 3.5,
+  "src/references/python-software.md": 4.5,
+  "src/references/root-cause-analysis.md": 4.4
+}
