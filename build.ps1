@@ -58,6 +58,8 @@ function Invoke-Build {
 
     # Copy scripts
     Get-ChildItem "src/scripts/*.mjs" -Exclude "*.test.mjs" | Copy-Item -Destination "$skillDir/scripts/"
+    # Gate data files (e.g. register-baseline.json — check-register.mjs's committed ceilings) ship with the scripts
+    Copy-Item "src/scripts/*.json" "$skillDir/scripts/"
 
     # Copy per-state rule modules (emitted on demand by emit-state.mjs)
     Copy-Item "src/scripts/modules/*.md" "$skillDir/scripts/modules/"
@@ -476,6 +478,7 @@ function Invoke-SyncSkill {
     # copy-only sync would have left both live in the install). Prune by glob, per directory.
     # The four dirs below are wholly owned by this skill, so a glob prune is safe there.
     Remove-Item "$skillInstallDir/scripts/*.mjs" -Force -ErrorAction SilentlyContinue
+    Remove-Item "$skillInstallDir/scripts/*.json" -Force -ErrorAction SilentlyContinue
     Remove-Item "$skillInstallDir/scripts/modules/*.md" -Force -ErrorAction SilentlyContinue
     Remove-Item "$skillInstallDir/references/*.md" -Force -ErrorAction SilentlyContinue
     Remove-Item "$skillInstallDir/agents/*.md" -Force -ErrorAction SilentlyContinue
@@ -485,6 +488,7 @@ function Invoke-SyncSkill {
 
     Copy-Item "src/SKILL.md" "$skillInstallDir/SKILL.md"
     Copy-Item "src/scripts/*.mjs" "$skillInstallDir/scripts/"
+    Copy-Item "src/scripts/*.json" "$skillInstallDir/scripts/"
     Copy-Item "src/scripts/modules/*.md" "$skillInstallDir/scripts/modules/"
     Copy-Item "src/references/*.md" "$skillInstallDir/references/"
     @("README.md", "LICENSE", "CHANGELOG.md", "VERSION") | ForEach-Object {

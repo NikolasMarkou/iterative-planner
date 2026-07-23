@@ -4,6 +4,14 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.57.1] - 2026-07-23
+
+**Packaging fix — ship the register gate's data file.** `check-register.mjs` (added in 2.57.0) reads its committed per-file ceilings from `src/scripts/register-baseline.json`, but the build/sync/package copy globs matched only `*.mjs`, so the gate shipped without its baseline and `make sync-skill` failed its own `diff -rq` self-check. Fixed by copying `src/scripts/*.json` alongside the scripts in every path.
+
+### Fixed
+
+- **`register-baseline.json` now ships with the skill bundle.** `Makefile` (`SCRIPT_FILES` build glob + `sync-skill` prune/copy) and `build.ps1` (`Invoke-Build` + `Invoke-SyncSkill`) now copy `src/scripts/*.json` next to `src/scripts/*.mjs`, in lockstep. The fix is glob-based, so any future gate data file is covered automatically. No runtime behavior change — `check-register.mjs` is a build-time gate; this only restores bundle completeness and unblocks `make sync-skill`.
+
 ## [2.57.0] - 2026-07-23
 
 **Register self-overfit countermeasures — a 3-part controller that adds a damping term to the codebase's rising jargon-density loop: a setpoint doc, a ratchet gate, and a CLOSE-time actuator.** Suite **688** (was 677; 11 new tests), 0 failures; **3 files added (the new gate, its baseline, its test), 0 new abstractions.**

@@ -13,7 +13,7 @@ AGENTS_INSTALL_DIR := $(HOME)/.claude/agents
 # Files to include in the skill package
 SKILL_FILE := src/SKILL.md
 REFERENCE_FILES := $(sort $(wildcard src/references/*.md))
-SCRIPT_FILES := $(filter-out %.test.mjs,$(wildcard src/scripts/*.mjs))
+SCRIPT_FILES := $(filter-out %.test.mjs,$(wildcard src/scripts/*.mjs)) $(wildcard src/scripts/*.json)
 MODULE_FILES := $(sort $(wildcard src/scripts/modules/*.md))
 AGENT_FILES := $(sort $(wildcard src/agents/*.md))
 # VERSION ships INSIDE the package: bootstrap.mjs resolves the skill version at runtime by
@@ -288,6 +288,7 @@ sync-skill:
 # copy-only sync would have left both live in the install). Prune by glob, per directory.
 # The four dirs below are wholly owned by this skill, so a glob prune is safe there.
 	rm -f $(SKILL_INSTALL_DIR)/scripts/*.mjs
+	rm -f $(SKILL_INSTALL_DIR)/scripts/*.json
 	rm -f $(SKILL_INSTALL_DIR)/scripts/modules/*.md
 	rm -f $(SKILL_INSTALL_DIR)/references/*.md
 	rm -f $(SKILL_INSTALL_DIR)/agents/*.md
@@ -296,6 +297,7 @@ sync-skill:
 	rm -f $(AGENTS_INSTALL_DIR)/ip-*.md
 	cp src/SKILL.md $(SKILL_INSTALL_DIR)/SKILL.md
 	cp src/scripts/*.mjs $(SKILL_INSTALL_DIR)/scripts/
+	cp src/scripts/*.json $(SKILL_INSTALL_DIR)/scripts/
 	cp src/scripts/modules/*.md $(SKILL_INSTALL_DIR)/scripts/modules/
 	cp src/references/*.md $(SKILL_INSTALL_DIR)/references/
 	cp README.md LICENSE CHANGELOG.md VERSION $(SKILL_INSTALL_DIR)/
