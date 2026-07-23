@@ -121,9 +121,9 @@ function runCliAgainst(root) {
 
 // --- PURE-FUNCTION UNIT TESTS (import only, no spawn) ---
 
-test("jargonMarkers counts brackets, coded refs, and 3+-hyphen compounds", () => {
+test("jargonMarkers counts brackets, coded refs, and 3+-segment compounds", () => {
   // 2-segment bracket tags (bracket-only, not compounds) + 3 coded refs +
-  // 2 bare 3+-hyphen compounds.
+  // 2 bare 3+-segment compounds.
   const s =
     "[alpha-one] [beta-two] PC-STEP D-003 U7 first-second-third one-two-three-four";
   const m = jargonMarkers(s);
@@ -133,12 +133,13 @@ test("jargonMarkers counts brackets, coded refs, and 3+-hyphen compounds", () =>
   assert.equal(m.total, 7);
 });
 
-test("jargonMarkers: 2-token hyphenate is not a compound; [doc-parity-floor] is a bracket + audit-then-summary is a compound", () => {
+test("jargonMarkers: 2-token hyphenate is not a compound; [doc-parity-floor] counts as a bracket ONLY (its inner slug is not re-counted as a compound); audit-then-summary is a compound", () => {
   const m = jargonMarkers("read-only [doc-parity-floor] audit-then-summary");
   assert.equal(m.bracket, 1, "[doc-parity-floor] is one bracket tag");
-  // doc-parity-floor (inside the brackets) AND audit-then-summary are both
-  // 3-segment compounds; read-only (2 tokens) is NOT.
-  assert.equal(m.compound, 2, "doc-parity-floor + audit-then-summary");
+  // The bracket-tag span is stripped before the compound regex runs, so the
+  // inner slug doc-parity-floor is NOT re-counted as a compound (no double-count).
+  // Only bare audit-then-summary (3 segments) is a compound; read-only (2 tokens) is NOT.
+  assert.equal(m.compound, 1, "audit-then-summary only — doc-parity-floor is inside a bracket tag and is NOT re-counted as a compound");
   assert.equal(m.coded, 0);
   // Isolated proof a 2-token hyphenate contributes zero compounds.
   assert.equal(jargonMarkers("read-only plain words here").compound, 0);

@@ -5,7 +5,7 @@
 // across the register-carrying shipped docs (CLAUDE.md, README.md, src/SKILL.md,
 // src/agents/*.md, src/references/*.md). It measures a purely LEXICAL marker
 // density per 1000 words — bracket-tags `[kebab-tag]`, coded refs
-// (`PC-*` / `D-\d\d` / `[A-Z]-\d{3}` / `[UFWNS]\d`), and 3+-hyphen compounds —
+// (`PC-*` / `D-\d\d` / `[A-Z]-\d{3}` / `[UFWNS]\d`), and 3+-segment compounds —
 // and compares each file against a committed per-file ceiling in
 // `register-baseline.json`. Density may FALL or HOLD freely; a RISE requires
 // deliberately bumping the review-visible baseline artifact, exactly like
@@ -50,10 +50,21 @@ function round2(n) {
  */
 export function jargonMarkers(text) {
   const t = text || "";
-  const bracket = (t.match(/\[[a-z][a-z0-9]*(?:-[a-z0-9]+)+\]/g) || []).length;
+  const bracketRe = /\[[a-z][a-z0-9]*(?:-[a-z0-9]+)+\]/g;
+  const bracket = (t.match(bracketRe) || []).length;
   const coded = (t.match(/\b(?:PC-[A-Z]+|D-\d{2,3}|[A-Z]-\d{3}|[UFWNS]\d)\b/g) || [])
     .length;
-  const compound = (t.match(/\b[a-z]+-[a-z]+-[a-z]+(?:-[a-z]+)*\b/g) || []).length;
+  // DECISION plan-2026-07-23-b8d237ed/D-001: strip bracket-tag spans BEFORE the
+  // compound regex — do NOT range-dedupe overlapping matches or add a shared
+  // dedupe helper. A 3+-segment bracket tag's inner slug (e.g. [doc-parity-floor])
+  // would otherwise be double-counted by both bracket AND compound. bracket↔compound
+  // is the ONLY overlap (coded is uppercase, disjoint), so a single-pair range-dedupe
+  // abstraction is unearned. Replace with a SPACE (not "") to keep token boundaries so
+  // adjacent tokens don't fuse into a false compound. Keeps the gate count-invariant /
+  // non-fuzzy (D-001, LESSONS [I:5]). See decisions.md D-001.
+  const noBrackets = t.replace(bracketRe, " ");
+  const compound = (noBrackets.match(/\b[a-z]+-[a-z]+-[a-z]+(?:-[a-z]+)*\b/g) || [])
+    .length;
   return { bracket, coded, compound, total: bracket + coded + compound };
 }
 
