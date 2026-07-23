@@ -4,6 +4,23 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.57.2] - 2026-07-23
+
+**Deep-review remediation — 9 findings (F1–F9) across scripts, build tooling, docs, and agent prose.** All mechanical gates were green throughout; every fix here targets a semantic defect the gates cannot catch. Suite stays 688 (an assertion was corrected, not added); `register-baseline.json` unchanged (the counting fix only lowers measured densities).
+
+### Fixed
+
+- **`check-register.mjs` counted 3+-segment bracket tags twice (F1).** `jargonMarkers()` matched a bracket tag's inner slug (e.g. `[doc-parity-floor]`) with BOTH the bracket regex AND the compound regex, so each such marker's weight varied by its internal hyphen count — contradicting the "count each marker once" contract. Fixed by stripping bracket-tag spans (space-replacement, preserving token boundaries) before the compound regex; the two other marker classes never overlap, so no shared dedupe abstraction was added (D-001). The pinning test assertion was corrected from `compound: 2` to `compound: 1`; TEST_COUNT unchanged.
+- **Threshold comment mislabeled (F2).** The compound class was described as "3+-hyphen" but the regex needs only 2 hyphens (3 segments). Relabeled "3+-hyphen" → "3+-segment" in `check-register.mjs`, its test, and the sibling description in `CLAUDE.md`.
+- **`sync-skill` shipped test files into the live install — D-008 regression re-fixed (F4).** Both `Makefile` `sync-skill` and `build.ps1` `Invoke-SyncSkill` had regressed to a raw `src/scripts/*.mjs` copy glob (undoing commit `8f902cb`), shipping all `*.test.mjs` into `~/.claude/skills/...`; the whole-directory `diff -rq` verification passed vacuously because both sides carried the same test files. Restored the test-excluding copy (`$(SCRIPT_FILES)` / `Get-ChildItem -Exclude "*.test.mjs"`), added `--exclude='*.test.mjs'` to the verification diff, and added an explicit non-vacuous zero-test-file assertion to both build scripts. `CLAUDE.md`'s "Updating Local Skill" fallback + verify guidance corrected to match. `build`/`package` paths were never affected.
+- **README Contributing section stale by one bump (F5).** "677 tests across 13 suites" and a "677 tests, 0 failing" checklist bullet drifted while the gated badge stayed correct at 688; the copy-pasteable `node --test` example omitted `check-register.test.mjs` entirely. Reworded the counts to defer to the `TEST_COUNT` badge, added the missing suite to the example (14 files, canonical order), and corrected the per-suite breakdown to 688 across 14 suites.
+- **`ip-orchestrator.md` prose defects (F6, F8, F9).** PIVOT dispatch step 1's read list omitted `plans/LESSONS.md` and `findings/*`, contradicting SKILL.md's own Mandatory Re-reads table and `state-pivot.md` — added both. EXECUTE dispatch step 3's FAILURE branch ended with an unconditional "re-spawn" that locally contradicted step 1.5's exit-2 HALT — reworded so the re-spawn is explicitly conditional on the gate returning exit 0. EXECUTE step 2 miscited the cp-000 checkpoint rule as living in ip-executor's "Pre-Step Checklist" — corrected to "Execution Rules".
+- **Leash reset-site claim narrowed (F7, docs only).** SKILL.md Autonomy Leash and `plans/SYSTEM.md` now name the REFLECT→EXPLORE→new-iteration path (no PIVOT, no completion-fix) as a known accepted gap where a stale fix-attempt counter can trip `leash-cap` on the new iteration's first step (clear via `bootstrap.mjs reset-attempts`). Leash CODE is unchanged.
+
+### Notes
+
+- The initial `register-baseline.json` ceilings were bulk-generated with a flat ~+2.5/1k-word headroom over each doc's measured density, not per-file reasoned (F3) — a framing clarification, no data change.
+
 ## [2.57.1] - 2026-07-23
 
 **Packaging fix — ship the register gate's data file.** `check-register.mjs` (added in 2.57.0) reads its committed per-file ceilings from `src/scripts/register-baseline.json`, but the build/sync/package copy globs matched only `*.mjs`, so the gate shipped without its baseline and `make sync-skill` failed its own `diff -rq` self-check. Fixed by copying `src/scripts/*.json` alongside the scripts in every path.
