@@ -235,7 +235,9 @@ This does NOT remove repo-deleted files: after copying, verify with `diff -rq` a
 
 ```bash
 cp src/SKILL.md ~/.claude/skills/iterative-planner/SKILL.md
-cp src/scripts/*.mjs ~/.claude/skills/iterative-planner/scripts/
+# EXCLUDE test files: the raw `cp src/scripts/*.mjs` glob ships all *.test.mjs into the live install (D-008 regression). Copy only non-test scripts:
+find src/scripts -maxdepth 1 -name '*.mjs' ! -name '*.test.mjs' -exec cp {} ~/.claude/skills/iterative-planner/scripts/ \;
+cp src/scripts/*.json ~/.claude/skills/iterative-planner/scripts/   # gate-data files (register-baseline.json)
 mkdir -p ~/.claude/skills/iterative-planner/scripts/modules && cp src/scripts/modules/*.md ~/.claude/skills/iterative-planner/scripts/modules/   # the *.mjs glob does NOT copy the modules/ subdir — copy it explicitly
 cp src/references/*.md ~/.claude/skills/iterative-planner/references/
 cp README.md LICENSE CHANGELOG.md VERSION ~/.claude/skills/iterative-planner/   # VERSION is required at runtime: bootstrap.mjs stamps it into new plans
@@ -243,4 +245,4 @@ mkdir -p ~/.claude/agents && cp src/agents/*.md ~/.claude/agents/               
 mkdir -p ~/.claude/skills/iterative-planner/agents && cp src/agents/*.md ~/.claude/skills/iterative-planner/agents/   # keep skill-bundled agents in sync (authoritative-by-build)
 ```
 
-Always verify with `diff -rq` after the fallback. Every tree, every time — `diff -rq --exclude='.claude' src/agents ~/.claude/skills/iterative-planner/agents`, `diff -rq --exclude='.claude' src/scripts/modules ~/.claude/skills/iterative-planner/scripts/modules` (the modules/ subdir is easy to miss because the `*.mjs` glob skips it), plus the same for `src/scripts` and `src/references` (add `--exclude='kg-edges.jsonl'` for references — generated-only, never synced). All must be empty; any file present only in the install is an orphan the fallback cannot remove — delete it by hand.
+Always verify with `diff -rq` after the fallback. Every tree, every time — `diff -rq --exclude='.claude' src/agents ~/.claude/skills/iterative-planner/agents`, `diff -rq --exclude='.claude' src/scripts/modules ~/.claude/skills/iterative-planner/scripts/modules` (the modules/ subdir is easy to miss because the `*.mjs` glob skips it), plus `diff -rq --exclude='.claude' --exclude='*.test.mjs' src/scripts ~/.claude/skills/iterative-planner/scripts` (the `--exclude='*.test.mjs'` is mandatory — the fallback copy above deliberately excludes test files, so an unfiltered diff would false-flag every `*.test.mjs` as "only in src/scripts"; separately confirm `ls ~/.claude/skills/iterative-planner/scripts/*.test.mjs` is empty — a leaked test file is a D-008 regression) and `diff -rq --exclude='.claude' --exclude='kg-edges.jsonl' src/references ~/.claude/skills/iterative-planner/references` (`kg-edges.jsonl` is generated-only, never synced). All must be empty; any file present only in the install is an orphan the fallback cannot remove — delete it by hand.

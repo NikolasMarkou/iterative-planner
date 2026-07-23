@@ -296,8 +296,10 @@ sync-skill:
 # ip-*.md agents here — a glob prune would delete other skills' agent definitions.
 	rm -f $(AGENTS_INSTALL_DIR)/ip-*.md
 	cp src/SKILL.md $(SKILL_INSTALL_DIR)/SKILL.md
-	cp src/scripts/*.mjs $(SKILL_INSTALL_DIR)/scripts/
-	cp src/scripts/*.json $(SKILL_INSTALL_DIR)/scripts/
+# Copy scripts via $(SCRIPT_FILES), which already excludes %.test.mjs and includes the .json
+# gate-data files. The raw `cp src/scripts/*.mjs` glob shipped all *.test.mjs into the live
+# install (D-008 regression, re-fixed here); do NOT revert to it. See decisions.md D-002.
+	cp $(SCRIPT_FILES) $(SKILL_INSTALL_DIR)/scripts/
 	cp src/scripts/modules/*.md $(SKILL_INSTALL_DIR)/scripts/modules/
 	cp src/references/*.md $(SKILL_INSTALL_DIR)/references/
 	cp README.md LICENSE CHANGELOG.md VERSION $(SKILL_INSTALL_DIR)/
@@ -309,7 +311,12 @@ sync-skill:
 # by every `make validate`, removed by `clean`). It must NOT be committed, synced, or shipped — do NOT drop
 # this exclusion or widen any src/references/*.md copy glob to include it. Gitignore does not hide files
 # from `diff -rq`, hence the explicit exclude here. See decisions.md D-002.
-	@diff -rq --exclude='.claude' src/scripts $(SKILL_INSTALL_DIR)/scripts \
+# Exclude *.test.mjs from the scripts diff — the copy above deliberately ships no test files, so
+# an unfiltered diff would false-fail on every src-side test file as "only in src/scripts".
+# The guard below then asserts, non-vacuously, that ZERO test files leaked into the install
+# (restoring D-008's verification shape — the old whole-dir diff passed vacuously). See D-002.
+	@test -z "$$(ls $(SKILL_INSTALL_DIR)/scripts/*.test.mjs 2>/dev/null)" || { echo "ERROR: sync-skill shipped *.test.mjs into the install (D-008 regression)" && exit 1; }
+	@diff -rq --exclude='.claude' --exclude='*.test.mjs' src/scripts $(SKILL_INSTALL_DIR)/scripts \
 	  && diff -rq --exclude='.claude' --exclude='kg-edges.jsonl' src/references $(SKILL_INSTALL_DIR)/references \
 	  && diff -rq --exclude='.claude' src/agents $(SKILL_INSTALL_DIR)/agents \
 	  && diff -rq --exclude='.claude' src/scripts/modules $(SKILL_INSTALL_DIR)/scripts/modules \

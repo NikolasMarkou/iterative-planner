@@ -487,7 +487,10 @@ function Invoke-SyncSkill {
     Remove-Item (Join-Path $agentsInstallDir "ip-*.md") -Force -ErrorAction SilentlyContinue
 
     Copy-Item "src/SKILL.md" "$skillInstallDir/SKILL.md"
-    Copy-Item "src/scripts/*.mjs" "$skillInstallDir/scripts/"
+    # Exclude *.test.mjs from the copy (mirrors Invoke-Build line ~60 and the Makefile
+    # $(SCRIPT_FILES) var). The raw `Copy-Item src/scripts/*.mjs` shipped all *.test.mjs into
+    # the live install (D-008 regression, re-fixed here); do NOT revert to it. See decisions.md D-002.
+    Get-ChildItem "src/scripts/*.mjs" -Exclude "*.test.mjs" | Copy-Item -Destination "$skillInstallDir/scripts/"
     Copy-Item "src/scripts/*.json" "$skillInstallDir/scripts/"
     Copy-Item "src/scripts/modules/*.md" "$skillInstallDir/scripts/modules/"
     Copy-Item "src/references/*.md" "$skillInstallDir/references/"
@@ -507,8 +510,12 @@ function Invoke-SyncSkill {
     )
     $mismatch = $false
     foreach ($p in $pairs) {
-        $srcNames = @(Get-ChildItem -Path $p.Src -Filter $p.Filter -File | Select-Object -ExpandProperty Name | Sort-Object)
-        $dstNames = @(Get-ChildItem -Path $p.Dst -Filter $p.Filter -File | Select-Object -ExpandProperty Name | Sort-Object)
+        # Exclude *.test.mjs from BOTH sides: the copy above deliberately ships no test files, so
+        # without this filter Compare-Object would report every src-side test file as "missing from
+        # install" (false-fail). The dedicated assertion below then checks, non-vacuously, that zero
+        # test files leaked into the install (restoring D-008's verification shape). See decisions.md D-002.
+        $srcNames = @(Get-ChildItem -Path $p.Src -Filter $p.Filter -File | Where-Object { $_.Name -notlike '*.test.mjs' } | Select-Object -ExpandProperty Name | Sort-Object)
+        $dstNames = @(Get-ChildItem -Path $p.Dst -Filter $p.Filter -File | Where-Object { $_.Name -notlike '*.test.mjs' } | Select-Object -ExpandProperty Name | Sort-Object)
         $delta = Compare-Object -ReferenceObject $srcNames -DifferenceObject $dstNames
         if ($delta) {
             Write-Host "ERROR: sync mismatch in $($p.Dst)" -ForegroundColor Red
@@ -542,6 +549,14 @@ function Invoke-SyncSkill {
         $mismatch = $true
     } elseif ((Get-FileHash "VERSION" -Algorithm SHA256).Hash -ne (Get-FileHash $versionDst -Algorithm SHA256).Hash) {
         Write-Host "ERROR: content differs: VERSION" -ForegroundColor Red
+        $mismatch = $true
+    }
+    # Non-vacuous assertion: zero *.test.mjs may leak into the install scripts dir (D-008). The
+    # Compare-Object above excludes test files from both sides, so this is what actually guards
+    # the invariant — mirrors the Makefile `test -z "$(ls .../scripts/*.test.mjs)"` guard.
+    $leakedTests = @(Get-ChildItem "$skillInstallDir/scripts/*.test.mjs" -File -ErrorAction SilentlyContinue)
+    if ($leakedTests.Count -gt 0) {
+        Write-Host "ERROR: sync-skill shipped *.test.mjs into the install (D-008 regression)" -ForegroundColor Red
         $mismatch = $true
     }
     if ($mismatch) { exit 1 }
