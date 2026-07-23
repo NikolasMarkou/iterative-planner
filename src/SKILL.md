@@ -306,6 +306,28 @@ The plan-id prefix (e.g. `plan-2026-05-07T091743-7556fb98`, or a legacy
 unambiguous and resolvable after `plans/DECISIONS.md` sliding-window trim.
 See `references/decision-anchoring.md`.
 
+## Register Discipline (CRITICAL)
+
+Plans are re-read every run, so their register conditions the next run's register — a
+positive-feedback loop that, left undamped, accretes jargon until plans stop being legible to
+a human (or a fresh model). The counter-force is a setpoint, not a jargon ban: coined terms
+are earned, not free.
+
+- **Define on first use.** A coined term or `[bracket-slug]` must be defined in plain words
+  where it first appears in a plan (or point to where it is defined). An undefined coinage is
+  a defect, not shorthand.
+- **Plainest exact word wins.** Prefer the plainest wording that stays precise. Jargon earns
+  its place only by naming a real mechanism more exactly than plain words can — density for
+  its own sake is accidental complexity (KISS).
+- **Ratchet down, never up.** The register-carrying docs (CLAUDE.md, SKILL.md, agents,
+  references) are gated by `node <skill-path>/scripts/check-register.mjs`: it measures jargon
+  density against a committed per-file ceiling in `register-baseline.json` and fails a build
+  whose density RISES past the ceiling. Density may fall or hold freely; raising a ceiling is
+  a deliberate, review-visible edit — the same discipline as bumping `TEST_COUNT`.
+- **Normalize at CLOSE.** ip-archivist rewrites `plans/LESSONS.md` / `plans/SYSTEM.md` toward
+  plainness at CLOSE (define terms, drop dead jargon) so institutional memory does not carry
+  the register forward uncorrected.
+
 ## Iteration Limits
 
 `iter` counter: increments on PLAN → EXECUTE. `iter=0` = EXPLORE-only (pre-plan).
