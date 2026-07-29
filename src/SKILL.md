@@ -237,7 +237,7 @@ Institutional memory across plans. Unlike FINDINGS.md / DECISIONS.md (append+mer
 > The operative rules for each state are emitted on demand by the router `scripts/emit-state.mjs`, not inlined here. On **entering** a state, run `node <skill-path>/scripts/emit-state.mjs --state <state>` and follow its stdout as the authoritative per-state rules. Full module text lives in `scripts/modules/state-<state>.md`. (This keeps SKILL.md's resident context to the spine; per-state detail is pulled only for the active state. CLOSE has no module — it lives in the State Machine / Transitions table and the ip-archivist.)
 
 ### EXPLORE
-Gather context: read-only research (code, grep, glob, subagents), flush findings to `findings.md` + `findings/` every 2 reads, classify constraints (hard/soft/ghost), self-assess Exploration Confidence, and reach ≥3 indexed findings covering scope/files/patterns before PLAN.
+Gather context: research (code, grep, glob, subagents; web via WebFetch/WebSearch when local search is insufficient), flush findings to `findings.md` + `findings/` every 2 reads, classify constraints (hard/soft/ghost), self-assess Exploration Confidence, and reach ≥3 indexed findings covering scope/files/patterns before PLAN.
 → Operative rules: `node <skill-path>/scripts/emit-state.mjs --state explore` (module: `scripts/modules/state-explore.md`).
 
 ### PLAN
@@ -394,7 +394,7 @@ A sub-agent can terminate WITHOUT reporting — killed by the user, harness inte
 | Agent | File | Role | Tools | Model |
 |-------|------|------|-------|-------|
 | Orchestrator | `agents/ip-orchestrator.md` | State machine owner, coordinator | Agent, Read, Write, Edit, Bash, Grep, Glob | inherit |
-| Explorer | `agents/ip-explorer.md` | Read-only codebase research | Read, Write, Grep, Glob, Bash | sonnet |
+| Explorer | `agents/ip-explorer.md` | Codebase-first research, with web fallback | Read, Write, Grep, Glob, Bash, WebFetch, WebSearch | sonnet |
 | Plan-Writer | `agents/ip-plan-writer.md` | Generates plan.md + verification.md | Read, Write, Edit, Grep, Glob | inherit |
 | Executor | `agents/ip-executor.md` | Implements one plan step | Read, Edit, Write, Bash, Grep, Glob | inherit |
 | Verifier | `agents/ip-verifier.md` | Runs verification checks | Read, Bash, Grep, Glob | sonnet |
