@@ -323,6 +323,8 @@ Self-contained research artifacts. Subagents write directly to `{plan-dir}/findi
 
 `HARD` = cannot be relaxed (language/runtime/external API). `SOFT` = strong convention but negotiable. `GHOST` = thought to apply but doesn't on closer inspection (document so it's not re-discovered).
 
+**Citing a web source** (optional, supplements `file:line` — does not replace it): when a `## Key Findings` item comes from `WebFetch`/`WebSearch` rather than the local repo, cite it as `[Source Title](URL) — retrieved YYYY-MM-DD, one-clause key claim`. The retrieval date matters because web content can change or disappear, unlike a pinned `file:line`; use this form only when there is no local file to cite.
+
 **Optional sixth section** — `## Atlas Contradictions`: when a finding contradicts an existing `plans/SYSTEM.md` entry, an explorer appends this section (SYSTEM.md file path + line, what the new evidence says). The orchestrator promotes it to a `[CONTRADICTED iter-N]` line in `findings.md` for archivist reconciliation at CLOSE. See `agents/ip-explorer.md` § System-Atlas Awareness.
 
 Example skeleton:
