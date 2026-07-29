@@ -282,7 +282,7 @@ No-op return reasons (no file write): `missing`, `empty`, `under-threshold`, `no
 <!-- TEMPLATE:findings -->
 ## findings.md
 
-Updated during EXPLORE. Corrected during PIVOT when earlier findings prove wrong. Always include **file paths with line numbers** and **code path traces**.
+Updated during EXPLORE. Corrected during PIVOT when earlier findings prove wrong. Always include **file paths with line numbers** and **code path traces** (or the web-source citation form for externally-sourced items — see below).
 
 `findings.md` = summary + index. Detailed findings → `findings/` as individual files. **Main agent** owns the index — subagents write to `findings/` only.
 
@@ -316,7 +316,7 @@ Self-contained research artifacts. Subagents write directly to `{plan-dir}/findi
 | Section | Purpose | Required content |
 |---|---|---|
 | `## Summary` | One-paragraph overview | Plain prose, 2-5 sentences |
-| `## Key Findings` | Discrete observations | Each item must include `file:line` reference |
+| `## Key Findings` | Discrete observations | Each item must include `file:line` reference (or the web-source citation form for externally-sourced items — see below) |
 | `## Constraints` | Limits on solution space | Each constraint classified `HARD` / `SOFT` / `GHOST` |
 | `## Code Patterns` | Recurring shapes worth knowing | file:line for at least one occurrence per pattern |
 | `## Risks & Unknowns` | What's unclear or risky | What was not determinable; what to verify next |
