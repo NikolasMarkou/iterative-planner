@@ -372,7 +372,7 @@ When the skill activates with the definitions present, the conversation assumes 
 | Agent | Role | Tools | Model |
 |-------|------|-------|-------|
 | **Orchestrator** | State machine owner, dispatcher, user-facing relay | Agent, Read, Write, Edit, Bash, Grep, Glob | inherit |
-| **ip-explorer** | Read-only codebase research (EXPLORE) | Read, Write, Grep, Glob, Bash | sonnet |
+| **ip-explorer** | Codebase-first research, with web fallback (EXPLORE) | Read, Write, Grep, Glob, Bash, WebFetch, WebSearch | sonnet |
 | **ip-plan-writer** | Generates `plan.md` and the `verification.md` template (PLAN) | Read, Write, Edit, Grep, Glob | inherit |
 | **ip-executor** | Implements one plan step at a time (EXECUTE) | Read, Edit, Write, Bash, Grep, Glob | inherit |
 | **ip-verifier** | Runs verification checks, returns results for the Orchestrator to merge into `verification.md` (REFLECT) | Read, Bash, Grep, Glob | sonnet |
@@ -574,7 +574,7 @@ iterative-planner/
     ├── SKILL.md                    # core protocol — the complete skill specification
     ├── agents/                     # sub-agent definitions (optional, install to ~/.claude/agents/)
     │   ├── ip-orchestrator.md      # state machine owner, spawns all other agents
-    │   ├── ip-explorer.md          # read-only codebase research (EXPLORE)
+    │   ├── ip-explorer.md          # codebase-first research, with web fallback (EXPLORE)
     │   ├── ip-plan-writer.md       # plan generation (PLAN)
     │   ├── ip-executor.md          # code execution (EXECUTE)
     │   ├── ip-verifier.md          # verification checks (REFLECT)
