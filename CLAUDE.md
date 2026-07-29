@@ -23,7 +23,7 @@ iterative-planner/
     ├── SKILL.md                      # Core protocol (state machine, rules) - the main instruction set
     ├── agents/                       # Sub-agent definitions (installed to ~/.claude/agents/)
     │   ├── ip-orchestrator.md        # State machine owner, spawns all other agents
-    │   ├── ip-explorer.md            # Read-only codebase research (EXPLORE phase)
+    │   ├── ip-explorer.md            # codebase-first research, with web fallback (EXPLORE phase)
     │   ├── ip-plan-writer.md         # Plan generation (PLAN phase)
     │   ├── ip-executor.md            # Code execution (EXECUTE phase)
     │   ├── ip-verifier.md            # Verification checks (REFLECT phase)
