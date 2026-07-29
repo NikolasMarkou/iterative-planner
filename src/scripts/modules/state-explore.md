@@ -7,8 +7,9 @@
   See `references/file-formats.md` `plans/INDEX.md` section for the schema. Default is **do not read** — INDEX.md is a locator, not a cross-plan memory.
 - **System-atlas contradiction flag**: if an EXPLORE finding contradicts an existing `plans/SYSTEM.md` entry, mark the contradiction in `findings.md` with `[CONTRADICTED iter-N]` (mirrors the `[CORRECTED iter-N]` rule for findings) — the archivist will reconcile at CLOSE in Step 4.
 - Read code, grep, glob, search. One focused question at a time.
+- Local search (grep/glob/read) is the default. Prefer web research (`WebFetch`/`WebSearch`, `ip-explorer` only) only when the question is about an external library/API/framework and cannot be answered from the repo.
 - Flush to `findings.md` + `findings/` after every 2 reads. **Read the file first** before each write.
-- Include file paths + code path traces (e.g. `auth.rb:23` → `SessionStore#find` → `redis_store.rb:get`).
+- Include file paths + code path traces (e.g. `auth.rb:23` → `SessionStore#find` → `redis_store.rb:get`). For web-sourced findings, cite per the web-source convention in `references/file-formats.md` § findings.md citation conventions.
 - DO NOT skip EXPLORE even if you think you know the answer.
 - **Minimum depth**: ≥3 indexed findings in `findings.md` before transitioning to PLAN. Findings must cover: (1) problem scope, (2) affected files, (3) existing patterns or constraints. Fewer than 3 → keep exploring.
 - **Exploration Confidence** — before transitioning to PLAN, self-assess: problem scope [shallow/adequate/deep], solution space [narrow/open/constrained], risk visibility [blind/partial/clear]. All must be at least "adequate." Any "shallow" or "blind" → keep exploring. Record in the transition log entry in `state.md`. See `references/planning-rigor.md`.
