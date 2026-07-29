@@ -4,6 +4,22 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.57.3] - 2026-07-29
+
+**`ip-explorer` gains web research (WebFetch/WebSearch) — scoped to Explorer only.** Fixes the domain-agnostic EXPLORE-phase gap where research was hard-limited to local codebase tools (`Read, Write, Grep, Glob, Bash`); web tools are additive, not a replacement — local codebase search remains the default. No other agent's `tools:` line changed (D-001).
+
+### Added
+
+- **`ip-explorer.md`: `WebFetch`, `WebSearch` added to `tools:`; `disallowedTools: Edit, Agent` unchanged.** `description:` revised from "Read-only research agent" to reflect the new capability; body carries a short guidance pointer.
+- **`state-explore.md`: web-vs-local guidance.** A new bullet on when to prefer web research (external library/API/framework questions unanswerable from the repo) over local search (still the default), plus a pointer to the new citation convention.
+- **`file-formats.md`: minimal web-source citation convention (D-002).** Documents a "URL + retrieval context" form for findings produced via web research, alongside the existing `file:line` convention — not a replacement, no new gate.
+- **`SKILL.md` + `README.md` mirrors updated.** Agent Definitions table / "seven agents" tools table Explorer rows, and per-state EXPLORE summaries, now list `WebFetch, WebSearch` — kept in sync per the 4-site sweep this plan tracked (no validator gates this cross-file consistency).
+
+### Notes
+
+- `make validate`/`make lint` both green post-edit: register-density, doc-parity, agent-wiring, template-parity, changelog-parity, readme-parity all PASS — no ceiling bumped, no gate touched.
+- Locally-installed `~/.claude/skills/iterative-planner/agents/ip-explorer.md` is unchanged until a separate, explicitly user-triggered `make sync-skill` (D-003) — this release is source-repo only.
+
 ## [2.57.2] - 2026-07-23
 
 **Deep-review remediation — 9 findings (F1–F9) across scripts, build tooling, docs, and agent prose.** All mechanical gates were green throughout; every fix here targets a semantic defect the gates cannot catch. Suite stays 688 (an assertion was corrected, not added); `register-baseline.json` unchanged (the counting fix only lowers measured densities).
