@@ -46,7 +46,7 @@ Update on every state transition.
 - Step 2: LEASH HIT. Transitioned to REFLECT. Waiting for user direction.
 ```
 
-**Change Manifest**: one line per step — `- Step N (commit-hash-or-"uncommitted"): \`file1\`, \`file2\`, \`file3\``. A step line carrying `uncommitted` (or no hash) has not yet landed; on failed step / PIVOT → revert those files. Backticking each filename is non-negotiable (see `code-hygiene.md` for why); capitalization/hyphenation of `Step N` vs `step-N` is a minor stylistic variant, not load-bearing. See `code-hygiene.md`.
+**Change Manifest**: one line per step, formatted as `- Step N (commit-hash-or-"uncommitted"):` followed by each filename wrapped in backticks and comma-separated — e.g. `file1`, `file2`, `file3`. A step line carrying `uncommitted` (or no hash) has not yet landed; on failed step / PIVOT → revert those files. Backticking each filename is non-negotiable (see `code-hygiene.md` for why); capitalization/hyphenation of `Step N` vs `step-N` is a minor stylistic variant, not load-bearing. See `code-hygiene.md`.
 
 <!-- TEMPLATE:plan -->
 ## plan.md
@@ -174,7 +174,7 @@ All entry types accept `Anchor-Refs` as optional. For PIVOT entries that are 2nd
 
 A parenthetical pass/attempt qualifier on any PHASE label (e.g. `REFLECT (pass 2)`) inherits the required-fields row of whichever base type it most resembles, rather than needing its own table row.
 
-A bare PHASE label with no arrow (`PLAN`, `REFLECT`, `PIVOT`) likewise inherits its corresponding arrow-form row rather than needing its own: bare `PLAN` ≈ `EXPLORE → PLAN`'s fields; bare `REFLECT` ≈ `REFLECT` (no pivot)'s fields; bare `PIVOT` ≈ `REFLECT → PIVOT`'s fields, minus whichever fields only make sense with a preceding EXPLORE/REFLECT (e.g. `Root Cause Analysis`).
+A bare PHASE label with no arrow (`PLAN`, `REFLECT`, `PIVOT`) likewise inherits its corresponding arrow-form row rather than needing its own: bare `PLAN` ≈ `EXPLORE → PLAN`'s fields; bare `REFLECT` ≈ `REFLECT` (no pivot)'s fields; bare `PIVOT` ≈ `REFLECT → PIVOT`'s fields, minus whichever fields only make sense with a preceding EXPLORE/REFLECT (e.g. `Root Cause Analysis`) — except `**Complexity Assessment**`, which `validate-plan.mjs` treats as a hard ERROR for any PIVOT-shaped entry (bare or arrow-form) and is therefore never one of the omittable fields.
 
 **Anchor-Refs** *(required whenever a matching `# DECISION <plan-id>/D-NNN` anchor exists in source — for plans created on or after v2.14.0; recommended otherwise)*: file:line back-links from the decision entry to placed anchors. Format:
 
