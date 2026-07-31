@@ -617,7 +617,7 @@ iterative-planner/
         ├── decision-anchoring.md   # when and how to anchor decisions in code (plan-qualified)
         ├── file-formats.md         # templates for every plan directory file + Presentation Contracts
         ├── planning-rigor.md       # assumptions, pre-mortem, falsification, root cause, decomposition
-        ├── python-software.md      # Python/software-engineering caveat (conditional)
+        ├── python-software.md      # software-engineering caveat, any language incl. Python (conditional)
         └── root-cause-analysis.md  # 5 Whys, fishbone, opt-in fault tree, Cynefin selector (extends planning-rigor.md)
 ```
 

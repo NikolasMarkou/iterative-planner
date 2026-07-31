@@ -72,7 +72,7 @@ iterative-planner/
         ├── file-formats.md           # Templates and examples for all plan directory files
         ├── planning-rigor.md         # Assumption tracking, pre-mortem, falsification signals, prediction accuracy, root cause analysis
         ├── root-cause-analysis.md    # Structured RCA methods (5 Whys, fishbone, optional fault tree, Cynefin selector); methods extension of planning-rigor.md's canonical schema
-        └── python-software.md        # Python/software-engineering domain caveat (conditional; consulted only for software work)
+        └── python-software.md        # software-engineering domain caveat, any language incl. Python (conditional; consulted only for software work)
 ```
 
 ## Key Commands
