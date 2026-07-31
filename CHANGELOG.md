@@ -4,6 +4,27 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.57.6] - 2026-08-01
+
+**Fixed 5 EXPLORE-confirmed defects in one coherent release: an iteration-trust gap in the safety-critical `--pre-step` HARD gate, an anchor-scanner blind spot hiding 16 file extensions, a `build.ps1` sync-verify gap, and a doc-tree gap.**
+
+### Fixed
+
+- **`runPreStepGate` and `checkCheckpoints` trusted the agent-declared `## Iteration: N` field alone**, unlike `checkIterationLimits`, which already reconciles it against real `EXECUTE → REFLECT` transition-history records. Both now use `max(declared, deriveIterationFromHistory(state))`, closing a path where a forgotten iteration bump could silently bypass the iteration-6 HARD cap or the checkpoint-existence WARN. No new file I/O — both still open only `state.md` and stay well under the `<50ms` `--pre-step` budget.
+- **`ANCHOR_SOURCE_EXTS` was narrower than `findAnchorsInFile`'s own per-family extension lists**, silently ghosting `# DECISION` anchors placed in 16 mainstream extensions (`.sh .bash .zsh .yml .yaml .toml .r .pl .pm .tf .jsx .cc .swift .scala .cs .php`). Grown from 17 to 33 members in both `validate-plan.mjs` (the scanner) and its independently-hand-synced sibling copy in `bootstrap.mjs` (the `retire` stamper), keeping the two byte-identical per the repo's own in-code sync contract.
+- **`build.ps1`'s `Invoke-SyncSkill` never hash-verified `.json` gate-data files**, unlike the Makefile's `sync-skill`, whose whole-directory `diff -rq` already covers them. Added a `.json`-filtered verification pair so `register-baseline.json` is now hash-compared between repo and install (static read-through only — no PowerShell runtime in this sandbox to execute live).
+- **`register-baseline.json` was missing from both README.md's and CLAUDE.md's file trees.** Added to both, same relative position, in the same step.
+
+### Changed
+
+- `src/references/decision-anchoring.md`'s Extension matrix gained 2 rows for the newly-scanned hash-family and slash-family extensions; the "exactly 17 members" claim corrected to 33; the "Not scanned — ghosts" list trimmed to only the extensions `findAnchorsInFile` still has no handling for (`.css .scss .less .html .htm .mdx .vue .svelte`).
+
+### Notes
+
+- `make lint`/`make validate`/`make test` all green post-edit (693/693 tests — 5 new regression tests: pre-step-gate + checkCheckpoints derived-iteration fixtures, `.yml`/`.jsx` new-extension anchor scanning, `.yml` retire-stamping); `TEST_COUNT` bumped 688 → 693 and README's per-suite breakdown (`bootstrap` 239 → 240, `validate-plan` 117 → 121, aggregate 688 → 693) updated to match the live counts, not hand-computed.
+- `register-baseline.json` unchanged — `check-register.mjs` confirmed no touched doc's jargon-marker density rose past its committed ceiling (peak 11.99/1k, CLAUDE.md).
+- PATCH bump per this repo's established "bug fixes = patch" convention — all 5 fixes are corrections to existing, already-shipped behavior, no new feature or public-behavior addition.
+
 ## [2.57.5] - 2026-07-31
 
 **Extended the wiring-vs-behavior audit to all remaining `src/references/*.md` docs — 4 real gaps fixed, prose-only.** Following the same two-layer audit pattern used for `python-software.md` (v2.57.4), this release checks whether the other 8 reference docs' content is actually consulted, not just mechanically wired. Result: most (`decision-anchoring.md`, most of `complexity-control.md`/`planning-rigor.md`, `blast-radius.md`'s mechanical scoring) are genuinely used with real per-plan judgment — no fix needed. Four real, actionable gaps were found and fixed:
