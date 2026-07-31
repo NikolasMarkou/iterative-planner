@@ -2077,10 +2077,19 @@ function runPreStepGate(planDir) {
     process.exit(2);
   }
 
+  // Mirrors checkIterationLimits (line ~564): max(declared, derived) so an agent that
+  // forgets to bump the declared field cannot silently bypass the hard cap. Reuses the
+  // already-exported deriveIterationFromHistory on the in-memory `state` string already
+  // read above — no new file I/O, stays inside the <50ms/state.md-only budget.
   const iterStr = extractField(state, /^## Iteration:\s*(.+)$/m);
-  const iter = iterStr ? parseInt(iterStr, 10) : 0;
+  const declared = iterStr ? parseInt(iterStr, 10) : 0;
+  const derived = deriveIterationFromHistory(state);
+  const iter = Math.max(Number.isFinite(declared) ? declared : 0, derived);
   if (Number.isFinite(iter) && iter >= 6) {
-    console.log(`GATE:FAIL [iteration-cap] iteration=${iter} hard-cap=6`);
+    const source = derived > declared
+      ? ` (declared=${declared}, derived=${derived} from EXECUTE → REFLECT transition count)`
+      : "";
+    console.log(`GATE:FAIL [iteration-cap] iteration=${iter}${source} hard-cap=6`);
     process.exit(2);
   }
 
