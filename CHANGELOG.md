@@ -14,7 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- **Task-type-first reframing, 9 sites.** `python-software.md`'s title/scope line, `SKILL.md`, `CLAUDE.md`, `README.md` (tree comments), `ip-plan-writer.md`, `ip-executor.md`, `ip-reviewer.md`, `state-plan.md`, and `state-execute.md` all now lead with "software-engineering (any language, incl. Python)" instead of "Python/software-engineering" — removing the language-based false-filter risk while preserving the doc's real scope.
+- **Task-type-first reframing, 9 sites.** `python-software.md`'s title/scope line is reframed (the origin edit), and its 9 citing/mirror sites — `SKILL.md`, `CLAUDE.md`, `README.md` (tree comments), `ip-plan-writer.md`, `ip-executor.md`, `ip-reviewer.md`, `state-plan.md`, `state-execute.md`, and `state-reflect.md` — all now lead with "software-engineering (any language, incl. Python)" instead of "Python/software-engineering" — removing the language-based false-filter risk while preserving the doc's real scope.
 - **Buried checks promoted to top-level checklist items.** `ip-reviewer.md`'s Review Checklist (was a sub-bullet of item 6, now its own item 7) and `state-reflect.md`'s Phase-2 checklist (was a sub-bullet of item 17, now its own item 18, renumbering old items 18-26 to 19-27) both give the software-engineering check its own numbered, non-buried line, plus a Domain-Caveat Consult Note presence check. `ip-reviewer.md`'s internal cross-reference to `state-reflect.md`'s Adversarial-review item was updated (22 → 23) to match.
 - **`ip-plan-writer.md` Skip-clause parity.** Added the explicit "Skip for non-software plans." clause the other 5 citing sites already carried.
 
