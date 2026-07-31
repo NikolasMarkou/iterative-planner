@@ -504,6 +504,7 @@ function Invoke-SyncSkill {
     # nothing at all, so a stale script or reference could survive a clean-looking sync.
     $pairs = @(
         @{ Src = "src/scripts";         Dst = "$skillInstallDir/scripts";         Filter = "*.mjs" },
+        @{ Src = "src/scripts";         Dst = "$skillInstallDir/scripts";         Filter = "*.json" },
         @{ Src = "src/scripts/modules"; Dst = "$skillInstallDir/scripts/modules"; Filter = "*.md"  },
         @{ Src = "src/references";      Dst = "$skillInstallDir/references";       Filter = "*.md"  },
         @{ Src = "src/agents";          Dst = "$skillInstallDir/agents";           Filter = "*.md"  }
