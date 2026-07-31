@@ -164,12 +164,16 @@ All entry types accept `Anchor-Refs` as optional. For PIVOT entries that are 2nd
 | `EXPLORE → PLAN` (initial approach) | Context, Decision, Trade-off, Reasoning |
 | `REFLECT → PIVOT` (failure pivot) | Context, What Failed, What Was Learned, Root Cause Analysis (4-part), Complexity Assessment, Decision, Trade-off, Reasoning |
 | `REFLECT` (no pivot, EXTENDED — iter 2+) | Context, Devil's Advocate Note, Decision, Trade-off, Reasoning |
+| `EXECUTE step N` (routine execution decision) | Context, Decision, Trade-off, Reasoning |
+| `REFLECT → EXECUTE (completion-fix)` (remediation loop) | Context, Decision, Trade-off, Reasoning |
 | Scope-drift justification | Context, Unplanned Files, Justification, Decision, Trade-off |
 | Falsification-signal log | Context, Signal Fired (pre-mortem item #), Observation, Decision, Trade-off |
 | Ghost-constraint discovery | Context, Constraint, Why No Longer Applies, Solution-Space Change, Decision, Trade-off |
 | 3-strike trigger | Context, "3-STRIKE TRIGGERED on [file/module]", Three Attempts, Decision, Trade-off |
 | Simplification-check failure | Context, 6 Check Answers, Blocker Found (Y/N), Decision, Trade-off |
 | Devil's-Advocate (EXTENDED) | Context, Strongest Counter-argument, Why Pursuing Anyway, Decision, Trade-off |
+
+A parenthetical pass/attempt qualifier on any PHASE label (e.g. `REFLECT (pass 2)`) inherits the required-fields row of whichever base type it most resembles, rather than needing its own table row.
 
 **Anchor-Refs** *(required whenever a matching `# DECISION <plan-id>/D-NNN` anchor exists in source — for plans created on or after v2.14.0; recommended otherwise)*: file:line back-links from the decision entry to placed anchors. Format:
 
