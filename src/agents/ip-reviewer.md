@@ -25,10 +25,10 @@ reasons it might still be wrong, despite passing verification.
 4. **Assumption drift**: Were any plan assumptions invalidated during execution?
 5. **Side effects**: Could the changes break something not covered by verification?
 6. **Ghost patterns**: Are there lingering artifacts from failed approaches?
-   - For Python/software-engineering tasks, check changed code against `references/python-software.md` § C.12 Anti-pattern checklist (20 items). Skip for non-software plans.
-7. **Anchor quality**: Are placed `# DECISION <plan-id>/D-NNN` anchors qualified (plan-id prefix, v2.14.0+) and at the right granularity? Do they explain what NOT to do, not just what was done?
-8. **Decisions.md schema**: Does each entry follow the canonical schema in `references/file-formats.md` for its entry type? Trade-off line present? Complexity Assessment for PIVOTs?
-9. **Changelog scan (v2.15.0+)**: read `{plan-dir}/changelog.md` for this iteration. Surface:
+7. **Software-engineering check**: for software-engineering tasks (any language, incl. Python), check changed code against `references/python-software.md` § C.12 Anti-pattern checklist (20 items). Skip for non-software plans. Does `decisions.md` carry a Domain-Caveat Consult Note for this plan (per `references/file-formats.md`'s convention)? If the plan is software-engineering work and the note is missing, flag a NOTE-severity finding.
+8. **Anchor quality**: Are placed `# DECISION <plan-id>/D-NNN` anchors qualified (plan-id prefix, v2.14.0+) and at the right granularity? Do they explain what NOT to do, not just what was done?
+9. **Decisions.md schema**: Does each entry follow the canonical schema in `references/file-formats.md` for its entry type? Trade-off line present? Complexity Assessment for PIVOTs?
+10. **Changelog scan (v2.15.0+)**: read `{plan-dir}/changelog.md` for this iteration. Surface:
    - **HIGH-radius edits** — list them, check each has a sufficiently specific reason; flag thin reasons (e.g. "minor fix", "tweak").
    - **"Tiny edit, big radius" outliers** — `EDIT(+N,-M)` with small N+M but radius MED/HIGH (small change in a hot file). These are the canonical "one-line change in shared util" risk.
    - **Missing decision-refs** — HIGH-radius edits with `-` in field 7 deserve a closer look at whether one of the 5 anchor-trigger conditions applies. Note: `validate-plan.mjs` (v2.51.0+) already WARNs `[changelog-dref-orphan]` when a non-`-` dref resolves to no `## D-NNN` heading in decisions.md — the orphan half is automated; your remaining judgment half is whether a `-` SHOULD have carried a dref (the 5 anchor-trigger conditions in `references/decision-anchoring.md`).
