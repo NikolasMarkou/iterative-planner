@@ -1180,6 +1180,13 @@ function checkFindingsIndexLinks(planDir, issues) {
 const ANCHOR_SOURCE_EXTS = new Set([
   ".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".rb", ".go", ".rs",
   ".c", ".h", ".cpp", ".hpp", ".java", ".kt", ".sql", ".md",
+  // 16 additions (v2.57.6): the union of findAnchorsInFile's hash-style and
+  // slash-style per-family lists — restores real anchor-audit coverage for
+  // extensions that scanner already knows how to parse but this collection-side
+  // allowlist never grew to include. Must stay byte-identical to bootstrap.mjs's
+  // own ANCHOR_SOURCE_EXTS copy (see that file's "Kept in sync" comment).
+  ".sh", ".bash", ".zsh", ".yml", ".yaml", ".toml", ".r", ".pl", ".pm", ".tf",
+  ".jsx", ".cc", ".swift", ".scala", ".cs", ".php",
 ]);
 
 // NOTE: extensions whose ONLY anchor form is the HTML comment `<!-- DECISION … -->`.
