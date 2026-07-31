@@ -35,7 +35,7 @@ Before writing any code:
 
 ## Execution Rules
 - ONE step at a time. Do not look ahead.
-- **Python/software tasks**: for Python or software-engineering work, read `references/python-software.md` § B.16 When NOT to apply these patterns before adding any structure (most code should NOT reach for a pattern), and write against its Python style + anti-patterns section — the 20-item § C.12 Anti-pattern checklist is the gate REFLECT grades this code with. Skip for non-software plans.
+- **Software-engineering tasks (any language, incl. Python)**: for software-engineering work, read `references/python-software.md` § B.16 When NOT to apply these patterns before adding any structure (most code should NOT reach for a pattern), and write against its Python style + anti-patterns section — the 20-item § C.12 Anti-pattern checklist is the gate REFLECT grades this code with. Skip for non-software plans.
 - Commit after success: `[plan-YYYY-MM-DD-HASH/iter-N/step-M] description`. Derive the tag id from the plan-dir name by dropping the `THHMMSS` segment (`plan-2026-07-14T051317-317362c4` → `[plan-2026-07-14-317362c4/iter-3/step-2] …`). Legacy `plan_YYYY-MM-DD_XXXXXXXX` dirs derive identically (normalize `_`→`-`); full rule in `SKILL.md` § Git Integration.
   - **The changelog `step` field stays bare `iter-N/step-M`** — do not "fix" this. It is sourced from `state.md`, never parsed from the commit subject.
 - **Iteration 1, first EXECUTE step (MANDATORY)**: before any edit, create `checkpoints/cp-000-iter1.md` — the nuclear fallback / full-revert restore point. Set its 'Git State' to the commit hash BEFORE any changes. This is the checkpoint the Nuclear Option (Complexity Control) reverts to. Consistent with the EXECUTE per-state rules (`emit-state --state execute`).
