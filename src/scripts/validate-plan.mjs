@@ -604,10 +604,13 @@ function checkCheckpoints(planDir, issues) {
   const state = readFile(join(planDir, "state.md"));
   if (!state) return;
 
+  // Mirrors checkIterationLimits (line ~564) and runPreStepGate (line ~2080):
+  // max(declared, derived) so an agent that forgets to bump the declared field
+  // cannot silently bypass this WARN by understating its iteration.
   const iterStr = extractField(state, /^## Iteration:\s*(.+)$/m);
-  if (!iterStr) return;
-
-  const iter = parseInt(iterStr);
+  const declared = iterStr ? parseInt(iterStr, 10) : 0;
+  const derived = deriveIterationFromHistory(state);
+  const iter = Math.max(Number.isFinite(declared) ? declared : 0, derived);
   if (iter < 2) return;
 
   const cpDir = join(planDir, "checkpoints");
