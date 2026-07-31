@@ -3404,6 +3404,27 @@ describe("bootstrap.mjs retire", () => {
     assert.equal((again.match(/\[STALE\]/g) || []).length, 1, `exactly one [STALE] marker, got:\n${again}`);
   });
 
+  // plan-2026-07-31T203947-de0ded98 step 5/7 — ANCHOR_SOURCE_EXTS grew from 17 to
+  // 33 members (16 new extensions, kept in lockstep with validate-plan.mjs's copy
+  // per this file's own "Kept in sync" comment). retire must stamp [STALE] on an
+  // anchor living in one of those newly-scanned extensions, not just the
+  // pre-existing .js/.md coverage above.
+  it("stamps [STALE] on a hash-style anchor in a newly-scanned .yml file, idempotently", () => {
+    const dir = getTempDir();
+    run(dir, "new", "active work");
+    mkdirSync(join(dir, "config"), { recursive: true });
+    const yml = join(dir, "config", "settings.yml");
+    writeFileSync(yml, `# DECISION ${OTHER}/D-001: keep retry budget at 3\nkey: value\n`);
+    const r = run(dir, "retire", OTHER);
+    assert.equal(r.exitCode, 0, `retire should succeed, got:\n${r.stdout}\n${r.stderr}`);
+    const after = readFileSync(yml, "utf-8");
+    assert.match(after, /# DECISION plan_2026-03-01_cccccccc\/D-001 \[STALE\]: keep retry budget at 3/,
+      `.yml hash-style anchor should be marked [STALE], got:\n${after}`);
+    run(dir, "retire", OTHER); // re-run must not double-stamp
+    const again = readFileSync(yml, "utf-8");
+    assert.equal((again.match(/\[STALE\]/g) || []).length, 1, `exactly one [STALE] marker, got:\n${again}`);
+  });
+
   // E6 — retire performs an irreversible source mutation. A style-agnostic matcher
   // would rewrite documentation prose and doc examples that are not anchors.
   it("does not rewrite bare-prose DECISION references in md", () => {

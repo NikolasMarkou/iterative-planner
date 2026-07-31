@@ -2203,6 +2203,41 @@ describe("F2 narrowing: collectKnownDecisionIdsByPlan reads only referenced plan
 });
 
 // ---------------------------------------------------------------------------
+// plan-2026-07-31T203947-de0ded98 step 7 — ANCHOR_SOURCE_EXTS grown to 33
+// members (step 4) means 16 previously-ghosted extensions are now scanned.
+// Prove two representative additions (one hash-family, one slash-family) are
+// actually walked and their anchors actually reported — previously these
+// files were invisible to checkReverseAnchors regardless of content.
+// ---------------------------------------------------------------------------
+describe("newly-scanned anchor extensions (hash-family .yml, slash-family .jsx)", () => {
+  const tempDirs = [];
+  function getTempDir() { const d = makeTempDir(); tempDirs.push(d); return d; }
+  afterEach(() => { while (tempDirs.length) removeTempDir(tempDirs.pop()); });
+
+  it("a hash-style `#` anchor in a .yml file is found (orphan D-999 reported, not ghosted)", () => {
+    const cwd = getTempDir();
+    writePlan(cwd); // active plan_2026-05-15_aaaabbbb, only D-001 known
+    writeFileSync(join(cwd, "config.yml"),
+      "# DECISION plan_2026-05-15_aaaabbbb/D-999 — orphan, proves the scan reached this file\n" +
+      "key: value\n");
+    const r = run(cwd);
+    assert.match(r.stdout, /ERROR\s+\[anchor-orphan\][^\n]*config\.yml[^\n]*D-999/,
+      `.yml anchor must be found and reported as orphan, got:\n${r.stdout}`);
+  });
+
+  it("a slash-style `//` anchor in a .jsx file is found (orphan D-998 reported, not ghosted)", () => {
+    const cwd = getTempDir();
+    writePlan(cwd); // active plan_2026-05-15_aaaabbbb, only D-001 known
+    writeFileSync(join(cwd, "Widget.jsx"),
+      "// DECISION plan_2026-05-15_aaaabbbb/D-998 — orphan, proves the scan reached this file\n" +
+      "export default function Widget() { return null; }\n");
+    const r = run(cwd);
+    assert.match(r.stdout, /ERROR\s+\[anchor-orphan\][^\n]*Widget\.jsx[^\n]*D-998/,
+      `.jsx anchor must be found and reported as orphan, got:\n${r.stdout}`);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // F1 / plan-2026-07-16-47577439 D-001 — [lessons-eviction] WARN gate.
 //
 // The archivist's "never drop an [I:5] entry" rewrite policy had zero
