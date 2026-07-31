@@ -1315,6 +1315,33 @@ legacy section
     assert.ok(warns.length >= 1, `expected WARN [checkpoints] despite declared Iteration 1, got:\n${r.stdout}`);
     assert.ok(/iteration 6/.test(warns[0]), `expected the derived iteration (6) in the WARN message, got: ${warns[0]}`);
   });
+
+  // Completion-fix (W1, same-iteration REFLECT->EXECUTE hop, plan-2026-07-31T203947-de0ded98):
+  // checkCrossFileConsistency's Convergence-Metrics WARN was the THIRD declared-only
+  // iteration reader in this file (after runPreStepGate and checkCheckpoints, both fixed
+  // above) — the exact N-place-fix miss plans/LESSONS.md [I:5] flags. It must also use
+  // max(declared, derived).
+  it("(m) iteration-trust: checkCrossFileConsistency's Convergence Metrics WARN also uses max(declared, derived)", () => {
+    const cwd = getTempDir();
+    const transitionHistory = [
+      "- EXECUTE → REFLECT (1)",
+      "- EXECUTE → REFLECT (2)",
+      "- EXECUTE → REFLECT (3)",
+      "- EXECUTE → REFLECT (4)",
+      "- EXECUTE → REFLECT (5)",
+      "- EXECUTE → REFLECT (6)",
+    ].join("\n");
+    // state=REFLECT + declared Iteration 1 (understated), but 6 real EXECUTE → REFLECT
+    // records → effective iteration is 6, which is >= 2, so the Convergence Metrics
+    // section requirement must fire even though writePlan's default verification.md
+    // fixture has no such section.
+    writePlan(cwd, { state: "REFLECT", iteration: 1, transitionHistoryExtra: transitionHistory });
+    const r = run(cwd); // no --pre-step
+    const warns = r.stdout.split("\n").filter((l) => /WARN\s+\[convergence\]/.test(l));
+    assert.ok(warns.length >= 1, `expected WARN [convergence] despite declared Iteration 1, got:\n${r.stdout}`);
+    assert.ok(/missing Convergence Metrics section for iteration 2\+/.test(warns[0]),
+      `expected the iteration-2+ Convergence Metrics message, got: ${warns[0]}`);
+  });
 });
 
 // M7 — targeted negative-case tests for high-risk check functions that

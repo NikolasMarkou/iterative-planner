@@ -34,6 +34,7 @@ import {
   PLAN_SECTION_PATTERN,
   planDateFromId,
   DECISION_ID_NUM_PATTERN,
+  stripHtmlComments,
 } from "./shared.mjs";
 // DECISION plan_2026-07-14_79ee0f59/D-002 — THE CHANGELOG IS A MARKDOWN FILE, AND AN APPEND IS ONE
 // LINE. Do NOT re-encode it (XML, JSON, SQLite, …) and do NOT route writes through a document
@@ -1572,6 +1573,49 @@ function cmdNewInner(goal, force) {
   console.log(`  Next: Read code, ask questions, write findings.`);
 }
 
+// Count `EXECUTE → REFLECT` arrows in the (comment-stripped) Transition History block.
+// Deliberately mirrors only the STRIPPED half of validate-plan.mjs's countExecuteReflect
+// / transitionHistoryBlock (see that file's D-009 commentary) — NOT the RAW half that
+// makes the safety-critical iteration hard-cap incapable of under-counting. This helper
+// backs a *display* surface (resume/status), not a HARD gate, so the friendlier
+// stripped-only reading (never inflated by a stray `<!--`) is the right default here;
+// promoting it to raw-biased would make `resume`/`status` show an alarming over-count
+// with no in-path [state-comment-anomaly] explanation (that WARN is validate-plan.mjs-only).
+//
+// Why this is a small, deliberate DUPLICATE of validate-plan.mjs logic rather than an
+// import: bootstrap.test.mjs's "INSTALLED layout"/"VERSION absent"/"VERSION garbage"
+// fixtures (`makeInstalledPkg`) copy ONLY bootstrap.mjs + shared.mjs into an isolated dir
+// to exercise `new` in a minimal install — importing validate-plan.mjs at module load
+// time broke `new` there with ERR_MODULE_NOT_FOUND even though only resume/status need
+// the value. See decisions.md for the corresponding entry recording this trade-off.
+function countExecuteReflectStripped(state) {
+  if (!state) return 0;
+  const stripped = stripHtmlComments(state);
+  const m = /^## Transition History:/m.exec(stripped);
+  if (!m) return 0;
+  const block = stripped.slice(m.index).replace(/[–—‐]/g, "-");
+  const re = /EXECUTE\s*(?:→|->)\s*REFLECT/g;
+  let count = 0;
+  while (re.exec(block) !== null) count++;
+  return count;
+}
+
+// displayIteration(state) — reconciled iteration number for the `resume`/`status` CLI
+// surfaces (W1 fix, plan-2026-07-31T203947-de0ded98 completion-fix).
+// Params: state (string) — the already-read state.md contents.
+// Returns: string — max(declared, derived) as a string, or "?" if state.md has no
+//   parseable `## Iteration:` field AND no derivable EXECUTE -> REFLECT history.
+// Failure mode: never throws; a missing/malformed declared field falls back to 0
+//   before the max(), so a bad declared value cannot suppress a real derived count.
+function displayIteration(state) {
+  const iterStr = extractField(state, /^## Iteration:\s*(.+)$/m);
+  const declared = iterStr ? parseInt(iterStr, 10) : 0;
+  const derived = countExecuteReflectStripped(state);
+  const iter = Math.max(Number.isFinite(declared) ? declared : 0, derived);
+  if (iter <= 0) return iterStr || "?";
+  return String(iter);
+}
+
 function cmdResume() {
   const planDirName = readPointer();
   if (!planDirName) {
@@ -1585,7 +1629,7 @@ function cmdResume() {
   const decisions = readPlanFile(planDirName, "decisions.md");
 
   const currentState = extractField(state, /^# Current State:\s*(.+)$/m) || "UNKNOWN";
-  const iteration = extractField(state, /^## Iteration:\s*(.+)$/m) || "?";
+  const iteration = displayIteration(state);
   const step = extractField(state, /^## Current Plan Step:\s*(.+)$/m) || "N/A";
   const lastTransition = extractField(state, /^## Last Transition:\s*(.+)$/m) || "?";
   const goal = extractField(plan, /\n## Goal\s*\n([\s\S]+?)(?=\n## |$)/) || "No goal found";
@@ -1668,7 +1712,7 @@ function cmdStatus() {
   const plan = readPlanFile(planDirName, "plan.md");
 
   const currentState = extractField(state, /^# Current State:\s*(.+)$/m) || "UNKNOWN";
-  const iteration = extractField(state, /^## Iteration:\s*(.+)$/m) || "?";
+  const iteration = displayIteration(state);
   const step = extractField(state, /^## Current Plan Step:\s*(.+)$/m) || "N/A";
   const goal = extractField(plan, /\n## Goal\s*\n([\s\S]+?)(?=\n## |$)/) || "?";
 

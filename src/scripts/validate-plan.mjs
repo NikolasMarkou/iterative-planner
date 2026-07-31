@@ -376,8 +376,14 @@ function checkCrossFileConsistency(planDir, issues) {
   // Check convergence metrics in verification.md for iteration 2+ REFLECT
   if (["REFLECT", "CLOSE"].includes(currentState.toUpperCase())) {
     const verification = readFile(join(planDir, "verification.md"));
-    const stateIter = extractField(state, /^## Iteration:\s*(.+)$/m);
-    if (verification && stateIter && parseInt(stateIter) >= 2) {
+    // Mirrors checkIterationLimits (line ~564) and checkCheckpoints (line ~603):
+    // max(declared, derived) so an agent that forgets to bump the declared
+    // field cannot silently bypass this WARN by understating its iteration.
+    const stateIterRaw = extractField(state, /^## Iteration:\s*(.+)$/m);
+    const declaredIter = stateIterRaw ? parseInt(stateIterRaw, 10) : 0;
+    const derivedIter = deriveIterationFromHistory(state);
+    const effectiveIter = Math.max(Number.isFinite(declaredIter) ? declaredIter : 0, derivedIter);
+    if (verification && effectiveIter >= 2) {
       if (!verification.includes("## Convergence Metrics") || !verification.includes("Convergence score")) {
         issues.push({ severity: "WARN", check: "convergence", message: "verification.md missing Convergence Metrics section for iteration 2+ (EXTENDED check — see references/convergence-metrics.md)" });
       } else {
