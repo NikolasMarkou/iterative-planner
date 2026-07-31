@@ -8,13 +8,14 @@ Maintain in `state.md` during EXECUTE:
 
 ```markdown
 ## Change Manifest (current iteration)
-- [x] `lib/session/token_service.rb` — CREATED (step 1, committed abc123)
-- [ ] `app/middleware/auth.rb` — MODIFIED lines 23-45 (step 2, uncommitted)
-- [ ] `config/initializers/session.rb` — MODIFIED (step 2, uncommitted)
+- step-1 (abc123): lib/session/token_service.rb
+- step-2 (uncommitted): app/middleware/auth.rb, config/initializers/session.rb
 ```
 
-Update after every file create/modify/delete. `[x]` = committed, `[ ]` = uncommitted.
+One line per step: `- step-N (commit-hash-or-"uncommitted"): file1, file2, file3`. Update after every file create/modify/delete for the current step. A step line carrying `uncommitted` (or no hash) signals that step's changes are not yet committed; once the step's commit lands, replace `uncommitted` with the real commit hash — the line is edited in place, not duplicated.
 Reset on iteration increment (PLAN → EXECUTE). Prior iteration's commits need no tracking.
+
+Some real plans nest the manifest by iteration instead of resetting it in place — `## Change Manifest (iteration N — vX.Y.Z)` with the iteration number/version in the heading — as an optional, sanctioned extension of this same per-step format, not a different one.
 
 ## Revert procedures — manifest-touching reverts
 
