@@ -1,6 +1,6 @@
-# Python / Software-Engineering Caveat
+# Software-Engineering Caveat (any language, incl. Python)
 
-**CONDITIONAL reference.** Consult this file ONLY when the plan is a Python or general software-engineering task (coding, architecture, refactoring, system design). For any non-software plan it does not apply — the planner core stays domain-neutral. It deliberately does NOT restate mental models the planner already owns and enforces; those appear here as cross-reference pointers only (see "Already covered elsewhere" below). What follows is the net-new software-design knowledge the planner core lacks.
+**CONDITIONAL reference.** Consult this file ONLY when the plan is a software-engineering task (coding, architecture, refactoring, system design), in any language, including Python. For any non-software plan it does not apply — the planner core stays domain-neutral. It deliberately does NOT restate mental models the planner already owns and enforces; those appear here as cross-reference pointers only (see "Already covered elsewhere" below). What follows is the net-new software-design knowledge the planner core lacks.
 
 ## A. Software-design models (any language)
 
