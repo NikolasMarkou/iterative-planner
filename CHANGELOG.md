@@ -4,6 +4,25 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.57.4] - 2026-07-31
+
+**`python-software.md`'s conditional consultation was mechanically wired but behaviorally invisible — fixed at the framing, salience, and observability layers.** A deep review confirmed citations/gates/shipping were all correctly wired (no defect there), but a historical-usage audit across ~26 prior plans found the doc's actual content had never once been cited as reasoning for a real code decision — not even in plans that did substantial `.mjs` script work squarely within its own "software-engineering task" scope. Root cause: (1) the doc's title and all 6 citing sites led with "Python" before "software-engineering," priming a language-based self-filter on this 100%-JS/Node repo even though the doc's own scope line is task-type based; (2) the conditional-consult instruction was buried as a sub-bullet (not its own checklist item) in `ip-reviewer.md` and `state-reflect.md`; (3) nothing anywhere recorded whether the file was ever actually read, so a compliant consult and a skipped one were indistinguishable.
+
+### Added
+
+- **Domain-Caveat Consult Note convention (`file-formats.md`).** A new lightweight, non-`D-NNN` `decisions.md` line — `consulted — applicable (<...>)` | `consulted — not applicable (<why>)` | `skipped — non-software plan` — makes consultation of `python-software.md` observable after the fact. Documentation-only, not a mechanical gate (no new script/field), per the zero-new-apparatus constraint; `ip-reviewer.md` and `state-reflect.md` now check for its presence as part of their existing review passes.
+
+### Changed
+
+- **Task-type-first reframing, 9 sites.** `python-software.md`'s title/scope line, `SKILL.md`, `CLAUDE.md`, `README.md` (tree comments), `ip-plan-writer.md`, `ip-executor.md`, `ip-reviewer.md`, `state-plan.md`, and `state-execute.md` all now lead with "software-engineering (any language, incl. Python)" instead of "Python/software-engineering" — removing the language-based false-filter risk while preserving the doc's real scope.
+- **Buried checks promoted to top-level checklist items.** `ip-reviewer.md`'s Review Checklist (was a sub-bullet of item 6, now its own item 7) and `state-reflect.md`'s Phase-2 checklist (was a sub-bullet of item 17, now its own item 18, renumbering old items 18-26 to 19-27) both give the software-engineering check its own numbered, non-buried line, plus a Domain-Caveat Consult Note presence check. `ip-reviewer.md`'s internal cross-reference to `state-reflect.md`'s Adversarial-review item was updated (22 → 23) to match.
+- **`ip-plan-writer.md` Skip-clause parity.** Added the explicit "Skip for non-software plans." clause the other 5 citing sites already carried.
+
+### Notes
+
+- `make validate`/`make lint`/`make test` all green post-edit (688/688 tests, TEST_COUNT unchanged — no test file touched): doc-parity, agent-wiring, template-parity, changelog-parity, readme-parity, register-density all PASS. `register-baseline.json` unchanged — no file's density rose past its committed ceiling.
+- Mechanical wiring (citations, `§` section pointers, build/shipping) was independently re-confirmed correct before this fix and is untouched by it — this release addresses only the behavioral/observability gap, not a wiring defect.
+
 ## [2.57.3] - 2026-07-29
 
 **`ip-explorer` gains web research (WebFetch/WebSearch) — scoped to Explorer only.** Fixes the domain-agnostic EXPLORE-phase gap where research was hard-limited to local codebase tools (`Read, Write, Grep, Glob, Bash`); web tools are additive, not a replacement — local codebase search remains the default. No other agent's `tools:` line changed (D-001).
