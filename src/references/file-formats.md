@@ -21,9 +21,8 @@ Single source of truth for "where am I?"
 ## Fix Attempts (resets per plan step)
 - (none yet for current step)
 ## Change Manifest (current iteration)
-- [x] `lib/session/token_service.rb` — CREATED (step 1, committed abc123)
-- [ ] `app/middleware/auth.rb` — MODIFIED lines 23-45 (step 2, uncommitted)
-- [ ] `config/initializers/session.rb` — MODIFIED (step 2, uncommitted)
+- step-1 (abc123): lib/session/token_service.rb
+- step-2 (uncommitted): app/middleware/auth.rb, config/initializers/session.rb
 ## Last Transition: PLAN → EXECUTE (approved by user)
 ## Transition History:
 - EXPLORE → PLAN (gathered enough context on auth system)
@@ -47,7 +46,7 @@ Update on every state transition.
 - Step 2: LEASH HIT. Transitioned to REFLECT. Waiting for user direction.
 ```
 
-**Change Manifest**: `[x]` = committed, `[ ]` = uncommitted. On failed step / PIVOT → revert uncommitted. See `code-hygiene.md`.
+**Change Manifest**: one line per step — `- step-N (commit-hash-or-"uncommitted"): file1, file2, file3`. A step line carrying `uncommitted` (or no hash) has not yet landed; on failed step / PIVOT → revert those files. See `code-hygiene.md`.
 
 <!-- TEMPLATE:plan -->
 ## plan.md
