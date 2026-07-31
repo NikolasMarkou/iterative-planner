@@ -183,7 +183,7 @@ Multiple file:line refs are comma-separated; ranges use `LL-MM`. Maintained at E
 
 For any plan whose PLAN or EXECUTE work is a software-engineering task (coding, architecture, refactoring, system design, in any language) — the same scope `references/python-software.md` itself defines — record ONE line in `decisions.md` stating whether that conditional reference was consulted:
 
-**python-software.md**: `consulted — applicable (<which § section used>)` | `consulted — not applicable (<why>)` | `skipped — non-software plan`
+**python-software.md**: `consulted — applicable (<name the section used>)` | `consulted — not applicable (<why>)` | `skipped — non-software plan`
 
 This is a documented convention, not a `D-NNN` decision entry (no Trade-off line required, no Anchor-Refs, no sequential numbering) and not a mechanically enforced gate — it is the same enforcement level as this file's own file:line citation convention: a norm the writing agent follows and a reviewer can spot-check, not a script-checked requirement. Its purpose is observability: making it possible to tell, after the fact, whether a domain-conditional reference doc was actually read, instead of leaving that unanswerable (see `plans/LESSONS.md` and the `python-software-actual-usage.md` finding this convention originates from — consultation of a conditional reference is otherwise invisible in the audit trail).
 
