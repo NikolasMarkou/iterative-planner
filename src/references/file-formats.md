@@ -179,6 +179,16 @@ All entry types accept `Anchor-Refs` as optional. For PIVOT entries that are 2nd
 
 Multiple file:line refs are comma-separated; ranges use `LL-MM`. Maintained at EXECUTE-time when anchors are created or moved; verified at CLOSE during the reverse anchor audit. Validator: ERROR `[anchor-refs-missing]` for post-v2.14.0 plans whose decisions.md entry has a matching source anchor but no `**Anchor-Refs**:` line; WARN otherwise. Pre-v2.14.0 entries (legacy) keep WARN-only enforcement.
 
+### Domain-Caveat Consult Note
+
+For any plan whose PLAN or EXECUTE work is a software-engineering task (coding, architecture, refactoring, system design, in any language) — the same scope `references/python-software.md` itself defines — record ONE line in `decisions.md` stating whether that conditional reference was consulted:
+
+**python-software.md**: `consulted — applicable (<which § section used>)` | `consulted — not applicable (<why>)` | `skipped — non-software plan`
+
+This is a documented convention, not a `D-NNN` decision entry (no Trade-off line required, no Anchor-Refs, no sequential numbering) and not a mechanically enforced gate — it is the same enforcement level as this file's own file:line citation convention: a norm the writing agent follows and a reviewer can spot-check, not a script-checked requirement. Its purpose is observability: making it possible to tell, after the fact, whether a domain-conditional reference doc was actually read, instead of leaving that unanswerable (see `plans/LESSONS.md` and the `python-software-actual-usage.md` finding this convention originates from — consultation of a conditional reference is otherwise invisible in the audit trail).
+
+Place the note anywhere convenient in `decisions.md` — as its own line near the top, or appended to the most relevant `D-NNN` entry's Context. It is NOT itself gated by `validate-plan.mjs`; a missing note is a REFLECT-time reviewer observation (see `ip-reviewer.md`'s Review Checklist), not a validator error.
+
 ```markdown
 # Decision Log
 *Plan: plan-2026-01-15T084512-a3f1b2c9*
