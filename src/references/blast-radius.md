@@ -93,6 +93,8 @@ These limitations are documented but not patched. Radius is **informative**, not
 | Executor | mid-step | Informational only; may log in commit footer. Never gates. |
 | CLOSE | optional | List HIGH edits in `summary.md` |
 
+A HIGH-radius edit with no decision-ref (changelog field 7 is `-`) IS a reviewer CONCERN worth raising in `## Concerns`, unless the reviewer can positively confirm none of `decision-anchoring.md`'s 5 anchor-trigger conditions apply to that edit. This is consistent with, not a contradiction of, the "Never gates" line above and the "Radius is **informative**, not authoritative" framing in Limitations: raising a CONCERN in review output is judgment surfaced for a human/orchestrator to weigh, not a gate that blocks execution.
+
 ## Anti-patterns
 
 - Treating tier as a hard gate — radius is informational.
