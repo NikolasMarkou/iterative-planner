@@ -974,6 +974,43 @@ describe("bootstrap.mjs", () => {
       const r = run(dir, "resume");
       assert.ok(r.stdout.includes("2"), "should show decision count");
     });
+
+    // Regression tests for displayIteration()/countExecuteReflectStripped()
+    // (plan-2026-07-31T203947-de0ded98 completion-fix, pass-2 WARNING 2): these
+    // functions previously had zero automated coverage — only a reviewer's
+    // manual CLI run proved the reconciled-display behavior worked.
+    it("status/resume show the derived iteration when declared field is stale-low", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Stale declared iteration test");
+      const planDir = getPointer(dir);
+      const transitions = Array.from(
+        { length: 6 },
+        (_, i) => `- EXECUTE → REFLECT (hop ${i + 1})`
+      ).join("\n");
+      writeFileSync(
+        join(dir, "plans", planDir, "state.md"),
+        `# Current State: EXECUTE\n## Iteration: 1\n## Current Plan Step: N/A\n## Last Transition: REFLECT → EXECUTE\n## Transition History:\n${transitions}\n`
+      );
+      const statusR = run(dir, "status");
+      assert.ok(statusR.stdout.includes("iter=6"), "status should show the derived iteration (6), not the stale declared value (1)");
+      assert.ok(!statusR.stdout.includes("iter=1 "), "status should not show the stale declared value");
+
+      const resumeR = run(dir, "resume");
+      assert.ok(resumeR.stdout.includes("Iteration:  6"), "resume should show the derived iteration (6), not the stale declared value (1)");
+    });
+
+    it("status/resume show 0 for a fresh plan with no real transitions (no false positive)", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Fresh plan iteration test");
+      // A fresh plan's state.md declares `## Iteration: 0` and has no real
+      // EXECUTE -> REFLECT transitions yet — displayIteration() must not
+      // manufacture a nonzero count from an empty/INIT-only history.
+      const statusR = run(dir, "status");
+      assert.ok(statusR.stdout.includes("iter=0"), "status should show 0 for a fresh plan");
+
+      const resumeR = run(dir, "resume");
+      assert.ok(resumeR.stdout.includes("Iteration:  0"), "resume should show 0 for a fresh plan");
+    });
   });
 
   // =========================================================================

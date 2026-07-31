@@ -1607,6 +1607,12 @@ function countExecuteReflectStripped(state) {
 //   parseable `## Iteration:` field AND no derivable EXECUTE -> REFLECT history.
 // Failure mode: never throws; a missing/malformed declared field falls back to 0
 //   before the max(), so a bad declared value cannot suppress a real derived count.
+// Known asymmetric risk (see decisions.md "Completion-fix round 2 (pass-2) note"):
+// countExecuteReflectStripped() is stripped-comment-only,
+// so a stray `<!--` opener above Transition History that blanks the whole block makes
+// this DISPLAY under-report toward the stale declared value (opposite direction from
+// the HARD gate's over-count risk, which is safe-by-design) — validate-plan.mjs's
+// `[state-comment-anomaly]` WARN explains that scenario but is not reachable from here.
 function displayIteration(state) {
   const iterStr = extractField(state, /^## Iteration:\s*(.+)$/m);
   const declared = iterStr ? parseInt(iterStr, 10) : 0;
