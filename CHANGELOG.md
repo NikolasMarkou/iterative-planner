@@ -4,6 +4,23 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.57.5] - 2026-07-31
+
+**Extended the wiring-vs-behavior audit to all remaining `src/references/*.md` docs — 4 real gaps fixed, prose-only.** Following the same two-layer audit pattern used for `python-software.md` (v2.57.4), this release checks whether the other 8 reference docs' content is actually consulted, not just mechanically wired. Result: most (`decision-anchoring.md`, most of `complexity-control.md`/`planning-rigor.md`, `blast-radius.md`'s mechanical scoring) are genuinely used with real per-plan judgment — no fix needed. Four real, actionable gaps were found and fixed:
+
+### Changed
+
+- **`file-formats.md`'s "Entry Schema by Type" table was outdated.** Real `decisions.md` entries across 3+ plans use PHASE labels (`EXECUTE step N`, `REFLECT → EXECUTE (completion-fix)`) the table never enumerated. Added both as rows, plus a footnote on parenthetical pass/attempt qualifiers.
+- **`code-hygiene.md`'s documented Change Manifest checkbox syntax was used in 0 of 27 sampled plans.** Real practice converged independently on a per-step format (`- step-N (commit-or-uncommitted): file1, file2`). Documentation now follows practice: the per-step format is canonical in `code-hygiene.md`, and `file-formats.md`'s worked `TEMPLATE:state` example was aligned to match (the byte-gated `SKELETON:state` region was untouched — it already carried no checkbox syntax).
+- **`root-cause-analysis.md`'s structured methods (5 Whys/Fishbone/Fault Tree/Cynefin) had never been invoked** despite real RCA-worthy failures occurring, including one textbook Fault-Tree-shaped 5-strike bug. Added an explicit trigger clause (multi-cause combination OR repeat/2nd+ occurrence) to both the doc itself and its citing site, `state-reflect.md` item 16 — the same salience-strengthening pattern applied to `python-software.md` in the prior release.
+- **`blast-radius.md`'s tiered score was computed and reviewed every time but never informed a decision** (0 outliers acted on across 435 scored edits, 11/11 reviews genuinely scanned it). `ip-reviewer.md`'s "Missing decision-refs" bullet was reworded from a passive observation to an explicit CONCERN-raising instruction; `blast-radius.md` documents the matching expectation, consistent with its existing "never blocks" framing.
+
+### Notes
+
+- All four fixes are documentation/prompt-only — zero new scripts, gates, or required schema fields, per the same zero-new-apparatus constraint as v2.57.4.
+- `make validate`/`make lint`/`make test` all green post-edit (688/688 tests, TEST_COUNT unchanged — no test file touched): doc-parity, agent-wiring, template-parity, changelog-parity, readme-parity, register-density all PASS. `register-baseline.json` unchanged — no touched file's density rose past its committed ceiling.
+- `python-software.md` itself was already fixed in v2.57.4 and is out of scope here.
+
 ## [2.57.4] - 2026-07-31
 
 **`python-software.md`'s conditional consultation was mechanically wired but behaviorally invisible — fixed at the framing, salience, and observability layers.** A deep review confirmed citations/gates/shipping were all correctly wired (no defect there), but a historical-usage audit across ~26 prior plans found the doc's actual content had never once been cited as reasoning for a real code decision — not even in plans that did substantial `.mjs` script work squarely within its own "software-engineering task" scope. Root cause: (1) the doc's title and all 6 citing sites led with "Python" before "software-engineering," priming a language-based self-filter on this 100%-JS/Node repo even though the doc's own scope line is task-type based; (2) the conditional-consult instruction was buried as a sub-bullet (not its own checklist item) in `ip-reviewer.md` and `state-reflect.md`; (3) nothing anywhere recorded whether the file was ever actually read, so a compliant consult and a skipped one were indistinguishable.
