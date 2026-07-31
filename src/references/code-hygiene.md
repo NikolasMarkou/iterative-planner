@@ -8,11 +8,11 @@ Maintain in `state.md` during EXECUTE:
 
 ```markdown
 ## Change Manifest (current iteration)
-- step-1 (abc123): lib/session/token_service.rb
-- step-2 (uncommitted): app/middleware/auth.rb, config/initializers/session.rb
+- Step 1 (abc123): `lib/session/token_service.rb`
+- Step 2 (uncommitted): `app/middleware/auth.rb`, `config/initializers/session.rb`
 ```
 
-One line per step: `- step-N (commit-hash-or-"uncommitted"): file1, file2, file3`. Update after every file create/modify/delete for the current step. A step line carrying `uncommitted` (or no hash) signals that step's changes are not yet committed; once the step's commit lands, replace `uncommitted` with the real commit hash — the line is edited in place, not duplicated.
+One line per step: `- Step N (commit-hash-or-"uncommitted"): \`file1\`, \`file2\`, \`file3\``. Update after every file create/modify/delete for the current step. A step line carrying `uncommitted` (or no hash) signals that step's changes are not yet committed; once the step's commit lands, replace `uncommitted` with the real commit hash — the line is edited in place, not duplicated. Backticking each filename is the one non-negotiable requirement: `blast-radius.mjs`'s `iterationHistory()` signal matches a path only when it is bounded by a backtick, whitespace, or line-end, so an un-backticked filename immediately followed by a comma (e.g. `file1, file2`) silently fails to match. The lowercase-hyphenated `step-N` form (rather than capitalized `Step N`) is an equally-acceptable minor stylistic variant seen in some real plans — capitalization/hyphenation is not load-bearing, only the backticks are.
 Reset on iteration increment (PLAN → EXECUTE). Prior iteration's commits need no tracking.
 
 Some real plans nest the manifest by iteration instead of resetting it in place — `## Change Manifest (iteration N — vX.Y.Z)` with the iteration number/version in the heading — as an optional, sanctioned extension of this same per-step format, not a different one.
