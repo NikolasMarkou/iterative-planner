@@ -11,6 +11,7 @@ Consult this doc when the RCA step follows a failure (step failed, leash hit, su
 **Rules**:
 - The 4-part block stays the deliverable. These methods feed it; they do not replace it.
 - Reach for structure only when a flat answer is unsatisfying. A clean single-cause failure needs no framework.
+- Reach past the 4-part schema into these named methods when either concrete condition holds: (1) the failure shows 2 or more interacting/combining causes, or (2) the failure is a repeat — a 2nd-or-later occurrence of the same failure shape. Either condition alone is the decision point; a flat single-cause, first-occurrence failure still needs no framework.
 - Pick one method, not all four. They overlap on purpose — 5 Whys for depth, fishbone for breadth, fault tree for combination.
 
 ## 5 Whys
