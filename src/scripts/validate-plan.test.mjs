@@ -1273,6 +1273,48 @@ legacy section
     assert.notEqual(r.exitCode, 2, `exit code 2 is --pre-step-exclusive per D-004; full validator returned ${r.exitCode}\nstdout:\n${r.stdout}`);
     assert.ok(r.exitCode === 0 || r.exitCode === 1, `expected exit 0 or 1 from full validator, got ${r.exitCode}\nstdout:\n${r.stdout}`);
   });
+
+  // Iteration-trust gap regression (iter-1/steps 1-2 of this plan): a declared
+  // `## Iteration:` field that understates the real Transition History must not
+  // let either the --pre-step HARD gate or the full validator's checkCheckpoints
+  // WARN be silently bypassed. Both must read max(declared, derived), exactly
+  // like checkIterationLimits already does.
+  it("(k) iteration-trust: declared Iteration 1 + 6 real EXECUTE → REFLECT records → GATE:FAIL [iteration-cap], not GATE:PASS", () => {
+    const cwd = getTempDir();
+    const transitionHistory = [
+      "- EXECUTE → REFLECT (1)",
+      "- EXECUTE → REFLECT (2)",
+      "- EXECUTE → REFLECT (3)",
+      "- EXECUTE → REFLECT (4)",
+      "- EXECUTE → REFLECT (5)",
+      "- EXECUTE → REFLECT (6)",
+    ].join("\n");
+    writePlan(cwd, { state: "EXECUTE", iteration: 1, transitionHistoryExtra: transitionHistory });
+    const r = runPreStep(cwd);
+    assert.equal(r.exitCode, 2, `expected exit 2 (derived iteration must trip the hard cap), got ${r.exitCode}\nstdout:\n${r.stdout}`);
+    assert.ok(r.stdout.trim().startsWith("GATE:FAIL [iteration-cap]"), `expected GATE:FAIL [iteration-cap], not GATE:PASS, got:\n${r.stdout}`);
+    assert.ok(/derived=6/.test(r.stdout), `expected derived=6 in output, got:\n${r.stdout}`);
+  });
+
+  it("(l) iteration-trust: same fixture, full validator, no checkpoints/ dir → WARN [checkpoints] despite low declared iteration", () => {
+    const cwd = getTempDir();
+    const transitionHistory = [
+      "- EXECUTE → REFLECT (1)",
+      "- EXECUTE → REFLECT (2)",
+      "- EXECUTE → REFLECT (3)",
+      "- EXECUTE → REFLECT (4)",
+      "- EXECUTE → REFLECT (5)",
+      "- EXECUTE → REFLECT (6)",
+    ].join("\n");
+    const { planDir } = writePlan(cwd, { state: "EXECUTE", iteration: 1, transitionHistoryExtra: transitionHistory });
+    // writePlan always creates checkpoints/ for the other fixtures' sake; this
+    // test needs it absent so checkCheckpoints's own existsSync branch fires.
+    rmSync(join(planDir, "checkpoints"), { recursive: true, force: true });
+    const r = run(cwd); // no --pre-step
+    const warns = r.stdout.split("\n").filter((l) => /WARN\s+\[checkpoints\]/.test(l));
+    assert.ok(warns.length >= 1, `expected WARN [checkpoints] despite declared Iteration 1, got:\n${r.stdout}`);
+    assert.ok(/iteration 6/.test(warns[0]), `expected the derived iteration (6) in the WARN message, got: ${warns[0]}`);
+  });
 });
 
 // M7 — targeted negative-case tests for high-risk check functions that
