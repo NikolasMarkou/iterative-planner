@@ -181,7 +181,7 @@ Multiple file:line refs are comma-separated; ranges use `LL-MM`. Maintained at E
 
 ### Domain-Caveat Consult Note
 
-*Documentation-only by design — before adding a mechanical gate for this convention, re-read the decision reasoning recorded under D-003 in the plan that introduced it. (No literal anchor comment here: `src/references/*.md` are shared, plan-agnostic reference docs — real `DECISION` anchors belong in the source a plan actually modifies, not in cross-plan documentation, per `decision-anchoring.md` § Writing About Anchors.)*
+*Documentation-only by design — before adding a mechanical gate for this convention, re-read the decision reasoning recorded under D-003 of plan-2026-07-31T174222-0735bdee (see `CHANGELOG.md`'s `[2.57.4]` entry for the durable origin summary once that plan directory ages out of `plans/DECISIONS.md`'s sliding window). No literal anchor comment here: `src/references/*.md` are shared, plan-agnostic reference docs — real `DECISION` anchors belong in the source a plan actually modifies, not in cross-plan documentation, per `decision-anchoring.md` § Writing About Anchors.*
 
 For any plan whose PLAN work is a software-engineering task (coding, architecture, refactoring, system design, in any language) — the same scope `references/python-software.md` itself defines — record ONE line in `decisions.md` stating whether that conditional reference was consulted:
 

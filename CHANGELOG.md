@@ -10,7 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- **Domain-Caveat Consult Note convention (`file-formats.md`).** A new lightweight, non-`D-NNN` `decisions.md` line — `consulted — applicable (<...>)` | `consulted — not applicable (<why>)` | `skipped — non-software plan` — makes consultation of `python-software.md` observable after the fact. Documentation-only, not a mechanical gate (no new script/field), per the zero-new-apparatus constraint; `ip-reviewer.md` and `state-reflect.md` now check for its presence as part of their existing review passes.
+- **Domain-Caveat Consult Note convention (`file-formats.md`).** A new lightweight, non-`D-NNN` `decisions.md` line — `consulted — applicable (<...>)` | `consulted — not applicable (<why>)` — makes consultation of `python-software.md` observable after the fact for PLAN-phase work. Documentation-only, not a mechanical gate (no new script/field), per the zero-new-apparatus constraint; `ip-reviewer.md` and `state-reflect.md` now check for its presence as part of their existing review passes.
 
 ### Changed
 
