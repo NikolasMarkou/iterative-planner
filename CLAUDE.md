@@ -52,6 +52,7 @@ iterative-planner/
     │   ├── check-template-parity.test.mjs # Test suite (node:test)
     │   ├── check-register.mjs        # Register-density ratchet gate: measures jargon-marker density (bracket-tags + coded refs + 3+-segment compounds per 1k words) of shipped docs (CLAUDE.md, README, SKILL.md, agents, references) against committed per-file ceilings in register-baseline.json; ERRORs [register-drift] on a rise past ceiling, [register-floor] on missing/empty/too-few docs (used by make/build.ps1 validate+lint+test; Node.js 18+)
     │   ├── check-register.test.mjs   # Test suite (node:test)
+    │   ├── register-baseline.json    # Per-file jargon-density ceilings consumed by check-register.mjs (gate-data, not a script)
     │   ├── emit-state.mjs            # Per-state rule router; emits scripts/modules/state-<s>.md on demand (used by SKILL.md per-state pointers / orchestrator dispatch; Node.js 18+)
     │   ├── emit-state.test.mjs       # Test suite (node:test)
     │   ├── emit-template.mjs         # Per-template slicer; emits one plan-file template sliced from references/file-formats.md via --name <slug> (used by agents/modules to fetch a single template instead of the full file-formats.md file; Node.js 18+)

@@ -601,6 +601,7 @@ iterative-planner/
     │   ├── check-template-parity.test.mjs # template-parity test suite (node:test)
     │   ├── check-register.mjs      # register-density ratchet gate (run via make validate)
     │   ├── check-register.test.mjs # register test suite (node:test)
+    │   ├── register-baseline.json  # per-file jargon-density ceilings consumed by check-register.mjs
     │   ├── schema.mjs              # CHANGELOG_SPEC — the one declarative definition of the changelog's field shapes (used by validate-plan.mjs)
     │   ├── schema.test.mjs         # schema test suite (node:test)
     │   ├── emit-state.mjs          # per-state rule router; emits scripts/modules/state-<s>.md on demand
