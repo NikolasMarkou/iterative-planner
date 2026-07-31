@@ -179,9 +179,9 @@ All entry types accept `Anchor-Refs` as optional. For PIVOT entries that are 2nd
 
 Multiple file:line refs are comma-separated; ranges use `LL-MM`. Maintained at EXECUTE-time when anchors are created or moved; verified at CLOSE during the reverse anchor audit. Validator: ERROR `[anchor-refs-missing]` for post-v2.14.0 plans whose decisions.md entry has a matching source anchor but no `**Anchor-Refs**:` line; WARN otherwise. Pre-v2.14.0 entries (legacy) keep WARN-only enforcement.
 
-<!-- DECISION plan-2026-07-31T174222-0735bdee/D-003: documentation-only by design — do not add a check-*.mjs gate for this without re-reading D-003's reasoning first -->
-
 ### Domain-Caveat Consult Note
+
+*Documentation-only by design — before adding a mechanical gate for this convention, re-read the decision reasoning recorded under D-003 in the plan that introduced it. (No literal anchor comment here: `src/references/*.md` are shared, plan-agnostic reference docs — real `DECISION` anchors belong in the source a plan actually modifies, not in cross-plan documentation, per `decision-anchoring.md` § Writing About Anchors.)*
 
 For any plan whose PLAN work is a software-engineering task (coding, architecture, refactoring, system design, in any language) — the same scope `references/python-software.md` itself defines — record ONE line in `decisions.md` stating whether that conditional reference was consulted:
 
