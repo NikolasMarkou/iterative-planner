@@ -191,7 +191,7 @@ Floor: items 2 and 4 are non-negotiable.
 
 **Dispatch**
 0. Emit rules: `node <skill-path>/scripts/emit-state.mjs --state pivot` and follow its output.
-1. Read decisions.md, findings.md, relevant findings/*, plan.md, verification.md, plans/LESSONS.md, plans/SYSTEM.md, checkpoints/*
+1. Read decisions.md, findings.md, relevant findings/*, plan.md, verification.md, changelog.md, plans/LESSONS.md, plans/SYSTEM.md, checkpoints/* (changelog.md is read-only here — it tells you which files each step touched, which is what step 2's keep-vs-revert call turns on; PIVOT never writes it)
 2. Decide keep vs revert (default: revert to latest checkpoint if unsure)
 3. Correct any finding this iteration proved wrong or incomplete: append a `[CORRECTED iter-N]` line — what changed and why — to findings.md AND to each affected findings/{topic}.md. Write both yourself; no explorer is spawned at PIVOT, and the File Ownership Model gives you this narrow co-write on findings/{topic}.md. Append only; never delete the original text.
 4. Log pivot decision in decisions.md

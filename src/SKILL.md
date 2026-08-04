@@ -99,7 +99,7 @@ These files are active working memory. Re-read during the conversation, not just
 | Before any EXECUTE step | `state.md`, `plan.md`, `progress.md` | Confirm step, manifest, fix attempts, progress sync |
 | Before writing a fix | `decisions.md` | Don't repeat failed approaches. Check 3-strike. |
 | Before modifying `DECISION`-commented code | Referenced `decisions.md` entry | Understand why before changing |
-| Before PLAN or PIVOT | `decisions.md`, `findings.md`, `findings/*`, `plans/LESSONS.md`, `plans/SYSTEM.md` | Ground plan in known facts + institutional memory + system atlas |
+| Before PLAN or PIVOT | `decisions.md`, `findings.md`, `findings/*`, `plans/LESSONS.md`, `plans/SYSTEM.md`, `plans/DECISIONS.md` *(PLAN only)* | Ground plan in known facts + institutional memory + system atlas |
 | Before any REFLECT | `plan.md` (criteria + verification strategy + assumptions), `progress.md`, `verification.md`, `findings.md`, `checkpoints/*`, `decisions.md`, `changelog.md` | Phase 1 Gate-In: full context before evaluating |
 | Every 10 tool calls | `state.md` | Reorient. Right step? Scope crept? |
 
@@ -169,11 +169,11 @@ R = read only | W = update (implicit read + write) | R+W = distinct read and wri
 | findings/* | W | R | — | R | R+W | R |
 | progress.md | — | W | R+W | R+W | W | R |
 | verification.md | — | W | — | W | R | R |
-| changelog.md | — | W* | W (append) | R | W (append REVERT) | R |
+| changelog.md | — | W* | W (append) | R | R | R |
 | checkpoints/* | — | — | W | R | R | — |
 | summary.md | — | — | — | — | — | W |
-| plans/FINDINGS.md | R(600) | R? | — | — | R(600) | W(merge+compress) |
-| plans/DECISIONS.md | R(600) | R(600) | — | — | R(600) | W(merge+compress) |
+| plans/FINDINGS.md | R(600) | R? | — | — | — | W(merge+compress) |
+| plans/DECISIONS.md | R(600) | R(600) | — | — | — | W(merge+compress) |
 | plans/LESSONS.md | R | R | — | — | R | W(rewrite≤200) |
 | plans/SYSTEM.md | R | R | — | — | R | W(rewrite≤300) |
 | plans/INDEX.md | R? | — | — | — | — | W(append via bootstrap) |
