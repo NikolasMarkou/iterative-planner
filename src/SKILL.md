@@ -411,7 +411,7 @@ Each file has a clear owner. Only the owner writes. Others read. Co-ownership (m
 | `plan.md` | Plan-writer (full rewrite) + Orchestrator (Post-Step Gate: step checkbox, marker, complexity budget) | Executor, Verifier, Reviewer |
 | `decisions.md` | Orchestrator + Plan-writer (author entries) + Executor (back-fills `Anchor-Refs` on anchored entries, records DRY exceptions) + Archivist (CLOSE-time Anchor-Refs backfill remediation, ip-archivist.md Step 1) | All agents |
 | `findings.md` (index) | Orchestrator | Plan-writer, Reviewer |
-| `findings/{topic}.md` | Explorer (one per file; orchestrator may delete an empty stale copy before a re-spawn) | Orchestrator, Plan-writer |
+| `findings/{topic}.md` | Explorer (one per file; orchestrator may delete an empty stale copy before a re-spawn, and appends `[CORRECTED iter-N]` annotations at PIVOT) | Orchestrator, Plan-writer |
 | `findings/review-iter-N[-passM].md` | Reviewer | Orchestrator |
 | `progress.md` | Orchestrator (Post-Step Gate) | All agents |
 | `verification.md` | Plan-writer (template) + Orchestrator (merges Verifier's returned results) | Orchestrator, Reviewer |

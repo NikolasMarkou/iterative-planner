@@ -193,12 +193,13 @@ Floor: items 2 and 4 are non-negotiable.
 0. Emit rules: `node <skill-path>/scripts/emit-state.mjs --state pivot` and follow its output.
 1. Read decisions.md, findings.md, relevant findings/*, plan.md, verification.md, plans/LESSONS.md, plans/SYSTEM.md, checkpoints/*
 2. Decide keep vs revert (default: revert to latest checkpoint if unsure)
-3. Log pivot decision in decisions.md
-4. Update state.md, progress.md
-5. Run `bootstrap.mjs reset-attempts` — the leash counter must NOT carry into the
+3. Correct any finding this iteration proved wrong or incomplete: append a `[CORRECTED iter-N]` line — what changed and why — to findings.md AND to each affected findings/{topic}.md. Write both yourself; no explorer is spawned at PIVOT, and the File Ownership Model gives you this narrow co-write on findings/{topic}.md. Append only; never delete the original text.
+4. Log pivot decision in decisions.md
+5. Update state.md, progress.md
+6. Run `bootstrap.mjs reset-attempts` — the leash counter must NOT carry into the
    post-pivot EXECUTE, or the pre-step gate HARD-fails (`leash-cap`) on the first
    new step. (Same command applies when advancing to a genuinely new step.)
-6. Emit PC-PIVOT block → get user approval → transition to PLAN
+7. Emit PC-PIVOT block → get user approval → transition to PLAN
 
 ### CLOSE State
 1. Spawn ip-archivist with all plan files
