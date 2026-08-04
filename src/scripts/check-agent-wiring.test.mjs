@@ -262,7 +262,7 @@ test("report renders file:line [rule] message", () => {
 
 import { serializeEdges, EXPECTED_MIN_PROSE_FILES } from "./check-agent-wiring.mjs";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -557,6 +557,28 @@ test("real CLI FAIL [scan-floor]: all dirs contribute but total is below EXPECTE
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("pin: EXPECTED_MIN_PROSE_FILES equals the live prose-file count discovered from the real repo", () => {
+  // The floor is EXACT, not headroom-tolerant (the check-register.mjs /
+  // check-template-parity.mjs idiom). Discovery is replicated the way the CLI
+  // does it (check-agent-wiring.mjs isEntryPoint): .md files from the three
+  // scanned dirs, plus src/SKILL.md.
+  const mds = (rel) => readdirSync(join(repoRoot, rel)).filter((f) => f.endsWith(".md"));
+  const live =
+    mds("src/agents").length +
+    mds("src/scripts/modules").length +
+    mds("src/references").length +
+    1; // src/SKILL.md
+  assert.strictEqual(
+    EXPECTED_MIN_PROSE_FILES,
+    live,
+    `EXPECTED_MIN_PROSE_FILES (${EXPECTED_MIN_PROSE_FILES}) != live prose-file count (${live}). ` +
+      "Adding or removing an agent/module/reference is a deliberate change: update the constant " +
+      "and its 'Real count today' comment in check-agent-wiring.mjs in the same commit. Do NOT " +
+      "make the gate derive its floor at runtime — a self-derived floor ratifies whatever is on " +
+      "disk, which is the vacuity the floor exists to prevent.",
+  );
 });
 
 test("CLI no-flag purity: exit 0, PASS line, no emission output, default artifact state unchanged", () => {

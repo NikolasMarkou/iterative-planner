@@ -26,11 +26,17 @@ import { fileURLToPath } from "node:url";
 // BOM-prefixed heading line, or a <details> wrapper without a real heading
 // all make the parser find NO table — zero keys on both sides used to compare
 // nothing and print PASS. A side parsing fewer keys than this floor is a loud
-// `FAIL [doc-parity-floor]` naming the side and count. Real count today: 16
-// keys per side. Bump deliberately when the real count changes. Enforced in
-// the CLI (isEntryPoint) only — importers and the pure comparison() are
-// unchanged.
-export const EXPECTED_MIN_KEYS = 10;
+// `FAIL [doc-parity-floor]` naming the side and count. Real count today: 17
+// keys per side — the floor is set EQUAL to it, matching the exact-floor idiom
+// of EXPECTED_MIN_FILES (check-register.mjs) and EXPECTED_SLUGS
+// (check-template-parity.mjs); a floor with headroom lets that many rows vanish
+// from both docs in lockstep and still pass. Bump deliberately when the real
+// count changes — the pin test in check-doc-parity.test.mjs asserts this
+// constant equals the live key count parsed from the real SKILL.md, so a
+// legitimate new row turns the build red here rather than silently widening the
+// gap. Enforced in the CLI (isEntryPoint) only — importers and the pure
+// comparison() are unchanged.
+export const EXPECTED_MIN_KEYS = 17;
 
 /**
  * Normalize a table-cell's text for comparison: trim + collapse internal

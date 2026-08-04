@@ -7,7 +7,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -74,6 +74,23 @@ test("real repo: README mirrors SKILL.md File Ownership -> exit 0", () => {
     0,
     `expected exit 0; stdout=${res.stdout} stderr=${res.stderr}`,
   );
+});
+
+test("pin: EXPECTED_MIN_KEYS equals the live key count parsed from the real SKILL.md and README.md", () => {
+  // The floor is EXACT, not headroom-tolerant (the check-register.mjs /
+  // check-template-parity.mjs idiom). Parsing is replicated the way the CLI
+  // floors each side (check-doc-parity.mjs isEntryPoint): parseOwnershipTable
+  // per doc, independently.
+  const explain = (side, live) =>
+    `EXPECTED_MIN_KEYS (${EXPECTED_MIN_KEYS}) != live ${side} key count (${live}). ` +
+    "Adding or removing a File Ownership row is a deliberate change: update the constant and its " +
+    "'Real count today' comment in check-doc-parity.mjs in the same commit. Do NOT make the gate " +
+    "derive its floor at runtime — a self-derived floor ratifies whatever is on disk, which is the " +
+    "vacuity the floor exists to prevent.";
+  for (const [side, rel] of [["SKILL.md", join("src", "SKILL.md")], ["README.md", "README.md"]]) {
+    const live = parseOwnershipTable(readFileSync(join(repoRoot, rel), "utf8")).keys.size;
+    assert.strictEqual(EXPECTED_MIN_KEYS, live, explain(side, live));
+  }
 });
 
 test("negative: SKILL key absent from README is reported missing", () => {
@@ -219,7 +236,7 @@ test("owner cells: merged-cell tokens inherit the row owner cell", () => {
 test("real CLI PASS: owner cells identical modulo whitespace -> exit 0", () => {
   // Filler rows keep the fixture above EXPECTED_MIN_KEYS so the anti-vacuity
   // floor stays out of this test's way.
-  const filler = Array.from({ length: 10 }, (_, i) => [`\`f${i}.md\``, "Owner F"]);
+  const filler = Array.from({ length: 15 }, (_, i) => [`\`f${i}.md\``, "Owner F"]);
   const root = makeFixtureRoot(
     ownershipTableWithOwners([
       ["`a.md`", "Owner One  (scope)"],
@@ -295,7 +312,10 @@ test("BOM determinism: BOM on the heading line hides the table (0 keys); BOM els
 });
 
 test("real CLI PASS: CRLF README at/above the floor -> exit 0 (A7 pinned end-to-end)", () => {
-  const keys = Array.from({ length: 12 }, (_, i) => `k${i}.md`);
+  // Key count must stay at/above EXPECTED_MIN_KEYS — that is this fixture's
+  // stated premise ("at/above the floor"), so the floor, not CRLF handling, is
+  // never what decides the exit code.
+  const keys = Array.from({ length: 17 }, (_, i) => `k${i}.md`);
   const root = makeFixtureRoot(
     ownershipTable(keys),
     ownershipTable(keys).replace(/\n/g, "\r\n"),
@@ -303,7 +323,7 @@ test("real CLI PASS: CRLF README at/above the floor -> exit 0 (A7 pinned end-to-
   try {
     const res = runCliAgainst(root);
     assert.equal(res.status, 0, `expected exit 0; stdout=${res.stdout} stderr=${res.stderr}`);
-    assert.match(res.stdout, /12 keys/);
+    assert.match(res.stdout, /17 keys/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
