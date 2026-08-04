@@ -99,7 +99,7 @@ These files are active working memory. Re-read during the conversation, not just
 | Before any EXECUTE step | `state.md`, `plan.md`, `progress.md` | Confirm step, manifest, fix attempts, progress sync |
 | Before writing a fix | `decisions.md` | Don't repeat failed approaches. Check 3-strike. |
 | Before modifying `DECISION`-commented code | Referenced `decisions.md` entry | Understand why before changing |
-| Before PLAN or PIVOT | `decisions.md`, `findings.md`, `findings/*`, `plans/LESSONS.md`, `plans/SYSTEM.md`, `plans/DECISIONS.md` *(PLAN only)* | Ground plan in known facts + institutional memory + system atlas |
+| Before PLAN or PIVOT | `decisions.md`, `findings.md`, `findings/*`, `plans/LESSONS.md`, `plans/SYSTEM.md`, `plans/DECISIONS.md` *(PLAN only)*, `changelog.md` *(PIVOT only)* | Ground plan in known facts + institutional memory + system atlas |
 | Before any REFLECT | `plan.md` (criteria + verification strategy + assumptions), `progress.md`, `verification.md`, `findings.md`, `checkpoints/*`, `decisions.md`, `changelog.md` | Phase 1 Gate-In: full context before evaluating |
 | Every 10 tool calls | `state.md` | Reorient. Right step? Scope crept? |
 
@@ -257,7 +257,7 @@ Run the 3-phase gate: Gate-In (7 mandatory reads), Evaluate (cross-validate, dif
 → Operative rules: `node <skill-path>/scripts/emit-state.mjs --state reflect` (module: `scripts/modules/state-reflect.md`).
 
 ### PIVOT
-Re-route after failure: read `decisions.md`/`findings.md`/`plans/LESSONS.md` + `checkpoints/*`, decide keep-vs-revert, run the ghost-constraint scan, correct stale findings, log the pivot + Complexity Assessment in `decisions.md`, update `state.md`/`progress.md`, then present PC-PIVOT options and get approval before returning to PLAN.
+Re-route after failure: read `decisions.md`/`findings.md`/`changelog.md`/`plans/LESSONS.md` + `checkpoints/*`, decide keep-vs-revert, run the ghost-constraint scan, correct stale findings, log the pivot + Complexity Assessment in `decisions.md`, update `state.md`/`progress.md`, then present PC-PIVOT options and get approval before returning to PLAN.
 → Operative rules: `node <skill-path>/scripts/emit-state.mjs --state pivot` (module: `scripts/modules/state-pivot.md`).
 
 ## Complexity Control (CRITICAL)

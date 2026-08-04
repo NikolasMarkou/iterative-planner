@@ -61,6 +61,8 @@ Read `checkpoints/*` first — know your rollback options. Decide explicitly:
      3. Verify `node_modules/` / `target/` / `.venv/` / `vendor/` matches the lockfile state. The revert is NOT complete until this finishes successfully.
    - If the reverted commits did NOT touch a manifest, skip — `git checkout` is sufficient.
 
+PIVOT never appends to `changelog.md`; it only reads it. The ledger is written by the step that made the edits, and a `REVERT(file)` line belongs to the failed step path above, so the absence of a changelog step here is deliberate rather than a gap.
+
 ## Nuclear Option (Full Revert)
 
 ```
