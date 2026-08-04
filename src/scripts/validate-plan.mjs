@@ -1107,14 +1107,35 @@ function checkVerificationVerdict(planDir, issues) {
   const verdict = extractSection(content, "Verdict");
   if (!verdict) return; // section presence is not enforced here; other checks own it.
 
-  // The keyword scan runs over the BULLET LINES ONLY, never the whole section.
-  // A verifier writing one sentence of narrative above the bullets ("no
-  // regressions were introduced, and scope drift was avoided") used to trip the
-  // order check, because "regressions" matched in the prose at an index before
-  // "criteria passed" matched on the first bullet — a hard ERROR on
-  // well-formed, correctly-ordered content. Do NOT scan `verdict` directly.
-  const bulletLines = verdict.split("\n").filter((l) => /^\s*[-*]\s+/.test(l));
-  const bulletText = bulletLines.join("\n");
+  // Every scan below runs against a bullet's parsed LABEL — never against the
+  // whole section and never against free bullet text. Three distinct false
+  // positives all reduce to that one rule (D-009):
+  //   1. Narrative above the bullets ("no regressions were introduced, and
+  //      scope drift was avoided") matched "regressions" before "criteria
+  //      passed" and tripped the order check. Do NOT scan `verdict` directly.
+  //   2. A keyword in a bullet's VALUE ("- Criteria passed: 5/5 as recommended
+  //      by the reviewer") did the same. Do NOT scan raw bullet text either.
+  //   3. The PENDING scan iterated EVERY bullet-shaped line, so a nested
+  //      sub-bullet ("  - follow-up: PENDING a separate plan") produced a
+  //      CLOSE-blocking ERROR on a fully-filled Verdict. It must intersect with
+  //      the 5 required labels.
+  // Bullet markers cover `-`, `*`, `+` and the ordered forms `1.` / `1)`.
+  // Narrowing this to `-`/`*` regressed previously-clean numbered-list Verdicts
+  // to a hard `missing required bullet(s)` ERROR — do NOT re-narrow it.
+  const BULLET_RE = /^\s*(?:[-*+]|\d+[.)])\s+(.*)$/;
+  const bullets = [];
+  for (const line of verdict.split("\n")) {
+    const b = BULLET_RE.exec(line);
+    if (!b) continue;
+    const body = b[1];
+    const sep = /^(.+?):\s*(.*)$/.exec(body);
+    // A colon-less bullet keeps its whole text as the label, so presence/order
+    // stay exactly as permissive as they were before label scoping. Only the
+    // PENDING scan needs a value, and a colon-less bullet has none.
+    bullets.push(sep
+      ? { label: sep[1].trim(), value: sep[2].trim() }
+      : { label: body.trim(), value: null });
+  }
 
   const requiredKeywords = [
     /criteria pass(?:ed|\s+count)/i,
@@ -1131,19 +1152,19 @@ function checkVerificationVerdict(planDir, issues) {
     "Recommended transition",
   ];
 
-  // Find positions of each keyword among the Verdict bullets.
-  let lastPos = -1;
+  // Find the position of each keyword among the Verdict bullet LABELS.
+  let lastIdx = -1;
   let orderBroken = false;
   const missing = [];
   for (let i = 0; i < requiredKeywords.length; i++) {
     const re = requiredKeywords[i];
-    const m = re.exec(bulletText);
-    if (!m) {
+    const idx = bullets.findIndex((b) => re.test(b.label));
+    if (idx === -1) {
       missing.push(labels[i]);
       continue;
     }
-    if (m.index < lastPos) orderBroken = true;
-    lastPos = m.index;
+    if (idx < lastIdx) orderBroken = true;
+    lastIdx = idx;
   }
 
   if (missing.length > 0) {
@@ -1172,10 +1193,12 @@ function checkVerificationVerdict(planDir, issues) {
   if (currentState !== "REFLECT" && currentState !== "CLOSE") return;
 
   const pending = [];
-  for (const line of bulletLines) {
-    const m = /^\s*[-*]\s+(.+?):\s*(.*)$/.exec(line);
-    if (!m) continue;
-    if (/^PENDING\b/i.test(m[2].trim())) pending.push(m[1].trim());
+  for (const b of bullets) {
+    if (b.value === null) continue;
+    // Only the 5 required bullets can be "unfilled" — a nested sub-bullet
+    // recording deferred work is not a Verdict field.
+    if (!requiredKeywords.some((re) => re.test(b.label))) continue;
+    if (/^PENDING\b/i.test(b.value)) pending.push(b.label);
   }
   if (pending.length > 0) {
     issues.push({

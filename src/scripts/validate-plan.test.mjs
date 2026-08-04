@@ -2513,4 +2513,93 @@ Note: no regressions were introduced by this change, and scope drift was avoided
     assert.match(lines[0], /ERROR/);
     assert.ok(lines[0].includes("Criteria passed"), `got: ${lines[0]}`);
   });
+
+  // -------------------------------------------------------------------------
+  // Regression barrier (D-009): the v2.57.7 fix narrowed the bullet predicate
+  // to /^\s*[-*]\s+/, which turned previously-CLEAN numbered-list and `+`
+  // Verdicts into a hard `missing required bullet(s)` ERROR. Nothing caught it
+  // because every test added with that fix asserted NEW behavior only. This
+  // corpus asserts the OLD passing behavior is preserved, format by format.
+  // -------------------------------------------------------------------------
+  const CLEAN_VERDICT_FORMATS = {
+    "`-` bullets": [
+      "- Criteria passed: 5/5", "- Regressions: none", "- Scope drift: none",
+      "- Simplification blockers: none", "- Recommendation: → CLOSE",
+    ],
+    "`*` bullets": [
+      "* Criteria passed: 5/5", "* Regressions: none", "* Scope drift: none",
+      "* Simplification blockers: none", "* Recommendation: → CLOSE",
+    ],
+    "`+` bullets": [
+      "+ Criteria passed: 5/5", "+ Regressions: none", "+ Scope drift: none",
+      "+ Simplification blockers: none", "+ Recommendation: → CLOSE",
+    ],
+    "numbered list `1.`": [
+      "1. Criteria passed: 5/5", "2. Regressions: none", "3. Scope drift: none",
+      "4. Simplification blockers: none", "5. Recommendation: → CLOSE",
+    ],
+    "numbered list `1)`": [
+      "1) Criteria passed: 5/5", "2) Regressions: none", "3) Scope drift: none",
+      "4) Simplification blockers: none", "5) Recommendation: → CLOSE",
+    ],
+    // The bold form is what `references/file-formats.md` prose uses, and it was
+    // never covered by a test.
+    "bold labels": [
+      "- **Criteria passed**: 5/5", "- **Regressions**: none", "- **Scope drift**: none",
+      "- **Simplification blockers**: none", "- **Recommendation**: → CLOSE",
+    ],
+  };
+
+  it("(f) previously-clean Verdict formats stay clean at REFLECT and CLOSE", () => {
+    for (const [name, lines] of Object.entries(CLEAN_VERDICT_FORMATS)) {
+      for (const state of ["REFLECT", "CLOSE"]) {
+        const cwd = getTempDir();
+        const { planDir } = writePlan(cwd, { state });
+        writeVerification(planDir, `# Verification\n## Verdict\n${lines.join("\n")}\n`);
+        const r = run(cwd);
+        assert.deepEqual(verdictLines(r.stdout), [],
+          `a filled, correctly-ordered Verdict written as ${name} must be clean at ${state}, got:\n${r.stdout}`);
+      }
+    }
+  });
+
+  it("(g) a nested sub-bullet noting deferred work is not a Verdict field → zero [verdict] issues at CLOSE", () => {
+    // The PENDING scan used to iterate EVERY bullet-shaped line, so this
+    // fully-filled Verdict produced a CLOSE-blocking
+    // `still unfilled (PENDING) at CLOSE: follow-up`.
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd, { state: "CLOSE" });
+    writeVerification(planDir,
+`# Verification
+## Verdict
+- Criteria passed: 12/12
+  - follow-up: PENDING a separate plan for the 39 anchor errors
+- Regressions: none
+- Scope drift: none
+- Simplification blockers: none
+- Recommendation: → CLOSE
+`);
+    const r = run(cwd);
+    assert.deepEqual(verdictLines(r.stdout), [],
+      `a nested sub-bullet must not be treated as an unfilled Verdict bullet, got:\n${r.stdout}`);
+  });
+
+  it("(h) a required keyword inside a bullet's VALUE does not trip the order check", () => {
+    // F-04's class, not just its verbatim reproduction: "recommended" in the
+    // first bullet's value matched before the Recommendation LABEL.
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd, { state: "REFLECT" });
+    writeVerification(planDir,
+`# Verification
+## Verdict
+- Criteria passed: 5/5 as recommended by the reviewer
+- Regressions: none
+- Scope drift: none
+- Simplification blockers: none
+- Recommendation: → CLOSE
+`);
+    const r = run(cwd);
+    assert.deepEqual(verdictLines(r.stdout), [],
+      `keywords must be matched against the bullet LABEL, not free bullet text, got:\n${r.stdout}`);
+  });
 });

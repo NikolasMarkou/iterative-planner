@@ -234,9 +234,11 @@ test("owner cells: merged-cell tokens inherit the row owner cell", () => {
 });
 
 test("real CLI PASS: owner cells identical modulo whitespace -> exit 0", () => {
-  // Filler rows keep the fixture above EXPECTED_MIN_KEYS so the anti-vacuity
-  // floor stays out of this test's way.
-  const filler = Array.from({ length: 15 }, (_, i) => [`\`f${i}.md\``, "Owner F"]);
+  // Filler rows keep the fixture at/above EXPECTED_MIN_KEYS so the anti-vacuity
+  // floor stays out of this test's way. Derived from the imported constant, not
+  // hardcoded: a literal here is value-coupled to the floor without naming it,
+  // so the next legitimate bump would silently become a 4-site edit.
+  const filler = Array.from({ length: EXPECTED_MIN_KEYS - 2 }, (_, i) => [`\`f${i}.md\``, "Owner F"]);
   const root = makeFixtureRoot(
     ownershipTableWithOwners([
       ["`a.md`", "Owner One  (scope)"],
@@ -314,8 +316,9 @@ test("BOM determinism: BOM on the heading line hides the table (0 keys); BOM els
 test("real CLI PASS: CRLF README at/above the floor -> exit 0 (A7 pinned end-to-end)", () => {
   // Key count must stay at/above EXPECTED_MIN_KEYS — that is this fixture's
   // stated premise ("at/above the floor"), so the floor, not CRLF handling, is
-  // never what decides the exit code.
-  const keys = Array.from({ length: 17 }, (_, i) => `k${i}.md`);
+  // never what decides the exit code. Derived from the imported constant so the
+  // fixture tracks a floor bump instead of becoming the new drift point.
+  const keys = Array.from({ length: EXPECTED_MIN_KEYS }, (_, i) => `k${i}.md`);
   const root = makeFixtureRoot(
     ownershipTable(keys),
     ownershipTable(keys).replace(/\n/g, "\r\n"),
@@ -323,7 +326,7 @@ test("real CLI PASS: CRLF README at/above the floor -> exit 0 (A7 pinned end-to-
   try {
     const res = runCliAgainst(root);
     assert.equal(res.status, 0, `expected exit 0; stdout=${res.stdout} stderr=${res.stderr}`);
-    assert.match(res.stdout, /17 keys/);
+    assert.match(res.stdout, new RegExp(`${EXPECTED_MIN_KEYS} keys`));
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

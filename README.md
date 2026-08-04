@@ -1,8 +1,8 @@
 # Iterative Planner
 
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Skill](https://img.shields.io/badge/Skill-v2.57.7-green.svg)](CHANGELOG.md)
-[![Tests](https://img.shields.io/badge/tests-707%20passing-brightgreen.svg)](src/scripts/bootstrap.test.mjs)
+[![Skill](https://img.shields.io/badge/Skill-v2.57.8-green.svg)](CHANGELOG.md)
+[![Tests](https://img.shields.io/badge/tests-710%20passing-brightgreen.svg)](src/scripts/bootstrap.test.mjs)
 [![Sponsored by Electi](https://img.shields.io/badge/Sponsored%20by-Electi-red.svg)](https://www.electiconsulting.com)
 
 **A [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skill that stops an agent from losing the plot halfway through a hard task.**
@@ -495,7 +495,7 @@ node --test src/scripts/bootstrap.test.mjs \
             src/scripts/check-agent-wiring.test.mjs \
             src/scripts/check-template-parity.test.mjs \
             src/scripts/check-register.test.mjs
-# 707 tests across 14 suites: bootstrap 242, validate-plan 130, shared 71, schema 49,
+# 710 tests across 14 suites: bootstrap 242, validate-plan 133, shared 71, schema 49,
 #                  check-agent-wiring 52, blast-radius 41, check-template-parity 40,
 #                  check-test-count 17, check-doc-parity 17, emit-state 12,
 #                  emit-template 11, check-register 11, check-changelog-parity 8,

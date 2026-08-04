@@ -4,6 +4,25 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.57.8] - 2026-08-04
+
+**Repairs a CLOSE-blocking false positive and a format regression that 2.57.7 shipped in `checkVerificationVerdict`.** Both were found by an adversarial review of the 2.57.7 diff, reproduced against the pre-2.57.7 validator (`0d2c73d`), and are fixed by one root change: every scan in that function now matches a bullet's parsed **label**, never free bullet text.
+
+### Fixed
+
+- **The `PENDING` check added in 2.57.7 was not scoped to the 5 required Verdict bullets** — it iterated every bullet-shaped line in the Verdict section, so a nested sub-bullet noting deferred work (`  - follow-up: PENDING a separate plan…`) produced `ERROR [verdict]: … still unfilled (PENDING) at CLOSE: follow-up` on a **fully-filled** Verdict. At CLOSE that ERROR tier hard-blocks the archivist's Step 1 gate, in every plan in every consuming project, on a common and legitimate authoring pattern. The scan now intersects with the 5 required labels; a sub-bullet is not a Verdict field.
+- **2.57.7's `/^\s*[-*]\s+/` bullet narrowing regressed previously-clean Verdict formats.** A Verdict written as a numbered list (`1. Criteria passed: 5/5` … `5. Recommendation: → CLOSE`, all present, filled, correctly ordered) validated clean before 2.57.7 and became `ERROR [verdict]: … missing required bullet(s)` — all five — after it; markdown `+` bullets were in the same class. The predicate is now `/^\s*(?:[-*+]|\d+[.)])\s+/`, covering `-`, `*`, `+`, `1.` and `1)`. The narrowing was never stated as a deliberate format tightening because it was not one.
+- **F-04 (the narrative-above-bullets false positive) was closed for its verbatim reproduction only, not for its class.** A required keyword appearing in a bullet's **value** — `- Criteria passed: 5/5 as recommended by the reviewer` — still tripped `not in required order`, identically before and after 2.57.7. Keywords are now matched against the bullet's label, which closes the whole class. Colon-less bullets keep their entire text as the label, so presence/order checking stays exactly as permissive as it was pre-2.57.7.
+- **Three fixtures in `check-doc-parity.test.mjs` hardcoded `15`/`17`/`/17 keys/`** in a file that already imports `EXPECTED_MIN_KEYS` and uses it correctly elsewhere. They were value-coupled to the floor without naming it, so the ratchet added in 2.57.7 could not see them and the next legitimate bump would have been a 4-site edit. All three now derive from the imported constant.
+
+### Notes
+
+- Verified the way the regression should have been caught the first time: the pre-2.57.7 validator was extracted (`git archive 0d2c73d src/scripts`) and both versions were run over 12 Verdict fixtures. Result — **zero new ERRORs** relative to `0d2c73d` on any fixture; two false ERRORs removed (keyword-in-value, narrative-above-bullets); the two intended new ERRORs (skeleton `PENDING` at CLOSE, partially-filled at CLOSE) present; genuine disorder and genuinely missing bullets still ERROR unchanged.
+- `TEST_COUNT` 707 → 710 (+3, live run): a **"previously-clean Verdict formats stay clean"** corpus test (`-`, `*`, `+`, `1.`, `1)` and bold `- **Criteria passed**:` labels, at REFLECT and CLOSE — the bold form appears in `file-formats.md` prose and had never been tested), the nested-sub-bullet fixture at CLOSE, and the keyword-in-value fixture. The absence of a preserved-behavior corpus test is precisely why 2.57.7's regression shipped invisibly; 2.57.7 added 8 tests, all asserting new behavior only.
+- No test assertion was weakened: all 707 pre-existing tests pass unchanged.
+- Root cause of the 2.57.7 defect, recorded for the record: the pre-mortem's own STOP-IF for this change ("run the new check against several existing plans") could not fire, because `plans/` in this repo held exactly one plan directory — the in-flight plan itself. It was logged as "half-testable" and waved through when it should have been logged as NOT SATISFIED.
+- PATCH bump: corrections to behavior shipped in 2.57.7. Zero files added, zero new abstractions, zero new gates or check slugs. `make validate` / `make lint` / `make test` all green (710/710).
+
 ## [2.57.7] - 2026-08-04
 
 **Fixed all 12 EXPLORE-confirmed defects in one coherent release: two loose anti-vacuity floors that let synchronized deletions pass green, two `verification.md` verdict-check bugs (one false negative, one false positive), four spec disagreements between SKILL.md and the sources that actually perform the reads/writes, a build-combined rewrite-map gap, two doc-tree gaps, and one block of unreachable schema declarations.** Nine steps, `make validate && make lint && make test` green at the end of every one.
