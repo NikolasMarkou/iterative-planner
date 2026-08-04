@@ -3169,6 +3169,58 @@ describe("validate-plan.mjs Verdict field-list discriminator corpus (D-011)", ()
       "corpus row names must be unique — the differential report keys on them");
   });
 
+  it("the label-tightness rule accepts the five real labels and rejects every observed decoy", () => {
+    // The discriminating axis, asserted directly rather than only through
+    // whole-file fixtures: a real field's label IS the required label (plus
+    // trivial decoration); a decoy is that label embedded in a longer phrase.
+    // Position never enters into it — the same label is accepted at indent 0 and
+    // rejected at indent 0, whatever its neighbours look like.
+    // [field index this label writes, label text]
+    const accepted = [
+      [0, "Criteria passed"], [0, "Criteria pass count"], [0, "**Criteria passed**"],
+      [0, "Criteria passed (C-1..C-13)"], [0, "criteria passed."],
+      [1, "Regressions"], [1, "Regression"],
+      [2, "Scope drift"], [2, "`Scope drift`"], [2, "SCOPE DRIFT"], [2, "Scope  drift"],
+      [3, "Simplification blockers"], [3, "Simplification blocker"],
+      [4, "Recommendation"], [4, "Recommended"], [4, "Recommended transition"],
+      [4, "Recommended state"],
+    ];
+    // [field index the decoy would be mistaken for, label text, name reported missing]
+    const rejected = [
+      [0, "Criteria passed summary", "Criteria passed"], [0, "Criteria passed overall", "Criteria passed"],
+      [0, "Criteria passed rollup", "Criteria passed"],
+      [4, "Recommendation-related follow-up", "Recommended transition"],
+      [4, "Recommendation-adjacent note", "Recommended transition"],
+      [4, "Recommendation for later", "Recommended transition"],
+      [4, "Recommendation follow-up", "Recommended transition"],
+      [4, "Recommendation timing", "Recommended transition"],
+      [4, "Recommendation rationale", "Recommended transition"],
+      [4, "Recommendation deferred to the follow-up plan", "Recommended transition"],
+      [1, "Regressions noted in passing", "Regressions"], [1, "Regressions follow-up", "Regressions"],
+      [1, "Regressions and next steps", "Regressions"],
+      [2, "Scope drift watch item", "Scope drift"],
+      [1, "Verdict", "Regressions"], [1, "follow-up", "Regressions"],
+      [1, "detail", "Regressions"], [1, "note", "Regressions"],
+    ];
+    const runWith = (i, label) => {
+      const cwd = getTempDir();
+      const { planDir } = writePlan(cwd, { state: "CLOSE" });
+      const f = fiveFields();
+      f[i] = `- ${label}: none`;
+      writeFileSync(join(planDir, "verification.md"), `# Verification\n## Verdict\n${f.join("\n")}\n`);
+      return verdictLines(run(cwd).stdout);
+    };
+    for (const [i, label] of accepted) {
+      assert.deepEqual(runWith(i, label), [],
+        `"${label}" must be read as a Verdict field label, got a [verdict] issue`);
+    }
+    for (const [i, label, reported] of rejected) {
+      const lines = runWith(i, label);
+      assert.ok(lines.some((l) => l.includes(`missing required bullet(s): ${reported}`)),
+        `"${label}" is commentary, not the ${reported} field — expected it reported missing, got:\n${lines.join("\n")}`);
+    }
+  });
+
   it("a Verdict whose ONLY keyword-carrying tail bullet is a nested collision now ERRORs (true positive gained)", () => {
     // Deliberately NOT a corpus row: this fixture is a Verdict with FOUR real
     // fields, which the pre-change validator accepted silently because the
@@ -3186,5 +3238,198 @@ describe("validate-plan.mjs Verdict field-list discriminator corpus (D-011)", ()
     assert.match(lines[0], /ERROR/);
     assert.match(lines[0], /missing required bullet\(s\): Recommended transition/,
       `a Verdict with only four real fields must name the absent one, got: ${lines[0]}`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The INDEPENDENT Verdict acceptance corpus (plan-2026-08-04-0063b038 step 6.1,
+// D-013).
+//
+// Authored by the orchestrator from the SPEC (references/file-formats.md: exactly
+// five bullets, in order) BEFORE any fix design existed, precisely so the fix
+// could not be graded by fixtures its own author chose. Step 6's corpus above was
+// written in the same commit as the rule it validated, and contained no row where
+// a real field sits DEEPER than a keyword-carrying bullet — which is why the
+// min-indent discriminator shipped with six CLOSE-blocking false positives.
+//
+// Rows C01-C20 must be CLEAN; rows E01-E05 must ERROR. Keep both corpora: this
+// one states what a Verdict IS, the one above records the shapes that have
+// actually broken.
+// ---------------------------------------------------------------------------
+
+// Each row: { name, body | rawBody, expect }. `rawBody` is the whole file (used
+// where the line endings or the trailing newline are the point).
+export const ACCEPTANCE_CORPUS = [
+  { name: "C01 flat, all five at indent 0", body: fiveFields().join("\n"), expect: "CLEAN" },
+  { name: "C02 uniform 2-space indent", body: fiveFields({ indent: "  " }).join("\n"), expect: "CLEAN" },
+  { name: "C03 uniform 4-space indent", body: fiveFields({ indent: "    " }).join("\n"), expect: "CLEAN" },
+  { name: "C04 uniform tab indent", body: fiveFields({ indent: "\t" }).join("\n"), expect: "CLEAN" },
+  {
+    name: "C05 RAGGED: four fields at indent 0, the LAST at indent 2",
+    body: [...fiveFields().slice(0, 4), ...fiveFields({ indent: "  " }).slice(4)].join("\n"),
+    expect: "CLEAN",
+  },
+  {
+    name: "C06 RAGGED: four fields at 2 spaces, one TAB-indented",
+    body: (() => {
+      const f = fiveFields({ indent: "  " });
+      f[2] = fiveFields({ indent: "\t" })[2];
+      return f.join("\n");
+    })(),
+    expect: "CLEAN",
+  },
+  {
+    name: "C07 five fields nested under a keyword-FREE lead-in bullet",
+    body: ["- Verdict:", ...fiveFields({ indent: "  " })].join("\n"),
+    expect: "CLEAN",
+  },
+  {
+    name: "C08 lead-in whose OWN label carries the FIRST required label",
+    body: ["- Criteria passed summary:", ...fiveFields({ indent: "  " })].join("\n"),
+    expect: "CLEAN",
+  },
+  {
+    name: "C09 all five plus a keyword-FREE nested sub-bullet",
+    body: after(fiveFields(), 0, "  - follow-up: PENDING a separate plan").join("\n"),
+    expect: "CLEAN",
+  },
+  {
+    name: "C10 all five plus a nested sub-bullet whose label CONTAINS a required label",
+    body: after(fiveFields(), 0, "  - Recommendation-related follow-up: PENDING a separate plan").join("\n"),
+    expect: "CLEAN",
+  },
+  {
+    name: "C11 a required keyword appears in a bullet's VALUE, not its label",
+    body: (() => { const f = fiveFields(); f[0] = "- Criteria passed: 12/12 as recommended by the reviewer"; return f.join("\n"); })(),
+    expect: "CLEAN",
+  },
+  {
+    name: "C12 a fenced code block inside the Verdict containing example bullets",
+    body: ["The skeleton form looks like this:", "", FENCE, "- Criteria passed: PENDING",
+      "- Recommendation: PENDING", FENCE, "", ...fiveFields()].join("\n"),
+    expect: "CLEAN",
+  },
+  { name: "C13a numbered fields `1.`", body: fiveFields({ marker: "1." }).join("\n"), expect: "CLEAN" },
+  { name: "C13b numbered fields `1)`", body: fiveFields({ marker: "1)" }).join("\n"), expect: "CLEAN" },
+  { name: "C14a `+` bullet markers", body: fiveFields({ marker: "+" }).join("\n"), expect: "CLEAN" },
+  { name: "C14b `*` bullet markers", body: fiveFields({ marker: "*" }).join("\n"), expect: "CLEAN" },
+  { name: "C15 bold labels carrying a bullet prefix", body: fiveFields({ bold: true }).join("\n"), expect: "CLEAN" },
+  {
+    name: "C16 a narrative sentence above the five bullets",
+    body: ["Note: no regressions were introduced by this change, and scope drift was avoided throughout.", "", ...fiveFields()].join("\n"),
+    expect: "CLEAN",
+  },
+  {
+    name: "C17 CRLF line endings throughout",
+    rawBody: ["# Verification", "## Verdict", ...fiveFields(), ""].join("\r\n"),
+    expect: "CLEAN",
+  },
+  {
+    name: "C18 Verdict is the LAST section, no trailing newline",
+    rawBody: ["# Verification", "## Notes", "nothing of note", "", "## Verdict", ...fiveFields()].join("\n"),
+    expect: "CLEAN",
+  },
+  {
+    name: "C19 two-level nesting: lead-in -> keyword-matching sub-lead-in -> the five fields",
+    body: ["- Verdict:", "  - Criteria passed rollup:", ...fiveFields({ indent: "    " })].join("\n"),
+    expect: "CLEAN",
+  },
+  {
+    name: "C20a a label matching TWO required labels is counted once (extra compound bullet)",
+    body: [...fiveFields(), "- Regressions and scope drift: none in either"].join("\n"),
+    expect: "CLEAN",
+  },
+  {
+    name: "C20b a label matching TWO required labels is counted once (compound stands in for both)",
+    body: (() => {
+      const f = fiveFields();
+      return [f[0], "- Regressions and scope drift: none in either", f[3], f[4]].join("\n");
+    })(),
+    expect: "CLEAN",
+  },
+
+  {
+    name: "E01 a required field genuinely absent",
+    body: (() => { const f = fiveFields(); f.splice(2, 1); return f.join("\n"); })(),
+    expect: { count: 1, match: [/ERROR/, /missing required bullet\(s\): Scope drift/] },
+  },
+  {
+    name: "E02 the five fields present but OUT OF ORDER",
+    body: (() => { const f = fiveFields(); return [f[1], f[0], f[2], f[3], f[4]].join("\n"); })(),
+    expect: { count: 1, match: [/ERROR/, /not in required order/] },
+  },
+  {
+    name: "E03 a field still literally PENDING at CLOSE",
+    body: (() => { const f = fiveFields(); f[2] = "- Scope drift: PENDING"; return f.join("\n"); })(),
+    expect: { count: 1, match: [/ERROR/, /still unfilled \(PENDING\)/, /Scope drift/] },
+  },
+  {
+    name: "E04 only FOUR real fields; the fifth label occurs ONLY in a decoy sub-bullet",
+    body: [...fiveFields().slice(0, 4), "  - Recommendation deferred to the follow-up plan: tracked separately"].join("\n"),
+    expect: { count: 1, match: [/ERROR/, /missing required bullet\(s\): Recommended transition/] },
+  },
+  {
+    name: "E05 no bullets at all in the Verdict section",
+    body: "Everything passed and the plan is done.",
+    expect: { count: 1, match: [/ERROR/, MISSING_ALL] },
+  },
+];
+
+describe("validate-plan.mjs Verdict independent acceptance corpus (D-013)", () => {
+  let tempDirs = [];
+  function getTempDir() { const d = makeTempDir(); tempDirs.push(d); return d; }
+  afterEach(() => { for (const d of tempDirs) removeTempDir(d); tempDirs = []; });
+
+  const verdictLines = (stdout) => stdout.split("\n").filter((l) => /\[verdict\]/.test(l));
+
+  function runRow(row, state) {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd, { state });
+    writeFileSync(join(planDir, "verification.md"),
+      row.rawBody !== undefined ? row.rawBody : `# Verification\n## Verdict\n${row.body}\n`);
+    return verdictLines(run(cwd).stdout);
+  }
+
+  it("every acceptance row produces exactly its expected [verdict] outcome at CLOSE", () => {
+    for (const row of ACCEPTANCE_CORPUS) {
+      const lines = runRow(row, "CLOSE");
+      if (row.expect === "CLEAN") {
+        assert.deepEqual(lines, [], `"${row.name}" must be CLEAN at CLOSE, got:\n${lines.join("\n")}`);
+        continue;
+      }
+      assert.equal(lines.length, row.expect.count,
+        `"${row.name}" expected ${row.expect.count} [verdict] line(s), got:\n${lines.join("\n")}`);
+      const joined = lines.join("\n");
+      for (const re of row.expect.match || []) {
+        assert.match(joined, re, `"${row.name}" expected ${re} in:\n${joined}`);
+      }
+    }
+  });
+
+  it("every CLEAN acceptance row is also clean at REFLECT", () => {
+    for (const row of ACCEPTANCE_CORPUS.filter((r) => r.expect === "CLEAN")) {
+      const lines = runRow(row, "REFLECT");
+      assert.deepEqual(lines, [], `"${row.name}" must be CLEAN at REFLECT too, got:\n${lines.join("\n")}`);
+    }
+  });
+
+  it("the acceptance corpus keeps all 25 authored rows (anti-vacuity)", () => {
+    // The arbiter listed 20 MUST-BE-CLEAN shapes and 5 MUST-ERROR shapes. C13,
+    // C14 and C20 are each carried by two rows, so the table holds 25 CLEAN-side
+    // rows only if none was dropped; assert both halves by their authored ids.
+    const names = ACCEPTANCE_CORPUS.map((r) => r.name);
+    assert.equal(new Set(names).size, names.length, "row names must be unique");
+    for (let i = 1; i <= 20; i++) {
+      const id = `C${String(i).padStart(2, "0")}`;
+      assert.ok(names.some((n) => n.startsWith(id)), `MUST-BE-CLEAN row ${id} is missing from the corpus`);
+    }
+    for (let i = 1; i <= 5; i++) {
+      const id = `E${String(i).padStart(2, "0")}`;
+      assert.ok(names.some((n) => n.startsWith(id)), `MUST-ERROR row ${id} is missing from the corpus`);
+    }
+    assert.equal(ACCEPTANCE_CORPUS.filter((r) => r.expect === "CLEAN").length, 23,
+      "20 authored CLEAN shapes, three of them split across two rows each");
+    assert.equal(ACCEPTANCE_CORPUS.filter((r) => r.expect !== "CLEAN").length, 5,
+      "5 authored MUST-ERROR shapes");
   });
 });

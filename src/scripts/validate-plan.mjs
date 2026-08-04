@@ -1158,39 +1158,21 @@ function checkVerificationVerdict(planDir, issues) {
     openAt = -1;
   }
 
-  // Indent width in columns, tabs expanded to the next multiple of 4. Any other
-  // whitespace character counts as one column. Expansion (rather than a raw
-  // character count) is what lets a tab-indented Verdict and a 4-space-indented
-  // Verdict compare as the same depth.
-  const indentWidth = (s) => {
-    let w = 0;
-    for (const ch of s) w = ch === "\t" ? w + 4 - (w % 4) : w + 1;
-    return w;
-  };
-
   const bullets = [];
   for (let i = 0; i < verdictLines.length; i++) {
     if (fenced[i]) continue;
     const b = BULLET_RE.exec(verdictLines[i]);
     if (!b) continue;
-    const indent = indentWidth(b[1]);
     const body = b[2];
     const sep = /^(.+?):\s*(.*)$/.exec(body);
     // A colon-less bullet keeps its whole text as the label, so presence/order
     // stay exactly as permissive as they were before label scoping. Only the
     // PENDING scan needs a value, and a colon-less bullet has none.
     bullets.push(sep
-      ? { label: sep[1].trim(), value: sep[2].trim(), indent }
-      : { label: body.trim(), value: null, indent });
+      ? { label: sep[1].trim(), value: sep[2].trim() }
+      : { label: body.trim(), value: null });
   }
 
-  const requiredKeywords = [
-    /criteria pass(?:ed|\s+count)/i,
-    /regressions/i,
-    /scope drift/i,
-    /simplification blockers/i,
-    /recommend(?:ed|ation)/i,
-  ];
   const labels = [
     "Criteria passed",
     "Regressions",
@@ -1200,50 +1182,103 @@ function checkVerificationVerdict(planDir, issues) {
   ];
 
   // The Verdict FIELD LIST — derived once, then used by presence, order and
-  // PENDING alike. A bullet is a field when its LABEL matches a required
-  // keyword AND it sits at the shallowest indent among keyword-matching
-  // bullets. Everything else in the section is commentary.
+  // PENDING alike. A bullet is a field when its LABEL, normalized, IS one of the
+  // five required labels (or a separator-joined compound of them). Everything
+  // else in the section — lead-ins, commentary, deferred-work notes — is not.
   //
-  // DECISION plan-2026-08-04T092155-0063b038/D-011 — the discriminator is RELATIVE
-  // (minimum indent among KEYWORD-MATCHING bullets), and each of the three obvious
-  // simplifications is already known to break a real Verdict shape:
-  //   * Do NOT make this an absolute rule ("a field must be at indent 0"). Verdicts
+  // DECISION plan-2026-08-04T092155-0063b038/D-011 — SUPERSEDED by D-013 below, and
+  // kept here as the thing NOT to do. This anchor used to justify deriving the field
+  // list as "keyword-matching bullets at the MINIMUM indent among keyword-matching
+  // bullets". That rule closed the original defect but made indentation load-bearing
+  // for the first time, so ANY keyword-matching bullet shallower than the real fields
+  // silently deleted them. It shipped six CLOSE-blocking false positives in v2.57.9,
+  // every one on a Verdict whose five real fields were present, filled and IN ORDER:
+  // a RAGGED indent (four fields at 0, the fifth at 2) reported `missing required
+  // bullet(s): Recommended transition`, and five fields nested under a lead-in that
+  // itself matched a keyword (`- Criteria passed summary:`) reported the other four
+  // missing. Do NOT restore it, and do NOT reach for indent again — see D-013.
+  //
+  // DECISION plan-2026-08-04T092155-0063b038/D-013 — the discriminator is LABEL
+  // TIGHTNESS. It must never be POSITION (indent), and both ways of reaching for
+  // position have now shipped a CLOSE-blocking false positive:
+  //   * Do NOT use an ABSOLUTE indent rule ("a field must be at indent 0"). Verdicts
   //     written with a uniform 2-space, 4-space or tab indent are clean today and
   //     this repo writes them; an absolute rule turns every one of them into a hard
   //     `missing required bullet(s)` ERROR at CLOSE.
-  //   * Do NOT take the minimum over ALL bullets. The `- Verdict:` lead-in shape,
-  //     where all five fields are nested one level under a keyword-free bullet,
-  //     would then compare against the lead-in's indent and lose all five fields.
-  //   * Do NOT try to fix this by anchoring the keyword regexes instead. The
-  //     colliding label that motivated the change ("Recommendation-related
-  //     follow-up") genuinely STARTS WITH the keyword text, so anchoring matches it
-  //     just the same.
-  // Deriving ONE list also removes the duplication that let the PENDING scan's
-  // stated intent diverge from its implementation: both scans re-ran the same
-  // unanchored regex over every bullet at every depth, so a nested bullet whose
-  // label merely contained a keyword produced a false `not in required order` and a
-  // false `still unfilled (PENDING)` on a Verdict whose five real fields were
-  // present, filled and ordered. See decisions.md D-011.
-  const isFieldLabel = (b) => requiredKeywords.some((re) => re.test(b.label));
-  const keywordBullets = bullets.filter(isFieldLabel);
-  const fieldIndent = keywordBullets.length > 0
-    ? Math.min(...keywordBullets.map((b) => b.indent))
-    : 0;
-  const fields = keywordBullets.filter((b) => b.indent === fieldIndent);
+  //   * Do NOT use a RELATIVE indent rule either — not minimum-indent-over-all-
+  //     bullets, and specifically not the min-over-keyword-matching-bullets rule
+  //     D-011 above describes. Indentation has now failed TWICE as the axis; there
+  //     is no third variant of it worth trying. Nothing below reads an indent.
+  //   * Do NOT go back to UNANCHORED keyword substrings with no tightness test.
+  //     That is the original defect: "Recommendation-related follow-up" contains
+  //     "Recommendation", so a deferred-work note satisfied a required field.
+  // Tightness separates the two classes without consulting position at all: a real
+  // field's label essentially IS the required label, while every observed decoy is
+  // that label embedded in a longer phrase. Deriving ONE list also keeps the PENDING
+  // scan's stated intent ("a sub-bullet is not a Verdict field") and its
+  // implementation from diverging. See decisions.md D-013 (and D-011 for history).
+  const FIELD_LABEL_PATTERNS = [
+    /^criteria\s+pass(?:ed|es|ing)?(?:\s+count)?$/,
+    /^regressions?$/,
+    /^scope\s+drift$/,
+    /^simplification\s+blockers?$/,
+    /^recommend(?:ation|ations|ed)?(?:\s+(?:transition|state))?$/,
+  ];
+  // Trivial decoration a real label may carry: markdown emphasis or code ticks, a
+  // trailing parenthetical ("Criteria passed (C-1..C-13)"), trailing punctuation,
+  // and case/whitespace variation. None of it changes WHICH label is being written.
+  const normalizeLabel = (label) => label
+    .replace(/[*_`~]/g, "")
+    .trim()
+    .replace(/\s*\([^)]*\)$/, "")
+    .replace(/[.:!?]+$/, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+  // A compound label ("Regressions and scope drift", "Scope drift / regressions")
+  // is a field for BOTH of its keywords, but is still ONE bullet — the order walk
+  // below therefore lets one bullet satisfy consecutive keywords instead of
+  // demanding a distinct bullet per keyword. Every part must itself be tight; one
+  // free-text part ("Regressions and next steps") makes the whole bullet commentary.
+  const SEPARATOR_RE = new RegExp("\\s+and\\s+|\\s*[/&+,;]\\s*");
+  const labelKeywords = (label) => {
+    const norm = normalizeLabel(label);
+    if (!norm) return [];
+    const keys = [];
+    for (const part of norm.split(SEPARATOR_RE)) {
+      const trimmed = part.trim();
+      if (!trimmed) continue;
+      const idx = FIELD_LABEL_PATTERNS.findIndex((re) => re.test(trimmed));
+      if (idx === -1) return [];
+      if (!keys.includes(idx)) keys.push(idx);
+    }
+    return keys;
+  };
 
-  // Find the position of each keyword among the Verdict FIELD labels.
-  let lastIdx = -1;
+  const fields = [];
+  for (const b of bullets) {
+    const keys = labelKeywords(b.label);
+    if (keys.length > 0) fields.push({ ...b, keys });
+  }
+
+  // Presence and order over the derived field list. `at >= lastIdx` (not `>`) is
+  // what makes a compound label count ONCE: it may satisfy two consecutive
+  // required keywords without a second bullet, and cannot satisfy a keyword whose
+  // predecessor was matched later in the document.
+  let lastIdx = 0;
   let orderBroken = false;
   const missing = [];
-  for (let i = 0; i < requiredKeywords.length; i++) {
-    const re = requiredKeywords[i];
-    const idx = fields.findIndex((b) => re.test(b.label));
-    if (idx === -1) {
+  for (let i = 0; i < labels.length; i++) {
+    if (!fields.some((f) => f.keys.includes(i))) {
       missing.push(labels[i]);
       continue;
     }
-    if (idx < lastIdx) orderBroken = true;
-    lastIdx = idx;
+    let at = -1;
+    for (let j = lastIdx; j < fields.length; j++) {
+      if (fields[j].keys.includes(i)) { at = j; break; }
+    }
+    if (at === -1) { orderBroken = true; continue; }
+    lastIdx = at;
   }
 
   if (missing.length > 0) {
@@ -1271,14 +1306,21 @@ function checkVerificationVerdict(planDir, issues) {
   const currentState = (extractField(state, /^# Current State:\s*(.+)$/m) || "").trim().toUpperCase();
   if (currentState !== "REFLECT" && currentState !== "CLOSE") return;
 
+  // Only the 5 required bullets can be "unfilled" — a sub-bullet recording
+  // deferred work is not a Verdict field, even when its label CONTAINS one of the
+  // required labels. `fields` is the single derived list above; do not re-run any
+  // keyword test over `bullets` here.
+  //
+  // Reported per REQUIRED FIELD, not per bullet: a Verdict may legitimately carry
+  // two bullets whose labels are both tight for the same field (a filled one plus
+  // a nested `- Regressions: PENDING soak testing` note), and the field is unfilled
+  // only when EVERY bullet that could fill it is still PENDING.
   const pending = [];
-  for (const b of fields) {
-    // Only the 5 required bullets can be "unfilled" — a nested sub-bullet
-    // recording deferred work is not a Verdict field, even when its label
-    // contains one of the required keywords. `fields` is the single derived
-    // list above; do not re-run the keyword test over `bullets` here.
-    if (b.value === null) continue;
-    if (/^PENDING\b/i.test(b.value)) pending.push(b.label);
+  for (let i = 0; i < labels.length; i++) {
+    const candidates = fields.filter((f) => f.keys.includes(i) && f.value !== null);
+    if (candidates.length === 0) continue;
+    if (!candidates.every((f) => /^PENDING\b/i.test(f.value))) continue;
+    if (!pending.includes(candidates[0].label)) pending.push(candidates[0].label);
   }
   if (pending.length > 0) {
     issues.push({
