@@ -162,7 +162,13 @@ function isPlaceholder(text) {
   return PLACEHOLDER_PATTERNS.some((p) => p.test(text.trim()));
 }
 
-function extractSection(content, heading) {
+// `trim: false` keeps the body's leading whitespace. Only the Verdict check
+// needs it, and it needs it badly: trimming strips the indentation of the
+// FIRST line only, so a Verdict indented uniformly by 2 spaces reports its
+// first bullet at indent 0 and the other four at indent 2. Any indent-aware
+// reader of a section must opt out of the trim. Emptiness semantics are
+// identical either way — a section that is only whitespace is still null.
+function extractSection(content, heading, { trim = true } = {}) {
   // NOTE: allow optional trailing
   // parenthetical (e.g. "## Fix Attempts (resets per plan step)" as written
   // by bootstrap.mjs). Without this, every callsite using a bootstrap-written
@@ -175,7 +181,8 @@ function extractSection(content, heading) {
   const start = headingMatch.index + headingMatch[0].length;
   const nextHeading = content.indexOf("\n## ", start);
   const body = nextHeading >= 0 ? content.slice(start, nextHeading) : content.slice(start);
-  return body.trim() || null;
+  if (!body.trim()) return null;
+  return trim ? body.trim() : body;
 }
 
 // ---------------------------------------------------------------------------
@@ -1104,7 +1111,9 @@ function checkVerificationVerdict(planDir, issues) {
   const path = join(planDir, "verification.md");
   const content = readFile(path);
   if (!content) return;
-  const verdict = extractSection(content, "Verdict");
+  // Untrimmed: the indent of the first bullet is load-bearing here (see the
+  // field-list discriminator below).
+  const verdict = extractSection(content, "Verdict", { trim: false });
   if (!verdict) return; // section presence is not enforced here; other checks own it.
 
   // Every scan below runs against a bullet's parsed LABEL — never against the
@@ -1122,7 +1131,7 @@ function checkVerificationVerdict(planDir, issues) {
   // Bullet markers cover `-`, `*`, `+` and the ordered forms `1.` / `1)`.
   // Narrowing this to `-`/`*` regressed previously-clean numbered-list Verdicts
   // to a hard `missing required bullet(s)` ERROR — do NOT re-narrow it.
-  const BULLET_RE = /^\s*(?:[-*+]|\d+[.)])\s+(.*)$/;
+  const BULLET_RE = /^(\s*)(?:[-*+]|\d+[.)])\s+(.*)$/;
   const verdictLines = verdict.split("\n");
 
   // A fenced code block inside the Verdict holds an EXAMPLE, not Verdict
@@ -1149,19 +1158,30 @@ function checkVerificationVerdict(planDir, issues) {
     openAt = -1;
   }
 
+  // Indent width in columns, tabs expanded to the next multiple of 4. Any other
+  // whitespace character counts as one column. Expansion (rather than a raw
+  // character count) is what lets a tab-indented Verdict and a 4-space-indented
+  // Verdict compare as the same depth.
+  const indentWidth = (s) => {
+    let w = 0;
+    for (const ch of s) w = ch === "\t" ? w + 4 - (w % 4) : w + 1;
+    return w;
+  };
+
   const bullets = [];
   for (let i = 0; i < verdictLines.length; i++) {
     if (fenced[i]) continue;
     const b = BULLET_RE.exec(verdictLines[i]);
     if (!b) continue;
-    const body = b[1];
+    const indent = indentWidth(b[1]);
+    const body = b[2];
     const sep = /^(.+?):\s*(.*)$/.exec(body);
     // A colon-less bullet keeps its whole text as the label, so presence/order
     // stay exactly as permissive as they were before label scoping. Only the
     // PENDING scan needs a value, and a colon-less bullet has none.
     bullets.push(sep
-      ? { label: sep[1].trim(), value: sep[2].trim() }
-      : { label: body.trim(), value: null });
+      ? { label: sep[1].trim(), value: sep[2].trim(), indent }
+      : { label: body.trim(), value: null, indent });
   }
 
   const requiredKeywords = [
@@ -1179,13 +1199,45 @@ function checkVerificationVerdict(planDir, issues) {
     "Recommended transition",
   ];
 
-  // Find the position of each keyword among the Verdict bullet LABELS.
+  // The Verdict FIELD LIST — derived once, then used by presence, order and
+  // PENDING alike. A bullet is a field when its LABEL matches a required
+  // keyword AND it sits at the shallowest indent among keyword-matching
+  // bullets. Everything else in the section is commentary.
+  //
+  // DECISION plan-2026-08-04T092155-0063b038/D-011 — the discriminator is RELATIVE
+  // (minimum indent among KEYWORD-MATCHING bullets), and each of the three obvious
+  // simplifications is already known to break a real Verdict shape:
+  //   * Do NOT make this an absolute rule ("a field must be at indent 0"). Verdicts
+  //     written with a uniform 2-space, 4-space or tab indent are clean today and
+  //     this repo writes them; an absolute rule turns every one of them into a hard
+  //     `missing required bullet(s)` ERROR at CLOSE.
+  //   * Do NOT take the minimum over ALL bullets. The `- Verdict:` lead-in shape,
+  //     where all five fields are nested one level under a keyword-free bullet,
+  //     would then compare against the lead-in's indent and lose all five fields.
+  //   * Do NOT try to fix this by anchoring the keyword regexes instead. The
+  //     colliding label that motivated the change ("Recommendation-related
+  //     follow-up") genuinely STARTS WITH the keyword text, so anchoring matches it
+  //     just the same.
+  // Deriving ONE list also removes the duplication that let the PENDING scan's
+  // stated intent diverge from its implementation: both scans re-ran the same
+  // unanchored regex over every bullet at every depth, so a nested bullet whose
+  // label merely contained a keyword produced a false `not in required order` and a
+  // false `still unfilled (PENDING)` on a Verdict whose five real fields were
+  // present, filled and ordered. See decisions.md D-011.
+  const isFieldLabel = (b) => requiredKeywords.some((re) => re.test(b.label));
+  const keywordBullets = bullets.filter(isFieldLabel);
+  const fieldIndent = keywordBullets.length > 0
+    ? Math.min(...keywordBullets.map((b) => b.indent))
+    : 0;
+  const fields = keywordBullets.filter((b) => b.indent === fieldIndent);
+
+  // Find the position of each keyword among the Verdict FIELD labels.
   let lastIdx = -1;
   let orderBroken = false;
   const missing = [];
   for (let i = 0; i < requiredKeywords.length; i++) {
     const re = requiredKeywords[i];
-    const idx = bullets.findIndex((b) => re.test(b.label));
+    const idx = fields.findIndex((b) => re.test(b.label));
     if (idx === -1) {
       missing.push(labels[i]);
       continue;
@@ -1220,11 +1272,12 @@ function checkVerificationVerdict(planDir, issues) {
   if (currentState !== "REFLECT" && currentState !== "CLOSE") return;
 
   const pending = [];
-  for (const b of bullets) {
-    if (b.value === null) continue;
+  for (const b of fields) {
     // Only the 5 required bullets can be "unfilled" — a nested sub-bullet
-    // recording deferred work is not a Verdict field.
-    if (!requiredKeywords.some((re) => re.test(b.label))) continue;
+    // recording deferred work is not a Verdict field, even when its label
+    // contains one of the required keywords. `fields` is the single derived
+    // list above; do not re-run the keyword test over `bullets` here.
+    if (b.value === null) continue;
     if (/^PENDING\b/i.test(b.value)) pending.push(b.label);
   }
   if (pending.length > 0) {
