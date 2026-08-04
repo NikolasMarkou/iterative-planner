@@ -316,6 +316,7 @@ Usually the orchestrator is the non-authoring co-writer, confined to Post-Step G
 | `plans/FINDINGS.md` | Archivist (via bootstrap) | Orchestrator, Plan-writer |
 | `plans/DECISIONS.md` | Archivist (via bootstrap) | Orchestrator, Plan-writer |
 | `plans/LESSONS.md` | Archivist | Orchestrator, Explorer, Plan-writer |
+| `plans/LESSONS-archive.md` | Archivist (append-only; created on first over-cap LESSONS trim) | — (forensic aid, read by no protocol step) |
 | `plans/SYSTEM.md` | Archivist | Orchestrator, Plan-writer, Explorer |
 | `plans/INDEX.md` | Archivist (via bootstrap) | Orchestrator |
 

@@ -136,6 +136,7 @@ plans/
 ├── FINDINGS.md                    # Consolidated findings across all plans (merged on close)
 ├── DECISIONS.md                   # Consolidated decisions across all plans (merged on close)
 ├── LESSONS.md                     # Cross-plan lessons learned (≤200 lines, rewritten on close)
+├── LESSONS-archive.md             # Lines dropped by the LESSONS.md trim, appended on close (conditional — not created by bootstrap)
 ├── SYSTEM.md                      # System atlas — domain-neutral map of the target system (≤300 lines, rewritten on close)
 ├── INDEX.md                       # Topic→directory mapping (updated on close, survives trim)
 └── plan-2026-02-14T103055-a3f1b2c9/   # {plan-dir} (legacy dirs: plan_2026-02-14_a3f1b2c9/)
@@ -175,6 +176,7 @@ R = read only | W = update (implicit read + write) | R+W = distinct read and wri
 | plans/FINDINGS.md | R(600) | R? | — | — | — | W(merge+compress) |
 | plans/DECISIONS.md | R(600) | R(600) | — | — | — | W(merge+compress) |
 | plans/LESSONS.md | R | R | — | — | R | W(rewrite≤200) |
+| plans/LESSONS-archive.md | — | — | — | — | — | W (overflow archive) |
 | plans/SYSTEM.md | R | R | — | — | R | W(rewrite≤300) |
 | plans/INDEX.md | R? | — | — | — | — | W(append via bootstrap) |
 | lessons_snapshot.md | — | — | — | — | — | W(auto via bootstrap) |
@@ -421,6 +423,7 @@ Each file has a clear owner. Only the owner writes. Others read. Co-ownership (m
 | `plans/FINDINGS.md` | Archivist (via bootstrap) | Orchestrator, Plan-writer |
 | `plans/DECISIONS.md` | Archivist (via bootstrap) | Orchestrator, Plan-writer |
 | `plans/LESSONS.md` | Archivist | Orchestrator, Explorer, Plan-writer |
+| `plans/LESSONS-archive.md` | Archivist (append-only; created on first over-cap LESSONS trim) | — (forensic aid, read by no protocol step) |
 | `plans/SYSTEM.md` | Archivist | Orchestrator, Plan-writer, Explorer |
 | `plans/INDEX.md` | Archivist (via bootstrap) | Orchestrator |
 
