@@ -89,8 +89,21 @@ const TYPES = {
 // The changelog spec — the 6 former validate-plan.mjs regexes, as typed fields.
 // ---------------------------------------------------------------------------
 
-/** `iter-N/step-M` (former STEP regex). */
-export const STEP_RE = /^iter-\d+\/step-\d+$/;
+/**
+ * `iter-N/step-M`, plus an optional `.K` sub-step (former STEP regex, widened in v2.58.0).
+ *
+ * The `.K` suffix encodes a REFLECT-derived completion fix on step M: `iter-1/step-9.1`,
+ * `iter-1/step-9.2`, and so on. It is a BOUNDED superset — every value the narrower shape accepted
+ * is still accepted, and the only new shape is one optional run of digits after one dot.
+ *
+ * The field is deliberately NOT free text. It must always name a numbered step, so a ledger line
+ * can be read back to a step in plan.md. That is why the widening is a suffix rather than a second
+ * namespace: `iter-1/completion-fix` stays REJECTED, and rejecting it is the whole point — two
+ * plans in this repo wrote that value and every such line became a WARN. Loosening this toward free
+ * text is this module's named failure mode (see the header); the explicit reject cases in
+ * schema.test.mjs are the guard that keeps the bound reviewable.
+ */
+export const STEP_RE = /^iter-\d+\/step-\d+(?:\.\d+)?$/;
 /** Short-or-full lowercase hex hash, or the literal `uncommitted` (former COMMIT regex). */
 export const COMMIT_RE = /^([0-9a-f]{7,40}|uncommitted)$/;
 /** Op + LOC (former OP regex). */

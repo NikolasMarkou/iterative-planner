@@ -13,9 +13,16 @@
 //   RADIUS /^(radius:(LOW|MED|HIGH)\(-?\d+\)|radius:UNKNOWN\([^)]+\))$/
 //   DREF   /^(D-\d{3,}(?!\d)|-)$/
 //   plus the two inline field checks: path (non-empty, no "|") and reason (non-empty).
+//
+// One field has since been WIDENED on purpose: STEP now also accepts a `.K` sub-step suffix
+// (`iter-1/step-9.1`), a bounded superset added in v2.58.0. Everything the old STEP regex rejected
+// is still rejected — including `iter-1/completion-fix`, the value that forced the widening.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { validateElement, entryFromFields, CHANGELOG_SPEC, DREF_RE } from "./schema.mjs";
 import { DECISION_ID_NUM_PATTERN } from "./shared.mjs";
 
@@ -149,6 +156,46 @@ test("step: every shape the STEP regex rejected is still rejected", () => {
   rejects("step", "xiter-1/step-1", "leading junk");
   rejects("step", "iter-1\\step-1", "backslash separator");
   rejects("step", "", "empty");
+});
+
+// --- field 2, continued: the v2.58.0 `.K` sub-step widening --------------------
+//
+// A completion fix runs REFLECT -> EXECUTE without raising the iteration, so it has no NEW step
+// number of its own. It is recorded as a sub-step of the step it remediates: a fix to step 9 in
+// iteration 1 is `iter-1/step-9.1`. The tests below pin BOTH halves of that: the new shape is
+// accepted, and the widening is a strict, bounded superset rather than a slide toward free text.
+
+test("step: the `.K` sub-step suffix is accepted — a completion fix on step M is step-M.K", () => {
+  accepts("step", "iter-1/step-9.1");
+  accepts("step", "iter-12/step-3.10");
+});
+
+test("step: the widening is a STRICT SUPERSET of the pre-widening grammar", () => {
+  // Checked against the OLD pattern itself, not against a hand-copied list of favourites: for a
+  // spread of iter/step numbers, anything the pre-widening regex accepted must still be accepted,
+  // and nothing it rejected may have become acceptable except via the `.K` suffix.
+  const OLD_STEP_RE = /^iter-\d+\/step-\d+$/;
+  for (const iter of ["0", "1", "9", "12", "100"]) {
+    for (const step of ["0", "1", "7", "345", "1000"]) {
+      const v = `iter-${iter}/step-${step}`;
+      assert.ok(OLD_STEP_RE.test(v), `fixture "${v}" is not in the old grammar — bad fixture`);
+      accepts("step", v);
+      accepts("step", `${v}.1`, `${v}.1 (sub-step form)`);
+    }
+  }
+});
+
+test("step: the widening is BOUNDED — the free-text forms it was NOT allowed to admit still reject", () => {
+  // `iter-1/completion-fix` is the important one: it is the value two plans in this repo actually
+  // wrote, producing a batch of WARN [changelog-malformed] lines. Widening the grammar to admit a
+  // sub-step must not admit it. Deleting any of these rejections is the loud, reviewable act the
+  // module header describes.
+  rejects("step", "iter-1/completion-fix", "the historical free-text value");
+  rejects("step", "iter-1/step-9.", "trailing bare dot");
+  rejects("step", "iter-1/step-9.1.2", "doubled sub-step");
+  rejects("step", "iter-1/step-.1", "empty step number");
+  rejects("step", "iter-1/step-9.x", "non-numeric sub-step");
+  rejects("step", "iter-1/step-9.1x", "trailing junk after a sub-step");
 });
 
 // --- field 3: commit (former COMMIT regex) ----------------------------------
@@ -511,4 +558,83 @@ test("schema.mjs is a library: importing it has no side effects, and it exports 
   // The XML document layer is GONE (v2.35.0). These must never come back with it.
   assert.equal(mod.validateDoc, undefined, "validateDoc walked a parsed XML doc — it is gone");
   assert.equal(mod.rootElement, undefined, "rootElement walked a parsed XML doc — it is gone");
+});
+
+// --- the `.K` widening's one cross-module consumer: the changelog compressor -------------------
+//
+// bootstrap.mjs's maybeCompressChangelog is the only other code that touches the `step` field. It
+// stores it as an OPAQUE STRING (classifyChangelogLine keeps `fields[1]` verbatim; the elide
+// summary echoes the first and last of a run as `first..last`) and never parses, compares, or
+// number-sorts it. That is what made the widening free.
+//
+// This test PINS that indifference rather than trusting it: compress one fixture whose steps carry
+// `.K` sub-steps and the SAME fixture with plain steps, and require the two outputs to be identical
+// once the `.K` suffixes are erased. Group boundaries, elide counts, run ranges, the metadata block
+// and the inline summary positions must all land in exactly the same places. A future change that
+// starts parsing this field — sorting by step number, grouping by step, rejecting a non-integer —
+// will move one of them and fail here, loudly, instead of silently corrupting a ledger.
+
+const CL_HEADER = [
+  "# Changelog",
+  "*Append-only per-edit ledger. One line per file edit.*",
+  "*Format: `UTC | iter-N/step-M | commit | path | OP(+N,-M) | radius:TIER(score) | D-NNN-or-dash | reason`*",
+  "*See references/blast-radius.md for radius scoring.*",
+];
+
+// One ledger line. Defaults are elidable (LOW tier, `-` dref, non-REVERT).
+const clLine = (step, path, { tier = "LOW", score = 0, dref = "-" } = {}) =>
+  `2026-05-15T12:00:00Z | ${step} | abc1234 | ${path} | EDIT(+5,-2) | radius:${tier}(${score}) | ${dref} | tweak`;
+
+// A body with two elidable runs of different lengths, a HIGH line and an anchored line as run
+// separators, and a trailing elidable run — so the fixture exercises run boundaries, run lengths,
+// distinct-file counts and summary placement, not just "does it compress".
+//
+// `sub` selects the step spelling: "" for plain `iter-1/step-N`, ".1" for the sub-step form.
+// (Line comments, not a block comment: a literal `/`+`*` opens a phantom span for the anchor
+// scanner — G-19, the reason Step 6's corpus blocks were written this way too.)
+function clBody(sub) {
+  const step = (n) => `iter-1/step-${n}${sub}`;
+  const out = [];
+  for (let i = 1; i <= 6; i++) out.push(clLine(step(i), `src/a${i}.mjs`));
+  out.push(clLine(step(7), "src/mid.mjs", { tier: "HIGH", score: 8 }));
+  for (let i = 8; i <= 14; i++) out.push(clLine(step(i), `src/b${i}.mjs`));
+  out.push(clLine(step(15), "src/anchored.mjs", { dref: "D-001" }));
+  for (let i = 16; i <= 20; i++) out.push(clLine(step(i), `src/c${i}.mjs`));
+  return out;
+}
+
+test("the compressor is indifferent to the `.K` widening — sub-steps change only the step strings", async () => {
+  const { maybeCompressChangelog } = await import(new URL("./bootstrap.mjs", import.meta.url));
+  const root = mkdtempSync(join(tmpdir(), "ip-schema-step-"));
+  try {
+    const run = (name, sub) => {
+      const planDir = join(root, name);
+      mkdirSync(planDir, { recursive: true });
+      writeFileSync(join(planDir, "changelog.md"), [...CL_HEADER, ...clBody(sub)].join("\n") + "\n");
+      const result = maybeCompressChangelog(planDir, { threshold: 20 });
+      return { result, text: readFileSync(join(planDir, "changelog.md"), "utf-8") };
+    };
+
+    const plain = run("plain", "");
+    const subbed = run("subbed", ".1");
+
+    assert.equal(plain.result.compressed, true, `fixture must actually compress, got ${JSON.stringify(plain.result)}`);
+    assert.ok(plain.result.elidedCount >= 2, "fixture must produce more than one elided run");
+
+    // The 5-key result shape carries no step string at all, so it must match outright.
+    assert.deepEqual(subbed.result, plain.result, "compression metrics must not depend on step spelling");
+
+    // Erase the sub-step suffix and the two files must be byte-identical: same header, same
+    // metadata block, same summary lines in the same positions, same surviving lines.
+    const erased = subbed.text.replace(/(step-\d+)\.1/g, "$1");
+    assert.equal(erased, plain.text, "compressed output differs beyond the step strings themselves");
+
+    // Guard the erasure itself: without it the two really are different, so the assertion above
+    // cannot pass vacuously through a normalisation that flattened everything.
+    assert.notEqual(subbed.text, plain.text, "fixtures must differ before normalisation");
+    assert.match(subbed.text, /- \(compressed: \d+ low-decision-impact edits, iter-1\/step-\d+\.1\.\.iter-1\/step-\d+\.1,/,
+      "the run range must echo the sub-step spelling verbatim — proof the field is passed through, not parsed");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
