@@ -51,5 +51,7 @@ All seven reads are CORE. Do not evaluate until all are complete.
 | Failure understood, new approach clear | → PIVOT |
 | Unknowns need investigation, or findings contradicted | → EXPLORE (update findings first) |
 
+> **Numbering a completion fix** (the → EXECUTE row above): the fix is a sub-step of the plan step it repairs, not a new step and not a new iteration. A fix to plan step 9 is `iter-1/step-9.1`; a second fix to that same step is `iter-1/step-9.2`; a fix to step 4 in the same round is `iter-1/step-4.1`. Mint that value before re-entering EXECUTE and put it in `state.md` as the current step, because the executor copies it straight into the changelog `step` field, which must always name a numbered step. Writing `iter-1/completion-fix` there instead fails the `step` grammar in `schema.mjs` and every line carrying it comes back as a `changelog-malformed` warning. The commit subject may read however is clearest; only the changelog field is checked.
+
 > **Before re-entering EXECUTE** (the → EXECUTE row above, OR a user "continue" past a leash hit): run `node <skill-path>/scripts/bootstrap.mjs reset-attempts`. The leash counter must not carry into the re-entry, or EXECUTE's pre-step gate re-trips `leash-cap` on the stale count before any spawn (mirrors the PIVOT reset; this is the "user direction" reset the Autonomy Leash names).
 

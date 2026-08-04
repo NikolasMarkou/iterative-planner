@@ -78,7 +78,7 @@ stateDiagram-v2
 | REFLECT → CLOSE | All criteria verified PASS in `verification.md`, no regressions, no simplification blockers. **User confirms.** |
 | REFLECT → PIVOT | Failure or better approach found. |
 | REFLECT → EXPLORE | Need more context before pivoting. |
-| REFLECT → EXECUTE | Completion-fix remediation surfaced during REFLECT: small fixes to finish the SAME iteration's work (not a new approach → not PIVOT; not more context → not EXPLORE). Same iteration only — `iter` does not increment. Not a general re-loop. |
+| REFLECT → EXECUTE | Completion-fix remediation surfaced during REFLECT: small fixes to finish the SAME iteration's work (not a new approach → not PIVOT; not more context → not EXPLORE). Same iteration only — `iter` does not increment. Not a general re-loop. A fix that repairs plan step M is numbered as a sub-step of it, `iter-N/step-M.K` (K counts 1, 2, … over successive fixes to that same step), so the changelog `step` field always names a numbered step. |
 | PIVOT → PLAN | New approach formulated. Decision logged. |
 
 > **Bootstrap shortcuts**: `bootstrap.mjs close` allows closing from any state (EXPLORE→CLOSE, PLAN→CLOSE, EXECUTE→CLOSE, PIVOT→CLOSE). These are administrative exits — the protocol CLOSE steps (summary.md, decision audit, LESSONS.md update) should be completed by the agent before running `close`.

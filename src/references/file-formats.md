@@ -842,7 +842,7 @@ Format: pipe-delimited single line per edit:
 | # | Field | Required | Notes |
 |---|---|---|---|
 | 1 | UTC timestamp (ISO-8601 Z, second precision) | yes | monotonically increasing |
-| 2 | `iter-N/step-M` | yes | from state.md |
+| 2 | `iter-N/step-M`, or `iter-N/step-M.K` | yes | from state.md. The `.K` form is a completion fix repairing plan step M (K counts 1, 2, … over successive fixes to that step); the iteration does not change |
 | 3 | short commit hash, or `uncommitted` | yes | the commit this edit belongs to |
 | 4 | repo-relative file path | yes | one entry per file per edit |
 | 5 | op + LOC | yes | `CREATE(+N)`, `EDIT(+N,-M)`, `DELETE(-N)`, `RENAME(old→new)`, `REVERT(file)` |
@@ -1260,7 +1260,7 @@ See references/planning-rigor.md for definitions. -->
 ```markdown
 # Changelog
 *Append-only per-edit ledger. One line per file edit. Owner: ip-executor (writes). Reader: ip-reviewer at REFLECT.*
-*Format: `UTC | iter-N/step-M | commit | path | OP(+N,-M) | radius:TIER(score) | D-NNN-or-dash | reason`*
+*Format: `UTC | iter-N/step-M[.K] | commit | path | OP(+N,-M) | radius:TIER(score) | D-NNN-or-dash | reason`*
 *See references/blast-radius.md for radius scoring. Decision-ref optional — `-` means no `# DECISION` anchor governs this edit.*
 ```
 
