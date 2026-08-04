@@ -610,6 +610,7 @@ iterative-planner/
     │   ├── emit-template.mjs       # per-template slicer; emits one plan-file template from references/file-formats.md via --name <slug>
     │   ├── emit-template.test.mjs  # emit-template test suite (node:test)
     │   ├── shared.mjs              # shared helpers (field extraction, changelog field split, compression markers, id grammars)
+    │   ├── shared.test.mjs         # shared test suite (node:test)
     │   └── modules/                # verbatim per-state rule bodies (EXPLORE/PLAN/EXECUTE/REFLECT/PIVOT), emitted on demand
     └── references/
         ├── blast-radius.md         # tiers, signals, scoring formula for the per-edit ledger

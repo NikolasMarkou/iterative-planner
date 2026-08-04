@@ -63,7 +63,8 @@ iterative-planner/
     │   │   ├── state-execute.md      # EXECUTE per-state rules (incl. Post-Step Gate)
     │   │   ├── state-reflect.md      # REFLECT per-state rules (all 3 phases)
     │   │   └── state-pivot.md        # PIVOT per-state rules
-    │   └── shared.mjs                # Shared helpers (field extraction, changelog field split, compression markers)
+    │   ├── shared.mjs                # Shared helpers (field extraction, changelog field split, compression markers)
+    │   └── shared.test.mjs           # Test suite (node:test)
     └── references/                   # Knowledge base documents
         ├── blast-radius.md           # Per-edit blast-radius signals + scoring spec
         ├── code-hygiene.md           # Change manifest format, revert procedures, forbidden leftovers
