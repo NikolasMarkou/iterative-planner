@@ -1099,13 +1099,22 @@ function checkDecisionsSchema(planDir, issues) {
   }
 }
 
-// 3.1e — Verdict 5 required bullets, in order.
+// 3.1e — Verdict 5 required bullets, in order, and actually filled in.
 function checkVerificationVerdict(planDir, issues) {
   const path = join(planDir, "verification.md");
   const content = readFile(path);
   if (!content) return;
   const verdict = extractSection(content, "Verdict");
   if (!verdict) return; // section presence is not enforced here; other checks own it.
+
+  // The keyword scan runs over the BULLET LINES ONLY, never the whole section.
+  // A verifier writing one sentence of narrative above the bullets ("no
+  // regressions were introduced, and scope drift was avoided") used to trip the
+  // order check, because "regressions" matched in the prose at an index before
+  // "criteria passed" matched on the first bullet — a hard ERROR on
+  // well-formed, correctly-ordered content. Do NOT scan `verdict` directly.
+  const bulletLines = verdict.split("\n").filter((l) => /^\s*[-*]\s+/.test(l));
+  const bulletText = bulletLines.join("\n");
 
   const requiredKeywords = [
     /criteria pass(?:ed|\s+count)/i,
@@ -1122,13 +1131,13 @@ function checkVerificationVerdict(planDir, issues) {
     "Recommended transition",
   ];
 
-  // Find positions of each keyword in the Verdict section.
+  // Find positions of each keyword among the Verdict bullets.
   let lastPos = -1;
   let orderBroken = false;
   const missing = [];
   for (let i = 0; i < requiredKeywords.length; i++) {
     const re = requiredKeywords[i];
-    const m = re.exec(verdict);
+    const m = re.exec(bulletText);
     if (!m) {
       missing.push(labels[i]);
       continue;
@@ -1149,6 +1158,30 @@ function checkVerificationVerdict(planDir, issues) {
       severity: "ERROR",
       check: "verdict",
       message: "verification.md Verdict bullets present but not in required order (Criteria passed, Regressions, Scope drift, Simplification blockers, Recommended transition)",
+    });
+  }
+
+  // Unfilled bullets: bootstrap writes every Verdict value as `PENDING`, and
+  // the keyword scan above is satisfied by the LABELS alone, so a skeleton
+  // Verdict used to validate clean all the way through CLOSE. State-gated the
+  // same way checkCrossFileConsistency reads `# Current State:` — PENDING is
+  // CORRECT before REFLECT (bootstrap just wrote it), so this must stay silent
+  // in every other state or it fires on every freshly-bootstrapped plan.
+  const state = readFile(join(planDir, "state.md"));
+  const currentState = (extractField(state, /^# Current State:\s*(.+)$/m) || "").trim().toUpperCase();
+  if (currentState !== "REFLECT" && currentState !== "CLOSE") return;
+
+  const pending = [];
+  for (const line of bulletLines) {
+    const m = /^\s*[-*]\s+(.+?):\s*(.*)$/.exec(line);
+    if (!m) continue;
+    if (/^PENDING\b/i.test(m[2].trim())) pending.push(m[1].trim());
+  }
+  if (pending.length > 0) {
+    issues.push({
+      severity: currentState === "CLOSE" ? "ERROR" : "WARN",
+      check: "verdict",
+      message: `verification.md Verdict bullet(s) still unfilled (PENDING) at ${currentState}: ${pending.join(", ")}`,
     });
   }
 }

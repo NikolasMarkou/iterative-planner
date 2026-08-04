@@ -17,6 +17,9 @@ import { randomBytes } from "crypto";
 const VALIDATOR = resolve(import.meta.dirname, "validate-plan.mjs");
 // Import-safe: validate-plan.mjs's CLI dispatch is guarded by isEntryPoint.
 import { collectKnownDecisionIdsByPlan } from "./validate-plan.mjs";
+// Import-safe: bootstrap.mjs's CLI dispatch is guarded by isEntryPoint. The
+// verdict fixtures use bootstrap's REAL `verification` template, not a copy.
+import { PLAN_TEMPLATES } from "./bootstrap.mjs";
 // Defect #8 / D-003 fixtures use the REAL bootstrap template (the guidance comment that
 // caused the false positive is part of it) rather than a hand-copied approximation —
 // a hand-copied one would drift from bootstrap.mjs and stop testing the actual bug.
@@ -2366,5 +2369,148 @@ describe("[lessons-eviction]: [I:5] count invariant vs previous close snapshot (
       `expected baseline-unavailable INFO with header-only INDEX.md, got:\n${rHeader.stdout}`);
     assert.doesNotMatch(rHeader.stdout, /(WARN|ERROR)\s+\[lessons-eviction\]/,
       "no baseline is INFO only");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// checkVerificationVerdict — unfilled PENDING bullets (F-03) and the
+// narrative-above-bullets false positive (F-04).
+//
+// The skeleton fixture is bootstrap's REAL `verification` template, imported
+// rather than hand-copied: a hand-copied skeleton would drift from bootstrap
+// and stop testing the file agents actually get.
+// ---------------------------------------------------------------------------
+
+describe("validate-plan.mjs checkVerificationVerdict PENDING + bullet scoping", () => {
+  let tempDirs = [];
+  function getTempDir() { const d = makeTempDir(); tempDirs.push(d); return d; }
+  afterEach(() => { for (const d of tempDirs) removeTempDir(d); tempDirs = []; });
+
+  const verdictLines = (stdout) => stdout.split("\n").filter((l) => /\[verdict\]/.test(l));
+
+  function writeVerification(planDir, body) {
+    writeFileSync(join(planDir, "verification.md"), body);
+  }
+
+  it("(a) fresh-bootstrap skeleton at PLAN → no [verdict] issue (PENDING is correct before REFLECT)", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd, { state: "PLAN" });
+    writeVerification(planDir, PLAN_TEMPLATES.verification);
+    const r = run(cwd);
+    assert.deepEqual(verdictLines(r.stdout), [],
+      `a just-bootstrapped Verdict must be silent at PLAN, got:\n${r.stdout}`);
+  });
+
+  it("(a') same skeleton at EXECUTE → still silent", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd, { state: "EXECUTE" });
+    writeVerification(planDir, PLAN_TEMPLATES.verification);
+    const r = run(cwd);
+    assert.deepEqual(verdictLines(r.stdout), [],
+      `a just-bootstrapped Verdict must be silent at EXECUTE, got:\n${r.stdout}`);
+  });
+
+  it("(b) same skeleton at REFLECT → one WARN naming the PENDING bullets", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd, { state: "REFLECT" });
+    writeVerification(planDir, PLAN_TEMPLATES.verification);
+    const r = run(cwd);
+    const lines = verdictLines(r.stdout);
+    assert.equal(lines.length, 1, `expected exactly one [verdict] line, got:\n${r.stdout}`);
+    assert.match(lines[0], /WARN/, `REFLECT is WARN (the verifier may be mid-fill), got: ${lines[0]}`);
+    assert.match(lines[0], /PENDING/);
+    for (const label of ["Criteria passed", "Regressions", "Scope drift", "Simplification blockers", "Recommendation"]) {
+      assert.ok(lines[0].includes(label), `the WARN must name the bullet "${label}", got: ${lines[0]}`);
+    }
+  });
+
+  it("(c) same skeleton at CLOSE → ERROR", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd, { state: "CLOSE" });
+    writeVerification(planDir, PLAN_TEMPLATES.verification);
+    const r = run(cwd);
+    const lines = verdictLines(r.stdout);
+    assert.equal(lines.length, 1, `expected exactly one [verdict] line, got:\n${r.stdout}`);
+    assert.match(lines[0], /ERROR/, `CLOSE must be an ERROR, got: ${lines[0]}`);
+    assert.match(lines[0], /PENDING/);
+  });
+
+  it("(c') a partially-filled Verdict at CLOSE names ONLY the still-PENDING bullets", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd, { state: "CLOSE" });
+    writeVerification(planDir,
+`# Verification
+## Verdict
+- Criteria passed: 5/5
+- Regressions: none
+- Scope drift: PENDING
+- Simplification blockers: none
+- Recommendation: → CLOSE
+`);
+    const r = run(cwd);
+    const lines = verdictLines(r.stdout);
+    assert.equal(lines.length, 1, `expected exactly one [verdict] line, got:\n${r.stdout}`);
+    assert.match(lines[0], /ERROR/);
+    assert.ok(lines[0].includes("Scope drift"), `got: ${lines[0]}`);
+    assert.ok(!lines[0].includes("Regressions"), `filled bullets must not be named, got: ${lines[0]}`);
+  });
+
+  it("(d) narrative sentence above 5 correctly-ordered filled bullets → zero [verdict] issues", () => {
+    // F-04 reproduction, verbatim from findings/validator-internals.md: the word
+    // "regressions" in the prose used to be matched before "criteria passed" on
+    // the first bullet, tripping the order check on well-formed content.
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd, { state: "REFLECT" });
+    writeVerification(planDir,
+`# Verification
+## Verdict
+Note: no regressions were introduced by this change, and scope drift was avoided throughout.
+
+- Criteria passed: 5/5
+- Regressions: none
+- Scope drift: none
+- Simplification blockers: none
+- Recommendation: → CLOSE
+`);
+    const r = run(cwd);
+    assert.deepEqual(verdictLines(r.stdout), [],
+      `narrative above correctly-ordered bullets must be clean, got:\n${r.stdout}`);
+  });
+
+  it("(e) genuinely out-of-order filled bullets → still ERROR [verdict]", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd, { state: "REFLECT" });
+    writeVerification(planDir,
+`# Verification
+## Verdict
+- Regressions: none
+- Criteria passed: 5/5
+- Scope drift: none
+- Simplification blockers: none
+- Recommendation: → CLOSE
+`);
+    const r = run(cwd);
+    const lines = verdictLines(r.stdout);
+    assert.ok(lines.some((l) => /ERROR/.test(l) && /not in required order/.test(l)),
+      `real out-of-order bullets must still ERROR, got:\n${r.stdout}`);
+  });
+
+  it("(e') `*` bullet markers and leading whitespace are recognized", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd, { state: "CLOSE" });
+    writeVerification(planDir,
+`# Verification
+## Verdict
+  * Criteria passed: PENDING (N/M)
+  * Regressions: none
+  * Scope drift: none
+  * Simplification blockers: none
+  * Recommendation: → CLOSE
+`);
+    const r = run(cwd);
+    const lines = verdictLines(r.stdout);
+    assert.equal(lines.length, 1, `expected exactly one [verdict] line, got:\n${r.stdout}`);
+    assert.match(lines[0], /ERROR/);
+    assert.ok(lines[0].includes("Criteria passed"), `got: ${lines[0]}`);
   });
 });
