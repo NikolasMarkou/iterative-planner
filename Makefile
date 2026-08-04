@@ -100,6 +100,7 @@ build-combined:
 	@sed -i 's|`references/decision-anchoring\.md`|the Decision Anchoring Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	@sed -i 's|`references/file-formats\.md`|the File Formats Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	@sed -i 's|`references/planning-rigor\.md`|the Planning Rigor Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@sed -i 's|`references/root-cause-analysis\.md`|the Root Cause Analysis Methods Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	@sed -i 's|`references/python-software\.md`|the Python / Software-Engineering Caveat section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	@sed -i 's|`src/references/blast-radius\.md`|the Blast Radius Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	@sed -i 's|`src/references/code-hygiene\.md`|the Code Hygiene Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
@@ -108,6 +109,7 @@ build-combined:
 	@sed -i 's|`src/references/decision-anchoring\.md`|the Decision Anchoring Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	@sed -i 's|`src/references/file-formats\.md`|the File Formats Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	@sed -i 's|`src/references/planning-rigor\.md`|the Planning Rigor Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@sed -i 's|`src/references/root-cause-analysis\.md`|the Root Cause Analysis Methods Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	@sed -i 's|`src/references/python-software\.md`|the Python / Software-Engineering Caveat section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	sed -i "s/__SKILL_VERSION__/$(VERSION)/g" $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	sed -i "s/__SKILL_DATE__/$$(date -u +%Y-%m-%d)/g" $(BUILD_DIR)/$(SKILL_NAME)-combined.md
