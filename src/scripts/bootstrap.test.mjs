@@ -15,6 +15,11 @@ import { randomBytes, createHash } from "crypto";
 const BOOTSTRAP = resolve(import.meta.dirname, "bootstrap.mjs");
 const SHARED = resolve(import.meta.dirname, "shared.mjs");
 
+// Assembled, never written as one literal — same reason as bootstrap.mjs's
+// GITIGNORE_PLANS_PATTERNS: the whole string opens a block comment to
+// validate-plan.mjs's anchor scanner and swallows the rest of this file.
+const PLANS_GLOB = "plans/" + "*";
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -312,21 +317,33 @@ describe("bootstrap.mjs", () => {
       assert.ok(progress.includes("## Remaining"), "should have Remaining section");
     });
 
-    it("creates .gitignore with plans/ entry", () => {
+    it(`creates .gitignore with the ${PLANS_GLOB} + !plans/ANCHORS.md pair, in order`, () => {
       const dir = getTempDir();
       run(dir, "new", "Test goal");
-      const gitignore = readFileSync(join(dir, ".gitignore"), "utf-8");
-      assert.ok(gitignore.includes("plans/"), ".gitignore should contain plans/");
+      const lines = readFileSync(join(dir, ".gitignore"), "utf-8").split("\n").map((l) => l.trim());
+      const glob = lines.indexOf(PLANS_GLOB);
+      const negation = lines.indexOf("!plans/ANCHORS.md");
+      assert.ok(glob >= 0, `.gitignore should contain ${PLANS_GLOB}`);
+      assert.ok(negation >= 0, ".gitignore should contain !plans/ANCHORS.md");
+      assert.ok(glob < negation, `the negation must follow ${PLANS_GLOB} or git ignores it`);
+      assert.ok(
+        !lines.includes("plans/"),
+        "must NOT write the bare directory pattern — git cannot re-include a file under an excluded directory"
+      );
     });
 
     it(".gitignore is idempotent — no duplicate entries", () => {
       const dir = getTempDir();
       run(dir, "new", "first");
+      const afterFirst = readFileSync(join(dir, ".gitignore"), "utf-8");
       run(dir, "close");
       run(dir, "new", "second");
-      const gitignore = readFileSync(join(dir, ".gitignore"), "utf-8");
-      const matches = gitignore.split("\n").filter((l) => l.trim() === "plans/");
-      assert.equal(matches.length, 1, "should have exactly one plans/ entry");
+      const afterSecond = readFileSync(join(dir, ".gitignore"), "utf-8");
+      assert.equal(afterSecond, afterFirst, "second `new` must append nothing");
+      for (const pattern of [PLANS_GLOB, "!plans/ANCHORS.md"]) {
+        const matches = afterSecond.split("\n").filter((l) => l.trim() === pattern);
+        assert.equal(matches.length, 1, `should have exactly one ${pattern} entry`);
+      }
     });
 
     it("appends to existing .gitignore", () => {
@@ -334,8 +351,101 @@ describe("bootstrap.mjs", () => {
       writeFileSync(join(dir, ".gitignore"), "node_modules/\n");
       run(dir, "new", "Test goal");
       const gitignore = readFileSync(join(dir, ".gitignore"), "utf-8");
-      assert.ok(gitignore.includes("node_modules/"), "should preserve existing entries");
-      assert.ok(gitignore.includes("plans/"), "should add plans/");
+      assert.ok(gitignore.startsWith("node_modules/\n"), "should preserve existing entries verbatim");
+      assert.ok(gitignore.includes(PLANS_GLOB), `should add ${PLANS_GLOB}`);
+      assert.ok(gitignore.includes("!plans/ANCHORS.md"), "should add the negation");
+    });
+
+    it("migrates a legacy exact `plans/` line in place, leaving the rest of the file byte-identical", () => {
+      const dir = getTempDir();
+      const before = [
+        "# Build artifacts",
+        "build/",
+        "",
+        "# Iterative Planner",
+        "plans/",
+        "",
+        "# Design notes",
+        "docs/",
+        "",
+      ].join("\n");
+      writeFileSync(join(dir, ".gitignore"), before);
+      run(dir, "new", "Test goal");
+      const after = readFileSync(join(dir, ".gitignore"), "utf-8");
+
+      const beforeLines = before.split("\n");
+      const afterLines = after.split("\n");
+      const idx = beforeLines.indexOf("plans/");
+      assert.equal(afterLines[idx], PLANS_GLOB, "the legacy line is rewritten in place");
+      assert.ok(after.split("\n").includes("!plans/ANCHORS.md"), "the negation is added");
+
+      // Byte-compare the rest: every line other than the migrated one and the
+      // appended negation must survive unchanged, in the same order.
+      const restBefore = beforeLines.filter((_, i) => i !== idx);
+      const restAfter = afterLines.filter((_, i) => i !== idx).filter((l) => l !== "!plans/ANCHORS.md");
+      assert.deepEqual(restAfter, restBefore, "no other line may be touched");
+    });
+
+    it("migration matches the exact literal only — near-miss lines survive byte-identical", () => {
+      const dir = getTempDir();
+      // Every line here CONTAINS "plans"; only the whitespace-padded one is the
+      // exact literal after trimming. An over-broad match would rewrite a user's
+      // unrelated rules.
+      const before = [
+        "myplans/",
+        "plans/tmp",
+        "plans/tmp/",
+        "# plans/",
+        "replans/",
+        "  plans/  ",
+        "",
+      ].join("\n");
+      writeFileSync(join(dir, ".gitignore"), before);
+      run(dir, "new", "Test goal");
+      const afterLines = readFileSync(join(dir, ".gitignore"), "utf-8").split("\n");
+
+      assert.deepEqual(
+        afterLines.slice(0, 5),
+        ["myplans/", "plans/tmp", "plans/tmp/", "# plans/", "replans/"],
+        "near-miss lines must be byte-identical"
+      );
+      assert.equal(afterLines[5], PLANS_GLOB, "only the exact literal (after trim) is migrated");
+      assert.ok(afterLines.includes("!plans/ANCHORS.md"), "the negation is added");
+      assert.ok(!afterLines.some((l) => l.trim() === "plans/"), "no legacy line remains");
+    });
+  });
+
+  // =========================================================================
+  // plans/ANCHORS.md — the committed decision-anchor manifest
+  // =========================================================================
+  describe("ANCHORS.md manifest", () => {
+    // This header is NOT covered by check-template-parity (it is deliberately not a
+    // PLAN_TEMPLATES key — see the constant's comment in bootstrap.mjs). This test is
+    // the compensating pin: the four header lines are asserted literally here.
+    const EXPECTED_HEADER = [
+      "# Decision Anchor Manifest",
+      "*Committed, append-only. One line per anchored decision, so a `# DECISION <plan-id>/D-NNN` anchor still resolves after its plan directory is gone.*",
+      "*Format: `<plan-id>/D-NNN | YYYY-MM-DD | one-line rationale`. Never edited, never reordered, never trimmed.*",
+      "*Written by ip-archivist at CLOSE. Read by validate-plan.mjs as the durable anchor-resolution tier.*",
+      "",
+    ].join("\n");
+
+    it("creates plans/ANCHORS.md with the exact header bytes", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Test goal");
+      const manifest = readFileSync(join(dir, "plans", "ANCHORS.md"), "utf-8");
+      assert.equal(manifest, EXPECTED_HEADER);
+    });
+
+    it("never overwrites an existing manifest", () => {
+      const dir = getTempDir();
+      run(dir, "new", "first");
+      const manifestPath = join(dir, "plans", "ANCHORS.md");
+      const populated = EXPECTED_HEADER + "\nplan-2026-01-01T000000-deadbeef/D-001 | 2026-01-01 | a real entry\n";
+      writeFileSync(manifestPath, populated);
+      run(dir, "close");
+      run(dir, "new", "second");
+      assert.equal(readFileSync(manifestPath, "utf-8"), populated, "existing manifest must be byte-identical");
     });
   });
 

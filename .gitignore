@@ -9,7 +9,8 @@ dist/
 .idea/
 
 # Iterative Planner
-plans/
+plans/*
+!plans/ANCHORS.md
 
 # Design notes
 docs/

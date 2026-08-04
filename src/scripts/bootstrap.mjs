@@ -191,19 +191,52 @@ function releaseLock() {
 // Helpers
 // ---------------------------------------------------------------------------
 
+// The pair below hides everything under plans/ EXCEPT the committed decision-anchor
+// manifest. The first pattern is an ENTRY GLOB (plans slash star), never the directory
+// pattern `plans/`: git does not descend into an excluded DIRECTORY, so under `plans/`
+// the negation on the next line can never fire and the manifest stays ignored. Both
+// forms hide the identical else-set (every entry directly inside plans/, including each
+// plan dir as a directory, and dotfiles like .current_plan) — verified with
+// `git check-ignore -v` over a populated tree before this was written.
+//
+// The glob is ASSEMBLED from two pieces, and no comment here spells it out either.
+// Written whole, its last two bytes open a block comment to validate-plan.mjs's anchor
+// scanner, which is code-string-blind on that path: one such literal swallows the next
+// 18KB of this file into a phantom comment span, and every DECISION anchor inside it is
+// then reported twice. Same class of bug as the HTML-span hole closed in shared.mjs.
+// Do not "simplify" the concatenation, and do not restore the literal to the prose.
+const GITIGNORE_PLANS_PATTERNS = ["plans/" + "*", "!plans/ANCHORS.md"];
+// The pattern older bootstraps wrote, migrated in place by ensureGitignore.
+const GITIGNORE_LEGACY_PLANS_PATTERN = "plans/";
+
 function ensureGitignore() {
   const gitignorePath = join(cwd, ".gitignore");
-  const patterns = ["plans/"];
   let content = "";
   try {
     content = readFileSync(gitignorePath, "utf-8");
   } catch {
     // No .gitignore yet — will create
   }
-  const missing = patterns.filter((p) => !content.split("\n").some((line) => line.trim() === p));
-  if (missing.length === 0) return;
-  const suffix = (content && !content.endsWith("\n") ? "\n" : "") + missing.join("\n") + "\n";
-  const updated = content + suffix;
+  // DECISION plan-2026-08-04T092155-0063b038/D-009 — the legacy-line match is EXACT
+  // (after trimming the line), never a substring, `startsWith`, or regex over "plans".
+  // This function edits the .gitignore of every consuming project, so a loose match
+  // silently rewrites a user's unrelated rule: `myplans/`, `plans/tmp`, `plans/tmp/`
+  // and a commented-out `# plans/` all contain the token and all must survive
+  // byte-identical. Trimming is deliberate (a padded `  plans/  ` is the same intent);
+  // matching anything wider is not. See decisions.md D-009.
+  const lines = content.split("\n");
+  let migrated = false;
+  const out = lines.map((line) => {
+    if (line.trim() !== GITIGNORE_LEGACY_PLANS_PATTERN) return line;
+    migrated = true;
+    return GITIGNORE_PLANS_PATTERNS[0];
+  });
+  const missing = GITIGNORE_PLANS_PATTERNS.filter((p) => !out.some((line) => line.trim() === p));
+  if (!migrated && missing.length === 0) return;
+  let updated = out.join("\n");
+  if (missing.length > 0) {
+    updated += (updated && !updated.endsWith("\n") ? "\n" : "") + missing.join("\n") + "\n";
+  }
   writeFileSync(gitignorePath + ".tmp", updated);
   renameSync(gitignorePath + ".tmp", gitignorePath);
 }
@@ -524,6 +557,20 @@ export function renderTemplate(str, values) {
   });
 }
 
+// plans/ANCHORS.md — the committed, append-only decision-anchor manifest. Its header
+// is a module-local constant and deliberately NOT a 13th PLAN_TEMPLATES key: the map is
+// set-equal to file-formats.md's `<!-- SKELETON:x -->` regions by check-template-parity,
+// so a new key drags in a skeleton region, an EXPECTED_SLUGS bump, two test constants, an
+// 18th VALID_TEMPLATES slug with its canonical-list test, and every "12 templates / 17
+// served artifacts" sentence in the prose — a wide ripple to publish four lines. This is a
+// plans/-root ledger, not a per-plan file rendered from a template; its format is published
+// as prose in references/file-formats.md, and a bootstrap test pins these bytes.
+export const ANCHORS_MANIFEST_HEADER = `# Decision Anchor Manifest
+*Committed, append-only. One line per anchored decision, so a \`# DECISION <plan-id>/D-NNN\` anchor still resolves after its plan directory is gone.*
+*Format: \`<plan-id>/D-NNN | YYYY-MM-DD | one-line rationale\`. Never edited, never reordered, never trimmed.*
+*Written by ip-archivist at CLOSE. Read by validate-plan.mjs as the durable anchor-resolution tier.*
+`;
+
 function ensureConsolidatedFiles() {
   const findingsPath = join(plansDir, "FINDINGS.md");
   const decisionsPath = join(plansDir, "DECISIONS.md");
@@ -544,6 +591,12 @@ function ensureConsolidatedFiles() {
   const indexPath = join(plansDir, "INDEX.md");
   if (!existsSync(indexPath)) {
     writeFileSync(indexPath, renderTemplate(PLAN_TEMPLATES.index, {}));
+  }
+  // Never overwrite: the manifest is append-only and its entries are the only durable
+  // record that a closed plan's anchor ids ever existed.
+  const anchorsPath = join(plansDir, "ANCHORS.md");
+  if (!existsSync(anchorsPath)) {
+    writeFileSync(anchorsPath, ANCHORS_MANIFEST_HEADER);
   }
 }
 
@@ -1561,7 +1614,7 @@ function cmdNewInner(goal, force) {
     ensureGitignore();
   } catch (err) {
     console.error(`WARNING: Plan created but .gitignore update failed: ${err.message}`);
-    console.error(`  Manually add plans/ to .gitignore.`);
+    console.error(`  Manually add ${GITIGNORE_PLANS_PATTERNS.join(" and ")} to .gitignore.`);
   }
 
   console.log(`Initialized plans/${planDirName}/`);
