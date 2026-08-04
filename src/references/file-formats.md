@@ -767,7 +767,7 @@ Cross-plan **system atlas** — a curated map of *what the system being planned 
 
 Usage:
 - Read: EXPLORE start + PLAN start (orchestrator + ip-plan-writer). Structural prior — avoids re-deriving system shape every plan.
-- CLOSE: ip-archivist Step 4 rewrites under 300-line cap. **Demote-by-staleness, not by recency** — drop entries not referenced or reaffirmed by recent plans. Truncating most-recent defeats curation.
+- CLOSE: ip-archivist Step 5 rewrites under 300-line cap. **Demote-by-staleness, not by recency** — drop entries not referenced or reaffirmed by recent plans. Truncating most-recent defeats curation.
 - Contradictions: EXPLORE finding contradicts SYSTEM.md entry → mark in `findings.md` with `[CONTRADICTED iter-N]` → archivist corrects at CLOSE (mirrors `[CORRECTED iter-N]`).
 - Hard cap 300 lines enforced by `validate-plan.mjs` ERROR `[atlas-cap]`. Truncation by writers forbidden.
 - Created by bootstrap on first `new` — but the bytes it writes are **not** the schema above. They are the `<!-- SKELETON:system -->` region under **Bootstrap Skeletons (machine-checked)**, which `check-template-parity.mjs` pins to `PLAN_TEMPLATES.system` byte-for-byte. That is the only gated pair; go there for the literal bytes.
@@ -792,6 +792,31 @@ Usage:
 - Helps find per-plan findings that have been trimmed by the sliding window
 - Created automatically by bootstrap on first `new`. Updated on each `close`.
 - Topics extracted from findings.md index entries
+
+## plans/ANCHORS.md
+
+The decision anchor manifest: a committed, append-only ledger with one line per anchored decision, so a `# DECISION <plan-id>/D-NNN` comment in source still resolves after its plan directory is gone. Every other place a decision's context lives sits inside the plans directory, which bootstrap tells git to ignore — this file is the exception, kept visible by the plans glob plus a negation line for it.
+
+Owner: `ip-archivist`, which appends this plan's anchored decisions at CLOSE (its Step 2). Reader: `validate-plan.mjs`, which reads the file once per full validation as the durable tier of its anchor resolution.
+
+One entry per line, three fields, pipe-delimited:
+
+```markdown
+plan-2026-02-20T141005-b4e2c3d0/D-003 | 2026-02-20 | Session tokens stay opaque; the JWT variant was rejected after the rotation deadlock.
+```
+
+- Field 1: the qualified decision id, `<plan-id>/D-NNN`, at the very start of the line. Both plan-id shapes are accepted.
+- Field 2: the close date, `YYYY-MM-DD`.
+- Field 3: one line of rationale, taken from that decision's own entry in the closing plan's `decisions.md`.
+
+Rules:
+
+- **Append-only.** Lines are never edited, reordered, re-wrapped, or deleted. Other plans' anchors depend on their lines being there, unchanged.
+- **Never derived from source.** The lines come from `decisions.md`, the authoritative record — never from scanning `# DECISION` comments. A manifest built out of the anchors it validates would make each anchor its own proof, and a mistyped plan-id would resolve instead of erroring.
+- Any line that does not match the entry shape — the header, blank lines, a note — is ignored by the reader, so ordinary prose can never register a decision.
+- Created by `bootstrap.mjs` on the first `new`, and never overwritten if it already exists.
+
+This file is deliberately **not** a bootstrap skeleton region: it is a ledger at the plans root, not a per-plan file rendered from a template, so bootstrap writes its header from a local constant and its format is published here as prose.
 
 <!-- TEMPLATE:lessons-snapshot -->
 ## lessons_snapshot.md

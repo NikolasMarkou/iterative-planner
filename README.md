@@ -319,6 +319,7 @@ Usually the orchestrator is the non-authoring co-writer, confined to Post-Step G
 | `plans/LESSONS-archive.md` | Archivist (append-only; created on first over-cap LESSONS trim) | — (forensic aid, read by no protocol step) |
 | `plans/SYSTEM.md` | Archivist | Orchestrator, Plan-writer, Explorer |
 | `plans/INDEX.md` | Archivist (via bootstrap) | Orchestrator |
+| `plans/ANCHORS.md` | Archivist (append-only; one line per anchored decision at CLOSE; created by bootstrap) | `validate-plan.mjs` (anchor resolution), Orchestrator, Archivist |
 
 </details>
 

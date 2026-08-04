@@ -64,7 +64,7 @@ stateDiagram-v2
 | EXECUTE | Implement step-by-step | Edit files, run commands, write code. |
 | REFLECT | Evaluate results | Read outputs, run tests, review diffs. Update verification.md, decisions.md. |
 | PIVOT | Revise direction | Log pivot in decisions.md. Do NOT write plan.md yet. |
-| CLOSE | Finalize | Audit decision anchors. Write summary.md. Merge findings/decisions. Rewrite LESSONS.md (trim by importance-then-recency, never drop `[I:5]` — see ip-archivist Step 3) + SYSTEM.md atlas (demote-by-staleness — see ip-archivist Step 4). Compress consolidated files if needed. Caps: Lifecycle Matrix. |
+| CLOSE | Finalize | Audit decision anchors. Append this plan's anchored decisions to `plans/ANCHORS.md`. Write summary.md. Merge findings/decisions. Rewrite LESSONS.md (trim by importance-then-recency, never drop `[I:5]` — see ip-archivist Step 4) + SYSTEM.md atlas (demote-by-staleness — see ip-archivist Step 5). Compress consolidated files if needed. Caps: Lifecycle Matrix. |
 
 ### Transitions
 
@@ -139,6 +139,7 @@ plans/
 ├── LESSONS-archive.md             # Lines dropped by the LESSONS.md trim, appended on close (conditional — not created by bootstrap)
 ├── SYSTEM.md                      # System atlas — domain-neutral map of the target system (≤300 lines, rewritten on close)
 ├── INDEX.md                       # Topic→directory mapping (updated on close, survives trim)
+├── ANCHORS.md                     # Committed, append-only manifest — one line per anchored decision (appended on close)
 └── plan-2026-02-14T103055-a3f1b2c9/   # {plan-dir} (legacy dirs: plan_2026-02-14_a3f1b2c9/)
     ├── state.md                   # Current state + transition log
     ├── plan.md                    # Living plan (rewritten each iteration)
@@ -179,6 +180,7 @@ R = read only | W = update (implicit read + write) | R+W = distinct read and wri
 | plans/LESSONS-archive.md | — | — | — | — | — | W (overflow archive) |
 | plans/SYSTEM.md | R | R | — | — | R | W(rewrite≤300) |
 | plans/INDEX.md | R? | — | — | — | — | W(append via bootstrap) |
+| plans/ANCHORS.md | R? | — | — | — | — | W(append) |
 | lessons_snapshot.md | — | — | — | — | — | W(auto via bootstrap) |
 
 `R?` = read on demand only, not as part of the eager cross-plan read set. See EXPLORE rules below for the triggers that warrant an INDEX.md read. `plans/FINDINGS.md` at PLAN is `R?` because the plan-writer reads per-plan `findings/*` files (already in PLAN dispatch), not the cross-plan consolidated `plans/FINDINGS.md`, unless explicitly needed for cross-plan context.
@@ -352,7 +354,7 @@ are earned, not free.
 10. `plans/SYSTEM.md` → system atlas / structural prior (read before PLAN or EXPLORE)
 11. `plans/INDEX.md` → grep by topic keyword (each row is one line; do not read the whole file) — topic-to-directory mapping (find old findings by topic when sliding window has trimmed them)
 12. Resume from current state. Never start over. When resuming mid-EXECUTE (state.md names a current step), first derive the step's plan-qualified commit tag (Git Integration below: drop the plan-dir name's `THHMMSS` segment) and check `git log --oneline --fixed-strings --grep="plan-YYYY-MM-DD-HASH/iter-N/step-M]"` — keep the closing `]`; a bare `iter-N/step-M` grep false-positives against other plans' commits and `step-1`/`step-10` substrings. If a commit already exists, the step completed before the interruption — run the Post-Step Gate for it instead of re-executing the step. If NO matching commit exists, check `git status --porcelain` before re-executing — a dirty tree means the executor died mid-step: revert uncommitted changes to the last clean commit first. Also cross-check `changelog.md`'s trailing lines against `git log` — a changelog line whose commit field names no existing commit (or says `uncommitted`) is limbo from the interrupted step; note it in `decisions.md` before re-executing.
-13. Resuming at/near CLOSE: check `plans/.current_plan`. Pointer GONE = close completed — nothing to resume. Pointer PRESENT with CLOSE-shaped artifacts (summary.md exists, LESSONS.md/SYSTEM.md freshly rewritten) = the archivist was interrupted — apply `agents/ip-orchestrator.md` CLOSE State step 3 (re-run archivist Steps 1-4 only as needed — they are batch-safe, see ip-archivist Rules; the Step-3/4 post-rewrite validator gates always re-run, even over rewrites the interrupted run already completed — then run `bootstrap.mjs close` once). Note the lag: state.md's CLOSE transition is written INSIDE `bootstrap.mjs close` (archivist Step 5), so a kill during Steps 1-4 leaves state.md at the pre-CLOSE state while the artifacts already look CLOSE-shaped; `bootstrap.mjs resume`/`status` flag the inverse signature (state.md=CLOSE, pointer present) with an explicit `INCOMPLETE CLOSE` line.
+13. Resuming at/near CLOSE: check `plans/.current_plan`. Pointer GONE = close completed — nothing to resume. Pointer PRESENT with CLOSE-shaped artifacts (summary.md exists, LESSONS.md/SYSTEM.md freshly rewritten) = the archivist was interrupted — apply `agents/ip-orchestrator.md` CLOSE State step 3 (re-run archivist Steps 1-5 only as needed — they are batch-safe, see ip-archivist Rules; the Step-4/5 post-rewrite validator gates always re-run, even over rewrites the interrupted run already completed — then run `bootstrap.mjs close` once). Note the lag: state.md's CLOSE transition is written INSIDE `bootstrap.mjs close` (archivist Step 6), so a kill during Steps 1-5 leaves state.md at the pre-CLOSE state while the artifacts already look CLOSE-shaped; `bootstrap.mjs resume`/`status` flag the inverse signature (state.md=CLOSE, pointer present) with an explicit `INCOMPLETE CLOSE` line.
 
 ## Git Integration
 
@@ -389,7 +391,7 @@ A sub-agent can terminate WITHOUT reporting — killed by the user, harness inte
 - **PLAN**: `plan.md` truncated or sections missing → orchestrator section-verify catches it (dispatch step 3); re-spawn naming the defective sections.
 - **EXECUTE**: killed executor → Recovery step 12 (commit-tag grep, then dirty-tree check, then changelog-tail cross-check).
 - **REFLECT**: partial `verification.md` (fewer Criteria rows than plan.md's Success Criteria) or a review file missing its `## Verdict` line → treat as interrupted evidence and re-spawn (for a reviewer, per the `-passM` naming rule; a re-spawned verifier just returns results — verification.md has no passM scheme) (REFLECT Gate-In).
-- **CLOSE**: archivist interrupted → Recovery item 13 (pointer check; archivist Steps 1-4 batch-safe, Step 5 exactly once).
+- **CLOSE**: archivist interrupted → Recovery item 13 (pointer check; archivist Steps 1-5 batch-safe, Step 6 exactly once).
 
 ### Agent Definitions
 
@@ -426,6 +428,7 @@ Each file has a clear owner. Only the owner writes. Others read. Co-ownership (m
 | `plans/LESSONS-archive.md` | Archivist (append-only; created on first over-cap LESSONS trim) | — (forensic aid, read by no protocol step) |
 | `plans/SYSTEM.md` | Archivist | Orchestrator, Plan-writer, Explorer |
 | `plans/INDEX.md` | Archivist (via bootstrap) | Orchestrator |
+| `plans/ANCHORS.md` | Archivist (append-only; one line per anchored decision at CLOSE; created by bootstrap) | `validate-plan.mjs` (anchor resolution), Orchestrator, Archivist |
 
 ### Dispatch Rules by State
 

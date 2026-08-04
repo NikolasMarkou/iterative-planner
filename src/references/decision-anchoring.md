@@ -154,24 +154,25 @@ When code is reverted but the anchor cannot be removed in the same pass (e.g. du
 
 ## Expiration Handling
 
-Anchors are permanent in code; backing context lives in per-plan `decisions.md` + consolidated `plans/DECISIONS.md` (sliding-window trimmed to 4 plans). Plan-qualified anchors close the historical orphan gap.
+Anchors are permanent in code. Backing context lives in per-plan `decisions.md` + consolidated `plans/DECISIONS.md` (sliding-window trimmed to 4 plans), and — for anchored decisions of closed plans — in the committed `plans/ANCHORS.md` manifest. Plan-qualified anchors close the historical orphan gap.
 
 Resolver order:
 
 | # | Source | Note |
 |---|---|---|
-| 1 | `plans/<plan-id>/decisions.md` | source of truth, never trimmed |
-| 2 | `plans/DECISIONS.md ## <plan-id>` | if within sliding window |
-| 3 | `summary.md ## Decision Anchors Registry` | forward-only mitigation for critical-path anchors |
+| 1 | `plans/<plan-id>/decisions.md` | source of truth, never trimmed — but inside the plans directory |
+| 2 | `plans/DECISIONS.md ## <plan-id>` | if within sliding window — also inside the plans directory |
+| 3 | `plans/ANCHORS.md` | **the durable tier**: committed, append-only, one line per anchored decision, written at CLOSE by ip-archivist |
+| 4 | `summary.md ## Decision Anchors Registry` | plan-directory-local; a copy for human readers, not consulted by the validator |
 
-If the plan directory is deleted (rare), anchor remains a breadcrumb; registry copy in `summary.md` is the last resort.
+Tiers 1, 2, and 4 all live inside the plans directory, which bootstrap tells git to ignore in every project — so being on disk is not the same as being durable, and none of them survives a fresh clone or a cleaned working copy. Tier 3 is the one that does: `plans/ANCHORS.md` is committed (bootstrap writes the plans glob plus a negation line for it), so an anchor whose plan directory is gone still resolves. A plan directory is deleted routinely, not rarely.
 
 **Migration**: bare `D-NNN` anchors (pre-v2.14.0) lack prefix → validator `WARN [anchor-unqualified]`, resolved against active plan's `decisions.md`. New anchors MUST be qualified.
 
 ## Audit at CLOSE
 
-Before `summary.md`: scan `decisions.md` for failed alternatives / 3-strike pivots. Verify corresponding code has anchor comments with the active plan-id prefix. Plan directory is ephemeral — anchors in code outlive it.
+Before `summary.md`: scan `decisions.md` for failed alternatives / 3-strike pivots. Verify corresponding code has anchor comments with the active plan-id prefix. Plan directory is ephemeral — anchors in code outlive it, and only the committed `plans/ANCHORS.md` line outlives it with them.
 
 In `summary.md`:
 - List files with anchors and which qualified `<plan-id>/D-NNN` they reference.
-- Maintain the `## Decision Anchors Registry` block for critical-path anchors so the rationale survives even if the plan directory itself is later removed.
+- Maintain the `## Decision Anchors Registry` block for critical-path anchors. It is a reader's index, not a survival mechanism: `summary.md` sits inside the plan directory, so it goes when the directory goes. What survives the directory is the `plans/ANCHORS.md` line ip-archivist appends at CLOSE.

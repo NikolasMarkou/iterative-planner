@@ -848,7 +848,7 @@ function checkLessonsCap(issues) {
 
 // v2.53.0 (F1) — lessons-eviction gate. The archivist REWRITES plans/LESSONS.md
 // at every CLOSE with a policy of "never drop an [I:5] entry — tighten or merge
-// wording instead" (ip-archivist.md Step 3), but nothing mechanical held that
+// wording instead" (ip-archivist.md Step 4), but nothing mechanical held that
 // invariant: the cap checks above count lines only. This rule compares the
 // [I:5]-tagged line COUNT in the current LESSONS.md against the previous
 // close's point-in-time copy (plans/<prev>/lessons_snapshot.md, resolved via
