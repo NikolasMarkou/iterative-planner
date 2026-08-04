@@ -70,14 +70,22 @@ test("an empty changelog (root only, no entries) is valid — entry is `*`", () 
 
 test("a full changelog with every element kind is valid", () => {
   const issues = check([
-    el("compressed-summary", { "entries-at-compress": "187", "elided-groups": "3", "elided-lines": "42" }),
     entry(),
-    el("compressed", { count: "14", from: "iter-1/step-3", to: "iter-1/step-7", files: "4" }),
     { type: "comment", value: " a comment is ignored " },
     el("raw", { line: "12" }, [{ type: "text", value: "a line that never parsed | cleanly" }]),
     entry({ dref: "-" }),
   ]);
   assert.deepEqual(issues, []);
+});
+
+test("CHANGELOG_SPEC declares only the two reachable elements — entry and raw", () => {
+  // The compressor's output never reaches this spec: validate-plan.mjs skips the
+  // `<!-- entries-at-compress -->` comment and the inline `- (compressed: ...)` summary lines by
+  // string prefix before building a node. The v2.33.0 `compressed` / `compressed-summary`
+  // declarations were therefore unreachable and were DELETED in v2.57.7, not extended. This test
+  // is the ratchet: re-adding an unconstructable element turns it red.
+  assert.deepEqual(Object.keys(CHANGELOG_SPEC.elements).sort(), ["changelog", "entry", "raw"]);
+  assert.deepEqual(CHANGELOG_SPEC.elements.changelog.children, { entry: "*", raw: "*" });
 });
 
 test("issues carry the published tier and slug (WARN / changelog-malformed) — advisory contract", () => {
@@ -291,6 +299,32 @@ test("reason is free-text: newlines and unicode arrows are accepted", () => {
 });
 
 // --- structural: required / unknown / cardinality ---------------------------
+//
+// Two driver features — `?` cardinality and int min/max typing — are exercised against a SYNTHETIC
+// spec, not CHANGELOG_SPEC. CHANGELOG_SPEC no longer declares an at-most-once child or an int
+// field: the only ones it ever had (`compressed-summary` / `compressed`) were unreachable
+// declarations deleted in v2.57.7. The driver still supports both, so both keep coverage here.
+// Do NOT "restore" them to CHANGELOG_SPEC to get this coverage back from the real spec — that
+// re-adds dead declarations to buy a test fixture.
+
+const SYNTH_SPEC = {
+  root: "doc",
+  severity: "WARN",
+  check: "changelog-malformed",
+  elements: {
+    doc: { attrs: {}, children: { header: "?", item: "*" } },
+    header: {
+      attrs: {
+        count: { type: "int", required: true, min: 1 },
+        from: { type: "regex", required: true, pattern: /^iter-\d+\/step-\d+$/ },
+        files: { type: "int", required: true, min: 1, max: 99 },
+      },
+      children: {},
+    },
+    item: { attrs: {}, children: {} },
+  },
+};
+const checkSynth = (children) => validateElement(el("doc", {}, children), SYNTH_SPEC, "<doc>");
 
 test("missing required attribute is reported, one issue per missing field", () => {
   const bare = el("entry", { ts: GOOD_ENTRY.ts });
@@ -316,12 +350,13 @@ test("unknown element is reported", () => {
   assert.match(issues[0].message, /unexpected child element <note>/);
 });
 
-test("wrong child cardinality is reported: <compressed-summary> is `?`", () => {
-  const summary = () => el("compressed-summary", { "entries-at-compress": "1", "elided-groups": "1", "elided-lines": "1" });
-  assert.deepEqual(check([summary()]), [], "one summary is legal");
-  const issues = check([summary(), summary()]);
+test("wrong child cardinality is reported: a `?` child may appear at most once", () => {
+  const header = () => el("header", { count: "1", from: "iter-1/step-1", files: "1" });
+  assert.deepEqual(checkSynth([header()]), [], "one `?` child is legal");
+  assert.deepEqual(checkSynth([]), [], "zero `?` children is legal");
+  const issues = checkSynth([header(), header()]);
   assert.equal(issues.length, 1);
-  assert.match(issues[0].message, /<compressed-summary> may appear at most once \(found 2\)/);
+  assert.match(issues[0].message, /<header> may appear at most once \(found 2\)/);
 });
 
 test("text content in an element that forbids it is reported", () => {
@@ -340,15 +375,19 @@ test("<raw> still rejects an unknown attribute and a bad line number", () => {
   assert.match(check([el("raw", { line: "zero" })])[0].message, /attribute "line" must be an integer/);
 });
 
-test("<compressed> element: int and range fields are typed", () => {
-  const ok = el("compressed", { count: "14", from: "iter-1/step-3", to: "iter-1/step-7", files: "4" });
-  assert.deepEqual(check([ok]), []);
-  const bad = el("compressed", { count: "many", from: "step-3", to: "iter-1/step-7", files: "0" });
-  const issues = check([bad]);
+test("int and range fields are typed: non-integer, below min, above max", () => {
+  const ok = el("header", { count: "14", from: "iter-1/step-3", files: "4" });
+  assert.deepEqual(checkSynth([ok]), []);
+  const bad = el("header", { count: "many", from: "step-3", files: "0" });
+  const issues = checkSynth([bad]);
   assert.equal(issues.length, 3);
-  assert.match(issues.map((i) => i.message).join("\n"), /attribute "count" must be an integer/);
-  assert.match(issues.map((i) => i.message).join("\n"), /attribute "from" must match/);
-  assert.match(issues.map((i) => i.message).join("\n"), /attribute "files" must be >= 1/);
+  const text = issues.map((i) => i.message).join("\n");
+  assert.match(text, /attribute "count" must be an integer/);
+  assert.match(text, /attribute "from" must match/);
+  assert.match(text, /attribute "files" must be >= 1/);
+  const over = checkSynth([el("header", { count: "1", from: "iter-1/step-1", files: "100" })]);
+  assert.equal(over.length, 1);
+  assert.match(over[0].message, /attribute "files" must be <= 99/);
 });
 
 test("whitespace-only text between records is not text content", () => {

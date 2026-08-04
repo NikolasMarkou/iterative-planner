@@ -89,7 +89,7 @@ const TYPES = {
 // The changelog spec — the 6 former validate-plan.mjs regexes, as typed fields.
 // ---------------------------------------------------------------------------
 
-/** `iter-N/step-M` (former STEP regex). Also used by <compressed>'s from/to range bounds. */
+/** `iter-N/step-M` (former STEP regex). */
 export const STEP_RE = /^iter-\d+\/step-\d+$/;
 /** Short-or-full lowercase hex hash, or the literal `uncommitted` (former COMMIT regex). */
 export const COMMIT_RE = /^([0-9a-f]{7,40}|uncommitted)$/;
@@ -115,10 +115,20 @@ const ENTRY_ATTRS = {
 };
 
 /**
- * The changelog record model. `entry` is the one the validator exercises today (one markdown line
- * -> one synthetic <entry> node -> validateElement); `compressed` and `compressed-summary` declare
- * the shapes bootstrap's compressor emits, and `raw` stands for any line that is not a record
+ * The changelog record model. `entry` is the one the validator exercises (one markdown line ->
+ * one synthetic <entry> node -> validateElement); `raw` stands for any line that is not a record
  * (header, blank, an unparseable row that must never be dropped).
+ *
+ * This spec deliberately declares NOTHING about the compressor's output. bootstrap.mjs's
+ * maybeCompressChangelog emits plain markdown — a `<!-- entries-at-compress: N -->` metadata
+ * comment and inline `- (compressed: N low-decision-impact edits, ...)` summary lines — and
+ * validate-plan.mjs SKIPS both by string prefix (CHANGELOG_COMPRESSED_INLINE_RE / the `<!--`
+ * skip) before any line reaches this spec. The v2.33.0 XML experiment's `compressed` and
+ * `compressed-summary` element declarations were removed in v2.57.7: nothing constructed them
+ * (entryFromFields builds only <entry>) and nothing could reach them, so they claimed to enforce
+ * a shape they never saw. Do NOT re-add them "for completeness" — deleted, not extended. If the
+ * compressor's output ever needs validating, that is a new check over markdown lines, not a
+ * declaration here.
  *
  * `severity: "WARN"` and `check: "changelog-malformed"` are not decoration — they are the tier and
  * slug the repo already promises for this artifact (file-formats.md: "Changelog issues are
@@ -131,28 +141,9 @@ export const CHANGELOG_SPEC = {
   elements: {
     changelog: {
       attrs: {},
-      children: { "compressed-summary": "?", entry: "*", compressed: "*", raw: "*" },
+      children: { entry: "*", raw: "*" },
     },
     entry: { attrs: ENTRY_ATTRS, children: {} },
-    // One elided group of low-decision-impact edits, AT its original chronological position.
-    compressed: {
-      attrs: {
-        count: { type: "int", required: true, min: 1 },
-        from: { type: "regex", required: true, pattern: STEP_RE },
-        to: { type: "regex", required: true, pattern: STEP_RE },
-        files: { type: "int", required: true, min: 1 },
-      },
-      children: {},
-    },
-    // Top-of-file compression metadata. `entries-at-compress` is the dual-count idempotency key.
-    "compressed-summary": {
-      attrs: {
-        "entries-at-compress": { type: "int", required: true, min: 0 },
-        "elided-groups": { type: "int", required: true, min: 0 },
-        "elided-lines": { type: "int", required: true, min: 0 },
-      },
-      children: {},
-    },
     // A line that never parsed cleanly. Preserved verbatim, never dropped.
     raw: {
       attrs: { line: { type: "int", required: false, min: 1 } },
