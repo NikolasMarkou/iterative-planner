@@ -2584,6 +2584,104 @@ Note: no regressions were introduced by this change, and scope drift was avoided
       `a nested sub-bullet must not be treated as an unfilled Verdict bullet, got:\n${r.stdout}`);
   });
 
+  // -------------------------------------------------------------------------
+  // Fenced-code awareness (D-012): a fenced EXAMPLE inside the Verdict section
+  // was parsed as real Verdict bullets, so a fully-filled Verdict hard-ERRORed
+  // at CLOSE. This is the one false positive the v2.57.7/2.57.8 work
+  // introduced (clean at 0d2c73d), so it gets both a positive and a negative
+  // test — the fence must be skipped WITHOUT disabling the check.
+  // -------------------------------------------------------------------------
+  it("(i) a fenced example inside the Verdict is not parsed as Verdict bullets → clean at CLOSE", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd, { state: "CLOSE" });
+    writeVerification(planDir,
+`# Verification
+## Verdict
+The skeleton form looks like this:
+
+\`\`\`
+- Criteria passed: PENDING
+\`\`\`
+
+- Criteria passed: 12/12
+- Regressions: none
+- Scope drift: none
+- Simplification blockers: none
+- Recommendation: → CLOSE
+`);
+    const r = run(cwd);
+    assert.deepEqual(verdictLines(r.stdout), [],
+      `a fenced example must not be read as Verdict bullets, got:\n${r.stdout}`);
+  });
+
+  it("(i') `~~~` fences are skipped too", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd, { state: "CLOSE" });
+    writeVerification(planDir,
+`# Verification
+## Verdict
+~~~
+- Criteria passed: PENDING
+~~~
+
+- Criteria passed: 12/12
+- Regressions: none
+- Scope drift: none
+- Simplification blockers: none
+- Recommendation: → CLOSE
+`);
+    const r = run(cwd);
+    assert.deepEqual(verdictLines(r.stdout), [],
+      `a ~~~ fenced example must not be read as Verdict bullets, got:\n${r.stdout}`);
+  });
+
+  it("(j) a fence plus a genuinely PENDING real bullet → still ERROR at CLOSE (fence skipped, check intact)", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd, { state: "CLOSE" });
+    writeVerification(planDir,
+`# Verification
+## Verdict
+\`\`\`
+- Regressions: PENDING
+\`\`\`
+
+- Criteria passed: 12/12
+- Regressions: none
+- Scope drift: PENDING
+- Simplification blockers: none
+- Recommendation: → CLOSE
+`);
+    const r = run(cwd);
+    const lines = verdictLines(r.stdout);
+    assert.equal(lines.length, 1, `expected exactly one [verdict] line, got:\n${r.stdout}`);
+    assert.match(lines[0], /ERROR/);
+    assert.ok(lines[0].includes("Scope drift"),
+      `the real PENDING bullet must still be reported, got: ${lines[0]}`);
+    assert.ok(!lines[0].includes("Regressions"),
+      `the fenced example must not be reported, got: ${lines[0]}`);
+  });
+
+  it("(k) an UNTERMINATED fence marks nothing — the real bullets below it are still scanned", () => {
+    // Deliberate, pinned behavior: swallowing to end-of-section would empty the
+    // bullet list and trade one false positive for a `missing required
+    // bullet(s)` false positive plus a silent PENDING miss.
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd, { state: "CLOSE" });
+    writeVerification(planDir,
+`# Verification
+## Verdict
+\`\`\`
+- Criteria passed: 12/12
+- Regressions: none
+- Scope drift: none
+- Simplification blockers: none
+- Recommendation: → CLOSE
+`);
+    const r = run(cwd);
+    assert.deepEqual(verdictLines(r.stdout), [],
+      `an unterminated fence must not hide the real bullets below it, got:\n${r.stdout}`);
+  });
+
   it("(h) a required keyword inside a bullet's VALUE does not trip the order check", () => {
     // F-04's class, not just its verbatim reproduction: "recommended" in the
     // first bullet's value matched before the Recommendation LABEL.

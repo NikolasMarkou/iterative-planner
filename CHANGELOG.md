@@ -4,6 +4,26 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.57.9] - 2026-08-04
+
+**Fixes the one false positive 2.57.7/2.57.8 actually introduced — a fenced code example inside a `verification.md` Verdict was read as real Verdict bullets — and corrects two overstated claims in the 2.57.8 entry.** Found by a second adversarial review pass over a 38-fixture corpus.
+
+### Fixed
+
+- **A fenced code block inside the Verdict section was parsed as Verdict bullets.** A Verdict that shows the skeleton form as an example — ```` ``` ```` / `- Criteria passed: PENDING` / ```` ``` ```` — above five correctly filled bullets produced `ERROR [verdict]: … still unfilled (PENDING) at CLOSE: Criteria passed` on a fully-filled Verdict. It was clean before 2.57.7. Lines inside a terminated fence (``` or ~~~) are now skipped when the bullet list is built. An **unterminated** fence deliberately marks nothing: swallowing the rest of the section would empty the bullet list and trade this false positive for a `missing required bullet(s)` false positive plus a silently-skipped PENDING scan. All three behaviors are pinned by tests.
+
+### Changed
+
+- **The 2.57.8 note claiming "zero new ERRORs relative to `0d2c73d` on any fixture" now names its corpus.** That claim held only inside the executor's own 12 fixtures. Over a larger corpus, four further Verdict formats that validated clean before 2.57.7 now hard-ERROR with `missing required bullet(s)`: a **table** Verdict, a **prose-paragraph** Verdict, a `**Bold label**: value` **paragraph** Verdict, and **blockquoted** (`> - `) bullets. This is the residual, previously-undocumented tightening: **from 2.57.7 the five Verdict fields must be bullet-shaped lines** (`-`, `*`, `+`, `1.`, `1)`); tables, prose paragraphs and blockquotes are no longer accepted. `references/file-formats.md` states the five bullets as a MUST, so these four are spec-nonconforming and the tightening is kept — but it is a behavior change and is now stated as one.
+- **`CLAUDE.md` now records that a REFLECT-derived completion-fix loop must still use a numbered `iter-N/step-M`** in the plan changelog's `step` field. `iter-N/completion-fix` fails `CHANGELOG_SPEC`'s `STEP_RE` and has produced `WARN [changelog-malformed]` in two consecutive plans in this repo.
+
+### Notes
+
+- Deliberately **not** fixed here, and openly recorded rather than claimed closed: a nested sub-bullet is still treated as a Verdict field by the presence/order scan, so `- Criteria passed: 5/5` / `  - recommendation: none` / … still ERRORs with `not in required order`. That behavior is **identical at `0d2c73d`** — it predates this work and is not a regression — but it does falsify the "closes the whole class" wording in the 2.57.8 entry's third Fixed bullet. The class is closed for the PENDING scan and for keyword-in-value; it is not closed for the order scan. The fix needs a relative-indentation discriminator whose own edge case ("the entire list indented two spaces", currently clean) is unresolved, so it is left to its own change.
+- Before/after run repeated over 16 Verdict shapes x 3 states (48 runs) against `0d2c73d`, 2.57.8 and this build: **zero new ERRORs versus 2.57.8** on any shape; the fence false positive removed at REFLECT and CLOSE for both fence characters; every previously-clean shape (`-`/`*`/`+`/`1.`/`1)`, bold labels, nested sub-bullet, keyword-in-value, narrative-above-bullets) unchanged; skeleton all-PENDING, out-of-order and missing-bullet ERRORs unchanged.
+- `TEST_COUNT` 710 → 714 (+4, live run): fenced example skipped (``` and ~~~), fence-plus-a-genuinely-PENDING-real-bullet still ERRORs (proving the fence is skipped, not the check), and unterminated-fence behavior pinned. No assertion weakened; all 710 pre-existing tests pass unchanged.
+- PATCH bump. Zero files added, zero new abstractions, zero new gates or check slugs; +26 logic lines in one function. `make validate` / `make lint` / `make test` all green (714/714).
+
 ## [2.57.8] - 2026-08-04
 
 **Repairs a CLOSE-blocking false positive and a format regression that 2.57.7 shipped in `checkVerificationVerdict`.** Both were found by an adversarial review of the 2.57.7 diff, reproduced against the pre-2.57.7 validator (`0d2c73d`), and are fixed by one root change: every scan in that function now matches a bullet's parsed **label**, never free bullet text.
@@ -17,7 +37,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Notes
 
-- Verified the way the regression should have been caught the first time: the pre-2.57.7 validator was extracted (`git archive 0d2c73d src/scripts`) and both versions were run over 12 Verdict fixtures. Result — **zero new ERRORs** relative to `0d2c73d` on any fixture; two false ERRORs removed (keyword-in-value, narrative-above-bullets); the two intended new ERRORs (skeleton `PENDING` at CLOSE, partially-filled at CLOSE) present; genuine disorder and genuinely missing bullets still ERROR unchanged.
+- Verified the way the regression should have been caught the first time: the pre-2.57.7 validator was extracted (`git archive 0d2c73d src/scripts`) and both versions were run over 12 Verdict fixtures. Result — **zero new ERRORs** relative to `0d2c73d` *within those 12 fixtures* (a review over a wider corpus later found more; see 2.57.9 below, which names them and states the residual tightening); two false ERRORs removed (keyword-in-value, narrative-above-bullets); the two intended new ERRORs (skeleton `PENDING` at CLOSE, partially-filled at CLOSE) present; genuine disorder and genuinely missing bullets still ERROR unchanged.
 - `TEST_COUNT` 707 → 710 (+3, live run): a **"previously-clean Verdict formats stay clean"** corpus test (`-`, `*`, `+`, `1.`, `1)` and bold `- **Criteria passed**:` labels, at REFLECT and CLOSE — the bold form appears in `file-formats.md` prose and had never been tested), the nested-sub-bullet fixture at CLOSE, and the keyword-in-value fixture. The absence of a preserved-behavior corpus test is precisely why 2.57.7's regression shipped invisibly; 2.57.7 added 8 tests, all asserting new behavior only.
 - No test assertion was weakened: all 707 pre-existing tests pass unchanged.
 - Root cause of the 2.57.7 defect, recorded for the record: the pre-mortem's own STOP-IF for this change ("run the new check against several existing plans") could not fire, because `plans/` in this repo held exactly one plan directory — the in-flight plan itself. It was logged as "half-testable" and waved through when it should have been logged as NOT SATISFIED.

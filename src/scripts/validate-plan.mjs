@@ -1123,9 +1123,36 @@ function checkVerificationVerdict(planDir, issues) {
   // Narrowing this to `-`/`*` regressed previously-clean numbered-list Verdicts
   // to a hard `missing required bullet(s)` ERROR — do NOT re-narrow it.
   const BULLET_RE = /^\s*(?:[-*+]|\d+[.)])\s+(.*)$/;
+  const verdictLines = verdict.split("\n");
+
+  // A fenced code block inside the Verdict holds an EXAMPLE, not Verdict
+  // fields. Scanning it treated `- Criteria passed: PENDING` inside a fence as
+  // a real bullet and produced a CLOSE-blocking ERROR on a fully-filled
+  // Verdict (D-012). Both ``` and ~~~ fences are recognized; a fence of the
+  // other character inside an open fence is content, not a delimiter.
+  //
+  // UNTERMINATED fence: deliberately marks NOTHING. Swallowing the rest of the
+  // section would empty `bullets` and trade this false positive for a
+  // `missing required bullet(s)` false positive plus a silently-skipped
+  // PENDING scan — strictly worse. An unclosed fence is a malformed document,
+  // and the safe reading of a malformed document is the pre-fence one.
+  const FENCE_RE = /^\s*(`{3,}|~{3,})/;
+  const fenced = new Array(verdictLines.length).fill(false);
+  let openAt = -1;
+  let openChar = "";
+  for (let i = 0; i < verdictLines.length; i++) {
+    const f = FENCE_RE.exec(verdictLines[i]);
+    if (!f) continue;
+    if (openAt === -1) { openAt = i; openChar = f[1][0]; continue; }
+    if (f[1][0] !== openChar) continue;
+    for (let j = openAt; j <= i; j++) fenced[j] = true;
+    openAt = -1;
+  }
+
   const bullets = [];
-  for (const line of verdict.split("\n")) {
-    const b = BULLET_RE.exec(line);
+  for (let i = 0; i < verdictLines.length; i++) {
+    if (fenced[i]) continue;
+    const b = BULLET_RE.exec(verdictLines[i]);
     if (!b) continue;
     const body = b[1];
     const sep = /^(.+?):\s*(.*)$/.exec(body);
