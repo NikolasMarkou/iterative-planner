@@ -1,8 +1,8 @@
 # Iterative Planner
 
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Skill](https://img.shields.io/badge/Skill-v2.57.9-green.svg)](CHANGELOG.md)
-[![Tests](https://img.shields.io/badge/tests-737%20passing-brightgreen.svg)](src/scripts/bootstrap.test.mjs)
+[![Skill](https://img.shields.io/badge/Skill-v2.58.0-green.svg)](CHANGELOG.md)
+[![Tests](https://img.shields.io/badge/tests-739%20passing-brightgreen.svg)](src/scripts/bootstrap.test.mjs)
 [![Sponsored by Electi](https://img.shields.io/badge/Sponsored%20by-Electi-red.svg)](https://www.electiconsulting.com)
 
 **A [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skill that stops an agent from losing the plot halfway through a hard task.**
@@ -431,7 +431,7 @@ Commits are the agent's undo history, and the protocol is deliberate about when 
 | Phase | Git behavior |
 |-------|-------------|
 | EXPLORE / PLAN / REFLECT / PIVOT | No commits. |
-| EXECUTE (success) | Commit after each step: `[plan-YYYY-MM-DD-HASH/iter-N/step-M] description`. Tag id = the plan-dir name with the `THHMMSS` segment dropped (`plan-2026-07-14T051317-317362c4` → `plan-2026-07-14-317362c4`); a legacy dir derives the same way with `_` normalized to `-`. The changelog's own `step` field stays bare `iter-N/step-M`. |
+| EXECUTE (success) | Commit after each step: `[plan-YYYY-MM-DD-HASH/iter-N/step-M] description`. Tag id = the plan-dir name with the `THHMMSS` segment dropped (`plan-2026-07-14T051317-317362c4` → `plan-2026-07-14-317362c4`); a legacy dir derives the same way with `_` normalized to `-`. The changelog's own `step` field carries no such prefix — it always names a numbered step, `iter-N/step-M`, or `iter-N/step-M.K` for a completion fix on step M. |
 | EXECUTE (failure) | Revert all uncommitted changes to the last clean commit. |
 | PIVOT | Decide: keep successful commits, or `git checkout <checkpoint-commit> -- .` to revert. Choice logged in `decisions.md`. |
 | CLOSE | Finalizes **on disk**: writes `summary.md`, audits DECISION anchors, rewrites `plans/LESSONS.md` + `plans/SYSTEM.md`, merges the consolidated cross-plan files, then runs `bootstrap.mjs close`. **No git commit or tag is created** — a summarizing commit/tag at CLOSE is a documented, deferred spec item, not yet implemented (no agent or script issues any git commit/tag). |
@@ -496,7 +496,7 @@ node --test src/scripts/bootstrap.test.mjs \
             src/scripts/check-agent-wiring.test.mjs \
             src/scripts/check-template-parity.test.mjs \
             src/scripts/check-register.test.mjs
-# 737 tests across 14 suites: bootstrap 246, validate-plan 152, shared 71, schema 53,
+# 739 tests across 14 suites: bootstrap 248, validate-plan 152, shared 71, schema 53,
 #                  check-agent-wiring 52, blast-radius 41, check-template-parity 40,
 #                  check-test-count 17, check-doc-parity 17, emit-state 12,
 #                  emit-template 11, check-register 11, check-changelog-parity 8,

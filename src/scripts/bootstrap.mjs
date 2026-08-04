@@ -206,8 +206,13 @@ function releaseLock() {
 // then reported twice. Same class of bug as the HTML-span hole closed in shared.mjs.
 // Do not "simplify" the concatenation, and do not restore the literal to the prose.
 const GITIGNORE_PLANS_PATTERNS = ["plans/" + "*", "!plans/ANCHORS.md"];
-// The pattern older bootstraps wrote, migrated in place by ensureGitignore.
-const GITIGNORE_LEGACY_PLANS_PATTERN = "plans/";
+// The directory patterns migrated in place by ensureGitignore: the one older
+// bootstraps wrote, plus the leading-slash spelling a human writes by hand. Both
+// shadow the negation the same way, so recognizing only the first left the manifest
+// permanently ignored in any project whose .gitignore said `/plans/` — with no error.
+// Both are root-anchored, and so is the replacement (a pattern with a middle slash is
+// relative to the .gitignore's own directory), so the migration changes no else-set.
+const GITIGNORE_LEGACY_PLANS_PATTERNS = ["plans/", "/plans/"];
 
 function ensureGitignore() {
   const gitignorePath = join(cwd, ".gitignore");
@@ -218,16 +223,19 @@ function ensureGitignore() {
     // No .gitignore yet — will create
   }
   // DECISION plan-2026-08-04T092155-0063b038/D-009 — the legacy-line match is EXACT
-  // (after trimming the line), never a substring, `startsWith`, or regex over "plans".
-  // This function edits the .gitignore of every consuming project, so a loose match
-  // silently rewrites a user's unrelated rule: `myplans/`, `plans/tmp`, `plans/tmp/`
-  // and a commented-out `# plans/` all contain the token and all must survive
-  // byte-identical. Trimming is deliberate (a padded `  plans/  ` is the same intent);
-  // matching anything wider is not. See decisions.md D-009.
+  // (after trimming the line) against a CLOSED LIST of spellings, never a substring,
+  // `startsWith`, or regex over "plans". This function edits the .gitignore of every
+  // consuming project, so a loose match silently rewrites a user's unrelated rule:
+  // `myplans/`, `plans/tmp`, `plans/tmp/` and a commented-out `# plans/` all contain
+  // the token and all must survive byte-identical. Trimming is deliberate (a padded
+  // `  plans/  ` is the same intent); matching anything wider is not. Growing the list
+  // is how a new spelling is admitted — one literal at a time, each one a directory
+  // pattern that shadows the negation — never by loosening the comparison. See
+  // decisions.md D-009 and D-014.
   const lines = content.split("\n");
   let migrated = false;
   const out = lines.map((line) => {
-    if (line.trim() !== GITIGNORE_LEGACY_PLANS_PATTERN) return line;
+    if (!GITIGNORE_LEGACY_PLANS_PATTERNS.includes(line.trim())) return line;
     migrated = true;
     return GITIGNORE_PLANS_PATTERNS[0];
   });

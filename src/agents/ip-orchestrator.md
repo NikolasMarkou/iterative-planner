@@ -203,7 +203,7 @@ Floor: items 2 and 4 are non-negotiable.
 
 ### CLOSE State
 1. Spawn ip-archivist with all plan files
-2. Verify — confirm all of (unordered; the archivist's own Steps 1-7 order is authoritative): summary.md written; decision anchors audited; LESSONS.md + SYSTEM.md updated with their post-rewrite validator gates run clean (ip-archivist Steps 4-5); close ran; consolidated files compressed if >500 lines (ip-archivist Step 7)
+2. Verify — confirm all of (unordered; the archivist's own Steps 1-7 order is authoritative): summary.md written; decision anchors audited; this plan's anchored decisions appended to `plans/ANCHORS.md` (ip-archivist Step 2 — without it the manifest silently stops growing and this plan's anchors stop resolving once its directory is gone); LESSONS.md + SYSTEM.md updated with their post-rewrite validator gates run clean (ip-archivist Steps 4-5); close ran; consolidated files compressed if >500 lines (ip-archivist Step 7)
 3. Confirm ip-archivist already ran `bootstrap.mjs close` (the .current_plan pointer is gone) — do NOT run it again; a second call throws ENOCLOSE (thrown by `bootstrap.mjs`'s `cmdCloseInner` no-active-plan branch). If the pointer is STILL present, the archivist did not close — run `bootstrap.mjs close` once yourself (the ENOCLOSE prohibition applies only after a successful close has removed the pointer).
 
 ## Critical Rules

@@ -413,6 +413,53 @@ describe("bootstrap.mjs", () => {
       assert.ok(afterLines.includes("!plans/ANCHORS.md"), "the negation is added");
       assert.ok(!afterLines.some((l) => l.trim() === "plans/"), "no legacy line remains");
     });
+
+    it("migrates the leading-slash `/plans/` spelling too — otherwise it shadows the negation forever", () => {
+      const dir = getTempDir();
+      // A hand-written `/plans/` is a directory pattern just like `plans/`, so it
+      // hides the manifest and the negation appended below it can never fire. Both
+      // are root-anchored, and so is the replacement, so nothing else changes.
+      const before = ["node_modules/", "/plans/", "docs/", ""].join("\n");
+      writeFileSync(join(dir, ".gitignore"), before);
+      run(dir, "new", "Test goal");
+      const afterLines = readFileSync(join(dir, ".gitignore"), "utf-8").split("\n");
+
+      assert.equal(afterLines[1], PLANS_GLOB, "the leading-slash line is rewritten in place");
+      assert.deepEqual(
+        [afterLines[0], afterLines[2]],
+        ["node_modules/", "docs/"],
+        "no other line may be touched"
+      );
+      assert.ok(afterLines.includes("!plans/ANCHORS.md"), "the negation is added");
+      assert.ok(
+        !afterLines.some((l) => l.trim() === "/plans/"),
+        "no shadowing directory pattern may remain, or the manifest stays ignored with no error"
+      );
+    });
+
+    it("the leading-slash migration is exact too — `/plans/` near-misses survive byte-identical", () => {
+      const dir = getTempDir();
+      const before = [
+        "/myplans/",
+        "/plans/tmp",
+        "/plans/tmp/",
+        "# /plans/",
+        "/replans/",
+        "  /plans/  ",
+        "",
+      ].join("\n");
+      writeFileSync(join(dir, ".gitignore"), before);
+      run(dir, "new", "Test goal");
+      const afterLines = readFileSync(join(dir, ".gitignore"), "utf-8").split("\n");
+
+      assert.deepEqual(
+        afterLines.slice(0, 5),
+        ["/myplans/", "/plans/tmp", "/plans/tmp/", "# /plans/", "/replans/"],
+        "near-miss lines must be byte-identical"
+      );
+      assert.equal(afterLines[5], PLANS_GLOB, "only the exact literal (after trim) is migrated");
+      assert.ok(afterLines.includes("!plans/ANCHORS.md"), "the negation is added");
+    });
   });
 
   // =========================================================================
@@ -2960,7 +3007,7 @@ describe("bootstrap.mjs", () => {
     const CHANGELOG_HEADER = [
       "# Changelog",
       "*Append-only per-edit ledger. One line per file edit. Owner: ip-executor (writes). Reader: ip-reviewer at REFLECT.*",
-      "*Format: `UTC | iter-N/step-M | commit | path | OP(+N,-M) | radius:TIER(score) | D-NNN-or-dash | reason`*",
+      "*Format: `UTC | iter-N/step-M[.K] | commit | path | OP(+N,-M) | radius:TIER(score) | D-NNN-or-dash | reason`*",
       "*See references/blast-radius.md for radius scoring. Decision-ref optional — `-` means no `# DECISION` anchor governs this edit.*"
     ];
 
