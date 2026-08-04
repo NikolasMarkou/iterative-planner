@@ -2233,6 +2233,217 @@ describe("F2 narrowing: collectKnownDecisionIdsByPlan reads only referenced plan
 });
 
 // ---------------------------------------------------------------------------
+// plan-2026-08-04T092155-0063b038 step 3 — the durable resolver tier: the
+// committed manifest plans/ANCHORS.md. The point of the tier is that a
+// qualified anchor resolves with NO plan directory and NO consolidated
+// section, because in a consuming project the plans directory is gitignored
+// and neither of those artifacts survives a fresh clone.
+//
+// Two grammars matter here, not one: 2 of the 8 real plan-ids anchored in this
+// repo use the legacy `plan_YYYY-MM-DD_XXXXXXXX` shape and account for 20 of
+// the 39 findings, so the legacy case is tested in its own right, not assumed.
+// ---------------------------------------------------------------------------
+
+const MANIFEST_HEADER =
+`# Decision Anchor Manifest
+*Committed, append-only. One line per anchored decision.*
+`;
+
+/** Write plans/ANCHORS.md with the header plus the given raw entry lines. */
+function writeManifest(cwd, lines) {
+  mkdirSync(join(cwd, "plans"), { recursive: true });
+  writeFileSync(join(cwd, "plans", "ANCHORS.md"), MANIFEST_HEADER + lines.join("\n") + (lines.length ? "\n" : ""));
+}
+
+// Read-counting harness. The spy MUST be installed before validate-plan.mjs is
+// imported: an `import { readFileSync } from "fs"` binding is snapshotted when
+// the builtin's ESM facade is first instantiated, so patching the CJS module
+// afterwards (as this test file, which imported fs at the top, would have to)
+// is silently ineffective. Hence a child process that patches first, imports
+// second. `totalReads` is reported so a spy that failed to take effect fails
+// LOUDLY instead of reporting a comfortable manifestReads of 0.
+const READ_SPY_SRC = `
+const cjs = require("fs");
+const orig = cjs.readFileSync;
+let seen = [];
+cjs.readFileSync = function (...a) { seen.push(String(a[0])); return orig.apply(this, a); };
+// The module path is deliberately NOT argv[1]: validate-plan.mjs's isEntryPoint
+// guard compares against argv[1], and handing it the module path there makes the
+// import run the CLI instead of just exporting.
+const href = require("url").pathToFileURL(process.argv[5]).href;
+import(href).then((m) => {
+  seen = [];
+  const map = m.collectKnownDecisionIdsByPlan(
+    process.argv[1], process.argv[2], new Set(JSON.parse(process.argv[4])), process.argv[3]);
+  const reads = seen.slice();
+  cjs.readFileSync = orig;
+  const out = {};
+  for (const [k, v] of map) out[k] = [...v].sort((x, y) => x - y);
+  process.stdout.write(JSON.stringify({
+    map: out,
+    totalReads: reads.length,
+    manifestReads: reads.filter((p) => p.endsWith("ANCHORS.md")).length,
+  }));
+});
+`;
+
+function collectWithReadCount(planDir, planId, baseDir, referenced = []) {
+  const r = spawnSync("node",
+    ["-e", READ_SPY_SRC, planDir, planId, baseDir, JSON.stringify(referenced), VALIDATOR],
+    { encoding: "utf-8", timeout: 15000 });
+  assert.equal(r.status, 0, `spy harness failed (${r.status}):\n${r.stderr}`);
+  const parsed = JSON.parse(r.stdout);
+  assert.ok(parsed.totalReads > 0,
+    "the read spy observed zero reads — the patch did not take effect, so any read count it reports is meaningless");
+  return parsed;
+}
+
+describe("resolver tier 4: the committed plans/ANCHORS.md manifest", () => {
+  const tempDirs = [];
+  function getTempDir() { const d = makeTempDir(); tempDirs.push(d); return d; }
+  afterEach(() => { while (tempDirs.length) removeTempDir(tempDirs.pop()); });
+
+  const GONE_NEW = "plan-2026-03-09T081500-9f9f9f9f";
+  const GONE_LEGACY = "plan_2026-03-10_a1b2c3d4";
+
+  it("(a) a qualified anchor resolves from the manifest ALONE — no plan dir, no consolidated section", () => {
+    const cwd = getTempDir();
+    writePlan(cwd);
+    writeFileSync(join(cwd, "doc.md"),
+      "# Doc\n\n<!-- DECISION " + GONE_NEW + "/D-004 — its plan directory is long gone -->\n");
+
+    const without = run(cwd);
+    assert.match(without.stdout, /ERROR\s+\[anchor-unknown-plan\][^\n]*D-004/,
+      `sanity: unresolved before the manifest lists it, got:\n${without.stdout}`);
+
+    writeManifest(cwd, [`${GONE_NEW}/D-004 | 2026-03-09 | fixture rationale`]);
+    const withManifest = run(cwd);
+    assert.doesNotMatch(withManifest.stdout, /\[anchor-unknown-plan\]/,
+      `the manifest line alone must resolve the anchor, got:\n${withManifest.stdout}`);
+    assert.doesNotMatch(withManifest.stdout, /\[anchor-orphan\]/,
+      `D-004 is listed, so it is not an orphan, got:\n${withManifest.stdout}`);
+    assert.ok(!readdirSync(join(cwd, "plans")).includes(GONE_NEW),
+      "the fixture must contain NO directory for the resolved plan — that is the whole point");
+  });
+
+  it("(a2) the same holds for a LEGACY-grammar plan-id (2 of this repo's 8 anchored ids, 20 of its 39 findings)", () => {
+    const cwd = getTempDir();
+    writePlan(cwd);
+    writeFileSync(join(cwd, "doc.md"),
+      "# Doc\n\n<!-- DECISION " + GONE_LEGACY + "/D-011 — legacy-shaped id -->\n");
+    writeManifest(cwd, [`${GONE_LEGACY}/D-011 | 2026-03-10 | fixture rationale`]);
+    const r = run(cwd);
+    assert.doesNotMatch(r.stdout, /\[anchor-unknown-plan\]/,
+      `a legacy plan-id must resolve from the manifest too, got:\n${r.stdout}`);
+    assert.doesNotMatch(r.stdout, /\[anchor-orphan\]/, r.stdout);
+  });
+
+  it("(b) an id present in NO tier still ERRORs [anchor-unknown-plan] — the manifest only ever adds real, closed ids", () => {
+    const cwd = getTempDir();
+    writePlan(cwd);
+    writeFileSync(join(cwd, "doc.md"),
+      "# Doc\n\n<!-- DECISION " + GONE_NEW + "/D-004 — listed -->\n" +
+      "<!-- DECISION " + GONE_LEGACY + "/D-004 — typo'd id, listed nowhere -->\n");
+    writeManifest(cwd, [`${GONE_NEW}/D-004 | 2026-03-09 | fixture rationale`]);
+    const r = run(cwd);
+    assert.match(r.stdout, new RegExp(`ERROR\\s+\\[anchor-unknown-plan\\][^\\n]*${GONE_LEGACY}`),
+      `an unlisted id must still hard-ERROR, got:\n${r.stdout}`);
+    assert.doesNotMatch(r.stdout, new RegExp(`\\[anchor-unknown-plan\\][^\\n]*${GONE_NEW}`),
+      `the listed id must NOT be reported, got:\n${r.stdout}`);
+  });
+
+  it("(c) an id listed in the manifest with an UNLISTED D-NNN ERRORs [anchor-orphan]", () => {
+    const cwd = getTempDir();
+    writePlan(cwd);
+    writeFileSync(join(cwd, "doc.md"),
+      "# Doc\n\n<!-- DECISION " + GONE_NEW + "/D-004 — listed -->\n" +
+      "<!-- DECISION " + GONE_NEW + "/D-077 — same plan, decision never recorded -->\n");
+    writeManifest(cwd, [`${GONE_NEW}/D-004 | 2026-03-09 | fixture rationale`]);
+    const r = run(cwd);
+    assert.match(r.stdout, /ERROR\s+\[anchor-orphan\][^\n]*D-077/,
+      `an unlisted decision under a listed plan must still be an orphan ERROR, got:\n${r.stdout}`);
+    assert.doesNotMatch(r.stdout, /\[anchor-orphan\][^\n]*D-004/, r.stdout);
+  });
+
+  it("(d) an ABSENT manifest is a pure no-op — output byte-identical to an empty and to a header-only one", () => {
+    const cwd = getTempDir();
+    writePlan(cwd);
+    writeFileSync(join(cwd, "doc.md"),
+      "# Doc\n\n<!-- DECISION " + GONE_NEW + "/D-004 — nothing resolves this -->\n");
+
+    const absent = run(cwd);
+    assert.match(absent.stdout, /ERROR\s+\[anchor-unknown-plan\][^\n]*D-004/,
+      `sanity: the pre-change finding must be present, got:\n${absent.stdout}`);
+
+    writeFileSync(join(cwd, "plans", "ANCHORS.md"), "");
+    const empty = run(cwd);
+    assert.equal(empty.stdout, absent.stdout, "an empty manifest must change nothing");
+    assert.equal(empty.exitCode, absent.exitCode);
+
+    writeManifest(cwd, []);
+    const headerOnly = run(cwd);
+    assert.equal(headerOnly.stdout, absent.stdout, "a header-only manifest must change nothing");
+    assert.equal(headerOnly.exitCode, absent.exitCode);
+  });
+
+  it("(e) garbage, truncated and prose lines are ignored silently — and an id-shaped string INSIDE a rationale registers nothing", () => {
+    const cwd = getTempDir();
+    writePlan(cwd);
+    writeFileSync(join(cwd, "doc.md"),
+      "# Doc\n\n<!-- DECISION " + GONE_NEW + "/D-004 — the one real line -->\n" +
+      "<!-- DECISION " + GONE_LEGACY + "/D-011 — only ever named inside prose -->\n");
+    writeManifest(cwd, [
+      "",
+      "<!-- backfilled from source anchors at close; see plan.md step 4 -->",
+      "not a line at all",
+      GONE_LEGACY,                                  // truncated: no /D-NNN
+      `${GONE_LEGACY}/D-011`,                       // no pipe delimiter
+      `${GONE_LEGACY}/D-011 2026-03-10 rationale`,  // delimiter missing entirely
+      `  ${GONE_LEGACY}/D-011 | 2026-03-10 | indented, so not a line-start id`,
+      `see also ${GONE_LEGACY}/D-011 | prose that merely mentions an id`,
+      `${GONE_NEW}/D-004 | 2026-03-09 | the one line that IS an entry`,
+      `${GONE_NEW}/D-` ,                            // truncated mid-id
+      "|||",
+    ]);
+
+    const r = run(cwd);
+    assert.doesNotMatch(r.stdout, new RegExp(`\\[anchor-unknown-plan\\][^\\n]*${GONE_NEW}`),
+      `the one well-formed line must still parse — otherwise this test is vacuous, got:\n${r.stdout}`);
+    assert.match(r.stdout, new RegExp(`ERROR\\s+\\[anchor-unknown-plan\\][^\\n]*${GONE_LEGACY}`),
+      `an id named only inside prose/garbage must NOT register — a loose regex here silently satisfies anchors, got:\n${r.stdout}`);
+    assert.ok(r.exitCode !== null, "the validator must not throw on a garbage manifest");
+  });
+
+  it("(f) 50 decoy plan dirs change neither the result nor the read count — the manifest is read exactly ONCE", () => {
+    const cwd = getTempDir();
+    const plansFix = join(cwd, "plans");
+    const active = "plan-2026-06-01T101010-aaaa1111";
+    writeDecisionsFixture(join(plansFix, active), active, "D-001");
+    writeFileSync(join(plansFix, "ANCHORS.md"), MANIFEST_HEADER +
+      `${GONE_NEW}/D-004 | 2026-03-09 | fixture rationale\n` +
+      `${GONE_LEGACY}/D-011 | 2026-03-10 | fixture rationale\n`);
+
+    const before = collectWithReadCount(join(plansFix, active), active, plansFix, []);
+    assert.equal(before.manifestReads, 1, "the manifest must be read exactly once per full collection");
+    assert.deepEqual(before.map[GONE_NEW], [4]);
+    assert.deepEqual(before.map[GONE_LEGACY], [11]);
+
+    for (let i = 0; i < 50; i++) {
+      const d = `plan-2026-07-${String((i % 28) + 1).padStart(2, "0")}T${String(i).padStart(6, "0")}-dec0${String(i).padStart(4, "0")}`;
+      writeDecisionsFixture(join(plansFix, d), d, "D-042");
+    }
+
+    const after = collectWithReadCount(join(plansFix, active), active, plansFix, []);
+    assert.deepEqual(after.map, before.map,
+      "50 decoy plan dirs must not change the resolved map");
+    assert.equal(after.manifestReads, 1,
+      "the manifest read count must be independent of how many plan directories exist");
+    assert.equal(after.totalReads, before.totalReads,
+      "the total read count must not grow with plan-dir count — that would restore the forbidden full-corpus walk");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // plan-2026-07-31T203947-de0ded98 step 7 — ANCHOR_SOURCE_EXTS grown to 33
 // members (step 4) means 16 previously-ghosted extensions are now scanned.
 // Prove two representative additions (one hash-family, one slash-family) are

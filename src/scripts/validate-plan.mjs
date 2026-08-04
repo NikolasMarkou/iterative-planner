@@ -1491,9 +1491,17 @@ function findBadPrefixAnchorsInFile(file, projectRoot) {
 // file reads per full validation, unbounded as closed plans accumulate, and the sole
 // consumer only ever looks up plan-ids it found in source anchors. Do NOT replace it with a
 // committed/generated index file either — that adds a staleness surface (index diverging
-// from the per-plan files) plus an artifact class this repo has explicitly rejected. The
-// complete read set is {active plan ∪ referenced plans} + consolidated plans/DECISIONS.md
-// (sliding-window trimming means either source may be the sole holder of a plan's entries).
+// from the per-plan files) plus an artifact class this repo has explicitly rejected.
+// AMENDED 2026-08-04 (v2.58.0): that prohibition is about a REPLACEMENT index DERIVED from
+// the per-plan files — a copy that can silently diverge from its source. It still stands.
+// The manifest tier added below is ADDITIVE, is not derived from anything (it is written
+// once at CLOSE by the file's owner, from the closing plan's own decisions.md), and is the
+// only tier that survives the plans directory being gitignored — which it is, in every
+// consuming project. Its staleness mode is "a line is missing", which produces exactly
+// today's ERROR rather than a false PASS. The O(all-plan-dirs) walk stays forbidden.
+// The complete read set is {active plan ∪ referenced plans} + consolidated plans/DECISIONS.md
+// (sliding-window trimming means either source may be the sole holder of a plan's entries)
+// + the one committed plans/ANCHORS.md manifest.
 // `baseDir` exists solely so tests can point at a fixture tree — the module-level
 // `plansDir` binds to cwd at import time. Exported for the decoy-dirs unit test.
 // See plan-2026-07-16T164852-47577439/decisions.md D-001.
@@ -1539,6 +1547,33 @@ export function collectKnownDecisionIdsByPlan(planDir, activePlanName, reference
       if (ps) { currentPlan = ps[1]; continue; }
       const de = dashEntryRe.exec(line);
       if (de && currentPlan) add(currentPlan, parseInt(de[1], 10));
+    }
+  }
+
+  // Committed manifest plans/ANCHORS.md — the durable tier. One line per anchored
+  // decision: `<plan-id>/D-NNN | YYYY-MM-DD | one-line rationale`. Read EXACTLY
+  // ONCE per full validation: O(1) file reads and O(manifest lines) parse,
+  // independent of how many plan directories exist. Never runs on the --pre-step
+  // path, which bypasses the full validator entirely.
+  //
+  // DECISION plan-2026-08-04T092155-0063b038/D-010 — do NOT generate these lines by
+  // scanning `# DECISION` anchors out of source. That would make an anchor its own
+  // proof of validity: a typo'd plan-id would write itself into the manifest and then
+  // resolve, silently retiring the typo detection anchor-unknown-plan exists to
+  // provide (plan criterion C-13). The manifest is written from the closing plan's own
+  // decisions.md, which is the authoritative record. And do NOT widen this line regex
+  // toward free text — it is anchored at line start and requires the pipe delimiter
+  // immediately after the id so that ordinary prose, including a rationale that
+  // happens to mention another id, can never register a decision. A loose regex here
+  // makes unrelated text silently satisfy anchors. See decisions.md D-010.
+  const manifest = readFile(join(baseDir, "ANCHORS.md"));
+  if (manifest) {
+    const manifestLineRe = new RegExp(
+      `^(${ANY_PLAN_ID_PATTERN})\\/D-(${DECISION_ID_NUM_PATTERN})[ \\t]*\\|`,
+    );
+    for (const line of manifest.split("\n")) {
+      const mm = manifestLineRe.exec(line);
+      if (mm) add(mm[1], parseInt(mm[2], 10));
     }
   }
 
