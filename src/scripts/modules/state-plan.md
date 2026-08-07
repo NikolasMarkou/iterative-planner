@@ -18,5 +18,5 @@
 - Read then write `state.md` + `progress.md`.
 - List **every file** to modify/create. Can't list them → go back to EXPLORE.
 - Only recommended approach in plan. Alternatives → `decisions.md`.
-- Wait for explicit user approval. Before requesting approval, emit **PC-PLAN** (Plan Presentation contract — see `references/file-formats.md` "Presentation Contracts"): the orchestrator renders `plan.md` verbatim per the floor (Steps, Success Criteria, Verification Strategy, Failure Modes, Assumptions). Same contract on re-presentation after revisions.
+- Wait for explicit user approval. Before requesting approval, emit **PC-PLAN** (Plan Presentation contract — see `references/file-formats.md` "Presentation Contracts"): Goal verbatim + a 2-4 sentence summary + the full Steps list verbatim + the `plan.md` path (the rest of the plan is read from the file, not pasted into chat) + the approval prompt. Never truncate the Steps. Same contract on re-presentation after revisions.
 

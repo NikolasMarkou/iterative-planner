@@ -57,10 +57,10 @@ Write chosen approach to decisions.md with trade-off framing:
 
 ## Output Format
 
-The orchestrator consumes your return text to render the **PC-PLAN** Presentation Contract (see `references/file-formats.md` "Presentation Contracts"). Sub-agents are invisible to the user — your return text is for the orchestrator, but the orchestrator must render `plan.md` **verbatim** to the user. Therefore your return MUST include:
+The orchestrator consumes your return text to render the **PC-PLAN** Presentation Contract (see `references/file-formats.md` "Presentation Contracts"). Sub-agents are invisible to the user — your return text is for the orchestrator, which shows the user the Goal and Steps verbatim, a short summary, and the **path** to `plan.md` for everything else. Therefore your return MUST include:
 
-1. **`plan.md` path** — absolute or repo-relative path to the file you wrote.
+1. **`plan.md` path** — absolute or repo-relative path to the file you wrote. Load-bearing: the orchestrator prints this path to the user, and it is how they read the sections that do not go in chat. A wrong path means the user cannot see the plan at all.
 2. **Section anchors** — list every required section header you wrote (`## Goal`, `## Problem Statement`, `## Context`, `## Files To Modify`, `## Steps`, `## Assumptions`, `## Failure Modes`, `## Pre-Mortem & Falsification Signals`, `## Success Criteria`, `## Verification Strategy`, `## Complexity Budget`). Confirm presence — missing sections block the orchestrator.
-3. **One-paragraph digest** — for the orchestrator's pre-render summary only. NOT a substitute for plan.md content. The orchestrator will render plan.md verbatim per PC-PLAN floor (Steps, Success Criteria, Verification Strategy, Failure Modes, Assumptions are the verbatim floor; longer prose sections may be condensed only if the floor renders in full).
+3. **One-paragraph digest** — chosen approach, scope, and what it costs. This is the raw material for PC-PLAN's user-visible summary, so write it for a reader: no jargon the plan itself has not introduced. It is NOT a substitute for plan.md content.
 
-The orchestrator will NOT paraphrase plan.md. Your job is to produce a complete plan.md whose verbatim content is itself the user-visible artifact.
+Only Goal and Steps reach the user verbatim; the rest of `plan.md` is read from the file. So a section written vaguely is not smoothed over by the orchestrator's summary — it is what the user finds when they open the file. Write every section to be read on its own.

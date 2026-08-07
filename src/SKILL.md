@@ -372,7 +372,7 @@ Sub-agents are invisible to the user — only the orchestrator's chat text reach
 | State | Contract | Behavior |
 |-------|----------|----------|
 | EXPLORE | **PC-EXPLORE** (Findings Digest) | Ask focused questions, one at a time. At handoff, emit findings index + key constraints (HARD/SOFT/GHOST) verbatim, plus exploration confidence and a synthesis paragraph. |
-| PLAN | **PC-PLAN** (Plan Presentation) | Render `plan.md` verbatim. Floor (always render): Steps, Success Criteria, Verification Strategy, Failure Modes, Assumptions. Wait for approval. Re-present same contract if modified. |
+| PLAN | **PC-PLAN** (Plan Presentation) | Goal verbatim + 2-4 sentence summary + **every** step verbatim + the `plan.md` path for the rest (assumptions, failure modes, success criteria, verification strategy, pre-mortem, complexity budget). Never truncate the Steps. Wait for approval. Re-present same contract if modified. |
 | EXECUTE | **PC-EXECUTE-STEP** (Per-Step Status) / **PC-EXECUTE-LEASH** (Leash Failure) | After each successful step: 5 fields (step + files + commit + surprises + next-preview). On leash hit: 5 fields (step intent + 2 attempts + root-cause guess + checkpoint registry + prompt). |
 | REFLECT | **PC-REFLECT** (Phase-3 Gate-Out 5-Item Block) | Exactly 5 items: completed / remaining / verification table verbatim / issues + reviewer concerns / recommendation + prompt. **Ask** user: close, pivot, explore, or execute. Never auto-close. |
 | PIVOT | **PC-PIVOT** (Pivot Options) | Pivot reason + checkpoint registry (verbatim) + ghost constraints + 1-3 candidate directions ("X at the cost of Y") + explicit prompt for direction and keep-vs-revert. |

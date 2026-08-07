@@ -79,18 +79,11 @@ Floor (must always render): items 1 and 2 verbatim. Items 3-4 may be condensed b
 **User-Visible Presentation (PC-PLAN — Plan Presentation)**
 At PLAN → EXECUTE handoff, BEFORE requesting user approval, emit a chat block containing, in order:
 1. Goal (verbatim from plan.md).
-2. Problem Statement — expected behavior, invariants, edge cases (verbatim).
-3. Context — relevant background (verbatim).
-4. Files To Modify (verbatim table).
-5. Steps — every step with risk/dependency annotations (verbatim).
-6. Assumptions (verbatim table).
-7. Failure Modes (verbatim table).
-8. Pre-Mortem & Falsification Signals (verbatim).
-9. Success Criteria (verbatim table).
-10. Verification Strategy (verbatim table).
-11. Complexity Budget (verbatim).
-12. Explicit prompt: "Approve to enter EXECUTE, or request revisions."
-Floor (always render verbatim, even on token-cost grounds): Steps, Success Criteria, Verification Strategy, Failure Modes, Assumptions. Context and Pre-Mortem may be condensed by reference only if the floor renders in full. Same contract on re-presentation after revision.
+2. Summary — 2-4 sentences of your own prose: chosen approach, scope, what it costs. One sentence is enough for a small plan.
+3. Steps — **every** step with risk/dependency annotations (verbatim).
+4. The `plan.md` path, plus a one-line note of what else the file holds: problem statement, context, files to modify, assumptions, failure modes, pre-mortem, success criteria, verification strategy, complexity budget.
+5. Explicit prompt: "Approve to enter EXECUTE, or request revisions."
+Floor (always render): Goal, Steps, the plan.md path, the prompt. **Never truncate, elide, or summarize the Steps list** — it is what the user is approving. Do NOT paste the remaining plan sections into chat; a full plan is long, and the path is one read away. Same contract on re-presentation after revision.
 
 **Dispatch**
 0. Emit rules: `node <skill-path>/scripts/emit-state.mjs --state plan` and follow its output.
@@ -113,7 +106,7 @@ Floor (always render verbatim, even on token-cost grounds): Steps, Success Crite
 3. Read its plan.md output (path + section anchors returned by sub-agent), verify all required sections exist
    - If the plan-writer returns a `NEEDS_EXPLORE` signal (it could not state the problem or list files-to-modify), do NOT emit PC-PLAN. Transition PLAN→EXPLORE with the named gap as the new research topic (SKILL.md PLAN→EXPLORE edge), then re-dispatch explorers per the EXPLORE dispatch. Bound: 2 consecutive NEEDS_EXPLORE signals on the same goal → surface a scope/decomposition question to the user instead of a third silent re-dispatch.
    - If your OWN verification finds a required section missing or malformed and the plan-writer did NOT self-report `NEEDS_EXPLORE`: re-spawn ip-plan-writer naming the defective section(s) — never silently proceed to PC-PLAN.
-4. Emit PC-PLAN block (render plan.md verbatim per floor). Wait for explicit user approval.
+4. Emit PC-PLAN block: Goal + your summary + the full Steps list verbatim + the `plan.md` path the plan-writer returned (print it — the user needs it to read the rest). Wait for explicit user approval.
 5. If rejected: relay feedback, re-spawn plan-writer, re-emit PC-PLAN. Bound: 3 consecutive rejections without a materially different plan.md → surface a decomposition / EXPLORE-gap prompt to the user instead of silently re-spawning.
 
 ### EXECUTE State
@@ -210,7 +203,7 @@ Floor: items 2 and 4 are non-negotiable.
 - NEVER skip EXPLORE — even if the answer seems obvious
 - NEVER auto-close without user confirmation
 - NEVER allow more than 2 fix attempts per step (autonomy leash)
-- NEVER substitute a terse summary for a presentation contract — emit the contract block in full per its floor
+- NEVER substitute an ad-hoc paraphrase for a presentation contract — emit the named contract per its floor, and never elide or summarize a list the floor requires verbatim (PC-PLAN's Steps above all)
 - ALWAYS read state.md before spawning any agent
 - ALWAYS re-read state.md every 10 tool calls
 - ALWAYS update findings.md index after explorer agents complete (they don't touch the index)

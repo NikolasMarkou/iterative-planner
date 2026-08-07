@@ -4,6 +4,19 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.59.0] - 2026-08-07
+
+**The plan presentation is now a summary, the steps, and a path.** PC-PLAN used to order the orchestrator to paste 11 sections of `plan.md` into chat verbatim — goal, problem statement, context, files table, steps, assumptions, failure modes, pre-mortem, success criteria, verification strategy, complexity budget. On a real plan that is a wall of text, and the thing the user is actually approving (the steps) is buried in the middle of it. The contract now renders the goal, a short summary, every step, and the `plan.md` path. Everything else is read from the file.
+
+### Changed
+
+- **PC-PLAN's required content and floor.** New content, in order: (1) Goal verbatim, (2) a 2-4 sentence summary in the orchestrator's own prose — approach, scope, what it costs, (3) **every** step verbatim with its risk/dependency annotations, (4) the `plan.md` path plus a one-line note of what else the file holds, (5) the approval prompt. New floor: goal, steps, path, prompt. The Steps list is never truncated, elided, or summarized — it is the approval surface. The remaining sections are deliberately not rendered in chat.
+- **Mirrored the new floor across all five copies of the contract**: `references/file-formats.md` § Presentation Contracts (canonical, now carrying an example block shape), the inlined copy in `agents/ip-orchestrator.md` § PLAN State, its PLAN dispatch step 4, `scripts/modules/state-plan.md` (what `emit-state --state plan` hands the orchestrator at runtime), the SKILL.md User Interaction table, and README's contract table.
+- **The orchestrator's "NEVER substitute a terse summary for a presentation contract" rule**, which the new floor made self-contradictory. It now reads: never substitute an ad-hoc paraphrase for a contract, and never elide or summarize a list the floor requires verbatim — PC-PLAN's Steps above all. Same intent, no longer at war with the contract it governs.
+- **`ip-plan-writer`'s output contract.** The `plan.md` path is now load-bearing and says so — the orchestrator prints it, and it is how the user reaches the sections that no longer go in chat, so a wrong path means the user cannot see the plan at all. The one-paragraph digest is now described as the raw material for the user-visible summary rather than an internal pre-render note. And the writer is told plainly that only Goal and Steps reach the user verbatim: a vaguely written section is no longer smoothed over by the orchestrator's render, it is what the user finds when they open the file.
+
+Scope is PC-PLAN only. PC-EXPLORE, PC-EXECUTE-STEP, PC-EXECUTE-LEASH, PC-REFLECT, and PC-PIVOT are untouched. No script logic changed; `TEST_COUNT` is unchanged. `validate-plan.mjs` models only the *presence* of the string `PC-PLAN` in a plan's logs, not its content, so its contract-log check needed no update.
+
 ## [2.58.0] - 2026-08-04
 
 **A decision anchor now survives its plan directory.** Every anchor resolution path read inside `plans/`, which bootstrap gitignores in every consuming project — so once a plan directory was cleaned up, its `# DECISION <plan-id>/D-NNN` anchors reported `ERROR [anchor-unknown-plan]` forever. This release adds a committed manifest, `plans/ANCHORS.md`, and a fourth resolver tier that reads it. In this repo that turned **39 anchor errors into 0**. Also here: the Verdict field scan stops mistaking a nested commentary bullet for a required field, and a completion fix finally has a step number.

@@ -1,7 +1,7 @@
 # Iterative Planner
 
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Skill](https://img.shields.io/badge/Skill-v2.58.0-green.svg)](CHANGELOG.md)
+[![Skill](https://img.shields.io/badge/Skill-v2.59.0-green.svg)](CHANGELOG.md)
 [![Tests](https://img.shields.io/badge/tests-739%20passing-brightgreen.svg)](src/scripts/bootstrap.test.mjs)
 [![Sponsored by Electi](https://img.shields.io/badge/Sponsored%20by-Electi-red.svg)](https://www.electiconsulting.com)
 
@@ -169,7 +169,7 @@ Watch one full cycle, condensed. Nothing here is a mock-up — this is the shape
 - **Failure Modes** — what if the JWT library is slow, returns garbage, or is down.
 - **Pre-Mortem & Falsification Signals** — "STOP IF p99 latency increases more than 20ms."
 
-Claude presents the plan as a **PC-PLAN** block (verbatim — not a paraphrase). You approve or push back. If you push back, Claude revises and re-presents the same contract.
+Claude presents the plan as a **PC-PLAN** block: the goal, a short summary, every step verbatim, and the path to `plan.md` for the rest — the sections above are long, and chat is the wrong place to read them. You approve or push back. If you push back, Claude revises and re-presents the same contract.
 
 **Claude (EXECUTE)** implements step 1. After each file edit, an entry is appended to `changelog.md` recording timestamp, step, commit, file, op, **blast-radius score**, decision-ref, and reason. After each successful step:
 
@@ -397,7 +397,7 @@ Sub-agents are invisible to you — only the orchestrator's chat text reaches yo
 | Contract | When | Floor |
 |----------|------|-------|
 | **PC-EXPLORE** | EXPLORE handoff to PLAN | Findings index, key constraints (HARD/SOFT/GHOST), exploration confidence, synthesis paragraph |
-| **PC-PLAN** | Before user approval to EXECUTE | `plan.md` rendered verbatim — Steps, Success Criteria, Verification Strategy, Failure Modes, Assumptions |
+| **PC-PLAN** | Before user approval to EXECUTE | Goal verbatim, 2-4 sentence summary, every step verbatim, the `plan.md` path for the rest |
 | **PC-EXECUTE-STEP** | After each successful step | 5 fields: step, files, commit, surprises, next-preview |
 | **PC-EXECUTE-LEASH** | On autonomy leash hit | 5 fields: step intent, 2 attempts, root cause guess, checkpoint registry, prompt |
 | **PC-REFLECT** | Phase-3 Gate-Out | Exactly 5 items: completed, remaining, verifier table verbatim, issues + reviewer concerns, recommendation + prompt |

@@ -977,19 +977,32 @@ Agent files (`agents/ip-orchestrator.md` and contributing sub-agent files) inlin
 - **When emitted**: at PLAN → EXECUTE handoff, before requesting user approval.
 - **Required content** (in order):
   1. Goal (verbatim from `plan.md` Goal section).
-  2. Problem Statement (verbatim — expected behavior, invariants, edge cases).
-  3. Context (verbatim — environment, constraints, pre-made decisions).
-  4. Files To Modify (verbatim table).
-  5. Steps (verbatim — every step, with risk/dependency annotations).
-  6. Assumptions (verbatim table).
-  7. Failure Modes (verbatim table).
-  8. Pre-Mortem & Falsification Signals (verbatim).
-  9. Success Criteria (verbatim table).
-  10. Verification Strategy (verbatim table).
-  11. Complexity Budget (verbatim).
-  12. Explicit prompt: "Approve to enter EXECUTE, or request revisions."
-- **Fidelity**: verbatim for items 1-11. Plan re-presentation after revision uses the same contract.
-- **Minimum sections** (floor — must always render even on token-cost grounds): Steps, Success Criteria, Verification Strategy, Failure Modes, Assumptions. Longer prose sections (Context, Pre-Mortem) may be condensed by reference if and only if the floor is rendered in full.
+  2. Summary — 2-4 sentences of the orchestrator's own prose: chosen approach, scope, and what it costs. One sentence is enough for a small plan.
+  3. Steps (verbatim — **every** step, with risk/dependency annotations).
+  4. The `plan.md` path, plus a one-line note of what else the file holds: problem statement, context, files to modify, assumptions, failure modes, pre-mortem, success criteria, verification strategy, complexity budget.
+  5. Explicit prompt: "Approve to enter EXECUTE, or request revisions."
+- **Fidelity**: verbatim for Goal and Steps; the summary is orchestrator prose. Plan re-presentation after revision uses the same contract.
+- **Minimum sections** (floor — must always render): Goal, Steps, the `plan.md` path, and the prompt. **The Steps list is never truncated, elided, or summarized** — it is what the user is approving. The remaining plan sections are deliberately NOT rendered in chat; a full plan is long, and the file is one read away.
+
+Shape:
+
+```
+## Plan (iteration N)
+
+**Goal:** <verbatim>
+
+<2-4 sentence summary: approach, scope, trade-off>
+
+**Steps:**
+1. ...
+2. ...
+
+Full plan (problem statement, context, files, assumptions, failure modes,
+pre-mortem, success criteria, verification strategy, complexity budget):
+  plans/plan-YYYY-MM-DDTHHMMSS-XXXXXXXX/plan.md
+
+Approve to enter EXECUTE, or request revisions.
+```
 
 ### PC-EXECUTE-STEP — Per-Step Status Report
 
