@@ -5210,4 +5210,76 @@ describe("retire: block-comment stamping is span-aware (A3 / D-007)", () => {
     assert.equal((after.match(/\[STALE\]/g) || []).length, 2, `exactly 2 markers, got:\n${after}`);
     assert.match(after, /const re = \/\[\*\/\]\/;/, "the regex literal itself must be byte-unchanged");
   });
+
+  // D-031 / D-032 — ip-reviewer pass-2 Concern 2, VERBATIM. Four-line POSIX shell script,
+  // two ordinary globs around a hash anchor. Pre-fix (1b4f624) the block scan ran on every
+  // non-HTML extension, so `build/*` opened a span that `src/*/lib` closed: the validator
+  // printed the anchor TWICE (per-line hash scan + phantom block span) while retire stamped
+  // ONCE — 2 reports / 1 stamp, which is success criterion 5 still false for every
+  // hash-family language. The corpus is the reviewer's, not this pass's (LESSONS [I:5]).
+  it("reviewer Concern 2 `clean.sh`: two globs around a hash anchor give 1 report and 1 stamp (was 2/1)", () => {
+    const dir = getTempDir();
+    run(dir, "new", "active work");
+    const f = join(dir, "clean.sh");
+    writeFileSync(f,
+      `rm -rf build/*\n` +
+      `# DECISION ${GONE}/D-777 phantom-span probe\n` +
+      `cp src/*/lib dest/\n` +
+      `echo done\n`);
+    const reports = validatorReportCount(dir, "D-777");
+    assert.equal(reports, 1, "the shell anchor must be reported exactly ONCE (pre-fix this was 2)");
+    const r = run(dir, "retire", GONE);
+    assert.equal(stampCount(r.stdout), reports,
+      `retire's stamp count must EQUAL the validator's report count, got:\n${r.stdout}`);
+    const after = readFileSync(f, "utf-8");
+    assert.equal((after.match(/\[STALE\]/g) || []).length, 1, `exactly 1 marker, got:\n${after}`);
+    assert.match(after, /rm -rf build\/\*/, "the globs themselves must be byte-unchanged");
+  });
+
+  // The same shape in the two other hash-family extensions the reviewer named as untested
+  // blind spots. One glob pair, one anchor, both tools: the counts must agree per family,
+  // not merely for the one language a fixture author happened to pick.
+  for (const [name, marker] of [["deploy.py", "#"], ["ci.yml", "#"], ["schema.sql", "--"]]) {
+    it(`cross-tool lockstep in ${name}: 1 report, 1 stamp`, () => {
+      const dir = getTempDir();
+      run(dir, "new", "active work");
+      const f = join(dir, name);
+      writeFileSync(f,
+        `glob one build/*\n${marker} DECISION ${GONE}/D-778 probe\nglob two src/*/lib\n`);
+      assert.equal(validatorReportCount(dir, "D-778"), 1, `${name}: exactly one report`);
+      const r = run(dir, "retire", GONE);
+      assert.equal(stampCount(r.stdout), 1, `${name}: exactly one stamp, got:\n${r.stdout}`);
+    });
+  }
+
+  // DISCLOSED HOLE (D-032, plan v1 Assumption A2): `.tf` and `.sql` really do have
+  // C-style block comments, and the allowlist deliberately excludes them. An anchor
+  // written inside one is invisible to BOTH tools — a loss, stated here so it is a tested
+  // property rather than an oversight. What must NOT happen is a DESYNC: 0 reports and 0
+  // stamps is the honest outcome; 0 reports with 1 stamp would be an unreviewable write.
+  it("disclosed hole: a /* */ anchor in a .tf file is seen by NEITHER tool (0 reports, 0 stamps)", () => {
+    const dir = getTempDir();
+    run(dir, "new", "active work");
+    const f = join(dir, "main.tf");
+    const before = `/* DECISION ${GONE}/D-779 block form in HCL */\nresource "null_resource" "x" {}\n`;
+    writeFileSync(f, before);
+    assert.equal(validatorReportCount(dir, "D-779"), 0, "the .tf block form is outside the allowlist");
+    const r = run(dir, "retire", GONE);
+    assert.equal(stampCount(r.stdout), 0, `retire must stamp nothing, got:\n${r.stdout}`);
+    assert.equal(readFileSync(f, "utf-8"), before, "the file must be byte-identical after retire");
+  });
+
+  // Previously-clean-stays-clean: the block family itself must be UNCHANGED by the gate.
+  // A gate that is too narrow loses anchors silently, which is the failure mode the
+  // allowlist trades against — so one member of the family is pinned end to end.
+  it("block family unaffected: a /* */ anchor in a .ts file still gives 1 report and 1 stamp", () => {
+    const dir = getTempDir();
+    run(dir, "new", "active work");
+    const f = join(dir, "svc.ts");
+    writeFileSync(f, `/*\n DECISION ${GONE}/D-780 block form in TS\n*/\nexport const x = 1;\n`);
+    assert.equal(validatorReportCount(dir, "D-780"), 1, "TS block anchors must still be found");
+    const r = run(dir, "retire", GONE);
+    assert.equal(stampCount(r.stdout), 1, `retire must stamp exactly once, got:\n${r.stdout}`);
+    assert.match(readFileSync(f, "utf-8"), /D-780 \[STALE\]/);
+  });
 });

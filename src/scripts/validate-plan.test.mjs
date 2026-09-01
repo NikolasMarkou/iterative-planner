@@ -16,7 +16,9 @@ import { randomBytes } from "crypto";
 
 const VALIDATOR = resolve(import.meta.dirname, "validate-plan.mjs");
 // Import-safe: validate-plan.mjs's CLI dispatch is guarded by isEntryPoint.
-import { collectKnownDecisionIdsByPlan } from "./validate-plan.mjs";
+import { collectKnownDecisionIdsByPlan, ANCHOR_SOURCE_EXTS, HTML_STYLE_EXTS } from "./validate-plan.mjs";
+import { BLOCK_COMMENT_EXTS } from "./shared.mjs";
+import { ANCHOR_SOURCE_EXTS as BOOTSTRAP_ANCHOR_SOURCE_EXTS } from "./bootstrap.mjs";
 // Import-safe: bootstrap.mjs's CLI dispatch is guarded by isEntryPoint. The
 // verdict fixtures use bootstrap's REAL `verification` template, not a copy.
 import { PLAN_TEMPLATES } from "./bootstrap.mjs";
@@ -2708,6 +2710,68 @@ describe("resolver tier 4: the committed plans/ANCHORS.md manifest", () => {
       "the manifest read count must be independent of how many plan directories exist");
     assert.equal(after.totalReads, before.totalReads,
       "the total read count must not grow with plan-dir count — that would restore the forbidden full-corpus walk");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// D-031 / D-032 — the extension PARTITION, and why it is a test rather than a
+// comment. Before this gate the block-comment scan ran on every extension that was
+// not HTML-style, i.e. on 13 languages in which `/*` is not a comment opener; two
+// shell globs then supplied both delimiters. The replacement is an ALLOWLIST, whose
+// quiet failure mode is the opposite one: an extension nobody classified gets no
+// block scan and its `/* */` anchors vanish without a word. This test is what turns
+// that silence into a red build — every member of ANCHOR_SOURCE_EXTS must be
+// classified EXACTLY ONCE, so adding a new extension to the scan without deciding
+// its comment family fails here, naming it.
+// ---------------------------------------------------------------------------
+describe("anchor extension partition (D-032)", () => {
+  // The third class has no runtime set: these extensions are handled by the per-line
+  // `#` / `--` marker arms in findAnchorsInFile and need no set of their own. It is
+  // enumerated HERE, in the test, so the partition can be checked without inventing a
+  // production constant that nothing would consume.
+  const LINE_MARKER_ONLY_EXTS = new Set([
+    ".py", ".rb", ".sh", ".bash", ".zsh", ".yml", ".yaml", ".toml", ".r", ".pl", ".pm", ".tf",
+    ".sql",
+  ]);
+
+  it("every scanned extension is classified EXACTLY ONCE (block / HTML-style / line-marker-only)", () => {
+    const unclassified = [];
+    const multiplyClassified = [];
+    for (const ext of ANCHOR_SOURCE_EXTS) {
+      const n = (BLOCK_COMMENT_EXTS.has(ext) ? 1 : 0)
+        + (HTML_STYLE_EXTS.has(ext) ? 1 : 0)
+        + (LINE_MARKER_ONLY_EXTS.has(ext) ? 1 : 0);
+      if (n === 0) unclassified.push(ext);
+      if (n > 1) multiplyClassified.push(ext);
+    }
+    assert.deepEqual(unclassified, [],
+      `unclassified extension(s) — a new member of ANCHOR_SOURCE_EXTS must be added to BLOCK_COMMENT_EXTS `
+      + `(shared.mjs) or to this test's LINE_MARKER_ONLY_EXTS, or its /* */ anchors are silently invisible: `
+      + `${unclassified.join(", ")}`);
+    assert.deepEqual(multiplyClassified, [],
+      `extension(s) in two classes at once: ${multiplyClassified.join(", ")}`);
+    assert.equal(
+      BLOCK_COMMENT_EXTS.size + LINE_MARKER_ONLY_EXTS.size + 1, ANCHOR_SOURCE_EXTS.size,
+      "the three classes must EXHAUST the scanned set (the +1 is .md, the only HTML-style member of it)");
+  });
+
+  it("no class carries an extension the scanner never visits", () => {
+    for (const ext of BLOCK_COMMENT_EXTS) {
+      assert.ok(ANCHOR_SOURCE_EXTS.has(ext), `${ext} is block-scanned but never walked`);
+    }
+  });
+
+  it("the two ANCHOR_SOURCE_EXTS copies (validate-plan / bootstrap) hold the same members", () => {
+    assert.deepEqual([...BOOTSTRAP_ANCHOR_SOURCE_EXTS].sort(), [...ANCHOR_SOURCE_EXTS].sort(),
+      "the copies are kept in sync by hand (see each file's \"Kept in sync\" comment); a divergence means "
+      + "retire stamps a file the validator never scans, or vice versa");
+  });
+
+  it("the 13 hash/SQL-family extensions are NOT block-scanned (the Concern 2 defect, as a set assertion)", () => {
+    for (const ext of [".py", ".rb", ".sh", ".bash", ".zsh", ".yml", ".yaml", ".toml", ".r", ".pl", ".pm", ".tf", ".sql"]) {
+      assert.ok(!BLOCK_COMMENT_EXTS.has(ext),
+        `${ext} has no C-style block comments; block-scanning it opens phantom spans on ordinary globs`);
+    }
   });
 });
 

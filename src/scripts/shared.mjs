@@ -425,15 +425,44 @@ export function unterminatedCommentOpener(content) {
 // `\*/` form, which is the shape the original author happened to imagine. See D-025.
 //
 // KNOWN, DELIBERATE holes, and they do NOT fail in the same direction:
-//  - `#`-style line comments are not treated as comments (adding them would mask JS
-//    private fields and, in hash-family files, `/*` is not a comment opener anyway).
-//    UNDER-masks.
+//  - `#`-style line comments are not treated as comments. Inside a C-family file that is
+//    harmless (a `#` there is a JS private field, not a comment) and it UNDER-masks. It
+//    used to be catastrophic in hash-family files, where it OVER-masks: this scan ran on
+//    every extension that was not HTML-style, so the four-line shell script
+//    `rm -rf build/*` / `# DECISION <plan>/D-777` / `cp src/*/lib dest/` opened a phantom
+//    span across the anchor line — the validator reported that anchor TWICE (block scan
+//    plus per-line hash scan) while `retire` stamped it once. Reproduced at 1b4f624.
+//    That is now closed at the SOURCE: `BLOCK_COMMENT_EXTS` below gates the scan to the
+//    19 extensions whose grammar actually has `/* */`, so a hash-family file never
+//    reaches this code. The hole survives only as the reason the gate exists.
 //  - Regex-vs-division is decided by the preceding significant token, the standard
 //    heuristic; a division whose left operand ends in `)` or an identifier is correctly
 //    read as division, but `if (x) /re/.test(y)` is not. A mis-read here can only make the
 //    recovery skip a run of text, and `skipRegexLiteral` refuses to cross a newline, so
 //    the miss is bounded to ONE line. UNDER-masks, by at most a line.
 // ---------------------------------------------------------------------------
+
+// DECISION plan-2026-09-01T100120-4f591469/D-032 — the block-comment scan is gated by
+// this ALLOWLIST, and only by it. Do NOT restore the old complement gate
+// (`!HTML_STYLE_EXTS.has(ext)`), and do NOT rewrite this as a denylist of the
+// hash/SQL families. The complement gate ran `blockCommentSpans` on all 33
+// `ANCHOR_SOURCE_EXTS` members, including 13 (`.py .rb .sh .bash .zsh .yml .yaml .toml
+// .r .pl .pm .tf .sql`) in which `/*` is not a comment opener at all — two shell globs
+// then supplied an opener and a closer, opened a phantom span across a real anchor, and
+// desynced the two tools (validator 2 reports, `retire` 1 stamp). An allowlist fails the
+// SAFE way for an extension nobody has classified yet: it gets no block scan (at worst a
+// `/* */` anchor is missed in ONE new language, and the exhaustive-partition test in
+// validate-plan.test.mjs turns the build red naming it), where a denylist would give it
+// phantom spans everywhere. DISCLOSED HOLE: `.tf` and `.sql` do have real `/* */`
+// comments, and they are deliberately absent here — an anchor written in their native
+// `#` / `--` line style stays visible, one written inside `/* */` does not. Both
+// consumers — `validate-plan.mjs`'s `findAnchorsInFile` and `bootstrap.mjs`'s `cmdRetire`
+// block-span arm — import THIS set; a second copy is how the two tools disagree about
+// what a comment is. See decisions.md D-031, D-032.
+export const BLOCK_COMMENT_EXTS = new Set([
+  ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".go", ".rs",
+  ".c", ".h", ".cpp", ".hpp", ".cc", ".java", ".kt", ".swift", ".scala", ".cs", ".php",
+]);
 
 const BLOCK_STRING_DELIMS = new Set(['"', "'", "`"]);
 

@@ -21,6 +21,7 @@ import {
   stripHtmlComments,
   htmlCommentSpans,
   blockCommentSpans,
+  BLOCK_COMMENT_EXTS,
   unterminatedCommentOpener,
   COMPRESSED_SUMMARY_OPEN,
   COMPRESSED_SUMMARY_CLOSE,
@@ -949,4 +950,42 @@ test("blockCommentSpans: a regex literal is NEVER skipped across a newline (mis-
   // is ordinary text, so at worst one line is skipped, never a whole file.
   const t = "/* one */\nconst q = (a / b\n  + c);\n/* two */\n";
   assert.deepEqual(spanText(t), ["/* one */", "/* two */"]);
+});
+
+// ---------------------------------------------------------------------------
+// BLOCK_COMMENT_EXTS (D-032) — the family gate. `blockCommentSpans` itself is
+// language-agnostic: it will happily read `build/*` … `src/*/lib` as a comment,
+// because in C it IS one. What decides correctness is WHERE it is allowed to run,
+// and that is this set. The two consumers import it; these pins are what make a
+// silent widening (or a silent narrowing) of the family visible.
+// ---------------------------------------------------------------------------
+
+test("BLOCK_COMMENT_EXTS: contains only, and all of, the C-family extensions the scanners walk", () => {
+  assert.deepEqual([...BLOCK_COMMENT_EXTS].sort(), [
+    ".c", ".cc", ".cjs", ".cpp", ".cs", ".go", ".h", ".hpp", ".java", ".js",
+    ".jsx", ".kt", ".mjs", ".php", ".rs", ".scala", ".swift", ".ts", ".tsx",
+  ], "the allowlist is the whole gate — a member added here starts a block scan in that language, "
+   + "and one removed silently stops finding /* */ anchors there");
+});
+
+test("BLOCK_COMMENT_EXTS: excludes .md — HTML-style files keep the <!-- --> path", () => {
+  assert.ok(!BLOCK_COMMENT_EXTS.has(".md"));
+});
+
+test("BLOCK_COMMENT_EXTS: excludes .tf and .sql, the DISCLOSED hole (they do have /* */)", () => {
+  // Not an oversight: an anchor in their native `#` / `--` line style stays visible,
+  // one inside `/* */` does not. Stated in the set's own comment and in
+  // references/decision-anchoring.md. Change this pin only with a decision entry.
+  assert.ok(!BLOCK_COMMENT_EXTS.has(".tf"));
+  assert.ok(!BLOCK_COMMENT_EXTS.has(".sql"));
+});
+
+test("the gate, not the lexer, is what protects hash-family files: the shell shape still parses as a span", () => {
+  // The reviewer's Concern 2 bytes, fed straight to the primitive. It STILL returns one
+  // span — correctly, since in C those bytes are a comment. This pins the division of
+  // labour: `blockCommentSpans` is not where the hash-family fix lives, so a future
+  // reader does not go looking for it here (or "fix" it here and break C).
+  const t = "rm -rf build/*\n# DECISION plan/D-777 why\ncp src/*/lib dest/\n";
+  assert.equal(blockCommentSpans(t).length, 1,
+    "the primitive is language-agnostic by design; BLOCK_COMMENT_EXTS decides where it runs");
 });

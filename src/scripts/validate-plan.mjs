@@ -20,6 +20,7 @@ import {
   stripHtmlComments,
   htmlCommentSpans,
   blockCommentSpans,
+  BLOCK_COMMENT_EXTS,
   unterminatedCommentOpener,
   ANY_PLAN_ID_PATTERN,
   ANY_PLAN_ID_RE,
@@ -1452,7 +1453,7 @@ function checkFindingsIndexLinks(planDir, issues) {
 // Reverse anchor check (Step 3.1g — added in 2.13.0)
 // ---------------------------------------------------------------------------
 
-const ANCHOR_SOURCE_EXTS = new Set([
+export const ANCHOR_SOURCE_EXTS = new Set([
   ".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".rb", ".go", ".rs",
   ".c", ".h", ".cpp", ".hpp", ".java", ".kt", ".sql", ".md",
   // 16 additions (v2.57.6): the union of findAnchorsInFile's hash-style and
@@ -1473,7 +1474,7 @@ const ANCHOR_SOURCE_EXTS = new Set([
 // inert by construction rather than by exclusion list.
 // Do NOT write a literal block-comment delimiter pair in this file's comments: the
 // block scan below has no marker prefix and would read it as a real anchor block.
-const HTML_STYLE_EXTS = new Set([".md", ".markdown", ".mdx", ".html", ".htm"]);
+export const HTML_STYLE_EXTS = new Set([".md", ".markdown", ".mdx", ".html", ".htm"]);
 
 const SKIP_DIR_NAMES = new Set([
   "node_modules", ".git", "dist", "build", "plans",
@@ -1589,13 +1590,16 @@ function findAnchorsInFile(file, projectRoot, prefixPattern = ANY_PLAN_ID_PATTER
     }
   }
 
-  // Block comment scan (multi-line) — applies to /* */ in C-family + CSS.
+  // Block comment scan (multi-line) — runs ONLY on `BLOCK_COMMENT_EXTS`, the shared.mjs
+  // allowlist of extensions whose grammar actually has `/* */` (D-032).
   // Loop over EVERY anchor in the block; previously only the first was found.
-  // NOTE: this scan has no comment-marker prefix on its inner regex, so it must
-  // NOT run on HTML-style files. Block-comment delimiters occur as ordinary prose
-  // there — CHANGELOG.md:331 quotes an inline block comment holding two bare
-  // `D-NNN` tokens — and both would be reported as anchors. Gate on the extension;
-  // do not exclude by path (that hides real anchors in a whole directory).
+  // NOTE: this scan has no comment-marker prefix on its inner regex, so it must NOT run
+  // on files where those delimiters are ordinary text. In HTML-style files that is prose
+  // — CHANGELOG.md:331 quotes an inline block comment holding two bare `D-NNN` tokens —
+  // and in hash-family files it is shell globs (`build/*` … `src/*/lib`), which used to
+  // open a phantom span across a real anchor and report it twice. An ALLOWLIST states
+  // where the grammar applies instead of guessing where it does not; gate on the
+  // extension, never by path (that hides real anchors in a whole directory).
   //
   // DECISION plan-2026-09-01T100120-4f591469/D-007 — the spans come from shared.mjs's
   // `blockCommentSpans`, NOT from a local `/\/\*([\s\S]*?)\*\//g` over raw text. Do not
@@ -1608,7 +1612,7 @@ function findAnchorsInFile(file, projectRoot, prefixPattern = ANY_PLAN_ID_PATTER
   // `text`; slice raw text with them and derive line numbers by counting newlines. Never
   // pair them with stripped text (see shared.mjs D-007 and decisions.md D-005). retire's
   // stamper consumes the SAME primitive — change one, change both. See decisions.md D-007.
-  if (!HTML_STYLE_EXTS.has(ext)) {
+  if (BLOCK_COMMENT_EXTS.has(ext)) {
     for (const { start, end } of blockCommentSpans(text)) {
       const body = text.slice(start + 2, end - 2); // strip "/*" and its closer
       const bodyOffset = start + 2;

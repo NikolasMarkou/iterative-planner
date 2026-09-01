@@ -26,6 +26,7 @@ import {
   blankCompressedSummaryBlock,
   htmlCommentSpans,
   blockCommentSpans,
+  BLOCK_COMMENT_EXTS,
   COMPRESSED_SUMMARY_OPEN,
   COMPRESSED_SUMMARY_CLOSE,
   CHANGELOG_COMPRESSED_INLINE_RE,
@@ -2171,7 +2172,7 @@ function cmdList() {
 // scan uses. Without that scoping, `retire` would irreversibly stamp `[STALE]`
 // into documentation prose, doc examples, and unclosed comments the validator
 // does not consider anchors.
-const ANCHOR_SOURCE_EXTS = new Set([
+export const ANCHOR_SOURCE_EXTS = new Set([
   ".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".rb", ".go", ".rs",
   ".c", ".h", ".cpp", ".hpp", ".java", ".kt", ".sql", ".md",
   // 16 additions (v2.57.6): the union of findAnchorsInFile's hash-style and
@@ -2305,7 +2306,13 @@ function cmdRetire(planId) {
           // validator's is, so retire stays a SUPERSET of what the validator sees: an
           // over-stamp is visible in the diff, an under-stamp is a jam. See decisions.md
           // D-007.
-          const spans = blockCommentSpans(txt);
+          // The block-span arm runs ONLY on shared.mjs's `BLOCK_COMMENT_EXTS` — the same
+          // allowlist findAnchorsInFile's block scan is gated on (D-032). In a
+          // hash-family file (`.sh`, `.py`, `.yml`, …) `/*` is not a comment opener, so a
+          // span there is always phantom; gating it here keeps the two tools' notion of
+          // "comment context" identical rather than merely similar. The LINE-MARKER arm
+          // below stays un-gated (D-007): retire must remain a SUPERSET.
+          const spans = BLOCK_COMMENT_EXTS.has(extname(e.name)) ? blockCommentSpans(txt) : [];
           const inSpan = (idx) => spans.some((sp) => idx >= sp.start && idx < sp.end);
           // The line prefix a validator-visible anchor must end with — the same
           // `(?:^|\s)(#|//|--)\s+` shape the four anchor regexes require before DECISION.

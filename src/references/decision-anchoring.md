@@ -83,7 +83,7 @@ The union **must be non-capturing**. It is interpolated into the anchor regexes 
 |---|---|---|
 | Hash-comment (Python, Ruby) | `#` | `^\s*#\s+DECISION\s+(?:<plan-id>\/)?D-\d{3}(\s+\[STALE\])?(:|\s|$)` |
 | Slash-comment (JS, TS, Go, Rust, C, C++, Java, Kotlin) | `//` | `^\s*//\s+DECISION\s+(?:<plan-id>\/)?D-\d{3}(\s+\[STALE\])?(:|\s|$)` |
-| Block-comment (every scanned non-Markdown extension) — **two-stage; see note below** | `/* */` | outer delimiter-pair scan `/\*([\s\S]*?)\*/`, then a **marker-less** inner match `DECISION\s+(?:<plan-id>\/)?D-NNN(\s+\[STALE\])?` applied to the block body |
+| Block-comment (`BLOCK_COMMENT_EXTS` only — the 19 slash-comment extensions) — **two-stage; see note below** | `/* */` | outer delimiter-pair scan `/\*([\s\S]*?)\*/`, then a **marker-less** inner match `DECISION\s+(?:<plan-id>\/)?D-NNN(\s+\[STALE\])?` applied to the block body |
 | HTML / Markdown — **two-stage; see note below** | `<!-- -->` | outer delimiter-pair scan `<!--([\s\S]*?)-->`, then a **marker-less** inner match `DECISION\s+(?:<plan-id>\/)?D-NNN(\s+\[STALE\])?` applied to the comment body |
 | SQL | `--` | `^\s*--\s+DECISION\s+(?:<plan-id>\/)?D-\d{3}(\s+\[STALE\])?(:|\s|$)` |
 
@@ -91,20 +91,22 @@ The plan-id prefix is an **optional non-capturing group** in each regex — `(?:
 
 **The Block-comment row is two-stage and marker-less.** The scanner first locates a `/* … */` delimiter pair with the outer scan, then applies the inner regex — which has **no `/*` prefix** — to the block body. An anchor therefore matches **anywhere inside the block**, not only immediately after the opener: a comment of the shape `/* foo DECISION <plan-id>/D-NNN bar */` is an anchor even though `DECISION` sits mid-block. This is why a comment that merely *quotes* a block-comment example, in any scanned C-family file, is read as a real anchor — the mandatory placeholder-id rule below exists for exactly this reason.
 
-**The Block and HTML rows are mutually exclusive by file extension** (since v2.32.0). The block scan is gated off for `HTML_STYLE_EXTS` (`.md`, `.markdown`, `.mdx`, `.html`, `.htm` — of these, only `.md` is also in `ANCHOR_SOURCE_EXTS`, so only `.md` files ever reach any scan; the constant names the others so the gate stays correct if they are ever added to the scanned set); in those files the only recognized form is the `<!-- DECISION … -->` HTML comment. The five styles are no longer peers applied uniformly to every file — a given file receives either the block scan or the HTML scan, never both.
+**The Block, HTML and line-marker rows are mutually exclusive by file extension.** Every scanned extension falls in exactly one of three classes — block-scanned (`BLOCK_COMMENT_EXTS`), HTML-style, or line-marker-only — and that partition is exhaustive, pinned by a test that turns the build red naming any member of `ANCHOR_SOURCE_EXTS` left unclassified. The block scan is gated off for `HTML_STYLE_EXTS` (`.md`, `.markdown`, `.mdx`, `.html`, `.htm` — of these, only `.md` is also in `ANCHOR_SOURCE_EXTS`, so only `.md` files ever reach any scan; the constant names the others so the gate stays correct if they are ever added to the scanned set); in those files the only recognized form is the `<!-- DECISION … -->` HTML comment. The five styles are no longer peers applied uniformly to every file — a given file receives the block scan, or the HTML scan, or neither, never two of them.
 
 **Extension matrix** — validator dispatches by file extension. The rows below are exactly the 33 members of `ANCHOR_SOURCE_EXTS` (v2.57.6 grew this from 17 by adding the union of `findAnchorsInFile`'s own hash-style and slash-style per-family lists — extensions the scanner already knew how to parse but the collection-side allowlist had never grown to include), the one authoritative collection set — defined identically in `src/scripts/validate-plan.mjs` (`walkSourceFiles`) and `src/scripts/bootstrap.mjs` (`retire`). No other extension is ever collected:
 
 | Extensions | Marker style |
 |---|---|
-| `.py .rb` | Hash and Block |
+| `.py .rb` | Hash only |
 | `.js .ts .tsx .mjs .cjs .go .rs .c .h .cpp .hpp .java .kt` | Slash and Block |
 | `.md` | HTML (the sole recognized form in Markdown — see the v2.32.0 section below) |
-| `.sql` | Double-dash and Block |
-| `.sh .bash .zsh .yml .yaml .toml .r .pl .pm .tf` | Hash and Block (added v2.57.6) |
+| `.sql` | Double-dash only |
+| `.sh .bash .zsh .yml .yaml .toml .r .pl .pm .tf` | Hash only (added v2.57.6) |
 | `.jsx .cc .swift .scala .cs .php` | Slash and Block (added v2.57.6) |
 
-"Block" appears in every non-`.md` row because the block scan is gated by complement (every scanned extension except the `HTML_STYLE_EXTS` ones), not by a per-language allowlist. Write anchors in the file's native comment style regardless — a `/* … */` pair in a `.py` file is matched, but reads as noise.
+"Block" appears only in the two slash rows, because the block scan is gated by an **allowlist** — `BLOCK_COMMENT_EXTS` in `src/scripts/shared.mjs`, the 19 extensions whose grammar actually has `/* … */` — and both consumers (the validator's `findAnchorsInFile` and `retire`'s stamper) import that one set. Before D-032 the gate was the COMPLEMENT of the HTML-style set — every scanned extension except `.md` — which ran the scan on 13 languages where `/*` opens nothing: a shell script with `build/*` on one line and `src/*/lib` on another opened a span across the anchor between them, so the validator reported that anchor twice while `retire` stamped it once. Write anchors in the file's native comment style: in a hash or `--` file that is the only form either tool sees.
+
+**Disclosed hole.** `.tf` and `.sql` do have real `/* … */` comments, and they are deliberately outside the allowlist. An anchor written in their native `#` / `--` style is scanned normally; one written inside a `/* … */` comment is invisible to the validator *and* to `retire`. That is a chosen trade, not an oversight (both tools stay in lockstep — nothing is stamped that is not reported), and it is pinned by a test.
 
 **Not scanned — anchors in these files are ghosts.** Every extension outside the 33 above. This still includes `.css .scss .less` (block-style) and `.html .htm .mdx .vue .svelte` (HTML-style) — `findAnchorsInFile` has no per-family handling for any of these regardless of the v2.57.6 growth, so they remain genuinely unscanned, not merely uncollected. (Earlier revisions of this matrix also listed `.sh .bash .zsh .yml .yaml .toml .r .pl .pm .tf` and `.jsx .cc .swift .scala .cs .php` here; those are now scanned — see the table above — and are no longer ghosts.) File collection has always been by `ANCHOR_SOURCE_EXTS` membership, so an anchor in any of the extensions still listed here is invisible to the validator's anchor audit and un-stampable by `bootstrap.mjs retire` — exactly the ghost condition of the extension-less case below. Do not place anchors there; use the plain-comment-plus-**Reasoning**-pointer fallback described below.
 
