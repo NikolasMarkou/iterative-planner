@@ -191,7 +191,7 @@ R = read only | W = update (implicit read + write) | R+W = distinct read and wri
 
 `†` At REFLECT the only write under `findings/` is the Reviewer's own `findings/review-iter-N[-passM].md`; the explorer topic files stay read-only. The Ownership table below carries the matching per-file row.
 
-`‡` At CLOSE the only write to `decisions.md` is the Archivist's `**Anchor-Refs**:` backfill remediation (`agents/ip-archivist.md` Step 1). No new entries are authored at CLOSE.
+`‡` `decisions.md` is append-only and past entries are never edited. **The one authorized exception**: at CLOSE, the Archivist may back-fill a past entry's `**Anchor-Refs**:` line (Step 1 remediation) — that field, that agent, that phase, and nothing else. (`agents/ip-archivist.md` Step 1 is where the Archivist performs it.) No new entries are authored at CLOSE.
 
 See `references/file-formats.md` § Intra-plan compression.
 

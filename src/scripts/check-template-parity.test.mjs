@@ -428,6 +428,35 @@ test("(S5) RESOLVE-FAILURE IS A LOUD FAIL: a removed slug marker FAILs naming it
   );
 });
 
+test("(S6) THE RULE'S OTHER HALF: the same header pair OUTSIDE every served body PASSes", () => {
+  // S2 shows a header pair INSIDE a served body FAILs. This is the complement, and together they
+  // are the whole rule: the substrate is resolveTemplate's output, so text no slug's body contains
+  // is not scanned — there is no boundary marker involved. Same payload, two placements: the doc's
+  // preamble (above the first TEMPLATE marker) and the tail past the last one. Both must be silent.
+  // Written because a stale restatement of this rule ("forbids those bytes before TEMPLATE:END")
+  // had been sitting in emit-template.test.mjs; a claim about a gate deserves a run of the gate.
+  const pair = header(PLAN_TEMPLATES.index).slice(0, 2);
+  assert.equal(pair.length, 2);
+  const lines = REAL_DOC.split("\n");
+  const firstMarker = lines.findIndex((l) => l.includes("<!-- TEMPLATE:"));
+  assert.notEqual(firstMarker, -1);
+
+  const preamble = [...lines.slice(0, firstMarker), ...pair, ...lines.slice(firstMarker)].join("\n");
+  assert.deepEqual(headerCopies(preamble), [],
+    "a header pair in the doc's preamble reaches no served body and must NOT fire");
+
+  const tail = [...lines, ...pair, ""].join("\n");
+  assert.deepEqual(headerCopies(tail), [],
+    "a header pair past the last served body must NOT fire");
+
+  // and the positive control on the identical payload, so the silence above is not vacuous
+  assert.ok(
+    headerCopies(injectAfter(REAL_DOC, "<!-- TEMPLATE:index -->", pair))
+      .some((i) => i.message.includes("PLAN_TEMPLATES.index")),
+    "the same pair inside index's served body must FAIL — otherwise this test proves nothing",
+  );
+});
+
 test("(S3b) the iter-2 evasion is DEAD — a synonym no phrase list contains is now a byte match in a served body", () => {
   // The exact payload that walked through the 4-phrase set: a synonym no phrase list contains,
   // followed by bootstrap's real changelog header and a planted lie, injected into progress's served

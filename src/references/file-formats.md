@@ -141,6 +141,7 @@ approaches v1 (in-place migration) and v2 (dual-write) were abandoned.
 ## decisions.md
 
 Append-only. **Never edit or delete past entries.**
+**The one authorized exception**: at CLOSE, the Archivist may back-fill a past entry's `**Anchor-Refs**:` line (Step 1 remediation) — that field, that agent, that phase, and nothing else.
 Every entry must include a **Trade-off** line: "X **at the cost of** Y".
 
 **Plan-id preamble** *(required for plans created on or after v2.14.0)*: the second line of the file, immediately following the `# Decision Log` H1, MUST be `*Plan: <plan-id>*` where `<plan-id>` is the plan directory name (e.g. `plan-2026-05-07T091743-7556fb98`, or a legacy `plan_2026-05-07_7556fb98` for a plan created before v2.36.0 — both are accepted on read). The preamble lets the file self-identify after `plans/DECISIONS.md` sliding-window trim drops the wrapping `## <plan-id>` section. Bootstrap emits this line automatically. Validator: ERROR `[preamble-missing]` for plans whose `state.md` INIT timestamp is on or after the v2.14.0 release cutoff; WARN otherwise.

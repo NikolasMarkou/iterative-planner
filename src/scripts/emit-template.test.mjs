@@ -52,8 +52,13 @@ const SENTINELS = {
   checkpoints: "When to Checkpoint",
   // These three sentinels are the SECTION HEADINGS, not the files' H1s: an H1 like
   // "# Consolidated Findings" is part of bootstrap's HEADER, and rule (h) [header-copy] forbids
-  // those bytes before <!-- TEMPLATE:END -->. A sentinel must key on content the worked example
-  // legitimately owns — keying it on bootstrap's bytes is the coupling the gate exists to break.
+  // those bytes inside a SERVED body — resolveTemplate(slug).body for each of the 17 slugs, the
+  // exact bytes `emit-template --name <slug>` hands an agent. Text outside every served body is
+  // NOT scanned; there is no boundary marker in the rule. (Both halves are demonstrated in
+  // check-template-parity.test.mjs: (S2) injecting a header pair INSIDE a served body FAILs,
+  // (S6) the same pair outside every served body PASSes.) A sentinel must key on content the
+  // worked example legitimately owns — keying it on bootstrap's bytes is the coupling the gate
+  // exists to break.
   "findings-consolidated": "plans/FINDINGS.md (consolidated)",
   "decisions-consolidated": "plans/DECISIONS.md (consolidated)",
   lessons: "Recurring Patterns",
