@@ -1321,12 +1321,15 @@ describe("bootstrap.mjs", () => {
       const dir = getTempDir();
       run(dir, "new", "Empty findings test");
       const planDir = getPointer(dir);
-      // findings.md has only the header/boilerplate, no ## headings with content
-      // The default template has ## Index and ## Key Constraints with placeholder text
+      // findings.md is still bootstrap's pristine template: ## Index / ## Key Constraints /
+      // ## Corrections carrying nothing but placeholder italics.
       run(dir, "close");
       const consolidated = readFileSync(join(dir, "plans", "FINDINGS.md"), "utf-8");
-      // Should still have a section for this plan (the ## headings get demoted and merged)
-      assert.ok(consolidated.includes(planDir), "plan section should exist even with template content");
+      // A7: an untouched template body is not real content. Merging it burned a
+      // sliding-window slot and produced an INDEX row with an empty Key Topics cell.
+      assert.ok(!consolidated.includes(planDir), "no plan section for an untouched template body");
+      assert.ok(!consolidated.includes("To be populated during EXPLORE"),
+        "placeholder boilerplate must not reach the cross-plan archive");
     });
 
     it("close with findings that have no ## headings drops content (stripHeader behavior)", () => {
@@ -3521,6 +3524,13 @@ describe("bootstrap.mjs", () => {
       // Create a plan to close.
       run(dir, "new", "concurrent close goal");
       const planName = readFileSync(join(dir, "plans", ".current_plan"), "utf-8").trim();
+      // Give both files REAL content: since A7, an untouched template body merges
+      // nothing at all, which would make the "exactly one section" assertions below
+      // vacuously pass at 0 and stop testing the race.
+      writeFileSync(join(dir, "plans", planName, "findings.md"),
+        `# Findings\n\n## Index\n- A real finding.\n`);
+      writeFileSync(join(dir, "plans", planName, "decisions.md"),
+        `# Decision Log\n*Plan: ${planName}*\n\n## D-001 | PLAN | 2026-09-01\n**Decision**: a real decision.\n`);
 
       const { spawn } = await import("child_process");
       const realProcs = [];
@@ -4640,6 +4650,178 @@ describe("bootstrap.mjs — PLAN_TEMPLATES + renderTemplate", () => {
       () => renderTemplate(PLAN_TEMPLATES.state, { VERSION: "2.37.0" }), // TIMESTAMP missing
       /\{\{TIMESTAMP\}\} has no value supplied/,
       "a missing value must throw so cmdNewInner's catch rolls the plan dir back"
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// plan-2026-09-01T100120-4f591469 / D-005 — the decisions.md schema comment must
+// not be merged into plans/DECISIONS.md, must not be counted by `resume`, and an
+// untouched template body must not be merged at all.
+//
+// Why this mattered: plans/DECISIONS.md is an anchor-resolution TIER read by
+// validate-plan.mjs's collectKnownDecisionIdsByPlan. The phantom registered a real
+// D-001 for the plan, so a fabricated `# DECISION <closed-plan>/D-001` anchor
+// resolved clean while /D-002 correctly errored — orphan detection was defeated
+// for D-001 of every plan that had ever closed.
+// ---------------------------------------------------------------------------
+describe("close/resume are HTML-comment aware (D-005)", () => {
+  let tempDirs = [];
+  function getTempDir() { const d = makeTempDir(); tempDirs.push(d); return d; }
+  afterEach(() => { for (const d of tempDirs) removeTempDir(d); tempDirs = []; });
+
+  const REAL_ENTRIES = [
+    "",
+    "## D-001 | PLAN | 2026-09-01",
+    "**Context**: real first decision.",
+    "**Decision**: do the thing.",
+    "**Trade-off**: A **at the cost of** B.",
+    "**Reasoning**: because.",
+    "",
+    "## D-002 | EXECUTE | 2026-09-01",
+    "**Context**: real second decision <!-- inline comment kept verbatim -->",
+    "**Decision**: do the other thing.",
+    "**Trade-off**: C **at the cost of** D.",
+    "**Reasoning**: also because.",
+    "",
+  ].join("\n");
+
+  function appendRealDecisions(dir, planDir) {
+    const p = join(dir, "plans", planDir, "decisions.md");
+    writeFileSync(p, readFileSync(p, "utf-8") + REAL_ENTRIES);
+  }
+
+  it("(1) virgin close writes NO phantom D-001 and no dangling --> into plans/DECISIONS.md", () => {
+    const dir = getTempDir();
+    run(dir, "new", "virgin plan");
+    run(dir, "close");
+    const consolidated = readFileSync(join(dir, "plans", "DECISIONS.md"), "utf-8");
+    assert.ok(!/YYYY-MM-DD/.test(consolidated),
+      `no placeholder-dated decision may be merged, got:\n${consolidated}`);
+    assert.ok(!/^-->$/m.test(consolidated),
+      `no dangling comment closer may be merged, got:\n${consolidated}`);
+    assert.ok(!/D-001/.test(consolidated),
+      `a plan with zero real decisions must register zero decision ids, got:\n${consolidated}`);
+    assert.ok(!/DO NOT REMOVE/.test(consolidated),
+      `the schema comment's own prose must not leak either, got:\n${consolidated}`);
+  });
+
+  // The differential the fix is actually judged on: real content merges EXACTLY as
+  // before, minus the phantom block. The expected bytes below were captured by
+  // running the PRE-FIX code on this same fixture, then deleting the 8 phantom lines.
+  it("(2) real entries merge byte-identically to the pre-fix output minus the phantom block", () => {
+    const dir = getTempDir();
+    run(dir, "new", "real entries");
+    const planDir = getPointer(dir);
+    appendRealDecisions(dir, planDir);
+    run(dir, "close");
+    const consolidated = readFileSync(join(dir, "plans", "DECISIONS.md"), "utf-8");
+    const expected = [
+      "# Consolidated Decisions",
+      "*Cross-plan decision archive. Entries merged from per-plan decisions.md on close. Newest first.*",
+      "",
+      `## ${planDir}`,
+      "### D-001 | PLAN | 2026-09-01",
+      "**Context**: real first decision.",
+      "**Decision**: do the thing.",
+      "**Trade-off**: A **at the cost of** B.",
+      "**Reasoning**: because.",
+      "",
+      "### D-002 | EXECUTE | 2026-09-01",
+      "**Context**: real second decision <!-- inline comment kept verbatim -->",
+      "**Decision**: do the other thing.",
+      "**Trade-off**: C **at the cost of** D.",
+      "**Reasoning**: also because.",
+      "",
+    ].join("\n");
+    assert.equal(consolidated, expected,
+      `merged bytes must equal the pre-fix output minus the phantom block, got:\n${JSON.stringify(consolidated)}`);
+  });
+
+  // The over-stripping direction: locating the cut in the comment-stripped text must
+  // not blank comments that live in REAL content.
+  it("(2b) an HTML comment INSIDE a real decision body survives the merge verbatim", () => {
+    const dir = getTempDir();
+    run(dir, "new", "inline comment");
+    const planDir = getPointer(dir);
+    appendRealDecisions(dir, planDir);
+    run(dir, "close");
+    const consolidated = readFileSync(join(dir, "plans", "DECISIONS.md"), "utf-8");
+    assert.ok(consolidated.includes("<!-- inline comment kept verbatim -->"),
+      `agent-authored comments in real content must not be stripped, got:\n${consolidated}`);
+  });
+
+  it("(3) a REAL D-001 that is not inside a comment still merges (no over-strip)", () => {
+    const dir = getTempDir();
+    run(dir, "new", "real D-001 first");
+    const planDir = getPointer(dir);
+    appendRealDecisions(dir, planDir);
+    run(dir, "close");
+    const consolidated = readFileSync(join(dir, "plans", "DECISIONS.md"), "utf-8");
+    assert.ok(consolidated.includes("### D-001 | PLAN | 2026-09-01"),
+      `a real first entry must survive, got:\n${consolidated}`);
+    assert.ok(consolidated.includes("### D-002 | EXECUTE | 2026-09-01"),
+      `later entries must survive, got:\n${consolidated}`);
+    assert.equal(consolidated.match(/### D-001/g).length, 1,
+      "exactly one D-001 heading — the real one");
+  });
+
+  it("(4) resume reports 0 on a virgin plan and N on N real entries", () => {
+    const dir = getTempDir();
+    run(dir, "new", "counting");
+    const planDir = getPointer(dir);
+    const virgin = run(dir, "resume");
+    assert.match(virgin.stdout, /Decisions:\s+0 logged/,
+      `virgin plan has zero decisions, got:\n${virgin.stdout}`);
+
+    const p = join(dir, "plans", planDir, "decisions.md");
+    writeFileSync(p, readFileSync(p, "utf-8") +
+      "\n## D-001 | PLAN | 2026-09-01\n**Decision**: one.\n");
+    assert.match(run(dir, "resume").stdout, /Decisions:\s+1 logged/, "one real decision → 1");
+
+    writeFileSync(p, readFileSync(p, "utf-8") +
+      "\n## D-002 | EXECUTE | 2026-09-01\n**Decision**: two.\n");
+    assert.match(run(dir, "resume").stdout, /Decisions:\s+2 logged/, "two real decisions → 2");
+  });
+
+  it("(5) A7: an untouched findings.md is not merged; a findings.md with real content is", () => {
+    const untouched = getTempDir();
+    run(untouched, "new", "untouched findings");
+    const untouchedPlan = getPointer(untouched);
+    run(untouched, "close");
+    const empty = readFileSync(join(untouched, "plans", "FINDINGS.md"), "utf-8");
+    assert.ok(!empty.includes(untouchedPlan),
+      `pristine template body must not burn a sliding-window slot, got:\n${empty}`);
+
+    const real = getTempDir();
+    run(real, "new", "real findings");
+    const realPlan = getPointer(real);
+    const f = join(real, "plans", realPlan, "findings.md");
+    writeFileSync(f, readFileSync(f, "utf-8") + "\n## Real Section\nReal finding content.\n");
+    run(real, "close");
+    const merged = readFileSync(join(real, "plans", "FINDINGS.md"), "utf-8");
+    assert.ok(merged.includes(realPlan), `a plan with real findings must merge, got:\n${merged}`);
+    assert.ok(merged.includes("Real finding content."), "the real content must be present");
+    // Partial work is still work: the placeholder sections ride along, unfiltered.
+    assert.ok(merged.includes("### Index"), "untouched sections of a touched file still merge");
+  });
+
+  it("stripHeader ignores a ## heading that exists only inside an HTML comment", async () => {
+    const { stripHeader } = await import(`file://${BOOTSTRAP}`);
+    assert.equal(
+      stripHeader("# T\n<!-- note\n## Fake\nbody\n-->\n## Real\nreal body\n"),
+      "## Real\nreal body\n",
+      "the commented heading is not a heading"
+    );
+    assert.equal(
+      stripHeader("# T\n<!-- note\n## Fake\n-->\n"),
+      "",
+      "a file whose only ## heading is commented out has no content to merge"
+    );
+    assert.equal(
+      stripHeader("# T\n\n## Real\nkeep <!-- this --> comment\n"),
+      "## Real\nkeep <!-- this --> comment\n",
+      "the ORIGINAL bytes are returned, not the comment-stripped ones"
     );
   });
 });

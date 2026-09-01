@@ -638,11 +638,33 @@ function prependToConsolidated(filePath, planDirName, newSection) {
   renameSync(filePath + ".tmp", filePath);
 }
 
-function stripHeader(content) {
+// DECISION plan-2026-09-01T100120-4f591469/D-005 — the cut point is located in the
+// COMMENT-STRIPPED text, but the text returned is the ORIGINAL lines from that point on.
+//
+// Do NOT go back to searching the raw text. bootstrap's own decisions.md template puts
+// `## D-001 | EXPLORE → PLAN | YYYY-MM-DD` INSIDE the `<!-- Schema example -->` block, so a
+// raw search cut there and merged a phantom D-001 plus a dangling `-->` into
+// plans/DECISIONS.md on every close — which then satisfied validate-plan.mjs's
+// anchor-orphan resolver, so a fabricated `<plan>/D-001` anchor resolved clean for every
+// plan that had ever closed.
+//
+// And do NOT "simplify" this to returning `stripHtmlComments(content).slice(...)`: that
+// would blank every HTML comment inside REAL content too, so a decision body quoting
+// `<!-- COMPRESSED-SUMMARY -->` (or any agent-authored comment) would be silently gutted on
+// merge. Locate in the stripped text; return the original.
+//
+// The correspondence is by LINE INDEX, not byte offset: `stripHtmlComments` deletes a
+// comment's non-newline bytes, so it preserves line COUNT but shifts every offset after the
+// first comment. An offset-based version of this function was written first and cut four
+// lines into the template comment. See decisions.md D-005.
+export function stripHeader(content) {
   // Strip everything before the first ## heading (the actual user content).
   // This avoids fragile exact-match regexes on boilerplate text that the agent may edit.
-  const firstH2 = content.search(/^## /m);
-  return firstH2 >= 0 ? content.slice(firstH2) : "";
+  // A `## ` that only exists inside an HTML comment is not a heading.
+  const maskedLines = stripHtmlComments(content).split("\n");
+  const idx = maskedLines.findIndex((l) => l.startsWith("## "));
+  if (idx < 0) return "";
+  return content.split("\n").slice(idx).join("\n");
 }
 
 export function stripCrossPlanNote(content) {
@@ -783,11 +805,30 @@ function trimConsolidatedWindow(filePath) {
   renameSync(filePath + ".tmp", filePath);
 }
 
+// A7: a plan closed without ever being worked merges nothing but bootstrap's own
+// boilerplate into the cross-plan archive — burning a sliding-window slot and adding an
+// INDEX row with an empty Key Topics cell. Skip a section whose stripped body is still,
+// byte for byte, the pristine template body.
+//
+// Deliberately an EQUALITY test against `PLAN_TEMPLATES`, not a "looks like placeholder
+// text" heuristic: the dangerous direction here is dropping REAL content out of a durable
+// archive, and equality cannot do that. A partially-filled file differs from the template
+// and merges, placeholder sections and all. Fails OPEN (merges) if the template body ever
+// carries an unrendered `{{TOKEN}}`, since we compare against the raw template.
+function isPristineTemplateBody(strippedBody, templateName) {
+  const template = PLAN_TEMPLATES[templateName];
+  if (typeof template !== "string") return false;
+  const pristine = stripCrossPlanNote(stripHeader(template)).trim();
+  if (pristine === "" || pristine.includes("{{")) return false;
+  return strippedBody.trim() === pristine;
+}
+
 function mergeToConsolidated(planDirName) {
   // Merge per-plan findings.md → plans/FINDINGS.md (newest first)
   const findingsContent = readPlanFile(planDirName, "findings.md");
   if (findingsContent) {
     let stripped = stripCrossPlanNote(stripHeader(findingsContent));
+    if (isPristineTemplateBody(stripped, "findings")) stripped = "";
     // Demote ## → ###
     stripped = stripped.replace(/^## /gm, "### ");
     // Rewrite relative findings/ links to planDirName/findings/
@@ -802,6 +843,8 @@ function mergeToConsolidated(planDirName) {
   const decisionsContent = readPlanFile(planDirName, "decisions.md");
   if (decisionsContent) {
     let stripped = stripCrossPlanNote(stripHeader(blankCompressedSummaryBlock(decisionsContent)));
+    // No pristine-template check here: the decisions template's whole body lives inside
+    // the schema comment, so an untouched file already strips to "" and never merges.
     // Demote ## → ###
     stripped = stripped.replace(/^## /gm, "### ");
     stripped = stripped.trim();
@@ -1800,12 +1843,14 @@ function cmdResume() {
     console.log(`  Progress:   ${completed} done, ${remaining} remaining`);
   }
 
-  // Print decision count
+  // Print decision count. Counted on the COMMENT-STRIPPED text for the same reason
+  // stripHeader is (above): the shipped decisions.md template's schema example is a
+  // `## D-001` line inside an HTML comment, so a raw count reported 1 on a virgin plan
+  // and N+1 forever after. Printed unconditionally — "0 logged" is a fact worth stating,
+  // and the old `> 0` guard is what made the off-by-one read as plausible.
   if (decisions) {
-    const decisionCount = (decisions.match(new RegExp(`^## D-${DECISION_ID_NUM_PATTERN}`, "gm")) || []).length;
-    if (decisionCount > 0) {
-      console.log(`  Decisions:  ${decisionCount} logged`);
-    }
+    const decisionCount = (stripHtmlComments(decisions).match(new RegExp(`^## D-${DECISION_ID_NUM_PATTERN}`, "gm")) || []).length;
+    console.log(`  Decisions:  ${decisionCount} logged`);
   }
 
   // Print checkpoint listing
