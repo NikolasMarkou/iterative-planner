@@ -9,7 +9,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -242,6 +249,39 @@ test("real repo: the committed repo passes its own register gate -> exit 0", () 
     res.status,
     0,
     `expected exit 0; stdout=${res.stdout} stderr=${res.stderr}`,
+  );
+});
+
+test("pin: EXPECTED_MIN_FILES equals the live scanned doc count in the real repo", () => {
+  // The floor is EXACT, not headroom-tolerant (the check-doc-parity.mjs /
+  // check-template-parity.mjs idiom). The scan list is replicated the way the
+  // CLI builds it (check-register.mjs isEntryPoint): 3 fixed root docs + every
+  // .md under src/agents + src/references.
+  const listMd = (absDir) =>
+    readdirSync(absDir).filter((f) => f.endsWith(".md"));
+  const live =
+    3 +
+    listMd(join(repoRoot, "src", "agents")).length +
+    listMd(join(repoRoot, "src", "references")).length;
+  assert.strictEqual(
+    EXPECTED_MIN_FILES,
+    live,
+    `EXPECTED_MIN_FILES (${EXPECTED_MIN_FILES}) != live scanned doc count (${live}). ` +
+      "Adding or removing a shipped agent/reference doc is a deliberate change: update the " +
+      "constant and its comment in check-register.mjs in the same commit, and give the new doc a " +
+      "committed ceiling in register-baseline.json. Do NOT make the gate derive its floor at " +
+      "runtime — a self-derived floor ratifies whatever is on disk, which is the vacuity the " +
+      "floor exists to prevent.",
+  );
+  // The baseline must cover exactly the scanned set: a ceiling with no doc is a
+  // stale key, a doc with no ceiling is an ungated doc.
+  const baseline = JSON.parse(
+    readFileSync(join(repoRoot, "src/scripts/register-baseline.json"), "utf8"),
+  );
+  assert.strictEqual(
+    Object.keys(baseline).length,
+    live,
+    "register-baseline.json key count must equal the live scanned doc count",
   );
 });
 

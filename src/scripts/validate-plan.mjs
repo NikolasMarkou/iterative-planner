@@ -2156,7 +2156,10 @@ function checkAnchorRefsValidity(planDir, planDirName, issues, projectRoot) {
 // v2.33.0 — schema-driven field shapes.
 //
 // File: {plan-dir}/changelog.md — markdown, pipe-delimited, one line per edit, appended atomically.
-// Line format: UTC | iter-N/step-M | commit | path | OP(+N,-M) | radius:TIER(score) | D-NNN-or-dash | reason
+// Field ORDER: UTC | iter-N/step-M | commit | path | op | radius | D-NNN-or-dash | reason
+// What each field may CONTAIN is defined once, in schema.mjs's CHANGELOG_SPEC, and is
+// deliberately not copied here — this comment used to spell the op field `OP(+N,-M)`, a
+// shape the spec rejects and which cannot express CREATE(+N), DELETE(-N) or RENAME(old→new).
 //
 // DECISION plan_2026-07-14_79ee0f59/D-001 — the SIX hand-maintained field regexes that used to live
 // right here (TS / STEP / COMMIT / OP / RADIUS / DREF) are GONE. They now exist exactly once, as

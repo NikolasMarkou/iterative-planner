@@ -12,6 +12,24 @@
 // bumping TEST_COUNT. This keeps the gate a count-invariant ratchet, never a
 // FUZZY per-line content-judgment blocker.
 //
+// DECISION plan-2026-09-01T100120-4f591469/D-021: ceilings are EXACT measured
+// densities. Do NOT regenerate the whole baseline to clear a [register-drift]
+// failure, and do NOT restore per-file headroom "so ordinary edits don't turn
+// the build red" — headroom is precisely what made this a loose ceiling instead
+// of a ratchet for 24 releases. Raise ONE ceiling, in the commit that earns it.
+// See decisions.md D-021.
+//
+// Every ceiling is the file's EXACT measured density at the commit that wrote
+// the baseline, not a rounded-up allowance. The first baseline (v2.36.0) added
+// a uniform allowance to each measurement, which left 17%-100% headroom on
+// every file and made this a loose ceiling rather than a ratchet: density could
+// rise a long way with the build staying green. Re-measured at HEAD in v2.61.0;
+// all 19 ceilings fell. Adding one marker to a doc now turns the build red, and
+// that is the intent — the reply is to write the sentence plainly, or, when the
+// marker is genuinely earned, to raise that ONE ceiling in the same commit
+// where a reviewer can see it. Never regenerate the whole baseline to clear a
+// failure.
+//
 // Two non-fuzzy numeric FAIL conditions only:
 //   [register-drift] — a file's measured density > its committed ceiling.
 //   [register-floor] — anti-vacuity: a baseline-listed file missing/unreadable,
@@ -31,7 +49,10 @@ import { fileURLToPath } from "node:url";
 // src/agents/*.md + src/references/*.md). A broken glob or a deleted docs dir
 // that makes the scanner resolve FEWER docs than this must FAIL loud
 // ([register-floor]), never vacuously PASS on an empty scan. Bump deliberately
-// when the real doc count changes.
+// when the real doc count changes; the `pin:` test in check-register.test.mjs
+// asserts this constant EQUALS the live scanned count (and that the baseline
+// has exactly that many keys), so a drifted constant fails rather than passing
+// on slack.
 export const EXPECTED_MIN_FILES = 19;
 
 // A scanned doc below this word count has been gutted/truncated — a floor fail,
