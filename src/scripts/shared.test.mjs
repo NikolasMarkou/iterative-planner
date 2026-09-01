@@ -906,8 +906,8 @@ test("blockCommentSpans: [JSX-1] a `</div>` before a same-line `{/* … */}` no 
   // ip-reviewer pass-2 Concern 1, verbatim. At the pre-deletion commit 48ac075 this
   // returned [] — the whole multi-line comment, and any anchor in it, was invisible to
   // BOTH anchor tools. That silent loss is what deleting the lexer buys back.
-  const t = "  <div>{x}</div> {/* DECISION plan-2026-09-01T100120-4f591469/D-901 why\n more\n  */}\n";
-  assert.deepEqual(spanText(t), ["/* DECISION plan-2026-09-01T100120-4f591469/D-901 why\n more\n  */"],
+  const t = "  <div>{x}</div> {/* DECISION p/D-901 why\n more\n  */}\n";
+  assert.deepEqual(spanText(t), ["/* DECISION p/D-901 why\n more\n  */"],
     "a JSX comment must be a span again; if this is [] the regex lexer is back (see D-031/D-032)");
 });
 
@@ -915,8 +915,8 @@ test("blockCommentSpans: [JSX-2] a self-closing `<Foo b={x} />` before `{/* … 
   // Concern 1's second probe, verbatim. End-to-end it made a `.jsx` file carrying an
   // unknown-plan anchor report `0 error(s)`, while the SAME file with `b={x}` removed
   // reported the ERROR — the asymmetry that identified the lexer as the cause.
-  const t = "<Foo b={x} /> {/* DECISION plan-2026-09-01T100120-4f591469/D-902 jsx selfclose */}\n";
-  assert.deepEqual(spanText(t), ["/* DECISION plan-2026-09-01T100120-4f591469/D-902 jsx selfclose */"]);
+  const t = "<Foo b={x} /> {/* DECISION p/D-902 jsx selfclose */}\n";
+  assert.deepEqual(spanText(t), ["/* DECISION p/D-902 jsx selfclose */"]);
 });
 
 test("blockCommentSpans: [OVER-REPORT PIN] `/[*/]/` extends a span it never opened — DELIBERATE (D-032)", () => {
