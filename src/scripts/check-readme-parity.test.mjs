@@ -18,14 +18,15 @@ const script = join(__dirname, "check-readme-parity.mjs");
  * Build a temp fixture root with the layout the CLI expects
  * (VERSION, TEST_COUNT, README.md) and return its path. Caller removes it.
  */
-function makeFixtureRoot({ version, testCount, badgeVersion, badgeCount }) {
+function makeFixtureRoot({ version, testCount, badgeVersion, badgeCount, readme }) {
   const root = mkdtempSync(join(tmpdir(), "crp-fixture-"));
   writeFileSync(join(root, "VERSION"), `${version}\n`);
   writeFileSync(join(root, "TEST_COUNT"), `${testCount}\n`);
   writeFileSync(
     join(root, "README.md"),
-    `[![Skill](https://img.shields.io/badge/Skill-v${badgeVersion}-green.svg)](CHANGELOG.md)\n` +
-      `[![Tests](https://img.shields.io/badge/tests-${badgeCount}%20passing-brightgreen.svg)](src/scripts/bootstrap.test.mjs)\n`,
+    readme ??
+      `[![Skill](https://img.shields.io/badge/Skill-v${badgeVersion}-green.svg)](CHANGELOG.md)\n` +
+        `[![Tests](https://img.shields.io/badge/tests-${badgeCount}%20passing-brightgreen.svg)](src/scripts/bootstrap.test.mjs)\n`,
   );
   return root;
 }
@@ -214,5 +215,87 @@ describe("check-readme-parity", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+
+  // --- W14: the two failure modes must not print the same sentence ----------
+
+  it("real CLI FAIL: NO version badge at all -> `(no badge found)`, not `README has v`", () => {
+    const root = makeFixtureRoot({
+      version: "2.26.0",
+      testCount: 269,
+      readme:
+        "# Skill\n\nNo badges here at all.\n" +
+        "[![Tests](https://img.shields.io/badge/tests-269%20passing-brightgreen.svg)](x)\n",
+    });
+    try {
+      const result = runCliAgainst(root);
+      assert.strictEqual(result.status, 1, `stdout: ${result.stdout}\nstderr: ${result.stderr}`);
+      assert.match(
+        result.stderr,
+        /check-readme-parity: FAIL version badge — README has \(no badge found\), expected v2\.26\.0/,
+      );
+      // The old message read "README has v, expected v2.26.0" — as if the file
+      // contained a bare "v". That exact shape must be gone.
+      assert.doesNotMatch(result.stderr, /README has v,/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("real CLI FAIL: NO test badge at all -> `(no badge found)`, not `README has NaN`", () => {
+    const root = makeFixtureRoot({
+      version: "2.26.0",
+      testCount: 269,
+      readme:
+        "[![Skill](https://img.shields.io/badge/Skill-v2.26.0-green.svg)](CHANGELOG.md)\n" +
+        "No test badge on this page.\n",
+    });
+    try {
+      const result = runCliAgainst(root);
+      assert.strictEqual(result.status, 1, `stdout: ${result.stdout}\nstderr: ${result.stderr}`);
+      assert.match(
+        result.stderr,
+        /check-readme-parity: FAIL test count — README has \(no badge found\), expected 269/,
+      );
+      assert.doesNotMatch(result.stderr, /README has NaN/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("W14 does not swallow the wrong-value case: a badge with the WRONG version still prints the comparison", () => {
+    const root = makeFixtureRoot({
+      version: "9.9.9",
+      testCount: 999,
+      badgeVersion: "2.26.0",
+      badgeCount: 269,
+    });
+    try {
+      const result = runCliAgainst(root);
+      assert.match(
+        result.stderr,
+        /FAIL version badge — README has v2\.26\.0, expected v9\.9\.9/,
+      );
+      assert.match(result.stderr, /FAIL test count — README has 269, expected 999/);
+      assert.doesNotMatch(result.stderr, /no badge found/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("checkVersionBadge/checkTestCount report `found` so callers can tell the two failures apart", () => {
+    const none = "# Skill\n\nnothing here\n";
+    assert.deepStrictEqual(checkVersionBadge(none, "1.2.3"), {
+      ok: false,
+      found: false,
+      readmeVersion: "",
+      expected: "1.2.3",
+    });
+    const t = checkTestCount(none, 7);
+    assert.strictEqual(t.found, false);
+    assert.ok(Number.isNaN(t.readmeCount));
+    const real = readFileSync(join(repoRoot, "README.md"), "utf8");
+    assert.strictEqual(checkVersionBadge(real, "0.0.0").found, true);
+    assert.strictEqual(checkTestCount(real, -1).found, true);
   });
 });

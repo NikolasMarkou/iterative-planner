@@ -33,15 +33,20 @@ const VERSION_BADGE_RE =
 
 /**
  * Check that the README version badge matches the expected version string.
+ * `found` distinguishes the two failure modes the caller must report
+ * differently: NO badge matched at all (found=false, readmeVersion="") versus a
+ * badge carrying the wrong version. Without it the message read "README has v",
+ * as if the README literally contained a bare "v".
  * @param {string} readmeText - Full README.md content.
  * @param {string} version    - Expected version, e.g. "2.26.0".
- * @returns {{ ok: boolean, readmeVersion: string, expected: string }}
+ * @returns {{ ok: boolean, found: boolean, readmeVersion: string, expected: string }}
  */
 export function checkVersionBadge(readmeText, version) {
   const m = (readmeText || "").match(VERSION_BADGE_RE);
   const readmeVersion = m ? m[1] : "";
   return {
     ok: readmeVersion === version,
+    found: Boolean(m),
     readmeVersion,
     expected: version,
   };
@@ -57,15 +62,18 @@ const TEST_BADGE_RE =
 
 /**
  * Check that the README test-count badge matches the expected count.
+ * Carries the same `found` flag as checkVersionBadge, for the same reason: the
+ * no-badge case previously reported "README has NaN".
  * @param {string} readmeText - Full README.md content.
  * @param {number} testCount  - Expected test count integer.
- * @returns {{ ok: boolean, readmeCount: number, expected: number }}
+ * @returns {{ ok: boolean, found: boolean, readmeCount: number, expected: number }}
  */
 export function checkTestCount(readmeText, testCount) {
   const m = (readmeText || "").match(TEST_BADGE_RE);
   const readmeCount = m ? parseInt(m[1], 10) : NaN;
   return {
     ok: readmeCount === testCount,
+    found: Boolean(m),
     readmeCount,
     expected: testCount,
   };
@@ -107,7 +115,7 @@ if (isEntryPoint) {
     );
   } else {
     console.error(
-      `check-readme-parity: FAIL version badge — README has v${vResult.readmeVersion}, expected v${vResult.expected}`,
+      `check-readme-parity: FAIL version badge — README has ${vResult.found ? `v${vResult.readmeVersion}` : "(no badge found)"}, expected v${vResult.expected}`,
     );
     failed = true;
   }
@@ -118,7 +126,7 @@ if (isEntryPoint) {
     );
   } else {
     console.error(
-      `check-readme-parity: FAIL test count — README has ${tResult.readmeCount}, expected ${tResult.expected}`,
+      `check-readme-parity: FAIL test count — README has ${tResult.found ? tResult.readmeCount : "(no badge found)"}, expected ${tResult.expected}`,
     );
     failed = true;
   }

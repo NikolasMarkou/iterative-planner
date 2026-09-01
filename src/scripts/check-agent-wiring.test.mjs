@@ -126,6 +126,43 @@ test("(a) THE EVASION (C1): an interposed node flag no longer exempts a bare pat
   assert.equal(scanScriptPaths("a.md", "node --loader=x --test scripts/x.mjs").length, 1);
 });
 
+test("(a) KNOWN HOLE (D-012), pinned deliberately: a flag whose VALUE is a separate token still evades rule (a) — THIS TEST ASSERTS THE WRONG BEHAVIOUR AND MUST GO RED THE DAY THE HOLE IS CLOSED", () => {
+  // Read this before "fixing" the failure: the assertions below are NOT the
+  // desired behaviour. They record the one form D-012 deliberately left open,
+  // because closing it needs a table of which node flags take values, and that
+  // table goes stale. The hole was previously discoverable only in prose, so
+  // whoever closed it would have learned nothing from the suite. If you closed
+  // it on purpose: delete this test, move the forms into the C1 evasion test
+  // above, and update D-012 plus the CLAUDE.md checklist bullet in the same
+  // commit.
+  //
+  // The option run stops at `ts-node/esm` (no leading `-`), so the bare
+  // repo-relative path that follows is never examined — the same class of
+  // silently-disabled check the rule exists to catch.
+  assert.deepEqual(
+    scanScriptPaths("a.md", "Run `node --loader ts-node/esm src/scripts/bootstrap.mjs status`."),
+    [],
+    "hole closed? see the comment above before changing this",
+  );
+  assert.deepEqual(
+    scanScriptPaths("a.md", "Run `node --experimental-loader ./l.mjs scripts/blast-radius.mjs x`."),
+    [],
+    "hole closed? see the comment above before changing this",
+  );
+  // The boundary is exactly the separated VALUE: the joined `--flag=value`
+  // spelling of the same command IS caught, and so is the flag-less form. If
+  // one of these two ever stops failing, the grammar regressed rather than
+  // improved.
+  assert.equal(
+    scanScriptPaths("a.md", "Run `node --loader=ts-node/esm src/scripts/bootstrap.mjs status`.").length,
+    1,
+  );
+  assert.equal(
+    scanScriptPaths("a.md", "Run `node src/scripts/bootstrap.mjs status`.").length,
+    1,
+  );
+});
+
 test("(a) flags do not break the passing <skill-path> form (no new false positive)", () => {
   const edges = [];
   const issues = scanScriptPaths(
