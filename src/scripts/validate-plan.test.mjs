@@ -3505,3 +3505,138 @@ describe("[index-orphan]: INDEX row with no surviving copy (E2 / F-1, F-2)", () 
       `non-plan-id rows must be skipped, got:\n${r.stdout}`);
   });
 });
+
+// ---------------------------------------------------------------------------
+// A3 / D-007 — span-aware block-comment anchor scanning.
+//
+// PRE-FIX EVIDENCE (captured against 4d98b1a, before this change):
+//   * full-repo scan: 45 anchors, ZERO duplicates — the repo's two live phantom
+//     openers (blast-radius.mjs:214's `plans/*/changelog.md`, and a sibling in this
+//     file) are unterminated, so they were benign. POST-fix the same scan returns the
+//     same 45 anchors plus the two D-007 anchors this change adds. That empty
+//     differential is the previously-clean-stays-clean evidence for the real corpus;
+//     the fixtures below are the constructed half.
+//   * the phantom-OPENER fixture emitted the identical ERROR line TWICE (once from the
+//     per-line slash scan, once from the phantom block body) — the "39 errors became
+//     40" mechanism.
+//   * the phantom-CLOSER fixture emitted NOTHING at all: the prose closer ended the
+//     span early and the anchor below it was dropped. Fail-open, and invisible to
+//     `bootstrap.mjs retire` too.
+// ---------------------------------------------------------------------------
+
+describe("block-comment anchor scan is span-aware (A3 / D-007)", () => {
+  const tempDirs = [];
+  function getTempDir() { const d = makeTempDir(); tempDirs.push(d); return d; }
+  afterEach(() => { while (tempDirs.length) removeTempDir(tempDirs.pop()); });
+
+  const PLAN = "plan_2026-05-15_aaaabbbb"; // writePlan's active plan; knows D-001 only
+
+  const orphanLines = (stdout, id) =>
+    stdout.split("\n").filter((l) => l.includes("[anchor-orphan]") && l.includes(`D-${id}`));
+
+  it("a phantom `/*` opener in a string literal reports the anchor EXACTLY ONCE", () => {
+    const cwd = getTempDir();
+    writePlan(cwd);
+    writeFileSync(join(cwd, "glob.js"),
+      `const g = "plans/*";\n` +
+      `// DECISION ${PLAN}/D-902 — one report, not two\n` +
+      `const h = "a */ b";\n`);
+    const r = run(cwd);
+    const hits = orphanLines(r.stdout, "902");
+    assert.equal(hits.length, 1, `expected exactly ONE report, got ${hits.length}:\n${hits.join("\n")}`);
+  });
+
+  it("a phantom `/*` opener inside a `//` comment reports the anchor EXACTLY ONCE", () => {
+    const cwd = getTempDir();
+    writePlan(cwd);
+    writeFileSync(join(cwd, "prose.js"),
+      `// pathspecs like plans/*/changelog.md are prose, not an opener\n` +
+      `// DECISION ${PLAN}/D-903 — one report, not two\n` +
+      `function f() { return 1; }\n`);
+    const r = run(cwd);
+    const hits = orphanLines(r.stdout, "903");
+    assert.equal(hits.length, 1, `expected exactly ONE report, got ${hits.length}:\n${hits.join("\n")}`);
+  });
+
+  it("an anchor BELOW a prose `*/` inside a real block comment is still found (silent-loss fix)", () => {
+    const cwd = getTempDir();
+    writePlan(cwd);
+    writeFileSync(join(cwd, "doc.js"),
+      `/*\n` +
+      ` A doc block that mentions the regex ending in star-slash: */\n` +
+      ` DECISION ${PLAN}/D-904 — pre-fix this produced ZERO output\n` +
+      `*/\n`);
+    const r = run(cwd);
+    assert.match(r.stdout, /\[anchor-orphan\][^\n]*doc\.js[^\n]*D-904/,
+      `the anchor below the prose closer must be found, got:\n${r.stdout}`);
+  });
+
+  it("a genuine block comment anchor is still found, exactly once (no over-strip)", () => {
+    const cwd = getTempDir();
+    writePlan(cwd);
+    writeFileSync(join(cwd, "block.js"),
+      `/* DECISION ${PLAN}/D-905 — a plain block anchor */\nfunction f() { return 1; }\n`);
+    const r = run(cwd);
+    const hits = orphanLines(r.stdout, "905");
+    assert.equal(hits.length, 1, `expected exactly ONE report, got ${hits.length}:\n${hits.join("\n")}`);
+  });
+
+  it("previously-clean input stays clean: three anchor forms in one file → exactly three reports", () => {
+    const cwd = getTempDir();
+    writePlan(cwd);
+    writeFileSync(join(cwd, "mixed.js"),
+      `// DECISION ${PLAN}/D-906 — line form\n` +
+      `const s = "not an anchor: DECISION ${PLAN}/D-909";\n` +
+      `/* DECISION ${PLAN}/D-907 — block form */\n` +
+      `try { f(); } catch { /* best-effort */ }\n` +
+      `if (/\\*\\*Complexity Assessment\\*\\*/.test(b)) {}\n` +
+      `// DECISION ${PLAN}/D-908 — line form after a regex literal\n`);
+    const r = run(cwd);
+    for (const id of ["906", "907", "908"]) {
+      assert.equal(orphanLines(r.stdout, id).length, 1,
+        `D-${id} must be reported exactly once, got:\n${r.stdout}`);
+    }
+    assert.equal(orphanLines(r.stdout, "909").length, 0,
+      `a DECISION token in a STRING LITERAL is not an anchor, got:\n${r.stdout}`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A6 / D-008 — the anchor-orphan message names only the tiers actually read.
+// ---------------------------------------------------------------------------
+
+describe("[anchor-orphan] message is tier-accurate (A6 / D-008)", () => {
+  const tempDirs = [];
+  function getTempDir() { const d = makeTempDir(); tempDirs.push(d); return d; }
+  afterEach(() => { while (tempDirs.length) removeTempDir(tempDirs.pop()); });
+
+  const GONE = "plan-2026-04-04T090000-11223344";
+
+  it("a plan resolved ONLY through plans/ANCHORS.md is not described as having a decisions.md", () => {
+    const cwd = getTempDir();
+    writePlan(cwd);
+    writeFileSync(join(cwd, "plans", "ANCHORS.md"),
+      `# Anchored Decisions\n\n${GONE}/D-004 | 2026-04-04 | durable tier entry\n`);
+    writeFileSync(join(cwd, "src.js"), `// DECISION ${GONE}/D-008 — sibling id, never anchored\n`);
+    const r = run(cwd);
+    const line = r.stdout.split("\n").find((l) => l.includes("[anchor-orphan]") && l.includes("D-008"));
+    assert.ok(line, `expected an orphan report for D-008, got:\n${r.stdout}`);
+    assert.ok(line.includes("plans/ANCHORS.md"),
+      `the message must name the tier that actually resolved the plan, got:\n${line}`);
+    assert.ok(!line.includes("decisions.md"),
+      `no plan directory or decisions.md was read — the message must not claim one, got:\n${line}`);
+    assert.ok(!/plan exists but/.test(line),
+      `the plan directory does not exist; the message must not assert it does, got:\n${line}`);
+  });
+
+  it("a plan resolved through its own decisions.md still names that file", () => {
+    const cwd = getTempDir();
+    writePlan(cwd);
+    writeFileSync(join(cwd, "src.js"), `// DECISION ${"plan_2026-05-15_aaaabbbb"}/D-777 — orphan\n`);
+    const r = run(cwd);
+    const line = r.stdout.split("\n").find((l) => l.includes("[anchor-orphan]") && l.includes("D-777"));
+    assert.ok(line, `expected an orphan report, got:\n${r.stdout}`);
+    assert.ok(line.includes("plans/plan_2026-05-15_aaaabbbb/decisions.md"),
+      `the message must name the per-plan decisions.md that was read, got:\n${line}`);
+  });
+});

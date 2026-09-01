@@ -25,6 +25,7 @@ import {
   splitChangelogFields,
   blankCompressedSummaryBlock,
   htmlCommentSpans,
+  blockCommentSpans,
   COMPRESSED_SUMMARY_OPEN,
   COMPRESSED_SUMMARY_CLOSE,
   CHANGELOG_COMPRESSED_INLINE_RE,
@@ -2235,9 +2236,40 @@ function cmdRetire(planId) {
           }
           next = rebuilt + txt.slice(cur);
         } else {
-          const hits = txt.match(anchorRe);
-          fileStamped = hits ? hits.length : 0;
-          next = fileStamped ? txt.replace(anchorRe, "$1 [STALE]") : txt;
+          // Every other extension: stamp ONLY hits that sit in COMMENT context, which is
+          // what the validator's scanner reports — either inside a `/* … */` span (from
+          // shared.mjs's `blockCommentSpans`, the SAME primitive validate-plan.mjs's block
+          // scan consumes) or immediately after a `#` / `//` / `--` line marker.
+          //
+          // DECISION plan-2026-09-01T100120-4f591469/D-007 — this stamper and
+          // findAnchorsInFile read ONE span computation. Do NOT go back to running
+          // anchorRe over the whole file: retire is an irreversible WRITE path over SOURCE
+          // files, and the whole-file form stamped `[STALE]` into string literals and
+          // prose the validator never reported — a wrong EDIT, not merely a wrong report.
+          // Do NOT narrow it to spans ALONE either: `// DECISION …` line anchors live
+          // outside every block span, and dropping them would leave the orphan ERROR that
+          // retire exists to clear, permanently jamming an unrelated plan's REFLECT→CLOSE
+          // gate. The line-marker arm is deliberately NOT extension-gated the way the
+          // validator's is, so retire stays a SUPERSET of what the validator sees: an
+          // over-stamp is visible in the diff, an under-stamp is a jam. See decisions.md
+          // D-007.
+          const spans = blockCommentSpans(txt);
+          const inSpan = (idx) => spans.some((sp) => idx >= sp.start && idx < sp.end);
+          // The line prefix a validator-visible anchor must end with — the same
+          // `(?:^|\s)(#|//|--)\s+` shape the four anchor regexes require before DECISION.
+          const MARKER_PREFIX_RE = /(?:^|\s)(?:#|\/\/|--)\s+$/;
+          const scanRe = new RegExp(anchorRe.source, "g");
+          let mm;
+          let rebuilt = "";
+          let cur = 0;
+          while ((mm = scanRe.exec(txt)) !== null) {
+            const lineStart = txt.lastIndexOf("\n", mm.index) + 1;
+            if (!inSpan(mm.index) && !MARKER_PREFIX_RE.test(txt.slice(lineStart, mm.index))) continue;
+            rebuilt += txt.slice(cur, mm.index) + mm[1] + " [STALE]";
+            cur = mm.index + mm[0].length;
+            fileStamped += 1;
+          }
+          next = fileStamped ? rebuilt + txt.slice(cur) : txt;
         }
         if (fileStamped === 0) continue;
         // Atomic write: mirror the `.tmp`+renameSync idiom used everywhere else

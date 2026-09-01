@@ -4961,3 +4961,92 @@ describe("close/resume are HTML-comment aware (D-005)", () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// A3 / D-007 — retire's non-markdown stamper consumes shared.mjs's
+// `blockCommentSpans`, the SAME primitive validate-plan.mjs's block scan reads.
+//
+// The contract this pins is the COUNT half of "the validator sees exactly what retire
+// stamps". The stamp half already held; the count did not, because retire ran its regex
+// over the WHOLE file and therefore stamped `[STALE]` into string literals and prose the
+// validator never reported — an irreversible WRONG EDIT to a source file, not merely a
+// wrong report.
+// ---------------------------------------------------------------------------
+
+describe("retire: block-comment stamping is span-aware (A3 / D-007)", () => {
+  const tempDirs = [];
+  function getTempDir() { const d = makeTempDir(); tempDirs.push(d); return d; }
+  afterEach(() => { while (tempDirs.length) removeTempDir(tempDirs.pop()); });
+
+  const VALIDATOR = join(import.meta.dirname, "validate-plan.mjs");
+  const GONE = "plan_2026-03-01_dddddddd";
+
+  function validatorReportCount(cwd, idStr) {
+    const r = spawnSync("node", [VALIDATOR], { cwd, encoding: "utf-8", timeout: 20000 });
+    return (r.stdout || "").split("\n")
+      .filter((l) => /\[anchor-(orphan|unknown-plan)\]/.test(l) && l.includes(idStr)).length;
+  }
+
+  function stampCount(stdout) {
+    const m = /Anchors marked \[STALE\]: (\d+) across/.exec(stdout);
+    return m ? parseInt(m[1], 10) : -1;
+  }
+
+  it("phantom `/*` opener: validator reports 1 and retire stamps 1 (counts agree)", () => {
+    const dir = getTempDir();
+    run(dir, "new", "active work");
+    mkdirSync(join(dir, "src"), { recursive: true });
+    const f = join(dir, "src", "glob.js");
+    writeFileSync(f,
+      `const g = "plans/*";\n// DECISION ${GONE}/D-902 keep\nconst h = "a */ b";\n`);
+    assert.equal(validatorReportCount(dir, "D-902"), 1, "validator must report the anchor exactly once");
+    const r = run(dir, "retire", GONE);
+    assert.equal(r.exitCode, 0, `retire should succeed, got:\n${r.stdout}\n${r.stderr}`);
+    assert.equal(stampCount(r.stdout), 1, `retire must stamp exactly once, got:\n${r.stdout}`);
+    assert.match(readFileSync(f, "utf-8"), /D-902 \[STALE\]/);
+  });
+
+  it("prose `*/` inside a real block comment: validator reports 1 and retire stamps 1", () => {
+    const dir = getTempDir();
+    run(dir, "new", "active work");
+    mkdirSync(join(dir, "src"), { recursive: true });
+    const f = join(dir, "src", "doc.js");
+    writeFileSync(f,
+      `/*\n a block that mentions the regex ending in star-slash: */\n DECISION ${GONE}/D-904 keep\n*/\n`);
+    assert.equal(validatorReportCount(dir, "D-904"), 1, "validator must find the anchor below the prose closer");
+    const r = run(dir, "retire", GONE);
+    assert.equal(stampCount(r.stdout), 1, `retire must stamp exactly once, got:\n${r.stdout}`);
+    assert.match(readFileSync(f, "utf-8"), /D-904 \[STALE\]/);
+  });
+
+  it("a DECISION token in a STRING LITERAL is invisible to BOTH: 0 reports, 0 stamps, bytes unchanged", () => {
+    const dir = getTempDir();
+    run(dir, "new", "active work");
+    mkdirSync(join(dir, "src"), { recursive: true });
+    const f = join(dir, "src", "lit.js");
+    const before = `const msg = "DECISION ${GONE}/D-905 is not an anchor";\nfunction f() { return 1; }\n`;
+    writeFileSync(f, before);
+    assert.equal(validatorReportCount(dir, "D-905"), 0, "a string literal is not a comment");
+    const r = run(dir, "retire", GONE);
+    assert.equal(stampCount(r.stdout), 0, `retire must stamp nothing, got:\n${r.stdout}`);
+    assert.equal(readFileSync(f, "utf-8"), before, "a string literal must be byte-identical after retire");
+  });
+
+  it("mixed forms: line + block anchors both stamped, once each, and re-running is idempotent", () => {
+    const dir = getTempDir();
+    run(dir, "new", "active work");
+    mkdirSync(join(dir, "src"), { recursive: true });
+    const f = join(dir, "src", "mixed.js");
+    writeFileSync(f,
+      `// DECISION ${GONE}/D-906 line form\n` +
+      `/* DECISION ${GONE}/D-907 block form */\n` +
+      `if (/\\*\\*Complexity Assessment\\*\\*/.test(b)) {}\n` +
+      `// DECISION ${GONE}/D-908 after a regex literal\n`);
+    const r = run(dir, "retire", GONE);
+    assert.equal(stampCount(r.stdout), 3, `expected 3 stamps, got:\n${r.stdout}`);
+    run(dir, "retire", GONE); // idempotency
+    const after = readFileSync(f, "utf-8");
+    assert.equal((after.match(/\[STALE\]/g) || []).length, 3, `exactly 3 markers after re-run, got:\n${after}`);
+    assert.ok(!/\[STALE\]\s+\[STALE\]/.test(after), `must not double-stamp, got:\n${after}`);
+  });
+});

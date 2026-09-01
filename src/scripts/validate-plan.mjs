@@ -19,6 +19,7 @@ import {
   blankCompressedSummaryBlock,
   stripHtmlComments,
   htmlCommentSpans,
+  blockCommentSpans,
   unterminatedCommentOpener,
   ANY_PLAN_ID_PATTERN,
   ANY_PLAN_ID_RE,
@@ -1563,12 +1564,22 @@ function findAnchorsInFile(file, projectRoot, prefixPattern = ANY_PLAN_ID_PATTER
   // there — CHANGELOG.md:331 quotes an inline block comment holding two bare
   // `D-NNN` tokens — and both would be reported as anchors. Gate on the extension;
   // do not exclude by path (that hides real anchors in a whole directory).
+  //
+  // DECISION plan-2026-09-01T100120-4f591469/D-007 — the spans come from shared.mjs's
+  // `blockCommentSpans`, NOT from a local `/\/\*([\s\S]*?)\*\//g` over raw text. Do not
+  // inline one back. That regex is code-string-blind and failed in BOTH directions: the
+  // bytes `/` then `*` inside a string literal or inside `//` prose opened a phantom span,
+  // and because this scan runs IN ADDITION TO the per-line scans above, every anchor it
+  // swallowed was reported TWICE; and a `*/` written as prose inside a genuine block
+  // comment ended the span early, silently DROPPING every anchor below it — invisible to
+  // this validator and to `bootstrap.mjs retire` alike. The offsets are BYTE offsets into
+  // `text`; slice raw text with them and derive line numbers by counting newlines. Never
+  // pair them with stripped text (see shared.mjs D-007 and decisions.md D-005). retire's
+  // stamper consumes the SAME primitive — change one, change both. See decisions.md D-007.
   if (!HTML_STYLE_EXTS.has(ext)) {
-    const blockRe = /\/\*([\s\S]*?)\*\//g;
-    let bm;
-    while ((bm = blockRe.exec(text)) !== null) {
-      const body = bm[1];
-      const bodyOffset = bm.index + 2; // skip past "/*"
+    for (const { start, end } of blockCommentSpans(text)) {
+      const body = text.slice(start + 2, end - 2); // strip "/*" and its closer
+      const bodyOffset = start + 2;
       const innerRe = new RegExp(blockInnerRe.source, "g");
       let dm;
       while ((dm = innerRe.exec(body)) !== null) {
@@ -1660,18 +1671,29 @@ function findBadPrefixAnchorsInFile(file, projectRoot) {
 // See plan-2026-07-16T164852-47577439/decisions.md D-001.
 export function collectKnownDecisionIdsByPlan(planDir, activePlanName, referencedPlanIds, baseDir = plansDir) {
   const map = new Map();
+  // Sidecar: which SOURCE (tier) supplied ids for each plan. Attached to the returned Map
+  // as an own property so the return SHAPE stays `Map<planName, Set<id>>` for every
+  // existing consumer. Its only reader is the `anchor-orphan` message builder, which used
+  // to assert "plan exists but no D-NNN entry in its decisions.md" without ever having
+  // read a plan directory or a decisions.md — sending maintainers to a file that does not
+  // exist when the anchor had in fact resolved through plans/ANCHORS.md alone. Recording
+  // the tier at `add()` time costs zero extra IO; re-deriving it at message time would be
+  // a new lookup.
+  const tiers = new Map();
 
-  function add(planName, id) {
+  function add(planName, id, tier) {
     if (!planName) return;
     if (!map.has(planName)) map.set(planName, new Set());
     map.get(planName).add(id);
+    if (!tiers.has(planName)) tiers.set(planName, new Set());
+    tiers.get(planName).add(tier);
   }
 
   // Active plan's per-plan decisions.md.
   const planDecisions = readFile(join(planDir, "decisions.md"));
   if (planDecisions) {
     const { entries } = parseDecisionsEntries(planDecisions);
-    for (const e of entries) add(activePlanName, e.id);
+    for (const e of entries) add(activePlanName, e.id, `plans/${activePlanName}/decisions.md`);
   }
 
   // Per-plan decisions.md for each plan-id actually referenced by a strict
@@ -1683,7 +1705,7 @@ export function collectKnownDecisionIdsByPlan(planDir, activePlanName, reference
     const txt = readFile(join(baseDir, id, "decisions.md"));
     if (!txt) continue;
     const { entries: pe } = parseDecisionsEntries(txt);
-    for (const e of pe) add(id, e.id);
+    for (const e of pe) add(id, e.id, `plans/${id}/decisions.md`);
   }
 
   // Consolidated plans/DECISIONS.md, section-aware: track current `## <plan-id>`
@@ -1699,7 +1721,7 @@ export function collectKnownDecisionIdsByPlan(planDir, activePlanName, reference
       const ps = planSectionRe.exec(line);
       if (ps) { currentPlan = ps[1]; continue; }
       const de = dashEntryRe.exec(line);
-      if (de && currentPlan) add(currentPlan, parseInt(de[1], 10));
+      if (de && currentPlan) add(currentPlan, parseInt(de[1], 10), "plans/DECISIONS.md");
     }
   }
 
@@ -1726,11 +1748,32 @@ export function collectKnownDecisionIdsByPlan(planDir, activePlanName, reference
     );
     for (const line of manifest.split("\n")) {
       const mm = manifestLineRe.exec(line);
-      if (mm) add(mm[1], parseInt(mm[2], 10));
+      if (mm) add(mm[1], parseInt(mm[2], 10), "plans/ANCHORS.md");
     }
   }
 
+  map.tiersByPlan = tiers;
   return map;
+}
+
+// DECISION plan-2026-09-01T100120-4f591469/D-008 — an orphan message may name ONLY the
+// sources that were actually read. The old text ("plan exists but no D-NNN entry in its
+// decisions.md") asserted two facts the check never established: when an anchor resolves
+// through `plans/ANCHORS.md` alone, no plan directory and no decisions.md were opened at
+// all, so the message sent a maintainer to a path that does not exist. Do NOT "improve"
+// this by stat-ing the plan directory here — that re-derives, at report time and per
+// orphan, something `collectKnownDecisionIdsByPlan` already knows for free at `add()`
+// time; the tier set travels on the returned Map's `tiersByPlan` sidecar. See
+// decisions.md D-008.
+function tierList(knownByPlan, planName) {
+  const set = knownByPlan.tiersByPlan?.get(planName);
+  if (!set || set.size === 0) return "no decision source";
+  return [...set].join(" + ");
+}
+
+function tierPlural(knownByPlan, planName) {
+  const set = knownByPlan.tiersByPlan?.get(planName);
+  return set && set.size > 1 ? "any of them" : "it";
 }
 
 function checkReverseAnchors(planDir, planDirName, issues, projectRoot) {
@@ -1790,7 +1833,7 @@ function checkReverseAnchors(planDir, planDirName, issues, projectRoot) {
           issues.push({
             severity: severityForOrphan,
             check: "anchor-orphan",
-            message: `${rel}:${a.line} orphan anchor ${fullId}${staleSuffix} (plan exists but no ${idStr} entry in its decisions.md)`,
+            message: `${rel}:${a.line} orphan anchor ${fullId}${staleSuffix} (${a.planName} resolves via ${tierList(knownByPlan, a.planName)}, but no ${idStr} entry was found in ${tierPlural(knownByPlan, a.planName)})`,
           });
         }
       } else {
@@ -1806,7 +1849,7 @@ function checkReverseAnchors(planDir, planDirName, issues, projectRoot) {
           issues.push({
             severity: severityForOrphan,
             check: "anchor-orphan",
-            message: `${rel}:${a.line} orphan anchor ${idStr}${staleSuffix} (no matching entry in active plan's decisions.md)`,
+            message: `${rel}:${a.line} orphan anchor ${idStr}${staleSuffix} (no ${idStr} entry for the active plan in ${planDirName ? tierList(knownByPlan, planDirName) : "any decision source"})`,
           });
         }
       }

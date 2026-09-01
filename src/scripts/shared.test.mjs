@@ -20,6 +20,7 @@ import {
   blankCompressedSummaryBlock,
   stripHtmlComments,
   htmlCommentSpans,
+  blockCommentSpans,
   unterminatedCommentOpener,
   COMPRESSED_SUMMARY_OPEN,
   COMPRESSED_SUMMARY_CLOSE,
@@ -806,4 +807,74 @@ test("maskLiteralRegions: stripHtmlComments stays EXACTLY line-count preserving 
       `line count must be preserved for:\n${JSON.stringify(d)}`,
     );
   }
+});
+
+// ---------------------------------------------------------------------------
+// blockCommentSpans (A3 / D-007) — the `/* */` twin of htmlCommentSpans.
+//
+// The API CONTRACT under test is BYTE OFFSETS into the original text, not line
+// indices: the `slice(start, end)` assertions below are what pin it. Pairing offsets
+// from one representation with text from another is the exact mistake D-005 records
+// (`stripHtmlComments` preserves line COUNT, never byte offsets).
+// ---------------------------------------------------------------------------
+
+const spanText = (t) => blockCommentSpans(t).map((s) => t.slice(s.start, s.end));
+
+test("blockCommentSpans: returns BYTE offsets into the original text (markers included)", () => {
+  const t = "a();\n/* one */\nb();\n";
+  const spans = blockCommentSpans(t);
+  assert.equal(spans.length, 1);
+  assert.equal(t.slice(spans[0].start, spans[0].end), "/* one */");
+  assert.equal(spans[0].start, t.indexOf("/*"));
+  assert.equal(spans[0].end, t.indexOf("*/") + 2);
+});
+
+test("blockCommentSpans: a phantom OPENER inside a string literal opens nothing", () => {
+  const t = 'const g = "plans/*";\n// DECISION p/D-002\nconst h = "a */ b";\n';
+  assert.deepEqual(spanText(t), []);
+});
+
+test("blockCommentSpans: a phantom OPENER inside a `//` line comment opens nothing", () => {
+  const t = "// a basename in prose inside plans/*/changelog.md\n// DECISION p/D-002\n";
+  assert.deepEqual(spanText(t), []);
+});
+
+test("blockCommentSpans: a prose CLOSER inside a real comment does not truncate the span (silent-loss fix)", () => {
+  const t = "/*\n mentions the regex ending in star-slash: */\n DECISION x/D-077\n*/\n";
+  const got = spanText(t);
+  assert.equal(got.length, 1, `expected one span, got ${JSON.stringify(got)}`);
+  assert.ok(got[0].includes("D-077"), `the anchor below the prose closer must be INSIDE the span, got:\n${got[0]}`);
+});
+
+test("blockCommentSpans: an escaped closer in a regex literal is not a stray closer", () => {
+  // The live shape from validate-plan.mjs: `/\*\*Complexity Assessment\*\*/`. Without
+  // backslash handling this reads as a stray closer and swallows ~500 lines of the file.
+  const t = "try { x(); } catch { /* best-effort */ }\nif (/\\*\\*Complexity Assessment\\*\\*/.test(b)) {}\n";
+  const got = spanText(t);
+  assert.deepEqual(got, ["/* best-effort */"], `got:\n${JSON.stringify(got)}`);
+});
+
+test("blockCommentSpans: two independent comments stay two spans (no over-extension)", () => {
+  const t = "/* a */\ncode();\n/* b */\n";
+  assert.deepEqual(spanText(t), ["/* a */", "/* b */"]);
+});
+
+test("blockCommentSpans: a `//` inside a real block comment does not end it", () => {
+  const t = "/* a // b */\n";
+  assert.deepEqual(spanText(t), ["/* a // b */"]);
+});
+
+test("blockCommentSpans: an UNTERMINATED opener yields NO span (fail safe, never throws)", () => {
+  assert.deepEqual(spanText("/* DECISION x/D-003 and then nothing\n"), []);
+});
+
+test("blockCommentSpans: falsy content returns an empty array", () => {
+  assert.deepEqual(blockCommentSpans(""), []);
+  assert.deepEqual(blockCommentSpans(null), []);
+  assert.deepEqual(blockCommentSpans(undefined), []);
+});
+
+test("blockCommentSpans: an UNBALANCED quote masks nothing (under-mask, the loud direction)", () => {
+  const t = "it's fine\n/* DECISION x/D-004 */\n";
+  assert.deepEqual(spanText(t), ["/* DECISION x/D-004 */"]);
 });

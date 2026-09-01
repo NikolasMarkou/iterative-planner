@@ -376,6 +376,141 @@ export function unterminatedCommentOpener(content) {
 }
 
 // ---------------------------------------------------------------------------
+// C-family block comment regions — the `/* */` TWIN of htmlCommentSpans above.
+// The single definition of "where the block comments are" for every non-markdown
+// scanner in this repo.
+//
+// DECISION plan-2026-09-01T100120-4f591469/D-007 — `blockCommentSpans` returns BYTE
+// OFFSETS into the ORIGINAL `content` (`start` at the `/` of `/*`, `end` one past the
+// `/` of `*/`), exactly like `htmlCommentSpans`. It is NOT a line-index API, and it must
+// never be paired with the output of a *stripping* helper. `stripHtmlComments` is
+// line-count-preserving but NOT byte-offset-preserving — it is `.replace(/[^\n]/g, "")`,
+// which DELETES non-newline bytes — and pairing offsets from one representation with text
+// from the other has already shipped a real bug in this plan (bootstrap's `stripHeader`
+// cut four lines into the wrong place; see decisions.md D-005). So: slice RAW `content`
+// with these offsets, or convert to a line number with
+// `content.slice(0, offset).split("\n").length`. Do not "simplify" a consumer by feeding
+// it stripped text.
+//
+// Do NOT go back to a bare `/\/\*([\s\S]*?)\*\//g` over raw text. That regex is
+// code-string-blind and fails in BOTH directions, which is why it needed replacing
+// rather than patching:
+//   1. A phantom OPENER — the bytes `/` then `*` in a string literal (`"plans/*"`) or in
+//      prose inside a `//` comment (blast-radius.mjs:214 has one today) — opens a span
+//      that never existed. Because the block scan runs IN ADDITION TO the per-line
+//      hash/slash/sql scans, every real anchor swallowed by that span is reported TWICE
+//      ("39 errors became 40"). Loud, but it trains people to distrust the scanner.
+//   2. A phantom CLOSER — a `*/` written as prose INSIDE a genuine block comment — ends
+//      the span early, and a real anchor below it is dropped with ZERO output. That is the
+//      FAIL-OPEN direction and it is strictly worse: the anchor becomes invisible to the
+//      validator AND to `bootstrap.mjs retire`, so a stale decision is never stamped.
+// (The institutional record long claimed a phantom OPENER "silently swallows every anchor
+// until the next `*/`". It does not — it double-reports. Loss comes from the closer.)
+//
+// The failure direction here is chosen, same as maskLiteralRegions above: UNDER-mask when
+// unsure. An unterminated `/*` yields NO span; an unterminated quote is ordinary text.
+// KNOWN, DELIBERATE holes: `#`-style line comments are not treated as comments (adding
+// them would mask JS private fields and, in hash-family files, `/*` is not a comment
+// opener anyway), and regex literals are not lexed as such — a lone backslash escapes the
+// next character, which is what keeps `/\\*\\*Complexity Assessment\\*\\*/` in
+// validate-plan.mjs from reading as a stray closer, but an UNescaped delimiter inside a
+// character class would still be read literally. Both under-mask.
+// ---------------------------------------------------------------------------
+
+const BLOCK_STRING_DELIMS = new Set(['"', "'", "`"]);
+
+// Skip a quoted string starting at `i`. Returns the offset one past its closing quote,
+// or -1 when the quote never closes — in which case the caller must treat the quote as
+// ORDINARY TEXT (under-masking, the loud direction). A double or single quote may not
+// span a newline; a backtick template may. Backslash escapes the next character.
+function skipStringLiteral(content, i) {
+  const quote = content[i];
+  const multiline = quote === "`";
+  let j = i + 1;
+  while (j < content.length) {
+    const c = content[j];
+    if (c === "\\") { j += 2; continue; }
+    if (c === quote) return j + 1;
+    if (c === "\n" && !multiline) return -1;
+    j += 1;
+  }
+  return -1;
+}
+
+// From `from`, scan CODE context (strings and `//` line comments skipped) for a STRAY
+// block-comment closer — one with no opener, which is a syntax error in every C-family
+// language and is therefore evidence that an EARLIER closer was prose inside a comment
+// rather than its terminator. Returns that offset, or -1 if a `/*` or EOF comes first.
+function nextStrayBlockCloser(content, from) {
+  let i = from;
+  while (i < content.length) {
+    const c = content[i];
+    if (c === "\\") { i += 2; continue; } // escaped: `\*/` inside a regex literal is not a closer
+    if (c === "/" && content[i + 1] === "*") return -1;
+    if (c === "*" && content[i + 1] === "/") return i;
+    if (c === "/" && content[i + 1] === "/") {
+      const nl = content.indexOf("\n", i + 2);
+      if (nl < 0) return -1;
+      i = nl + 1;
+      continue;
+    }
+    if (BLOCK_STRING_DELIMS.has(c)) {
+      const e = skipStringLiteral(content, i);
+      if (e > 0) { i = e; continue; }
+    }
+    i += 1;
+  }
+  return -1;
+}
+
+// Enumerate every COMPLETE block-comment region in `content` as `{ start, end }` BYTE
+// offsets (both markers included), skipping openers that occur inside a string literal or
+// a `//` line comment, and recovering from a prose closer inside a comment body.
+//
+// Semantics (deliberate):
+//  - Block comments do NOT nest; the terminator is the first closer that the stray-closer
+//    recovery below does not show to be prose.
+//  - An UNTERMINATED `/*` yields NO span — the region is left alone rather than swallowed
+//    to EOF, matching `htmlCommentSpans`. Never throws.
+//  - `validate-plan.mjs`'s `findAnchorsInFile` and `bootstrap.mjs retire`'s stamper BOTH
+//    consume this, which is what keeps the "the validator sees exactly what retire stamps"
+//    contract true by construction instead of by two regexes kept in lockstep by hand.
+export function blockCommentSpans(content) {
+  if (!content) return [];
+  const spans = [];
+  let i = 0;
+  while (i < content.length) {
+    const c = content[i];
+    if (c === "\\") { i += 2; continue; } // escaped: a `\/\*` in a regex literal opens nothing
+    if (c === "/" && content[i + 1] === "*") {
+      const start = i;
+      let close = content.indexOf("*/", i + 2);
+      if (close < 0) { i += 2; continue; } // unterminated → no span (fail safe)
+      for (;;) {
+        const stray = nextStrayBlockCloser(content, close + 2);
+        if (stray < 0) break;
+        close = stray;
+      }
+      spans.push({ start, end: close + 2 });
+      i = close + 2;
+      continue;
+    }
+    if (c === "/" && content[i + 1] === "/") {
+      const nl = content.indexOf("\n", i + 2);
+      if (nl < 0) break;
+      i = nl + 1;
+      continue;
+    }
+    if (BLOCK_STRING_DELIMS.has(c)) {
+      const e = skipStringLiteral(content, i);
+      if (e > 0) { i = e; continue; }
+    }
+    i += 1;
+  }
+  return spans;
+}
+
+// ---------------------------------------------------------------------------
 // Identifier grammars: plan-id and decision-id.
 //
 // DECISION plan_2026-07-14_79ee0f59/D-005 — these are the ONLY definitions of the
