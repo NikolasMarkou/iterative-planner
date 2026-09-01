@@ -111,6 +111,21 @@ build-combined:
 	@sed -i 's|`src/references/planning-rigor\.md`|the Planning Rigor Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	@sed -i 's|`src/references/root-cause-analysis\.md`|the Root Cause Analysis Methods Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	@sed -i 's|`src/references/python-software\.md`|the Python / Software-Engineering Caveat section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@# Rewrite the emit-state.mjs / emit-template.mjs invocations: neither router is runnable in a
+	@# paste context, and the module bodies they would emit are inlined above as "## State Module: <s>"
+	@# sections. Keep this map in lockstep with build.ps1 $pointerMap — check-doc-parity.test.mjs
+	@# asserts both channels declare the same key/value pairs.
+	@sed -i 's|`node <skill-path>/scripts/emit-state\.mjs --state explore` (module: `scripts/modules/state-explore\.md`)|the "State Module: explore" section below (inlined verbatim from `scripts/modules/state-explore.md`)|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@sed -i 's|`node <skill-path>/scripts/emit-state\.mjs --state plan` (module: `scripts/modules/state-plan\.md`)|the "State Module: plan" section below (inlined verbatim from `scripts/modules/state-plan.md`)|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@sed -i 's|`node <skill-path>/scripts/emit-state\.mjs --state execute` (module: `scripts/modules/state-execute\.md`)|the "State Module: execute" section below (inlined verbatim from `scripts/modules/state-execute.md`)|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@sed -i 's|`node <skill-path>/scripts/emit-state\.mjs --state reflect` (module: `scripts/modules/state-reflect\.md`)|the "State Module: reflect" section below (inlined verbatim from `scripts/modules/state-reflect.md`)|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@sed -i 's|`node <skill-path>/scripts/emit-state\.mjs --state pivot` (module: `scripts/modules/state-pivot\.md`)|the "State Module: pivot" section below (inlined verbatim from `scripts/modules/state-pivot.md`)|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@sed -i 's|emitted on demand by the router `scripts/emit-state\.mjs`, not inlined here\. On \*\*entering\*\* a state, run `node <skill-path>/scripts/emit-state\.mjs --state <state>` and follow its stdout as the authoritative per-state rules\.|inlined verbatim below as the "State Module: <state>" sections. On **entering** a state, read the section for that state and follow it as the authoritative per-state rules.|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@sed -i 's|the per-state operative rules come from the `emit-state` router (see below), NOT from inline bodies (the Per-State Rules section is summaries + pointers only)|the per-state operative rules come from the inlined "State Module: <state>" sections below, NOT from the Per-State Rules section (which is summaries + pointers only)|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@sed -i 's|In this mode you also run `node <skill-path>/scripts/emit-state\.mjs --state <state>` on entering each of EXPLORE/PLAN/EXECUTE/REFLECT/PIVOT and follow its output as the operative per-state rules (the Per-State Rules section here is now a summary + pointer; the scripts ship with the skill bundle, so the router resolves even without agent definitions installed)\.|In this mode you also read the "State Module: <state>" section below on entering each of EXPLORE/PLAN/EXECUTE/REFLECT/PIVOT and follow it as the operative per-state rules (the Per-State Rules section here is now a summary + pointer; the module bodies are inlined verbatim in this file, so they resolve without any script).|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@sed -i 's|(or run `node <skill-path>/scripts/emit-template\.mjs --name changelog` to get just this template — file-formats\.md is the canonical fallback)|(the changelog template is inlined there)|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@sed -i 's| — or run `node <skill-path>/scripts/emit-template\.mjs --name plan` to get just this template (file-formats\.md is the canonical fallback)| (the plan template is inlined there)|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@sed -i 's| — or run `node <skill-path>/scripts/emit-template\.mjs --name verification` to get just this template (file-formats\.md is the canonical fallback)| (the verification template is inlined there)|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	sed -i "s/__SKILL_VERSION__/$(VERSION)/g" $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	sed -i "s/__SKILL_DATE__/$$(date -u +%Y-%m-%d)/g" $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	sed -i "s/__SKILL_COMMIT__/$$(git rev-parse --short HEAD)/g" $(BUILD_DIR)/$(SKILL_NAME)-combined.md
@@ -186,12 +201,16 @@ validate:
 			grep -q "^tools:" "$$agent" || (echo "ERROR: $$agent missing 'tools' in frontmatter" && exit 1); \
 		done; \
 	fi
-	@# Verify transition table entries appear in Mermaid diagram
+	@# Verify every protocol transition appears as a literal Mermaid edge in SKILL.md's state diagram.
+	@# NOT a loose "FROM.*TO" grep: that matched any line naming the two states in order, so
+	@# "PLAN.*PLAN" could not fail on any document mentioning PLAN twice on one line. Match the
+	@# indented `FROM --> TO` edge itself. Keep in lockstep with build.ps1 $$mermaidEdges.
 	@echo "Checking state machine consistency..."
-	@for pair in "EXPLORE.*PLAN" "PLAN.*EXPLORE" "PLAN.*PLAN" "PLAN.*EXECUTE" "EXECUTE.*REFLECT" \
-		"REFLECT.*CLOSE" "REFLECT.*PIVOT" "REFLECT.*EXPLORE" "PIVOT.*PLAN"; do \
-		grep -qE "$$pair" $(SKILL_FILE) || \
-		(echo "ERROR: Transition $$pair missing from SKILL.md" && exit 1); \
+	@for edge in "EXPLORE --> PLAN" "PLAN --> EXPLORE" "PLAN --> PLAN" "PLAN --> EXECUTE" \
+		"EXECUTE --> REFLECT" "REFLECT --> CLOSE" "REFLECT --> PIVOT" "REFLECT --> EXPLORE" \
+		"REFLECT --> EXECUTE" "PIVOT --> PLAN"; do \
+		grep -qE "^[[:space:]]+$$edge([[:space:]]|$$)" $(SKILL_FILE) || \
+		(echo "ERROR: Mermaid edge '$$edge' missing from SKILL.md state diagram" && exit 1); \
 	done
 	@# Verify validate-plan.mjs VALID_TRANSITIONS covers all SKILL.md transitions
 	@echo "Checking validator transition coverage..."

@@ -385,3 +385,113 @@ test("real CLI FAIL: missing AND extra simultaneously -> exit 1 + both messages"
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+// ---------------------------------------------------------------------------
+// DECISION plan-2026-09-01T100120-4f591469/D-018
+// Build-channel lockstep (Makefile <-> build.ps1)
+//
+// Do NOT move these into a new build-parity.test.mjs or a new check-build-lockstep.mjs
+// gate. A new test file must be added to the Makefile `test` list, build.ps1 Invoke-Test,
+// TEST_COUNT, README and CLAUDE.md — five more hand-maintained lockstep facts to guard one
+// lockstep fact — and a new gate script would be the first check-* with no module of its own
+// to check. They live here — in the "two shipped documents must agree, in both directions,
+// non-vacuously" test file — because that is exactly what they assert, and because
+// no gate owned the invariant before. It went unowned and it drifted: every gate in
+// build.ps1 was wrapped in `if (Test-Path "src/scripts/check-*.mjs")`, so deleting a
+// gate script printed "Validation passed!" on Windows while the Makefile channel died.
+// A lockstep invariant no gate enforces is how that drift happened. See decisions.md D-018.
+//
+// PowerShell is not available in this environment, so build.ps1's RUNTIME behaviour
+// cannot be executed here. These are static assertions over its source text — which is
+// precisely the class of check that would have caught the Test-Path drift.
+// ---------------------------------------------------------------------------
+
+const makefileSrc = readFileSync(join(repoRoot, "Makefile"), "utf8");
+const buildPs1Src = readFileSync(join(repoRoot, "build.ps1"), "utf8");
+
+/** Recipe lines of a Makefile target: the run of tab-indented lines after `name:`. */
+function makeRecipe(src, target) {
+  const lines = src.split("\n");
+  const start = lines.findIndex((l) => l.startsWith(`${target}:`));
+  assert.ok(start >= 0, `Makefile target "${target}:" not found`);
+  const out = [];
+  for (let i = start + 1; i < lines.length && lines[i].startsWith("\t"); i++) out.push(lines[i]);
+  assert.ok(out.length > 0, `Makefile target "${target}" has an empty recipe`);
+  return out.join("\n");
+}
+
+/** Body of a PowerShell `function Name {` block, by brace counting. */
+function psFunction(src, name) {
+  const open = src.indexOf(`function ${name} {`);
+  assert.ok(open >= 0, `build.ps1 function ${name} not found`);
+  let depth = 0;
+  for (let i = open; i < src.length; i++) {
+    if (src[i] === "{") depth++;
+    else if (src[i] === "}") {
+      depth--;
+      if (depth === 0) return src.slice(open, i + 1);
+    }
+  }
+  assert.fail(`build.ps1 function ${name} has unbalanced braces`);
+}
+
+const sorted = (xs) => [...new Set(xs)].sort();
+const matchAll = (text, re) => [...text.matchAll(re)].map((m) => m[1]);
+
+test("build channels: `validate` runs the same gate scripts (no channel-only gate)", () => {
+  const mk = sorted(matchAll(makeRecipe(makefileSrc, "validate"), /node src\/scripts\/(check-[a-z-]+\.mjs)/g));
+  const ps = sorted(matchAll(psFunction(buildPs1Src, "Invoke-Validate"), /node src\/scripts\/(check-[a-z-]+\.mjs)/g));
+  assert.ok(mk.length >= 6, `anti-vacuity: parsed only ${mk.length} gates from the Makefile validate recipe`);
+  assert.deepEqual(ps, mk, "build.ps1 Invoke-Validate and the Makefile validate target run different gate sets");
+  assert.ok(!mk.includes("check-test-count.mjs"), "check-test-count.mjs must stay OUT of validate (validate must stay fast)");
+});
+
+test("build.ps1: no mandatory script or gate is wrapped in a Test-Path skip", () => {
+  const validate = psFunction(buildPs1Src, "Invoke-Validate");
+  // Anti-vacuity: the assertion below is only meaningful if gates are actually invoked here.
+  const invocations = matchAll(validate, /node src\/scripts\/(check-[a-z-]+\.mjs)/g);
+  assert.ok(invocations.length >= 6, `anti-vacuity: found only ${invocations.length} gate invocations to guard`);
+  const skips = [...validate.matchAll(/^\s*if \(Test-Path "(src\/scripts\/[^"]+)"\)/gm)].map((m) => m[1]);
+  assert.deepEqual(skips, [], `build.ps1 silently skips a missing script instead of failing: ${skips.join(", ")}`);
+});
+
+test("build channels: `lint` node --check the same script list", () => {
+  const mk = sorted(matchAll(makeRecipe(makefileSrc, "lint"), /node --check src\/scripts\/([a-z-]+\.mjs)/g));
+  const ps = sorted(matchAll(psFunction(buildPs1Src, "Invoke-Lint"), /"([a-z-]+\.mjs)"/g));
+  assert.ok(mk.length >= 14, `anti-vacuity: parsed only ${mk.length} lint targets from the Makefile`);
+  assert.deepEqual(ps, mk, "build.ps1 Invoke-Lint and the Makefile lint target check different scripts");
+});
+
+test("build channels: `test` run the same test-file list", () => {
+  const mk = sorted(matchAll(makeRecipe(makefileSrc, "test"), /src\/scripts\/([a-z-]+\.test\.mjs)/g));
+  const ps = sorted(matchAll(psFunction(buildPs1Src, "Invoke-Test"), /src\/scripts\/([a-z-]+\.test\.mjs)/g));
+  assert.ok(mk.length >= 14, `anti-vacuity: parsed only ${mk.length} test files from the Makefile`);
+  assert.deepEqual(ps, mk, "build.ps1 Invoke-Test and the Makefile test target run different suites");
+});
+
+test("build channels: build-combined declares the same rewrite key/value pairs", () => {
+  // Makefile: `@sed -i 's|PATTERN|REPLACEMENT|g' ...` — PATTERN is a BRE, so unescape it.
+  const mk = sorted(
+    [...makeRecipe(makefileSrc, "build-combined").matchAll(/^\t@sed -i 's\|([^|]*)\|([^|]*)\|g'/gm)]
+      .map((m) => `${m[1].replace(/\\(.)/g, "$1")} ${m[2]}`),
+  );
+  // build.ps1: hashtable entries `'KEY' = 'VALUE'` (single-quoted, '' escapes a quote).
+  const unps = (s) => s.replace(/''/g, "'");
+  const ps = sorted(
+    [...psFunction(buildPs1Src, "Invoke-BuildCombined").matchAll(/^ +'((?:[^']|'')*)' = '((?:[^']|'')*)'\s*$/gm)]
+      .map((m) => `${unps(m[1])} ${unps(m[2])}`),
+  );
+  assert.ok(mk.length >= 29, `anti-vacuity: parsed only ${mk.length} rewrite pairs from the Makefile`);
+  assert.deepEqual(ps, mk, "the two build-combined rewrite maps have drifted");
+});
+
+test("build.ps1: declares #Requires -Version 7 and encodes every content round-trip", () => {
+  assert.equal(buildPs1Src.split("\n")[0], "#Requires -Version 7");
+  const io = buildPs1Src
+    .split("\n")
+    .filter((l) => !l.trimStart().startsWith("#"))
+    .filter((l) => /\b(Get-Content|Set-Content)\b/.test(l));
+  assert.ok(io.length >= 8, `anti-vacuity: found only ${io.length} Get-Content/Set-Content lines`);
+  const unencoded = io.filter((l) => !/-Encoding utf8/.test(l));
+  assert.deepEqual(unencoded, [], "Get-Content/Set-Content without an explicit -Encoding utf8 (PS 5.1 would use the ANSI codepage)");
+});

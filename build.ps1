@@ -1,6 +1,14 @@
+#Requires -Version 7
 # build.ps1 - PowerShell build script for Iterative Planner Claude Skill
 # Usage: .\build.ps1 [command]
 # Commands: build, build-combined, package, package-combined, package-tar, validate, lint, test, clean, list, sync-skill, help
+#
+# PowerShell 7+ is REQUIRED, and every Get-Content/Set-Content below names -Encoding utf8
+# explicitly. Under Windows PowerShell 5.1 both default to the ANSI codepage, so the
+# read-modify-write of SKILL.md (Invoke-Build) and the combined single-file build
+# (Invoke-BuildCombined) would corrupt every non-ASCII glyph — and SKILL.md is dense with
+# em dashes, arrows, section signs and check marks. The Makefile channel is byte-clean
+# (cp + sed), so this is the one channel that needs the guard. Do NOT drop -Encoding.
 
 param(
     [Parameter(Position=0)]
@@ -8,7 +16,7 @@ param(
 )
 
 $SkillName = "iterative-planner"
-$Version = (Get-Content "$PSScriptRoot/VERSION" -Raw).Trim()
+$Version = (Get-Content "$PSScriptRoot/VERSION" -Raw -Encoding utf8).Trim()
 $BuildDir = "build"
 $DistDir = "dist"
 
@@ -47,11 +55,11 @@ function Invoke-Build {
     # Copy main skill file
     Copy-Item "src/SKILL.md" $skillDir
     $skillMdPath = Join-Path $skillDir "SKILL.md"
-    $skillMdContent = Get-Content $skillMdPath -Raw
+    $skillMdContent = Get-Content $skillMdPath -Raw -Encoding utf8
     $skillMdContent = $skillMdContent -replace '__SKILL_VERSION__', $Version
     $skillMdContent = $skillMdContent -replace '__SKILL_DATE__', (Get-Date -Format 'yyyy-MM-dd')
     $skillMdContent = $skillMdContent -replace '__SKILL_COMMIT__', (git rev-parse --short HEAD)
-    Set-Content $skillMdPath $skillMdContent
+    Set-Content -Path $skillMdPath -Value $skillMdContent -Encoding utf8
 
     # Copy reference files
     Copy-Item "src/references/*.md" "$skillDir/references/"
@@ -90,13 +98,13 @@ function Invoke-BuildCombined {
     $outputFile = Join-Path $BuildDir "$SkillName-combined.md"
 
     # Start with SKILL.md
-    $content = Get-Content "src/SKILL.md" -Raw
+    $content = Get-Content "src/SKILL.md" -Raw -Encoding utf8
     $content += "`n`n---`n`n# Bundled References`n"
 
     # Append each reference file
     Get-ChildItem "src/references/*.md" | Sort-Object Name | ForEach-Object {
         $content += "`n---`n`n"
-        $content += Get-Content $_.FullName -Raw
+        $content += Get-Content $_.FullName -Raw -Encoding utf8
     }
 
     # Re-inline the per-state rule modules so the single-file channel is self-contained
@@ -106,7 +114,7 @@ function Invoke-BuildCombined {
         $state = $_.BaseName -replace '^state-', ''
         $content += "`n---`n`n"
         $content += "## State Module: $state`n`n"
-        $content += Get-Content $_.FullName -Raw
+        $content += Get-Content $_.FullName -Raw -Encoding utf8
     }
 
     $content += "`n---`n`n"
@@ -143,11 +151,32 @@ function Invoke-BuildCombined {
         $content = $content.Replace($key, $refMap[$key])
     }
 
+    # Rewrite the emit-state.mjs / emit-template.mjs invocations: neither router is runnable in a
+    # paste context, and the module bodies they would emit are inlined above as "## State Module: <s>"
+    # sections. Keep this map in lockstep with the Makefile build-combined sed block —
+    # check-doc-parity.test.mjs asserts both channels declare the same key/value pairs.
+    $pointerMap = @{
+        '`node <skill-path>/scripts/emit-state.mjs --state explore` (module: `scripts/modules/state-explore.md`)' = 'the "State Module: explore" section below (inlined verbatim from `scripts/modules/state-explore.md`)'
+        '`node <skill-path>/scripts/emit-state.mjs --state plan` (module: `scripts/modules/state-plan.md`)' = 'the "State Module: plan" section below (inlined verbatim from `scripts/modules/state-plan.md`)'
+        '`node <skill-path>/scripts/emit-state.mjs --state execute` (module: `scripts/modules/state-execute.md`)' = 'the "State Module: execute" section below (inlined verbatim from `scripts/modules/state-execute.md`)'
+        '`node <skill-path>/scripts/emit-state.mjs --state reflect` (module: `scripts/modules/state-reflect.md`)' = 'the "State Module: reflect" section below (inlined verbatim from `scripts/modules/state-reflect.md`)'
+        '`node <skill-path>/scripts/emit-state.mjs --state pivot` (module: `scripts/modules/state-pivot.md`)' = 'the "State Module: pivot" section below (inlined verbatim from `scripts/modules/state-pivot.md`)'
+        'emitted on demand by the router `scripts/emit-state.mjs`, not inlined here. On **entering** a state, run `node <skill-path>/scripts/emit-state.mjs --state <state>` and follow its stdout as the authoritative per-state rules.' = 'inlined verbatim below as the "State Module: <state>" sections. On **entering** a state, read the section for that state and follow it as the authoritative per-state rules.'
+        'the per-state operative rules come from the `emit-state` router (see below), NOT from inline bodies (the Per-State Rules section is summaries + pointers only)' = 'the per-state operative rules come from the inlined "State Module: <state>" sections below, NOT from the Per-State Rules section (which is summaries + pointers only)'
+        'In this mode you also run `node <skill-path>/scripts/emit-state.mjs --state <state>` on entering each of EXPLORE/PLAN/EXECUTE/REFLECT/PIVOT and follow its output as the operative per-state rules (the Per-State Rules section here is now a summary + pointer; the scripts ship with the skill bundle, so the router resolves even without agent definitions installed).' = 'In this mode you also read the "State Module: <state>" section below on entering each of EXPLORE/PLAN/EXECUTE/REFLECT/PIVOT and follow it as the operative per-state rules (the Per-State Rules section here is now a summary + pointer; the module bodies are inlined verbatim in this file, so they resolve without any script).'
+        '(or run `node <skill-path>/scripts/emit-template.mjs --name changelog` to get just this template — file-formats.md is the canonical fallback)' = '(the changelog template is inlined there)'
+        ' — or run `node <skill-path>/scripts/emit-template.mjs --name plan` to get just this template (file-formats.md is the canonical fallback)' = ' (the plan template is inlined there)'
+        ' — or run `node <skill-path>/scripts/emit-template.mjs --name verification` to get just this template (file-formats.md is the canonical fallback)' = ' (the verification template is inlined there)'
+    }
+    foreach ($key in $pointerMap.Keys) {
+        $content = $content.Replace($key, $pointerMap[$key])
+    }
+
     $content = $content -replace '__SKILL_VERSION__', $Version
     $content = $content -replace '__SKILL_DATE__', (Get-Date -Format 'yyyy-MM-dd')
     $content = $content -replace '__SKILL_COMMIT__', (git rev-parse --short HEAD)
 
-    Set-Content -Path $outputFile -Value $content
+    Set-Content -Path $outputFile -Value $content -Encoding utf8
 
     Write-Host "Combined skill created: $outputFile" -ForegroundColor Green
 }
@@ -210,7 +239,7 @@ function Invoke-Validate {
     if (-not (Test-Path "src/SKILL.md")) {
         $errors += "ERROR: src/SKILL.md not found"
     } else {
-        $content = Get-Content "src/SKILL.md" -Raw
+        $content = Get-Content "src/SKILL.md" -Raw -Encoding utf8
         if ($content -notmatch "(?m)^name:") {
             $errors += "ERROR: SKILL.md missing 'name' in frontmatter"
         }
@@ -227,17 +256,21 @@ function Invoke-Validate {
             }
         }
 
-        # Verify transition table entries appear in Mermaid diagram
+        # Verify every protocol transition appears as a literal Mermaid edge in the state diagram.
+        # NOT a loose "FROM.*TO" match: that matched any line naming the two states in order, so
+        # "PLAN.*PLAN" could not fail on any document mentioning PLAN twice on one line. Match the
+        # indented `FROM --> TO` edge itself. Keep in lockstep with the Makefile validate target.
         Write-Host "Checking state machine consistency..."
-        $transitions = @(
-            @("EXPLORE", "PLAN"), @("PLAN", "EXPLORE"), @("PLAN", "PLAN"),
-            @("PLAN", "EXECUTE"), @("EXECUTE", "REFLECT"), @("REFLECT", "CLOSE"),
-            @("REFLECT", "PIVOT"), @("REFLECT", "EXPLORE"), @("PIVOT", "PLAN")
+        $mermaidEdges = @(
+            "EXPLORE --> PLAN", "PLAN --> EXPLORE", "PLAN --> PLAN",
+            "PLAN --> EXECUTE", "EXECUTE --> REFLECT", "REFLECT --> CLOSE",
+            "REFLECT --> PIVOT", "REFLECT --> EXPLORE", "REFLECT --> EXECUTE",
+            "PIVOT --> PLAN"
         )
-        foreach ($pair in $transitions) {
-            $pattern = "$($pair[0]).*$($pair[1])"
+        foreach ($edge in $mermaidEdges) {
+            $pattern = '(?m)^\s+' + [regex]::Escape($edge) + '(\s|$)'
             if ($content -notmatch $pattern) {
-                $errors += "ERROR: Transition $($pair[0]) -> $($pair[1]) missing from SKILL.md"
+                $errors += "ERROR: Mermaid edge '$edge' missing from SKILL.md state diagram"
             }
         }
     }
@@ -250,10 +283,16 @@ function Invoke-Validate {
         $errors += "ERROR: src/scripts/ directory not found"
     }
 
-    # Verify bootstrap.mjs creates expected plan directory files
-    if (Test-Path "src/scripts/bootstrap.mjs") {
+    # Verify bootstrap.mjs creates expected plan directory files.
+    # A MISSING script is a hard FAIL, not a skip: the Makefile channel greps the file directly and
+    # dies when it is gone, so wrapping this in a plain `if (Test-Path ...)` made a deleted script
+    # pass validation SILENTLY on Windows only — the exact drift this lockstep invariant exists to
+    # prevent. Same shape for every mandatory script and gate below.
+    if (-not (Test-Path "src/scripts/bootstrap.mjs")) {
+        $errors += "ERROR: src/scripts/bootstrap.mjs not found"
+    } else {
         Write-Host "Checking bootstrap file list..."
-        $bsContent = Get-Content "src/scripts/bootstrap.mjs" -Raw
+        $bsContent = Get-Content "src/scripts/bootstrap.mjs" -Raw -Encoding utf8
         foreach ($f in @("state.md", "plan.md", "decisions.md", "findings.md", "progress.md", "verification.md", "changelog.md")) {
             if ($bsContent -notmatch [regex]::Escape($f)) {
                 $errors += "ERROR: bootstrap.mjs does not create $f"
@@ -286,7 +325,7 @@ function Invoke-Validate {
     if (Test-Path "src/agents") {
         Write-Host "Checking agent definitions..."
         Get-ChildItem "src/agents/*.md" | ForEach-Object {
-            $agentContent = Get-Content $_.FullName -Raw
+            $agentContent = Get-Content $_.FullName -Raw -Encoding utf8
             if ($agentContent -notmatch "(?m)^name:") {
                 $errors += "ERROR: $($_.Name) missing 'name' in frontmatter"
             }
@@ -300,9 +339,11 @@ function Invoke-Validate {
     }
 
     # Verify validate-plan.mjs VALID_TRANSITIONS covers all SKILL.md transitions
-    if (Test-Path "src/scripts/validate-plan.mjs") {
+    if (-not (Test-Path "src/scripts/validate-plan.mjs")) {
+        $errors += "ERROR: src/scripts/validate-plan.mjs not found"
+    } else {
         Write-Host "Checking validator transition coverage..."
-        $vpContent = Get-Content "src/scripts/validate-plan.mjs" -Raw
+        $vpContent = Get-Content "src/scripts/validate-plan.mjs" -Raw -Encoding utf8
         $requiredTransitions = @(
             "EXPLORE→PLAN", "PLAN→EXPLORE", "PLAN→PLAN",
             "PLAN→EXECUTE", "EXECUTE→REFLECT", "REFLECT→CLOSE",
@@ -316,58 +357,46 @@ function Invoke-Validate {
     }
 
     # Verify README <-> SKILL.md File Ownership table parity
-    if (Test-Path "src/scripts/check-doc-parity.mjs") {
-        Write-Host "Checking doc parity (README <-> SKILL.md File Ownership)..."
-        node src/scripts/check-doc-parity.mjs
-        if ($LASTEXITCODE -ne 0) {
-            $errors += "ERROR: README File Ownership table out of parity with SKILL.md (see check-doc-parity.mjs)"
-        }
+    Write-Host "Checking doc parity (README <-> SKILL.md File Ownership)..."
+    node src/scripts/check-doc-parity.mjs
+    if ($LASTEXITCODE -ne 0) {
+        $errors += "ERROR: README File Ownership table out of parity with SKILL.md (see check-doc-parity.mjs)"
     }
 
     # Verify README version badge and test-count badge match VERSION and TEST_COUNT files
-    if (Test-Path "src/scripts/check-readme-parity.mjs") {
-        Write-Host "Checking README badge parity (version + test count)..."
-        node src/scripts/check-readme-parity.mjs
-        if ($LASTEXITCODE -ne 0) {
-            $errors += "ERROR: README badges out of parity with VERSION/TEST_COUNT (see check-readme-parity.mjs)"
-        }
+    Write-Host "Checking README badge parity (version + test count)..."
+    node src/scripts/check-readme-parity.mjs
+    if ($LASTEXITCODE -ne 0) {
+        $errors += "ERROR: README badges out of parity with VERSION/TEST_COUNT (see check-readme-parity.mjs)"
     }
 
     # Verify CHANGELOG.md's first "## [X.Y.Z]" entry matches the VERSION file
-    if (Test-Path "src/scripts/check-changelog-parity.mjs") {
-        Write-Host "Checking CHANGELOG parity (top entry <-> VERSION)..."
-        node src/scripts/check-changelog-parity.mjs
-        if ($LASTEXITCODE -ne 0) {
-            $errors += "ERROR: CHANGELOG.md top entry out of parity with VERSION (see check-changelog-parity.mjs)"
-        }
+    Write-Host "Checking CHANGELOG parity (top entry <-> VERSION)..."
+    node src/scripts/check-changelog-parity.mjs
+    if ($LASTEXITCODE -ne 0) {
+        $errors += "ERROR: CHANGELOG.md top entry out of parity with VERSION (see check-changelog-parity.mjs)"
     }
 
     # Verify agent/module prose wiring: script paths, reference citations, section pointers, skill-path resolution
     # --emit-edges kept in lockstep with the Makefile validate call site (2-place fact; edit both together) — see plan decisions.md D-003
-    if (Test-Path "src/scripts/check-agent-wiring.mjs") {
-        Write-Host "Checking agent wiring (script paths, references, section pointers)..."
-        node src/scripts/check-agent-wiring.mjs --emit-edges
-        if ($LASTEXITCODE -ne 0) {
-            $errors += "ERROR: agent/module prose wiring is broken (see check-agent-wiring.mjs)"
-        }
+    Write-Host "Checking agent wiring (script paths, references, section pointers)..."
+    node src/scripts/check-agent-wiring.mjs --emit-edges
+    if ($LASTEXITCODE -ne 0) {
+        $errors += "ERROR: agent/module prose wiring is broken (see check-agent-wiring.mjs)"
     }
 
     # Verify bootstrap's PLAN_TEMPLATES byte-match file-formats.md's <!-- SKELETON:* --> regions
-    if (Test-Path "src/scripts/check-template-parity.mjs") {
-        Write-Host "Checking template parity (bootstrap PLAN_TEMPLATES <-> file-formats.md skeletons)..."
-        node src/scripts/check-template-parity.mjs
-        if ($LASTEXITCODE -ne 0) {
-            $errors += "ERROR: bootstrap PLAN_TEMPLATES out of parity with file-formats.md SKELETON regions (see check-template-parity.mjs)"
-        }
+    Write-Host "Checking template parity (bootstrap PLAN_TEMPLATES <-> file-formats.md skeletons)..."
+    node src/scripts/check-template-parity.mjs
+    if ($LASTEXITCODE -ne 0) {
+        $errors += "ERROR: bootstrap PLAN_TEMPLATES out of parity with file-formats.md SKELETON regions (see check-template-parity.mjs)"
     }
 
     # Verify register density (jargon-marker ratchet) against committed per-file ceilings
-    if (Test-Path "src/scripts/check-register.mjs") {
-        Write-Host "Checking register density..."
-        node src/scripts/check-register.mjs
-        if ($LASTEXITCODE -ne 0) {
-            $errors += "ERROR: register density exceeds committed ceiling or anti-vacuity floor tripped (see check-register.mjs)"
-        }
+    Write-Host "Checking register density..."
+    node src/scripts/check-register.mjs
+    if ($LASTEXITCODE -ne 0) {
+        $errors += "ERROR: register density exceeds committed ceiling or anti-vacuity floor tripped (see check-register.mjs)"
     }
 
     if ($errors.Count -gt 0) {
