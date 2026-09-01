@@ -375,7 +375,9 @@ test("pin: every committed baseline entry EQUALS its file's live measurement (a 
     wrong,
     [],
     `register-baseline.json is not the live measurement:\n  ${wrong.join("\n  ")}\n` +
-      "Run `node src/scripts/check-register.mjs --regenerate` and commit the diff.",
+      "Run `node src/scripts/check-register.mjs --regenerate` and commit the diff. " +
+      "If it refuses because a ceiling would RISE, that is the raise guard (D-035): " +
+      "re-run it naming each file it lists, `--regenerate --raise <file>`.",
   );
 });
 
@@ -433,6 +435,223 @@ test("--regenerate refuses to write from a gutted scan (it cannot be used to lau
       readFileSync(join(root, "src/scripts/register-baseline.json"), "utf8"),
       before,
       "a refused regenerate must leave the baseline untouched",
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// --- D-035: THE --regenerate RAISE GUARD -----------------------------------
+// Corpus shape taken from the REVIEWER's reproduction of the laundering path
+// (review-iter-1-pass2 Concerns 4 and 5, plus the orchestrator's swap probe:
+// three new tags in, three old marker-bearing lines and forty plain lines out,
+// so the marker count holds at 43 while density rises 11.27 -> 15.78). Not
+// authored by this pass — LESSONS [I:5] / D-023.
+
+const SWAP_FILE = "src/agents/ip-orchestrator.md";
+
+/** Three lines each carrying exactly one bracket-tag marker. */
+const swapTagLines = (a, b, c) =>
+  [a, b, c]
+    .map(
+      (tag) =>
+        `A sentence carrying the ${tag} tag and nothing else that the scanner counts as jargon here.`,
+    )
+    .join("\n");
+
+const SWAP_OLD_TAGS = swapTagLines("[old-one]", "[old-two]", "[old-three]");
+const SWAP_NEW_TAGS = swapTagLines("[new-one]", "[new-two]", "[new-three]");
+// Forty lines of ordinary prose, no markers at all — the denominator.
+const SWAP_PROSE = Array.from(
+  { length: 40 },
+  (_, i) =>
+    `Line ${i} of plain readable prose with no special markers of any kind in it at all.`,
+).join("\n");
+
+const SWAP_BEFORE = `${SWAP_OLD_TAGS}\n${SWAP_PROSE}\n`;
+// The swap: the three old marker lines and the forty prose lines are deleted,
+// three brand-new tags arrive. Count holds; density rises.
+const SWAP_AFTER = `${SWAP_NEW_TAGS}\n`;
+const SWAP_ENTRY = {
+  ceiling: density(SWAP_BEFORE),
+  markers: jargonMarkers(SWAP_BEFORE).total,
+};
+
+/** Fixture whose SWAP_FILE holds `body`, pinned at SWAP_BEFORE's entry. */
+function swapRoot(body) {
+  const baseline = Object.fromEntries(
+    RELPATHS.map((r) => [r, r === SWAP_FILE ? { ...SWAP_ENTRY } : { ...DEFAULT_ENTRY }]),
+  );
+  return makeFixtureRoot({ content: { [SWAP_FILE]: body }, baseline });
+}
+
+const readBaseline = (root) =>
+  JSON.parse(readFileSync(join(root, "src/scripts/register-baseline.json"), "utf8"));
+
+test("D-035 corpus 1 (the laundering swap): count holds, density rises — the gate PASSES, the entry no longer equals live, and --regenerate refuses without --raise", () => {
+  // Preconditions, asserted so the test cannot pass for the wrong reason.
+  assert.strictEqual(
+    jargonMarkers(SWAP_AFTER).total,
+    SWAP_ENTRY.markers,
+    "the swap must hold the marker count — that is what makes it invisible to the conjunction",
+  );
+  assert.ok(
+    density(SWAP_AFTER) > SWAP_ENTRY.ceiling,
+    `the swap must raise density above ${SWAP_ENTRY.ceiling}, got ${density(SWAP_AFTER)}`,
+  );
+  const root = swapRoot(SWAP_AFTER);
+  try {
+    // (a) The gate is blind to it — unchanged behaviour, deliberately.
+    const gate = runCliAgainst(root);
+    assert.equal(
+      gate.status,
+      0,
+      `the conjunction gate cannot see an equal swap; stderr=${gate.stderr}`,
+    );
+    // (b) The equality the pin test asserts over the real repo is broken here,
+    // which is why the author is pushed to --regenerate at all.
+    assert.notStrictEqual(
+      readBaseline(root)[SWAP_FILE].ceiling,
+      density(SWAP_AFTER),
+      "the committed entry must no longer equal live density — otherwise there is nothing for the guard to guard",
+    );
+    // (c) ...and that regenerate is now refused.
+    const before = readFileSync(
+      join(root, "src/scripts/register-baseline.json"),
+      "utf8",
+    );
+    const regen = runCliAgainst(root, ["--regenerate"]);
+    assert.equal(regen.status, 1, `expected exit 1; stdout=${regen.stdout}`);
+    assert.match(regen.stderr, /\[register-raise\]/);
+    assert.match(regen.stderr, /ip-orchestrator\.md/);
+    assert.strictEqual(
+      readFileSync(join(root, "src/scripts/register-baseline.json"), "utf8"),
+      before,
+      "a refused regenerate must leave the baseline untouched",
+    );
+    // (d) Naming it goes through.
+    const named = runCliAgainst(root, ["--regenerate", "--raise", SWAP_FILE]);
+    assert.equal(named.status, 0, `expected exit 0; stderr=${named.stderr}`);
+    assert.match(named.stdout, /RAISED src\/agents\/ip-orchestrator\.md/);
+    assert.strictEqual(readBaseline(root)[SWAP_FILE].ceiling, density(SWAP_AFTER));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("D-035 corpus 2 (density DROP): --regenerate succeeds with no flag — the guard must never fire on a fall", () => {
+  // The reviewer's deletion-immunity invariant (W7 / D-027) restated against
+  // the new guard: adding plain prose lowers density, and lowering is free.
+  const diluted = `${SWAP_BEFORE}${SWAP_PROSE}\n`;
+  assert.ok(
+    density(diluted) < SWAP_ENTRY.ceiling,
+    `precondition: density must FALL, got ${density(diluted)} vs ${SWAP_ENTRY.ceiling}`,
+  );
+  const root = swapRoot(diluted);
+  try {
+    const res = runCliAgainst(root, ["--regenerate"]);
+    assert.equal(
+      res.status,
+      0,
+      `a falling ceiling needs no flag; stderr=${res.stderr}`,
+    );
+    assert.doesNotMatch(res.stderr, /\[register-raise\]/);
+    assert.strictEqual(readBaseline(root)[SWAP_FILE].ceiling, density(diluted));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("D-035 corpus 3 (density HOLD): --regenerate succeeds with no flag and rewrites the same bytes", () => {
+  const root = swapRoot(SWAP_BEFORE);
+  try {
+    const first = runCliAgainst(root, ["--regenerate"]);
+    assert.equal(first.status, 0, `expected exit 0; stderr=${first.stderr}`);
+    const bytes = readFileSync(
+      join(root, "src/scripts/register-baseline.json"),
+      "utf8",
+    );
+    const second = runCliAgainst(root, ["--regenerate"]);
+    assert.equal(second.status, 0, `a hold needs no flag; stderr=${second.stderr}`);
+    assert.strictEqual(
+      readFileSync(join(root, "src/scripts/register-baseline.json"), "utf8"),
+      bytes,
+      "regenerating an unchanged corpus must produce no diff",
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("D-035 corpus 4 (named raise): --raise writes exactly that file's new ceiling and raises no other", () => {
+  const root = swapRoot(SWAP_AFTER);
+  try {
+    const beforeBl = readBaseline(root);
+    const res = runCliAgainst(root, ["--regenerate", "--raise", SWAP_FILE]);
+    assert.equal(res.status, 0, `expected exit 0; stderr=${res.stderr}`);
+    const afterBl = readBaseline(root);
+    assert.strictEqual(afterBl[SWAP_FILE].ceiling, density(SWAP_AFTER));
+    assert.strictEqual(afterBl[SWAP_FILE].markers, jargonMarkers(SWAP_AFTER).total);
+    for (const rel of RELPATHS) {
+      if (rel === SWAP_FILE) continue;
+      assert.ok(
+        afterBl[rel].ceiling <= beforeBl[rel].ceiling,
+        `${rel}: an unnamed ceiling must not rise (${beforeBl[rel].ceiling} -> ${afterBl[rel].ceiling})`,
+      );
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("D-035 corpus 5 (unnamed raise): exits non-zero, names the file with old -> new values, and prints the exact re-run command", () => {
+  const root = swapRoot(SWAP_AFTER);
+  try {
+    const res = runCliAgainst(root, ["--regenerate"]);
+    assert.equal(res.status, 1, `expected exit 1; stdout=${res.stdout}`);
+    assert.match(res.stderr, /refusing to raise 1 ceiling\(s\) you did not name/);
+    assert.match(
+      res.stderr,
+      new RegExp(
+        `${SWAP_FILE.replace(/[/.]/g, "\\$&")}: ceiling ${SWAP_ENTRY.ceiling} -> ${density(SWAP_AFTER)}`,
+      ),
+      `stderr must carry the old -> new values; got: ${res.stderr}`,
+    );
+    assert.match(res.stderr, /--regenerate --raise src\/agents\/ip-orchestrator\.md/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("D-035: --raise is refused without --regenerate, and refused with no value", () => {
+  const root = swapRoot(SWAP_BEFORE);
+  try {
+    const readOnly = runCliAgainst(root, ["--raise", SWAP_FILE]);
+    assert.equal(readOnly.status, 1, `expected exit 1; stdout=${readOnly.stdout}`);
+    assert.match(readOnly.stderr, /--raise only means something with --regenerate/);
+    const noValue = runCliAgainst(root, ["--regenerate", "--raise"]);
+    assert.equal(noValue.status, 1, `expected exit 1; stdout=${noValue.stdout}`);
+    assert.match(noValue.stderr, /--raise needs a file path/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("D-035: the drift message tells the author to raise THAT ONE entry by name, not to regenerate the whole baseline", () => {
+  // Concern 5: the old text said "bump this ONE entry with --regenerate", and
+  // --regenerate was whole-baseline — the instruction did not match the tool.
+  const root = w7Root(`${W7_DOC}One more audit-then-summary-and-verdict marker.\n`);
+  try {
+    const res = runCliAgainst(root);
+    assert.equal(res.status, 1);
+    assert.match(
+      res.stderr,
+      /--regenerate --raise src\/agents\/ip-orchestrator\.md/,
+      "the advice must name the file, because an unnamed regenerate is now refused",
+    );
+    assert.doesNotMatch(
+      res.stderr,
+      /bump this one entry with --regenerate and let the diff show it/,
     );
   } finally {
     rmSync(root, { recursive: true, force: true });
