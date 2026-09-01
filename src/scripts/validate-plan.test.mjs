@@ -1376,21 +1376,15 @@ describe("validate-plan.mjs — M7: targeted check-function coverage", () => {
     assert.doesNotMatch(r.stdout, /\[changelog-malformed\]/, `clean line must not warn, got:\n${r.stdout}`);
   });
 
-  it("checkPresentationContractLog: PLAN→EXECUTE without PC-PLAN → WARN [presentation-contract-unlogged]", () => {
+  // D-009: the Presentation Contract advisory was DELETED, not disabled. The
+  // default writePlan fixture records PLAN → EXECUTE and names no contract
+  // anywhere — the exact input that used to WARN. Guards against a well-meaning
+  // restoration of an unenforceable check.
+  it("presentation-contract advisory is gone: PLAN→EXECUTE with no PC-* reference → no WARN", () => {
     const cwd = getTempDir();
-    writePlan(cwd); // default state.md has PLAN → EXECUTE, no PC-PLAN anywhere
+    writePlan(cwd);
     const r = run(cwd);
-    assert.match(r.stdout, /\[presentation-contract-unlogged\]/, `expected unlogged-contract WARN, got:\n${r.stdout}`);
-  });
-
-  it("checkPresentationContractLog: PC-PLAN reference present → no WARN", () => {
-    const cwd = getTempDir();
-    const { planDir } = writePlan(cwd);
-    // Append a PC-PLAN reference to decisions.md (one of the scanned files).
-    writeFileSync(join(planDir, "decisions.md"),
-      `# Decision Log\n*Plan: plan_2026-05-15_aaaabbbb*\n*Append-only.*\n\nPC-PLAN emitted to user before approval.\n\n## D-001 | EXPLORE → PLAN | 2026-05-15\n**Context**: fixture.\n**Decision**: fixture.\n**Trade-off**: a **at the cost of** b.\n**Reasoning**: fixture.\n**Anchor-Refs**: (none yet)\n`);
-    const r = run(cwd);
-    assert.doesNotMatch(r.stdout, /\[presentation-contract-unlogged\]/, `PC-PLAN present must suppress WARN, got:\n${r.stdout}`);
+    assert.doesNotMatch(r.stdout, /presentation-contract/i, `the PC advisory must stay deleted (D-009), got:\n${r.stdout}`);
   });
 
   it("checkComplexityBudget: placeholder budget in EXECUTE → WARN [complexity]", () => {
@@ -1529,6 +1523,118 @@ describe("validate-plan.mjs — M7: targeted check-function coverage", () => {
     const r = run(cwd);
     assert.match(r.stdout, /\[evidence\]/, `expected evidence WARN, got:\n${r.stdout}`);
     assert.match(r.stdout, /weak Evidence/);
+  });
+
+  // -------------------------------------------------------------------------
+  // B3 / D-011 — the [evidence] check must tolerate bootstrap's own placeholder
+  // row but keep flagging REAL criteria with empty/PENDING evidence.
+  // The clean fixture is bootstrap's REAL `verification` template bytes, not a
+  // hand-copied approximation: a copy would drift and stop testing the defect.
+  // -------------------------------------------------------------------------
+  it("checkVerificationEvidence: bootstrap's own verification skeleton produces no [evidence] WARN", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    writeFileSync(join(planDir, "verification.md"), PLAN_TEMPLATES.verification);
+    const r = run(cwd);
+    assert.doesNotMatch(r.stdout, /\[evidence\]/, `the validator must not warn on bootstrap's own bytes, got:\n${r.stdout}`);
+  });
+
+  it("checkVerificationEvidence: the skeleton criterion cell is a PLACEHOLDER_PATTERNS shape (spec-derived, not fixture-derived)", () => {
+    // Derive the exemption's justification from bootstrap's template rather than
+    // asserting a string this test authored: the row the check must tolerate is
+    // whatever bootstrap actually writes.
+    const row = PLAN_TEMPLATES.verification
+      .split("\n")
+      .find((l) => l.startsWith("| 1 |"));
+    assert.ok(row, "bootstrap's verification template must contain a `| 1 |` criteria row");
+    const criterion = row.split("|").map((c) => c.trim())[2];
+    assert.match(criterion, /^\*to be (defined|determined|populated)/i,
+      `skeleton criterion must match PLACEHOLDER_PATTERNS, got: ${criterion}`);
+  });
+
+  it("checkVerificationEvidence: REAL criterion with empty Evidence still WARNs (the check's actual purpose)", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    writeFileSync(join(planDir, "verification.md"),
+      "# Verification\n## Criteria Verification\n| # | Criterion | Method | Command | Result | Evidence |\n|---|---|---|---|---|---|\n| 1 | Gate suite green at every commit | run | make test | PASS | - |\n## Verdict\n- Recommendation: continue\n");
+    const r = run(cwd);
+    assert.match(r.stdout, /\[evidence\]/, `a real criterion with no evidence must still warn, got:\n${r.stdout}`);
+    assert.match(r.stdout, /empty Evidence cell/);
+  });
+
+  it("checkVerificationEvidence: REAL criterion with PENDING Evidence still WARNs", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    writeFileSync(join(planDir, "verification.md"),
+      "# Verification\n## Criteria Verification\n| # | Criterion | Method | Command | Result | Evidence |\n|---|---|---|---|---|---|\n| 1 | Anchor scan reports each anchor once | run | node x | PENDING | PENDING |\n## Verdict\n- Recommendation: continue\n");
+    const r = run(cwd);
+    assert.match(r.stdout, /\[evidence\]/, `a real criterion with PENDING evidence must still warn, got:\n${r.stdout}`);
+    assert.match(r.stdout, /single-word/);
+  });
+
+  // -------------------------------------------------------------------------
+  // B1 / D-010 — findings/ holds two schemas. Reviewer output is linted against
+  // ip-reviewer.md's template (Concerns / Blind Spots / Verdict); every other
+  // topic file keeps the explorer schema.
+  // -------------------------------------------------------------------------
+  it("checkFindingsTopicSections: ip-reviewer.md's mandated sections are the three this check requires (spec-derived)", () => {
+    // The required-section list is taken FROM the agent spec, not from fixtures
+    // authored by this pass (LESSONS [I:5]).
+    const spec = readFileSync(resolve(import.meta.dirname, "..", "agents", "ip-reviewer.md"), "utf-8");
+    for (const section of ["## Concerns", "## Blind Spots", "## Verdict"]) {
+      assert.ok(spec.includes(section), `ip-reviewer.md must mandate ${section}`);
+    }
+    // ...and the naming rule the filename discriminator encodes.
+    assert.ok(spec.includes("review-iter-N.md"), "ip-reviewer.md must state the review-iter-N.md naming rule");
+    assert.ok(spec.includes("review-iter-N-passM.md"), "ip-reviewer.md must state the re-review passM naming rule");
+  });
+
+  it("checkFindingsTopicSections: conformant review-iter-N.md → no [findings-topic] WARN", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    writeFileSync(join(planDir, "findings", "review-iter-1.md"),
+      "# Adversarial Review — Iteration 1\n\n## Concerns\n1. [NOTE] x — y — z\n\n## Blind Spots\n- nothing\n\n## Verdict\nREADY_TO_CLOSE\n");
+    const r = run(cwd);
+    assert.doesNotMatch(r.stdout, /\[findings-topic\]/, `conformant reviewer output must not warn, got:\n${r.stdout}`);
+  });
+
+  it("checkFindingsTopicSections: conformant review-iter-N-passM.md → no [findings-topic] WARN", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    writeFileSync(join(planDir, "findings", "review-iter-2-pass3.md"),
+      "# Adversarial Review — Iteration 2\n\n## Concerns\n(none)\n\n## Blind Spots\n- nothing\n\n## Verdict\nNEEDS_WORK\n");
+    const r = run(cwd);
+    assert.doesNotMatch(r.stdout, /\[findings-topic\]/, `re-review pass naming must be recognized, got:\n${r.stdout}`);
+  });
+
+  it("checkFindingsTopicSections: review file missing ## Verdict still WARNs (discriminator switches the list, never exempts)", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    writeFileSync(join(planDir, "findings", "review-iter-1.md"),
+      "# Adversarial Review — Iteration 1\n\n## Concerns\n1. [NOTE] x — y — z\n\n## Blind Spots\n- nothing\n");
+    const r = run(cwd);
+    assert.match(r.stdout, /\[findings-topic\]/, `a reviewer file missing Verdict must warn, got:\n${r.stdout}`);
+    assert.match(r.stdout, /review-iter-1\.md missing required section\(s\): Verdict/);
+    assert.doesNotMatch(r.stdout, /Key Findings/, `reviewer files must never be linted against the explorer schema, got:\n${r.stdout}`);
+  });
+
+  it("checkFindingsTopicSections: explorer topic file still linted against the explorer schema (previously-clean stays clean)", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    writeFileSync(join(planDir, "findings", "auth-flow.md"),
+      "# auth-flow\n\n## Summary\ns\n\n## Key Findings\nk\n\n## Constraints\nc\n\n## Code Patterns\np\n");
+    const r = run(cwd);
+    assert.match(r.stdout, /\[findings-topic\]/, `an explorer file missing Risks must still warn, got:\n${r.stdout}`);
+    assert.match(r.stdout, /auth-flow\.md missing required section\(s\): Risks/);
+  });
+
+  it("checkFindingsTopicSections: fully conformant explorer topic file → no WARN", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    writeFileSync(join(planDir, "findings", "auth-flow.md"),
+      "# auth-flow\n\n## Summary\ns\n\n## Key Findings\nk\n\n## Constraints\nc\n\n## Code Patterns\np\n\n## Risks & Unknowns\nr\n");
+    const r = run(cwd);
+    assert.doesNotMatch(r.stdout, /\[findings-topic\]/, `conformant explorer output must not warn, got:\n${r.stdout}`);
   });
 });
 

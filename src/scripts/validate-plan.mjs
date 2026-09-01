@@ -1917,6 +1917,19 @@ function checkVerificationEvidence(planDir, issues) {
     if (cells.length > 0 && cells[0] === "") cells.shift();
     if (cells.length > 0 && cells[cells.length - 1] === "") cells.pop();
     if (cells.length < 6) continue; // schema: # | Criterion | Method | Cmd | Result | Evidence
+    // DECISION plan-2026-09-01T100120-4f591469/D-011
+    // Discriminate on the CRITERION cell, never on the Evidence cell. Bootstrap
+    // writes one skeleton row — `| 1 | *To be populated during PLAN* | - | - | PENDING | - |`
+    // — so a freshly created plan WARNed on the validator's own template bytes, while
+    // the sibling checkPlanSections already tolerated the identical shape via
+    // PLACEHOLDER_PATTERNS. That constant is REUSED here rather than a second
+    // exemption list grown: one placeholder policy per validator.
+    // Do NOT widen this to the Evidence cell (`-` / `PENDING`) — that is exactly the
+    // condition this check EXISTS to report at REFLECT, and exempting it would delete
+    // the check while appearing to fix it. A row naming a REAL criterion with an empty
+    // or PENDING Evidence cell must still WARN. See decisions.md D-011.
+    const criterion = cells[1] || "";
+    if (PLACEHOLDER_PATTERNS.some((p) => p.test(criterion))) continue;
     const evidence = cells[5];
     if (!evidence || evidence === "-") {
       issues.push({
@@ -1956,16 +1969,37 @@ function checkFindingsTopicSections(planDir, issues) {
     return;
   }
   // "Risks" any-prefix match (e.g. "Risks", "Risks & Unknowns", "Risks-Unknowns").
-  const required = [
+  const explorerRequired = [
     { name: "Summary", re: /^##\s+Summary\b/m },
     { name: "Key Findings", re: /^##\s+Key Findings\b/m },
     { name: "Constraints", re: /^##\s+Constraints\b/m },
     { name: "Code Patterns", re: /^##\s+Code Patterns\b/m },
     { name: "Risks", re: /^##\s+Risks\b/m },
   ];
+  // DECISION plan-2026-09-01T100120-4f591469/D-010
+  // `findings/` holds TWO artifact schemas, not one. Explorer topic files use the
+  // Summary/Key Findings/Constraints/Code Patterns/Risks template; REVIEWER output
+  // (`agents/ip-reviewer.md` § Output Format) uses Concerns/Blind Spots/Verdict and
+  // is named `review-iter-N.md` (bare) or `review-iter-N-passM.md` (re-review pass).
+  // Do NOT go back to one required-list for every `.md` in the dir: that WARNed
+  // "missing Summary, Key Findings, Constraints, Code Patterns, Risks" on every
+  // CONFORMANT review file, at every iteration>=2 REFLECT and again at archivist
+  // Step 1 — and the remedy an agent reaches for is editing the review file into the
+  // explorer schema, destroying the Concerns/Verdict blocks the orchestrator relays.
+  // Also do NOT "fix" this by SKIPPING review-*.md: the discriminator SWITCHES the
+  // required list, it does not exempt. A file named like reviewer output that lacks
+  // `## Verdict` must still WARN — that section is consumed by REFLECT routing.
+  // See decisions.md D-010; required sections derived from ip-reviewer.md, not fixtures.
+  const reviewerRequired = [
+    { name: "Concerns", re: /^##\s+Concerns\b/m },
+    { name: "Blind Spots", re: /^##\s+Blind Spots\b/m },
+    { name: "Verdict", re: /^##\s+Verdict\b/m },
+  ];
+  const REVIEW_FILE_RE = /^review-iter-\d+(?:-pass\d+)?\.md$/;
   for (const f of files) {
     const text = readFile(join(dir, f));
     if (!text) continue;
+    const required = REVIEW_FILE_RE.test(f) ? reviewerRequired : explorerRequired;
     const missing = required.filter((r) => !r.re.test(text)).map((r) => r.name);
     if (missing.length > 0) {
       issues.push({
@@ -2237,56 +2271,28 @@ function checkChangelogDrefIntegrity(planDir, issues) {
 }
 
 // ---------------------------------------------------------------------------
-// v2.17.0 — Presentation Contract advisory
+// DECISION plan-2026-09-01T100120-4f591469/D-009
 // ---------------------------------------------------------------------------
-// Best-effort signal: when state.md records a user-facing transition
-// (PLAN→EXECUTE, REFLECT→CLOSE, PIVOT→PLAN), check whether a Presentation
-// Contract was named anywhere in state.md / decisions.md / progress.md.
-// This cannot inspect chat content — only metadata signals. WARN, never ERROR.
+// There is deliberately NO Presentation Contract check here. A
+// `checkPresentationContractLog` lived at this spot from v2.17.0 and WARNed
+// [presentation-contract-unlogged] unless the literal string PC-PLAN / PC-REFLECT /
+// PC-PIVOT appeared in state.md, decisions.md or progress.md.
 //
-// Contracts: PC-EXPLORE, PC-PLAN, PC-EXECUTE-STEP, PC-EXECUTE-LEASH,
-//            PC-REFLECT, PC-PIVOT (defined in references/file-formats.md).
+// Do NOT restore it, and do NOT write a new one. It verified an UNOBSERVABLE
+// property: a Presentation Contract is a chat-only artifact by definition
+// (SKILL.md "User Interaction", references/file-formats.md "Presentation
+// Contracts"), and NO protocol file — SKILL.md, any agents/*.md, any
+// scripts/modules/*.md, any references/*.md — instructs any agent to write a
+// contract name into a plan file. So a correctly-run plan WARNed, and the only way
+// to silence it was an undocumented convention that exactly one historical plan
+// happened to follow.
 //
-// Rule: for each gated transition observed in Transition History, the same
-// state.md (or decisions.md / progress.md) should contain at least one
-// reference to the contract that governs the transition. Absence is a WARN.
-function checkPresentationContractLog(planDir, issues) {
-  const state = readFile(join(planDir, "state.md"));
-  if (!state) return;
-  const decisions = readFile(join(planDir, "decisions.md")) || "";
-  const progress = readFile(join(planDir, "progress.md")) || "";
-  const corpus = state + "\n" + decisions + "\n" + progress;
-  // D-003: the DETECTION side must be comment-blind — a transition named inside a
-  // template/guidance comment (or in commented-out prose) is not a recorded transition
-  // and must not summon a WARN about a contract that was never due. The SEARCH side
-  // (`corpus`) stays raw on purpose: it only ever SUPPRESSES a WARN, so stripping it
-  // could only make this advisory noisier, never more correct.
-  const stateRecorded = stripHtmlComments(state);
-
-  // Gated transitions and their expected contract names. Multiple contracts
-  // possible per transition — match any.
-  const gates = [
-    { from: "PLAN", to: "EXECUTE", contracts: ["PC-PLAN"] },
-    { from: "REFLECT", to: "CLOSE", contracts: ["PC-REFLECT"] },
-    { from: "PIVOT", to: "PLAN", contracts: ["PC-PIVOT"] },
-  ];
-
-  for (const g of gates) {
-    // Detect transition occurrence — match either "FROM → TO" or "FROM -> TO" forms,
-    // anywhere in state.md (Transition History line or Last Transition).
-    const re = new RegExp(`${g.from}\\s*(?:→|->)\\s*${g.to}`);
-    if (!re.test(stateRecorded)) continue;
-    // Check whether any of the expected contract names appears in corpus.
-    const found = g.contracts.some((c) => corpus.includes(c));
-    if (!found) {
-      issues.push({
-        severity: "WARN",
-        check: "presentation-contract-unlogged",
-        message: `${g.from}→${g.to} transition recorded in state.md but no ${g.contracts.join("/")} reference found in state.md/decisions.md/progress.md (best-effort signal — verify the contract was emitted to the user).`,
-      });
-    }
-  }
-}
+// The tempting "fix" — adding that instruction to the orchestrator and the REFLECT
+// module — was rejected: an agent that logs the contract name proves only that it
+// logged the name, so the signal would be self-fulfilling ceremony on every plan.
+// Deleting an unenforceable check is this repo's own precedent ([byte-claim],
+// v2.39.0, deleted rather than extended). See decisions.md D-009.
+// ---------------------------------------------------------------------------
 
 function validate(planDirName) {
   const planDir = (planDirName.includes("/") || planDirName.startsWith(".")) ? planDirName : join(plansDir, planDirName);
@@ -2337,8 +2343,6 @@ function validate(planDirName) {
   checkChangelogFormat(planDir, issues);
   // v2.51.0 — changelog dref join integrity (WARN-only; never blocks CLOSE).
   checkChangelogDrefIntegrity(planDir, issues);
-  // v2.17.0 — Presentation Contract advisory (best-effort, WARN-only).
-  checkPresentationContractLog(planDir, issues);
 
   // Report
   const errors = issues.filter((i) => i.severity === "ERROR");
@@ -2498,10 +2502,6 @@ Checks:
   - decisions.md Anchor-Refs required when matching anchor exists in source
     (ERROR post-v2.14.0, WARN otherwise; gated by state.md INIT timestamp)
   - decisions.md Anchor-Refs validity (WARN if file missing or anchor not found)
-  - Presentation Contract advisory (WARN [presentation-contract-unlogged] when
-    a gated transition PLAN→EXECUTE / REFLECT→CLOSE / PIVOT→PLAN is recorded
-    in state.md without any PC-PLAN / PC-REFLECT / PC-PIVOT reference in
-    state.md / decisions.md / progress.md — best-effort signal)
 
 Exit codes:
   0 = pass (no errors, warnings are OK; or GATE:PASS in --pre-step mode)
