@@ -235,6 +235,12 @@ export function normalizeBaselineEntry(value) {
  * from an empty baseline, must not need a flag). A ceiling that falls or holds
  * is never reported, whatever the marker count does — deletion immunity is the
  * hard invariant here (D-027), so this function is deliberately one-sided.
+ * A file whose raw marker count FELL is also never reported, even when its
+ * density rose: removing jargon is the direction the ratchet exists to reward,
+ * and calling it a "raise" is what made an author deleting prose declare one
+ * (D-037). Markers that merely HOLD while density rises ARE reported — that is
+ * both the pure prose deletion and D-035's equal swap, and no per-file
+ * aggregate can tell those two apart.
  * Never throws; a missing/odd `baseline` yields `[]`.
  *
  * @param {{[relpath: string]: { density: number, markers: number }}} measurements
@@ -246,7 +252,14 @@ export function ceilingRises(measurements, baseline) {
   for (const [file, m] of Object.entries(measurements || {})) {
     const entry = normalizeBaselineEntry(baseline?.[file]);
     if (!entry) continue;
-    if (m.density > entry.ceiling) {
+    // Density above the committed ceiling AND the raw marker count not FALLEN.
+    // The second half is D-037: a density rise driven purely by deleted prose
+    // is not a raise of anything, and demanding `--raise` for it relocated the
+    // W7 deletion penalty from the gate onto `--regenerate` instead of removing
+    // it. Do NOT tighten this to `toMarkers > fromMarkers`: markers HOLD in
+    // D-035's equal-swap shape, which is the laundering path this guard exists
+    // to close.
+    if (m.density > entry.ceiling && m.markers >= entry.markers) {
       rises.push({
         file,
         from: entry.ceiling,
@@ -381,6 +394,20 @@ if (isEntryPoint) {
   // density above the ceiling, so the ceiling is the binding number, and a
   // marker rise under a falling density is the dilution case D-027 already
   // disclosed as accepted. See decisions.md D-035.
+  // DECISION plan-2026-09-01T100120-4f591469/D-037: what this guard does NOT
+  // do, stated here because the PASS text used to claim otherwise. It guards
+  // ONE code path to the baseline — `--regenerate` — not the file. Hand-editing
+  // register-baseline.json to the live number reaches green here, through
+  // `make validate` and through the whole suite; nothing in this script can see
+  // it. The thing that catches a hand-edit is the D-028 pin test, and only
+  // because it demands every committed ceiling EQUAL its file's live
+  // measurement — so a hand-edit survives exactly when it writes what
+  // `--regenerate` would have written. Do NOT restore the claim that this shape
+  // "can only reach green through --regenerate --raise"; it was false when it
+  // shipped (ip-reviewer iteration-2 Concern 3, reproduced in one editor
+  // action). Closing the hole means guarding the WRITE (a committed-vs-previous
+  // ceiling diff read from git, or a raise ledger), which is a different gate
+  // with a different failure surface and is not attempted here.
   const argv = process.argv.slice(2);
   const wantsRegenerate = argv.includes("--regenerate");
   const raiseNames = new Set();
@@ -432,8 +459,14 @@ if (isEntryPoint) {
         );
       }
       console.error(
-        "Lowering or holding a ceiling needs no flag. Raising one is a deliberate, review-visible act, the same discipline as bumping TEST_COUNT — say so on the command line and the baseline is left untouched until you do:",
+        "Lowering or holding a ceiling needs no flag, and neither does a rise whose raw marker count FELL — deleting jargon is not raising anything. Raising one is a deliberate, review-visible act, the same discipline as bumping TEST_COUNT — say so on the command line and the baseline is left untouched until you do:",
       );
+      const held = unnamed.filter((r) => r.toMarkers === r.fromMarkers);
+      if (held.length > 0) {
+        console.error(
+          `Marker count HELD for ${held.map((r) => r.file).join(", ")}. That is one shape from the outside and two from the inside — a plain-prose deletion, or D-035's equal swap (new jargon in, the same number of marker-bearing lines out) — and no per-file aggregate can tell them apart. Naming it is the review record of which one it was.`,
+        );
+      }
       console.error(
         `  node src/scripts/check-register.mjs --regenerate ${unnamed
           .map((r) => `--raise ${r.file}`)
@@ -493,7 +526,10 @@ if (isEntryPoint) {
       "check-register: PASS is the gate only. Any edit that moves a file's word or marker count still needs `--regenerate` in the same commit, or the suite's pin test goes red.",
     );
     console.log(
-      "check-register: and this gate cannot see an equal swap — new jargon in, the same number of marker-bearing lines out, so the count holds while density rises. That shape passes HERE, fails the pin test, and can only reach green through `--regenerate --raise <file>`.",
+      "check-register: and this gate cannot see an equal swap — new jargon in, the same number of marker-bearing lines out, so the count holds while density rises. That shape passes HERE and turns the suite's pin test red; the SUPPORTED repair is `--regenerate --raise <file>`.",
+    );
+    console.log(
+      "check-register: nothing here guards the baseline FILE. Hand-editing a ceiling to the live number reaches green through this gate, `make validate` and the suite alike — what catches a hand-edit is the pin test's demand that every committed ceiling EQUAL its file's live measurement, i.e. a hand-edit survives only by writing exactly what `--regenerate` would have.",
     );
     process.exit(0);
   }

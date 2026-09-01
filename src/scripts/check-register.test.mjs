@@ -29,6 +29,7 @@ import {
   buildScanList,
   measureAll,
   serializeBaseline,
+  ceilingRises,
   EXPECTED_MIN_FILES,
   MIN_WORDS,
 } from "./check-register.mjs";
@@ -814,4 +815,116 @@ test("real CLI FAIL [register-floor]: a doc below MIN_WORDS -> exit 1 + near-emp
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+// --- D-037: WHAT THE RAISE GUARD MAY PUNISH, AND WHAT ITS PASS TEXT MAY CLAIM
+// Corpus shape taken from the ip-verifier's iteration-2 Concern 2 (deleting 12
+// near-marker-free prose lines from src/agents/ip-orchestrator.md: the gate
+// returned 0, correctly, while `--regenerate` returned 1 refusing to "raise" a
+// ceiling whose MARKERS HAD FALLEN) and from ip-reviewer iteration-2 Concern 3
+// (hand-editing register-baseline.json to the live number reaches green through
+// the gate, `make validate` and the whole suite). Not authored by this pass —
+// LESSONS [I:5] / D-023.
+
+test("D-037 (verifier Concern 2): a deletion that drops MARKERS needs no --raise, even though density rose", () => {
+  // The verifier's shape: prose goes, and one marker-bearing line goes with it.
+  const shortened = `[alpha-one] [beta-two] PC-STEP D-003\n${W7_PROSE.split("\n").slice(8).join("\n")}\n`;
+  assert.ok(
+    density(shortened) > W7_ENTRY.ceiling,
+    `precondition: density must RISE, got ${density(shortened)} vs ${W7_ENTRY.ceiling}`,
+  );
+  assert.ok(
+    jargonMarkers(shortened).total < W7_ENTRY.markers,
+    `precondition: markers must FALL, got ${jargonMarkers(shortened).total} vs ${W7_ENTRY.markers}`,
+  );
+  // The pure function first, so a failure says which half broke.
+  assert.deepEqual(
+    ceilingRises(
+      { "src/agents/ip-orchestrator.md": { density: density(shortened), markers: jargonMarkers(shortened).total } },
+      { "src/agents/ip-orchestrator.md": W7_ENTRY },
+    ),
+    [],
+    "a density rise with a FALLEN marker count is not a raise — do not re-green this by dropping the markers term (D-037)",
+  );
+  const root = w7Root(shortened);
+  try {
+    const gate = runCliAgainst(root);
+    assert.equal(gate.status, 0, `the read-only gate stays deletion-immune; stderr=${gate.stderr}`);
+    const regen = runCliAgainst(root, ["--regenerate"]);
+    assert.equal(
+      regen.status,
+      0,
+      `--regenerate must not force an author who DELETED jargon to declare a raise; stderr=${regen.stderr}`,
+    );
+    assert.doesNotMatch(regen.stderr, /\[register-raise\]/);
+    assert.strictEqual(readBaseline(root)["src/agents/ip-orchestrator.md"].ceiling, density(shortened));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("D-037: a genuine jargon RAISE is still refused without --raise, and a HELD count still is too", () => {
+  // The other side of the exemption. If the markers term were widened from
+  // "did not fall" to "must rise", D-035's equal swap (markers HOLD) would walk
+  // straight through the guard again — so the held case is asserted here, next
+  // to the risen one, rather than left to corpus 1 alone.
+  const risen = `${W7_DOC}[gamma-three] [delta-four] audit-then-summary-and-verdict extra jargon line.\n`;
+  assert.ok(jargonMarkers(risen).total > W7_ENTRY.markers, "precondition: markers rise");
+  const rootRisen = w7Root(risen);
+  try {
+    const res = runCliAgainst(rootRisen, ["--regenerate"]);
+    assert.equal(res.status, 1, `a real jargon raise must still be refused; stdout=${res.stdout}`);
+    assert.match(res.stderr, /\[register-raise\]/);
+  } finally {
+    rmSync(rootRisen, { recursive: true, force: true });
+  }
+  const rootHeld = swapRoot(SWAP_AFTER);
+  try {
+    const res = runCliAgainst(rootHeld, ["--regenerate"]);
+    assert.equal(res.status, 1, `a HELD marker count with a risen density must stay guarded (D-035); stdout=${res.stdout}`);
+    assert.match(res.stderr, /\[register-raise\]/);
+    assert.match(
+      res.stderr,
+      /Marker count HELD/,
+      "the refusal must say WHY it cannot tell a prose deletion from an equal swap",
+    );
+  } finally {
+    rmSync(rootHeld, { recursive: true, force: true });
+  }
+});
+
+test("D-037 (reviewer Concern 3): the PASS text does not claim a hand-edited ceiling is prevented", () => {
+  const root = makeFixtureRoot({});
+  try {
+    const res = runCliAgainst(root);
+    assert.equal(res.status, 0, `expected a clean PASS; stderr=${res.stderr}`);
+    assert.doesNotMatch(
+      res.stdout,
+      /can only reach green through/,
+      "FALSE when it shipped: hand-editing register-baseline.json to the live number reaches green here, "
+        + "through `make validate`, and through the whole suite. Do not restore this sentence (D-037).",
+    );
+    assert.match(res.stdout, /SUPPORTED repair is `--regenerate --raise <file>`/);
+    assert.match(res.stdout, /nothing here guards the baseline FILE/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("D-037: what DOES catch a hand-edited ceiling is the pin test's equality, and only when it diverges from live", () => {
+  // The claim the PASS text now makes, asserted rather than asserted-about. The
+  // comparison here is the one the `pin:` test makes over the real repo, run
+  // over a fixture so both outcomes are visible in one place.
+  const measurements = { "CLAUDE.md": { density: 8.24, markers: 52 } };
+  const divergent = { "CLAUDE.md": { ceiling: 9.5, markers: 52 } };
+  const exact = { "CLAUDE.md": { ceiling: 8.24, markers: 52 } };
+  const diverges = (baseline) =>
+    Object.entries(measurements).some(
+      ([rel, m]) => baseline[rel].ceiling !== m.density || baseline[rel].markers !== m.markers,
+    );
+  assert.equal(diverges(divergent), true, "a hand-edit that invents a number is caught by the equality");
+  assert.equal(diverges(exact), false, "a hand-edit to EXACTLY the live number is not caught — that is the disclosed limit");
+  // ...and neither of those two states is distinguishable by the raise guard,
+  // which never sees the file being written by hand at all.
+  assert.deepEqual(ceilingRises(measurements, exact), []);
 });

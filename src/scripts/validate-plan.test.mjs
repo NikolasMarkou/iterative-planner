@@ -1587,17 +1587,66 @@ legacy section
       "one re-plan after the opening EXPLORE → PLAN means convergence iteration 2");
   });
 
-  // D-034 — the derivation counts ARRIVALS at PLAN minus the first, and the subtraction is
-  // load-bearing: every plan opens with EXPLORE → PLAN, so without it EVERY plan would
-  // read as iteration 2 and the check would fire on all of them. `PLAN → EXECUTE` is a
-  // DEPARTURE and must not count — a regex without the arrow direction would match it.
+  // D-034 / D-037 — the derivation counts arrivals at PLAN that FOLLOW A DEPARTURE FROM
+  // REFLECT, and nothing else. `PLAN → EXECUTE` is a DEPARTURE and must not count — a
+  // regex without the arrow direction would match it.
   it("(q) convergence derivation: opening EXPLORE → PLAN and PLAN → EXECUTE departures do not count as re-plans", () => {
     const bare = "## Transition History:\n- INIT → EXPLORE (task started)\n- EXPLORE → PLAN (enough context)\n- PLAN → EXECUTE (approved)\n- PLAN → EXECUTE (approved again)\n";
     assert.equal(deriveConvergenceIteration(bare), 1,
       "the opening arrival plus any number of departures is still iteration 1");
     const replanned = bare + "- REFLECT → PIVOT (strike 3)\n- PIVOT -> PLAN (ASCII arrow, re-planned)\n";
     assert.equal(deriveConvergenceIteration(replanned), 2,
-      "a second ARRIVAL at PLAN is a re-plan, and the ASCII `->` arrow form counts too");
+      "a second ARRIVAL at PLAN after leaving REFLECT is a re-plan, and the ASCII `->` form counts too");
+  });
+
+  // D-037 — ip-reviewer iteration-2 Concern 1, VERBATIM, and the reason the "arrivals
+  // minus the first" derivation was replaced. `PLAN → PLAN` is what SKILL.md's own
+  // Transitions table says happens every time a user rejects a plan, and `PLAN → EXPLORE
+  // → PLAN` is the gap-filling round below it. Both are same-iteration work, and both
+  // read as iteration 2 under the old count — so step 3 traded one false positive for
+  // two. The corpus is the reviewer's, not this pass's (LESSONS [I:5]).
+  it("(r) convergence derivation: PLAN → PLAN and PLAN → EXPLORE → PLAN are NOT re-plans", () => {
+    const rejected = "## Transition History:\n- INIT → EXPLORE (task started)\n- EXPLORE → PLAN (enough context)\n- PLAN → PLAN (user rejected the plan)\n- PLAN → EXECUTE (approved)\n- EXECUTE → REFLECT (steps done)\n";
+    assert.equal(deriveConvergenceIteration(rejected), 1,
+      "PLAN → PLAN is a plan REVISION, not a re-plan (reviewer iter-2 Concern 1: this returned 2)");
+    const gapFilled = "## Transition History:\n- INIT → EXPLORE (task started)\n- EXPLORE → PLAN (enough context)\n- PLAN → EXPLORE (need more context)\n- EXPLORE → PLAN (gap filled)\n- PLAN → EXECUTE (approved)\n";
+    assert.equal(deriveConvergenceIteration(gapFilled), 1,
+      "PLAN → EXPLORE → PLAN is gap-filling before approval, not a re-plan (this returned 2 too)");
+  });
+
+  // D-037 — the other side: the two edge PAIRS that DO begin a new iteration must still
+  // fire. `REFLECT → PIVOT` + `PIVOT → PLAN` is the pivot re-plan; `REFLECT → EXPLORE` +
+  // `EXPLORE → PLAN` is the path SKILL.md § Autonomy Leash ("Known reset gap") names as
+  // starting a new iteration with no PIVOT in it. A fix that merely suppressed the two
+  // shapes above would pass (r) and fail here.
+  it("(s) convergence derivation: leaving REFLECT for PIVOT or EXPLORE and returning to PLAN IS a re-plan", () => {
+    const viaPivot = "## Transition History:\n- INIT → EXPLORE (task started)\n- EXPLORE → PLAN (enough context)\n- PLAN → PLAN (user rejected once)\n- PLAN → EXECUTE (approved)\n- EXECUTE → REFLECT (steps done)\n- REFLECT → PIVOT (3-strike; user approved)\n- PIVOT → PLAN (new approach)\n";
+    assert.equal(deriveConvergenceIteration(viaPivot), 2,
+      "a real REFLECT → PIVOT → PLAN re-plan must still read as iteration 2, revision loop or not");
+    const viaExplore = "## Transition History:\n- INIT → EXPLORE (task started)\n- EXPLORE → PLAN (enough context)\n- PLAN → EXECUTE (approved)\n- EXECUTE → REFLECT (steps done)\n- REFLECT → EXPLORE (need more context)\n- EXPLORE → PLAN (re-planned)\n";
+    assert.equal(deriveConvergenceIteration(viaExplore), 2,
+      "REFLECT → EXPLORE → PLAN starts a new iteration with no PIVOT (SKILL.md § Autonomy Leash)");
+    const fixLoop = "## Transition History:\n- INIT → EXPLORE (task started)\n- EXPLORE → PLAN (enough context)\n- PLAN → EXECUTE (approved)\n- EXECUTE → REFLECT (steps done)\n- REFLECT → EXECUTE (completion fix; iteration does NOT increment)\n- EXECUTE → REFLECT (pass 2)\n";
+    assert.equal(deriveConvergenceIteration(fixLoop), 1,
+      "a completion-fix REFLECT → EXECUTE loop never reaches PLAN and must stay silent");
+  });
+
+  // D-037 — end-to-end, not just the pure derivation: the reviewer reproduced the false
+  // positive against the real CLI on a bootstrapped plan at `## Iteration: 1` with an
+  // untouched verification.md. That is the observable the user sees, so it is asserted
+  // on the observable.
+  it("(t) convergence end-to-end: a rejected-plan history at iteration 1 emits NO [convergence] WARN", () => {
+    const cwd = getTempDir();
+    const transitionHistory = [
+      "- PLAN → PLAN (user rejected the plan)",
+      "- PLAN → EXECUTE (approved on the second pass)",
+      "- EXECUTE → REFLECT (all steps complete)",
+    ].join("\n");
+    writePlan(cwd, { state: "REFLECT", iteration: 1, transitionHistoryExtra: transitionHistory });
+    const r = run(cwd);
+    const warns = r.stdout.split("\n").filter((l) => /WARN\s+\[convergence\]/.test(l));
+    assert.equal(warns.length, 0,
+      `[convergence] must not fire on an iteration-1 plan the user merely asked to revise, got:\n${r.stdout}`);
   });
 });
 

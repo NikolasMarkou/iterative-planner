@@ -454,6 +454,14 @@ export function unterminatedCommentOpener(content) {
 //    runaway template literal that MASKED 4 genuine comment regions across 3 files here,
 //    which is the silent direction. `"` and `'` strings ARE still skipped: neither may
 //    cross a newline, so a mis-read of one is bounded to a single line.
+//    The shape that costs the most is the UNBALANCED one, and it is the SAME shape the
+//    family gate above just closed for shell scripts: `` const clean = `rm -rf build/*`; ``
+//    supplies a lone `/*`, a real comment further down supplies the `*/`, and the span
+//    runs across whatever lies between — so an anchor there is reported TWICE by the
+//    validator while `retire` stamps it ONCE. The hash-family desync is closed at the
+//    source; this C-family one is CHOSEN and measured (shared.test.mjs's D-037 cost pin
+//    and bootstrap.test.mjs's `build.mjs` fixture assert both counts). Do not read the
+//    2.62.0 lockstep claim as covering it. See decisions.md D-033, D-037.
 // ---------------------------------------------------------------------------
 
 // DECISION plan-2026-09-01T100120-4f591469/D-032 — the block-comment scan is gated by
@@ -484,9 +492,13 @@ export const BLOCK_COMMENT_EXTS = new Set([
 // literal (`` /^(`{3,}|~{3,})/ ``) open a template literal that ran to the next backtick
 // anywhere in the file and swallowed 4 real comment spans across 3 files in this repo —
 // a silent LOSS, the one direction this scanner may not fail in, and the only form of
-// string skip that can run away past a whole file. The cost is known and accepted: a
-// `/* */` written inside a genuine template literal now opens a phantom span, a visible
-// over-report of the same kind D-032 already chose. See decisions.md D-032, D-033.
+// string skip that can run away past a whole file. The cost is known, accepted and
+// MEASURED: a `/* */` written inside a genuine template literal now opens a phantom span,
+// and in the unbalanced form (a glob such as `build/*` inside the literal, closed by a
+// real comment below) that span swallows the anchor between them — 2 validator reports
+// against 1 `retire` stamp, the same desync shape the family gate closed for hash-family
+// files, relocated here on purpose. A visible over-report of the same kind D-032 already
+// chose. See decisions.md D-032, D-033, D-037.
 const BLOCK_STRING_DELIMS = new Set(['"', "'"]);
 
 // Skip a quoted string starting at `i`. Returns the offset one past its closing quote,

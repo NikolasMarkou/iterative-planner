@@ -546,20 +546,48 @@ function countExecuteReflect(block) {
 // check fired on it. Every WARN must correspond to a rule some protocol file actually
 // instructs an agent to follow.
 //
-// Counts ARRIVALS at PLAN (`→ PLAN`), minus the first — the first arrival is the opening
-// `EXPLORE → PLAN` every plan has. A completion-fix loop produces no arrival; a real
-// PIVOT → PLAN or a re-plan produces one. Reads the STRIPPED block, per D-009's rule that
-// advisory scanners never pass `{ raw: true }`: a false advisory WARN is recoverable, and
-// bootstrap's template comment carries a literal `EXPLORE → PLAN` example that must stay
-// invisible here (it is the reason the subtraction cannot simply be dropped).
-/** Count re-plans: arrivals at PLAN in a Transition-History block, minus the first (null → 0). */
+// Counts arrivals at PLAN that BEGIN A NEW ITERATION, and only those. The edge set is
+// read off SKILL.md's own Transitions table rather than guessed: three edges arrive at
+// PLAN — `EXPLORE → PLAN`, `PLAN → PLAN` and `PIVOT → PLAN` — and an arrival begins a new
+// iteration only when the plan got there by LEAVING REFLECT, i.e.
+//   REFLECT → PIVOT   … PIVOT → PLAN     (the re-plan after a pivot), or
+//   REFLECT → EXPLORE … EXPLORE → PLAN   (SKILL.md § Autonomy Leash, "Known reset gap",
+//                                         names this path as one that starts a NEW
+//                                         iteration with no PIVOT in it).
+// Everything else arriving at PLAN is same-iteration work the table declares legal and
+// routine: the opening `EXPLORE → PLAN`, `PLAN → PLAN` (the user rejected the plan — it
+// happens on every revision round), and `PLAN → EXPLORE → PLAN` (gap-filling before the
+// user has ever approved anything). Counting bare `→ PLAN` arrivals minus the first read
+// all three of those as iteration 2 and fired this WARN on iteration-1 plans; that was
+// ip-reviewer iteration-2 Concern 1, orchestrator-reproduced end to end.
+//
+// Implemented as ONE ordered pass with ONE bit of state (`leftReflect`), not as a set of
+// per-shape special cases: leaving REFLECT arms it, the next arrival at PLAN spends it.
+// Reads the STRIPPED block, per D-009's rule that advisory scanners never pass
+// `{ raw: true }` — a false advisory WARN is recoverable. bootstrap's state.md template
+// comment carries a literal `EXPLORE → PLAN` example, which under this rule contributes
+// nothing whether it is stripped or not (no REFLECT departure precedes it), so the
+// arithmetic no longer depends on a subtraction that hid it.
+/** Count re-plans: arrivals at PLAN that follow a departure from REFLECT (null → 0). */
 function countRePlans(block) {
   if (block === null) return 0;
   const norm = block.replace(/[–—‐]/g, "-");
-  const re = /(?:→|->)\s*PLAN\b/g;
-  let arrivals = 0;
-  while (re.exec(norm) !== null) arrivals++;
-  return Math.max(0, arrivals - 1);
+  const re = /\b([A-Z]+)\s*(?:→|->)\s*([A-Z]+)\b/g;
+  let leftReflect = false;
+  let count = 0;
+  let m;
+  while ((m = re.exec(norm)) !== null) {
+    const [, from, to] = m;
+    if (to === "PLAN") {
+      if (leftReflect) { count++; leftReflect = false; }
+    } else if (from === "REFLECT") {
+      // REFLECT → EXECUTE is the completion-fix loop and does NOT begin an iteration; it
+      // also never reaches PLAN, so arming on it is harmless. REFLECT → CLOSE ends the
+      // plan. The two that matter are REFLECT → PIVOT and REFLECT → EXPLORE.
+      leftReflect = to === "PIVOT" || to === "EXPLORE";
+    }
+  }
+  return count;
 }
 
 // Exported for testability ONLY (same precedent as deriveIterationFromHistory below: the

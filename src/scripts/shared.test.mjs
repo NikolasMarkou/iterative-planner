@@ -987,6 +987,26 @@ test("blockCommentSpans: [D-033 COST PIN] a `/* */` inside a real template liter
   + "runaway mask, which is the silent direction. See decisions.md D-033.");
 });
 
+test("blockCommentSpans: [D-037 COST PIN] an UNBALANCED `/*` inside a template literal swallows the anchor below it — the C-family half of the D-032 over-report", () => {
+  // ip-reviewer iteration-2 Concern 2, orchestrator-reproduced at HEAD. The pin above
+  // covers the BALANCED form (`` `a /* b */ c` ``), which is the benign case; this is the
+  // form that actually turns up in JS — a shell glob in a template literal supplying a
+  // lone `/*`, with the closer arriving from a real comment further down. The span then
+  // runs ACROSS the anchor line, so the validator reports that anchor twice while
+  // `retire` stamps it once: the identical 2-vs-1 desync release 2.62.0 closed for the
+  // hash family, relocated into the C family. It is measured here rather than assumed to
+  // be the balanced case, and the cross-tool counts are asserted end to end in
+  // bootstrap.test.mjs. See decisions.md D-033, D-037.
+  const t = "const clean = `rm -rf build/*`;\n// DECISION plan-x/D-001 why\nconst t = 1;\n/* real */\n";
+  const got = spanText(t);
+  assert.equal(got.length, 1, `expected one over-extended span, got ${JSON.stringify(got)}`);
+  assert.ok(got[0].includes("D-001"),
+    "D-037: the anchor sits INSIDE the phantom span, which is what makes this an "
+  + "over-report rather than a loss. Re-adding `` ` `` to BLOCK_STRING_DELIMS would "
+  + "remove it and buy back the runaway mask D-033 rejected — do not re-green this pin "
+  + "that way. See decisions.md D-033, D-037.");
+});
+
 test("blockCommentSpans: a `\"` or `\'` string still masks a phantom opener (those skips were NOT deleted)", () => {
   // Only the backtick left the set. Single/double quotes cannot cross a newline, so a
   // mis-read is bounded to one line, and they still do their job.

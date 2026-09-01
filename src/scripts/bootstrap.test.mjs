@@ -5282,6 +5282,39 @@ describe("retire: block-comment stamping is span-aware (A3 / D-007)", () => {
     });
   }
 
+  // D-037 — the C-FAMILY half of the accepted over-report, MEASURED. Release 2.62.0
+  // closed the 2-reports/1-stamp desync for the hash family (the `clean.sh` fixture
+  // above) and, by removing the backtick from BLOCK_STRING_DELIMS, relocated the same
+  // shape into `.mjs`: a shell glob inside a template literal supplies a lone `/*`, a
+  // real comment further down supplies the `*/`, and the phantom span runs across the
+  // anchor. This fixture is ip-reviewer iteration-2 Concern 2 verbatim, and it exists so
+  // the cost is a NUMBER on disk rather than an assumption that the balanced form is the
+  // whole story. 2 reports / 1 stamp is the CHOSEN outcome here, not a regression: the
+  // anchor is over-reported, never lost, and `retire` still stamps it (retire may
+  // over-stamp, never under-stamp). Do not re-green this by restoring the backtick skip
+  // — that trades a visible over-report for the runaway mask D-033 rejected.
+  it("reviewer iter-2 Concern 2 `build.mjs`: a glob in a template literal over-reports — 2 reports, 1 stamp (the disclosed C-family cost)", () => {
+    const dir = getTempDir();
+    run(dir, "new", "active work");
+    const f = join(dir, "build.mjs");
+    writeFileSync(f,
+      "const clean = `rm -rf build/*`;\n" +
+      `// DECISION ${GONE}/D-700 phantom-span probe\n` +
+      `const t = 1;\n` +
+      `/* real */\n`);
+    assert.equal(validatorReportCount(dir, "D-700"), 2,
+      "D-037: the anchor is reported TWICE (per-line slash scan + the phantom template-literal "
+    + "span). This is the accepted C-family over-report, disclosed in decisions.md D-033/D-037 "
+    + "and in the 2.62.0 CHANGELOG — NOT the lockstep the release closed for hash-family files.");
+    const r = run(dir, "retire", GONE);
+    assert.equal(stampCount(r.stdout), 1,
+      `retire stamps the anchor ONCE — over-reporting must never become under-stamping, got:\n${r.stdout}`);
+    const after = readFileSync(f, "utf-8");
+    assert.equal((after.match(/\[STALE\]/g) || []).length, 1,
+      `exactly one marker, so no anchor is lost to the over-report, got:\n${after}`);
+    assert.match(after, /rm -rf build\/\*/, "the template literal itself must be byte-unchanged");
+  });
+
   // DISCLOSED HOLE (D-032, plan v1 Assumption A2): `.tf` and `.sql` really do have
   // C-style block comments, and the allowlist deliberately excludes them. An anchor
   // written inside one is invisible to BOTH tools — a loss, stated here so it is a tested
