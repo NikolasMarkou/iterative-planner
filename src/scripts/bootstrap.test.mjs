@@ -83,6 +83,32 @@ function getPointer(cwd) {
   }
 }
 
+/**
+ * Initialize a git repo in `dir` so the .gitignore bootstrap writes can be
+ * interrogated with git's OWN resolution rules rather than by reading text.
+ * Contract: returns nothing; THROWS if git is missing or init fails — a silent
+ * skip would make every ordering assertion below vacuously green.
+ */
+function gitInit(dir) {
+  execFileSync("git", ["init", "-q"], { cwd: dir, stdio: ["pipe", "pipe", "pipe"] });
+}
+
+/**
+ * Ask git whether it ignores `relPath` in `dir`.
+ * Contract: returns true (ignored) / false (not ignored); THROWS on any other
+ * exit status, which means git itself failed rather than answered.
+ * `git check-ignore -q` exits 0 for ignored, 1 for not ignored, >1 for error.
+ */
+function gitIgnores(dir, relPath) {
+  const r = spawnSync("git", ["check-ignore", "-q", "--no-index", relPath], {
+    cwd: dir,
+    encoding: "utf-8",
+  });
+  if (r.status === 0) return true;
+  if (r.status === 1) return false;
+  throw new Error(`git check-ignore failed for ${relPath}: ${r.stderr || r.error}`);
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -459,6 +485,116 @@ describe("bootstrap.mjs", () => {
       );
       assert.equal(afterLines[5], PLANS_GLOB, "only the exact literal (after trim) is migrated");
       assert.ok(afterLines.includes("!plans/ANCHORS.md"), "the negation is added");
+    });
+
+    // -----------------------------------------------------------------------
+    // Ordering invariant, asserted with git's OWN resolution (last matching
+    // pattern wins) rather than with file text. A text assertion can pass while
+    // git still ignores the manifest, which is exactly how the appended-glob bug
+    // survived: both literals were present, in the wrong order.
+    // -----------------------------------------------------------------------
+
+    /** Every ordering fixture must end in the same git-observable state. */
+    function assertManifestCommittable(dir) {
+      assert.equal(
+        gitIgnores(dir, "plans/ANCHORS.md"),
+        false,
+        "git must NOT ignore plans/ANCHORS.md — it is the only durable anchor-resolution tier"
+      );
+      assert.equal(
+        gitIgnores(dir, "plans/.current_plan"),
+        true,
+        "everything else directly under plans/ must stay ignored"
+      );
+      const planDir = getPointer(dir);
+      assert.equal(
+        gitIgnores(dir, `plans/${planDir}/plan.md`),
+        true,
+        "plan directories must stay ignored"
+      );
+    }
+
+    it("shape 1 — no .gitignore at all: git leaves ANCHORS.md committable", () => {
+      const dir = getTempDir();
+      gitInit(dir);
+      run(dir, "new", "Test goal");
+      assertManifestCommittable(dir);
+    });
+
+    it("shape 2 — .gitignore with unrelated content only: appended in order", () => {
+      const dir = getTempDir();
+      gitInit(dir);
+      writeFileSync(join(dir, ".gitignore"), "node_modules\n");
+      run(dir, "new", "Test goal");
+      assertManifestCommittable(dir);
+      const after = readFileSync(join(dir, ".gitignore"), "utf-8");
+      assert.ok(after.startsWith("node_modules\n"), "existing content preserved verbatim");
+    });
+
+    it("shape 3 — a pre-existing negation and NO glob: the glob is INSERTED ABOVE it, not appended below", () => {
+      const dir = getTempDir();
+      gitInit(dir);
+      // The shipped bug: `missing` was a set-membership filter, so the glob was
+      // appended at the END — after the negation — and git (last match wins)
+      // then ignored the manifest with no error anywhere.
+      const before = ["!plans/ANCHORS.md", "node_modules", ""].join("\n");
+      writeFileSync(join(dir, ".gitignore"), before);
+      run(dir, "new", "Test goal");
+      assertManifestCommittable(dir);
+
+      const afterLines = readFileSync(join(dir, ".gitignore"), "utf-8").split("\n");
+      assert.deepEqual(
+        afterLines,
+        [PLANS_GLOB, "!plans/ANCHORS.md", "node_modules", ""],
+        "the glob is inserted directly above the existing negation; nothing else moves"
+      );
+      assert.equal(
+        afterLines.filter((l) => l.trim() === "!plans/ANCHORS.md").length,
+        1,
+        "the user's negation line is reused, not duplicated"
+      );
+    });
+
+    it("shape 4 — both patterns already present in the correct order: a byte-identical no-op", () => {
+      const dir = getTempDir();
+      gitInit(dir);
+      // Previously-clean input stays clean: the ordering fix must not rewrite,
+      // reorder or duplicate a .gitignore that was already correct.
+      const before = ["node_modules", PLANS_GLOB, "!plans/ANCHORS.md", "docs/", ""].join("\n");
+      writeFileSync(join(dir, ".gitignore"), before);
+      run(dir, "new", "Test goal");
+      assertManifestCommittable(dir);
+      assert.equal(
+        readFileSync(join(dir, ".gitignore"), "utf-8"),
+        before,
+        "an already-correct .gitignore must be left byte-identical"
+      );
+    });
+
+    it("both patterns present but INVERTED: the negation is relocated below the glob", () => {
+      const dir = getTempDir();
+      gitInit(dir);
+      const before = ["!plans/ANCHORS.md", "node_modules", PLANS_GLOB, "docs/", ""].join("\n");
+      writeFileSync(join(dir, ".gitignore"), before);
+      run(dir, "new", "Test goal");
+      assertManifestCommittable(dir);
+
+      const afterLines = readFileSync(join(dir, ".gitignore"), "utf-8").split("\n");
+      assert.deepEqual(
+        afterLines,
+        ["node_modules", PLANS_GLOB, "!plans/ANCHORS.md", "docs/", ""],
+        "only the negation moves — to just after the glob; unrelated lines keep their order"
+      );
+    });
+
+    it("legacy bare `plans/` migrates in place AND leaves the manifest committable to git", () => {
+      const dir = getTempDir();
+      gitInit(dir);
+      writeFileSync(join(dir, ".gitignore"), ["node_modules", "plans/", "docs/", ""].join("\n"));
+      run(dir, "new", "Test goal");
+      assertManifestCommittable(dir);
+      const afterLines = readFileSync(join(dir, ".gitignore"), "utf-8").split("\n");
+      assert.equal(afterLines[1], PLANS_GLOB, "the legacy line is still migrated in place");
     });
   });
 

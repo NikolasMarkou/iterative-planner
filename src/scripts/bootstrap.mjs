@@ -239,9 +239,46 @@ function ensureGitignore() {
     migrated = true;
     return GITIGNORE_PLANS_PATTERNS[0];
   });
-  const missing = GITIGNORE_PLANS_PATTERNS.filter((p) => !out.some((line) => line.trim() === p));
-  if (!migrated && missing.length === 0) return;
-  let updated = out.join("\n");
+  // DECISION plan-2026-09-01T100120-4f591469/D-006 — the two patterns are ORDERED,
+  // not a set. Git resolves by LAST MATCHING PATTERN WINS, and both lines match
+  // plans/ANCHORS.md, so the negation must come after the glob or the manifest is
+  // ignored. Set-membership alone ("append whichever literal is absent, at the end")
+  // was the shipped bug: a .gitignore that already said `!plans/ANCHORS.md` but not
+  // the glob got the glob appended BELOW the negation, silently ignoring the only
+  // durable anchor-resolution tier with no error anywhere. Do NOT collapse this back
+  // into a `missing`-filter append. Placement rules, in this order:
+  //   glob absent + negation present -> INSERT the glob directly above the first
+  //     negation (never append it, which reproduces the bug);
+  //   negation present but below no glob (last negation precedes the last glob) ->
+  //     relocate the negation to just after the last glob;
+  //   anything still absent -> append at the end, glob-before-negation.
+  // The invariant the placement establishes: lastIndexOf(negation) > lastIndexOf(glob).
+  const [PLANS_GLOB, ANCHORS_NEGATION] = GITIGNORE_PLANS_PATTERNS;
+  const isPattern = (p) => (line) => line.trim() === p;
+  const lastIndexOfPattern = (arr, p) =>
+    arr.reduce((acc, line, i) => (isPattern(p)(line) ? i : acc), -1);
+
+  let ordered = out;
+  let reordered = false;
+  if (lastIndexOfPattern(ordered, PLANS_GLOB) === -1) {
+    const firstNegation = ordered.findIndex(isPattern(ANCHORS_NEGATION));
+    if (firstNegation !== -1) {
+      ordered = [...ordered.slice(0, firstNegation), PLANS_GLOB, ...ordered.slice(firstNegation)];
+      reordered = true;
+    }
+  }
+  const lastGlob = lastIndexOfPattern(ordered, PLANS_GLOB);
+  const lastNegation = lastIndexOfPattern(ordered, ANCHORS_NEGATION);
+  if (lastGlob !== -1 && lastNegation !== -1 && lastNegation < lastGlob) {
+    ordered = ordered.filter((line) => !isPattern(ANCHORS_NEGATION)(line));
+    const glob = lastIndexOfPattern(ordered, PLANS_GLOB);
+    ordered = [...ordered.slice(0, glob + 1), ANCHORS_NEGATION, ...ordered.slice(glob + 1)];
+    reordered = true;
+  }
+
+  const missing = GITIGNORE_PLANS_PATTERNS.filter((p) => lastIndexOfPattern(ordered, p) === -1);
+  if (!migrated && !reordered && missing.length === 0) return;
+  let updated = ordered.join("\n");
   if (missing.length > 0) {
     updated += (updated && !updated.endsWith("\n") ? "\n" : "") + missing.join("\n") + "\n";
   }
