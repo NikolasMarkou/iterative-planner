@@ -1258,15 +1258,15 @@ const CHANGELOG_MIN_ELIDE_GROUP = 5;
  *   { kind: "inline-summary" }                                          (previous compression summary)
  *   { kind: "non-entry" }                                               (blank/malformed/header)
  *
- * Field indices (1-based per format docstring; 0-based in array after split):
- *   0: UTC timestamp
- *   1: iter-N/step-M
- *   2: commit hash (or "uncommitted")
- *   3: path
- *   4: OP(+N,-M) | NEW | REVERT(file)
- *   5: radius:TIER(score)
- *   6: D-NNN-or-dash
- *   7: reason
+ * Field ORDER (0-based in the array after split):
+ *   0: timestamp  1: step  2: commit  3: path
+ *   4: op         5: radius  6: decision-ref  7: reason
+ *
+ * What each field is ALLOWED to contain is defined once, in schema.mjs's
+ * CHANGELOG_SPEC, and is deliberately not repeated here. This comment used to
+ * spell out the op field as `OP(+N,-M) | NEW | REVERT(file)`; `NEW` has never
+ * been an accepted op, so anyone who followed it wrote a line the validator
+ * warns about on every file they create. Read the spec, not a copy of it.
  */
 // splitChangelogFields now lives in ./shared.mjs (imported + re-exported above).
 // validate-plan.mjs imports the same function instead of reimplementing it.

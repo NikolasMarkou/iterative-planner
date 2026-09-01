@@ -31,11 +31,15 @@ export function extractField(content, pattern) {
  * 7 separators it cannot be a well-formed entry; we return `line.split(SEP)`
  * (trimmed) so the caller sees the real field count and rejects it.
  *
- * Field indices (0-based after split):
- *   0: UTC timestamp        4: OP(+N,-M) | NEW | REVERT(file)
- *   1: iter-N/step-M        5: radius:TIER(score)
- *   2: commit | uncommitted 6: D-NNN | -
- *   3: path                 7: reason
+ * Field ORDER (0-based after split):
+ *   0: timestamp  1: step  2: commit  3: path
+ *   4: op         5: radius  6: decision-ref  7: reason
+ *
+ * What each field is ALLOWED to contain is defined once, in schema.mjs's
+ * CHANGELOG_SPEC, and is deliberately not repeated here. This comment used to
+ * spell out the op field as `OP(+N,-M) | NEW | REVERT(file)`; `NEW` has never
+ * been an accepted op, so anyone who followed it wrote a line the validator
+ * warns about on every file they create. Read the spec, not a copy of it.
  */
 export function splitChangelogFields(line) {
   const SEP = " | ";
