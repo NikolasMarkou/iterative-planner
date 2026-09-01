@@ -695,14 +695,62 @@ function prependToConsolidated(filePath, planDirName, newSection) {
 // comment's non-newline bytes, so it preserves line COUNT but shifts every offset after the
 // first comment. An offset-based version of this function was written first and cut four
 // lines into the template comment. See decisions.md D-005.
+// DECISION plan-2026-09-01T100120-4f591469/D-024 — PREAMBLE CONTENT IS CONTENT.
+//
+// Do NOT go back to "drop everything above the first real heading". That cut is correct
+// about the schema comment and wrong about everything else in the preamble: the mandated
+// Domain-Caveat Consult Note sits BETWEEN the schema comment and the first `## D-NNN`, so
+// cutting at the first entry silently deleted it from plans/DECISIONS.md on every close —
+// and since v2.60.0 the consolidated tier is the DURABLE copy, that loss is permanent.
+//
+// The two properties below must hold TOGETHER; a change that restores one by giving up the
+// other is not a fix. (1) No phantom `## D-001` and no dangling `-->` from the schema
+// comment ever reaches the archive. (2) Every preamble line carrying content OUTSIDE a
+// comment survives byte-for-byte.
+//
+// `HEADER_BOILERPLATE_LINE` is a CLOSED LIST and unrecognized lines are KEPT, deliberately:
+// the dangerous direction here is dropping real content out of a durable archive (same
+// reasoning as `isPristineTemplateBody`'s equality test below). A future template-header
+// edit therefore leaks one visible boilerplate line into the archive rather than silently
+// deleting an entry.
+const HEADER_BOILERPLATE_LINE = [
+  /^#\s/,                                             // H1 title
+  /^\*Plan:\s.*\*$/,
+  /^\*Skill:\siterative-planner\sv.*\*$/,
+  /^\*Append-only\..*\*$/,
+  /^\*Summary and index of all findings\..*\*$/,
+  /^\*Cross-plan context: see plans\/FINDINGS\.md.*\*$/,
+  // Unrendered form of the line above: `isPristineTemplateBody` strips the RAW template,
+  // where {{TOKEN}} substitution has not happened yet.
+  /^\{\{CROSS_PLAN_NOTE\}\}$/,
+];
+
 export function stripHeader(content) {
-  // Strip everything before the first ## heading (the actual user content).
-  // This avoids fragile exact-match regexes on boilerplate text that the agent may edit.
-  // A `## ` that only exists inside an HTML comment is not a heading.
+  // Cut point: the first ## heading (the actual user content). A `## ` that only exists
+  // inside an HTML comment is not a heading.
+  const lines = content.split("\n");
   const maskedLines = stripHtmlComments(content).split("\n");
-  const idx = maskedLines.findIndex((l) => l.startsWith("## "));
-  if (idx < 0) return "";
-  return content.split("\n").slice(idx).join("\n");
+  let cut = maskedLines.findIndex((l) => l.startsWith("## "));
+  if (cut < 0) cut = lines.length;
+
+  // Leading boilerplate header: blank lines plus the closed list above.
+  let start = 0;
+  while (start < cut && (lines[start].trim() === "" ||
+         HEADER_BOILERPLATE_LINE.some((re) => re.test(lines[start])))) start++;
+
+  // Preamble: keep every line with content outside a comment, in ORIGINAL bytes.
+  const preamble = [];
+  for (let i = start; i < cut; i++) {
+    if (lines[i].trim() !== "" && (maskedLines[i] ?? "").trim() === "") continue;
+    preamble.push(lines[i]);
+  }
+  while (preamble.length && preamble[0].trim() === "") preamble.shift();
+  while (preamble.length && preamble[preamble.length - 1].trim() === "") preamble.pop();
+
+  const rest = lines.slice(cut).join("\n");
+  if (preamble.length === 0) return rest;
+  if (rest.trim() === "") return preamble.join("\n") + "\n";
+  return preamble.join("\n") + "\n\n" + rest;
 }
 
 export function stripCrossPlanNote(content) {

@@ -1468,7 +1468,7 @@ describe("bootstrap.mjs", () => {
         "placeholder boilerplate must not reach the cross-plan archive");
     });
 
-    it("close with findings that have no ## headings drops content (stripHeader behavior)", () => {
+    it("close with findings that have no ## headings still merges the preamble content", () => {
       const dir = getTempDir();
       run(dir, "new", "No headings test");
       const planDir = getPointer(dir);
@@ -1479,10 +1479,13 @@ describe("bootstrap.mjs", () => {
       );
       run(dir, "close");
       const consolidated = readFileSync(join(dir, "plans", "FINDINGS.md"), "utf-8");
-      // stripHeader returns empty string when no ## found, so nothing is merged.
-      // This prevents H1 headers from being injected under H2 plan sections.
-      assert.ok(!consolidated.includes("plain text"), "content without ## headings should not be merged");
-      assert.ok(!consolidated.includes(planDir), "no plan section created when content has no ## headings");
+      // Changed deliberately: heading-less prose is real content and the consolidated
+      // tier is the durable copy, so dropping it is silent loss (the same defect class
+      // as the dropped consult note). The H1 and the boilerplate italics are still
+      // stripped, so nothing is injected above the H2 plan section.
+      assert.ok(consolidated.includes(planDir), "a plan section is created for real preamble content");
+      assert.ok(consolidated.includes("plain text"), "heading-less content is still content");
+      assert.ok(!/^# Findings$/m.test(consolidated), "the H1 header is still stripped");
     });
 
     it("close with empty decisions does not error", () => {
@@ -4962,6 +4965,78 @@ describe("close/resume are HTML-comment aware (D-005)", () => {
       `later entries must survive, got:\n${consolidated}`);
     assert.equal(consolidated.match(/### D-001/g).length, 1,
       "exactly one D-001 heading — the real one");
+  });
+
+  // ---------------------------------------------------------------------------
+  // Shapes (5)-(8) are NOT self-authored: they are the corpus ip-reviewer's Concern 1
+  // and the orchestrator's independent two-repo reproduction specified after the first
+  // fix of this defect shipped a regression. The fixture above (`appendRealDecisions`)
+  // has NO preamble, which is exactly why the preamble-loss bug was invisible to it —
+  // LESSONS [I:5], the shape the designer did not imagine.
+  // ---------------------------------------------------------------------------
+  const CONSULT_NOTE =
+    "*Domain-Caveat Consult Note (PLAN): references/python-software.md consulted — applicable.*";
+
+  it("(5) a consult note between the schema comment and the first entry survives the merge", () => {
+    const dir = getTempDir();
+    run(dir, "new", "preamble plus entries");
+    const planDir = getPointer(dir);
+    const p = join(dir, "plans", planDir, "decisions.md");
+    writeFileSync(p, readFileSync(p, "utf-8") + "\n" + CONSULT_NOTE + "\n" + REAL_ENTRIES);
+    run(dir, "close");
+    const consolidated = readFileSync(join(dir, "plans", "DECISIONS.md"), "utf-8");
+    // Both properties must hold together: preamble preserved AND phantom still gone.
+    assert.ok(consolidated.includes(CONSULT_NOTE),
+      `the mandated consult note must reach the durable tier, got:\n${consolidated}`);
+    assert.ok(!/YYYY-MM-DD/.test(consolidated),
+      `restoring the preamble must not restore the phantom entry, got:\n${consolidated}`);
+    assert.ok(!/^-->$/m.test(consolidated),
+      `nor the dangling comment closer, got:\n${consolidated}`);
+    assert.ok(consolidated.includes("### D-001 | PLAN | 2026-09-01"),
+      `real entries still merge, got:\n${consolidated}`);
+  });
+
+  it("(6) a consult note with ZERO real entries still merges as its own plan section", () => {
+    const dir = getTempDir();
+    run(dir, "new", "preamble only");
+    const planDir = getPointer(dir);
+    const p = join(dir, "plans", planDir, "decisions.md");
+    writeFileSync(p, readFileSync(p, "utf-8") + "\n" + CONSULT_NOTE + "\n");
+    run(dir, "close");
+    const consolidated = readFileSync(join(dir, "plans", "DECISIONS.md"), "utf-8");
+    assert.ok(consolidated.includes(`## ${planDir}`),
+      `a real consult note is real content and gets a section, got:\n${consolidated}`);
+    assert.ok(consolidated.includes(CONSULT_NOTE),
+      `the note is the content of that section, got:\n${consolidated}`);
+    assert.ok(!/YYYY-MM-DD/.test(consolidated),
+      `still no phantom entry, got:\n${consolidated}`);
+  });
+
+  it("(7) A7 holds: an untouched decisions template still merges no section at all", () => {
+    const dir = getTempDir();
+    run(dir, "new", "untouched template");
+    const planDir = getPointer(dir);
+    run(dir, "close");
+    const consolidated = readFileSync(join(dir, "plans", "DECISIONS.md"), "utf-8");
+    assert.ok(!consolidated.includes(`## ${planDir}`),
+      `pure boilerplate must not burn a sliding-window slot, got:\n${consolidated}`);
+  });
+
+  it("(8) stripHeader drops boilerplate and comments but keeps real preamble bytes", async () => {
+    const { stripHeader } = await import(`file://${BOOTSTRAP}`);
+    const withPreamble =
+      "# Decision Log\n*Plan: p*\n*Append-only. Never edit past entries.*\n" +
+      "<!-- Schema example\n## D-001 | EXPLORE → PLAN | YYYY-MM-DD\n-->\n" +
+      CONSULT_NOTE + "\n\n## D-001 | EXECUTE | 2026-09-01\nreal\n";
+    assert.equal(stripHeader(withPreamble),
+      CONSULT_NOTE + "\n\n## D-001 | EXECUTE | 2026-09-01\nreal\n",
+      "preamble content is content; boilerplate and the schema comment are not");
+    assert.equal(stripHeader("# Decision Log\n*Plan: p*\n<!-- c\n## Fake\n-->\n" + CONSULT_NOTE + "\n"),
+      CONSULT_NOTE + "\n",
+      "with no real heading the preamble alone is the merged body");
+    assert.equal(stripHeader("# Decision Log\n*Plan: p*\n<!-- c\n## Fake\n-->\n"),
+      "",
+      "boilerplate plus a comment is still nothing to merge");
   });
 
   it("(4) resume reports 0 on a virgin plan and N on N real entries", () => {
