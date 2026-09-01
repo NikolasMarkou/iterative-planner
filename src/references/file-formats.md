@@ -266,7 +266,7 @@ Complexity Assessment mandatory for all PIVOT entries.
 Mirrors the cross-plan `<!-- COMPRESSED-SUMMARY -->` pattern (see `SKILL.md` "Consolidated File Management"). Cross-plan files use a 4-plan sliding window to stay bounded; intra-plan `decisions.md` has no such window, so a threshold-triggered compression runs mid-plan.
 
 - **Trigger**: file >300 lines, evaluated at PLAN gate-in. Orchestrator dispatch is wired in step 10 of plan_2026-05-15_71ab18dd (see `agents/ip-orchestrator.md` PLAN State Dispatch).
-- **Implementation**: `maybeCompressDecisions(planDir, { threshold, dryRun })` exported from `src/scripts/bootstrap.mjs`. Mechanical layer only — parses raw `## D-NNN` entries and emits a lookup-table block. Never invents content.
+- **Implementation**: `maybeCompressDecisions(planDir, { threshold, dryRun })` exported from the skill's `scripts/bootstrap.mjs`. Mechanical layer only — parses raw `## D-NNN` entries and emits a lookup-table block. Never invents content.
 - **Insertion position**: after the leading schema-example HTML comment block (if present) and the `*Plan: <plan-id>*` preamble, BEFORE the first `## D-NNN` entry. When an existing block is found, it is REPLACED in-place (never summarize a summary — failsafe mirrors the cross-plan rule).
 - **Append-only safety**: raw `## D-NNN` entries below the block are NEVER touched. Compression only writes the metadata block above them.
 - **Idempotency**: `<!-- entries-at-compress: N -->` records the entry count at last compression. Re-running with no new entries (`parsed.entries.length === entriesAtCompress`) is a no-op.
@@ -877,7 +877,7 @@ Validator (`validate-plan.mjs`):
 Same marker lineage as `decisions.md` compression (see `SKILL.md` "Consolidated File Management"), but structurally different — chronology MUST be preserved, so the summary lives INLINE at each elided group's original position rather than in a single top-of-file block. The top-of-file `<!-- COMPRESSED-SUMMARY -->` block is metadata only (counts, not content).
 
 - **Trigger**: file >200 lines, evaluated at PLAN gate-in (lower threshold than decisions.md — changelog grows faster per step).
-- **Implementation**: `maybeCompressChangelog(planDir, { threshold, dryRun })` exported from `src/scripts/bootstrap.mjs`.
+- **Implementation**: `maybeCompressChangelog(planDir, { threshold, dryRun })` exported from the skill's `scripts/bootstrap.mjs`.
 - **Elidable rules** (a line is elidable if and only if ALL three hold):
   - radius tier ∈ {`LOW`, `MED`} per `references/blast-radius.md`
   - op field does NOT start with `REVERT(`

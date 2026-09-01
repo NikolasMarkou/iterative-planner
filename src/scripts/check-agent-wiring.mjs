@@ -7,10 +7,12 @@
 // constraint: absence of validator errors == absence of a checker).
 //
 // Rules:
-//   (a) script-path        — `node <path>/scripts/<x>.mjs` must use the
-//        `<skill-path>` placeholder; a bare path resolves to nothing from a
-//        consuming project's root.
-//   (b) reference-citation — every `references/<f>.md` citation must resolve.
+//   (a) script-path        — `node [options...] <path>/scripts/<x>.mjs` must
+//        use the `<skill-path>` placeholder; a bare path resolves to nothing
+//        from a consuming project's root. Interposed node options (`-e`,
+//        `--test`) do not exempt the invocation.
+//   (b) reference-citation — every `references/<f>.md` citation must resolve,
+//        written either way (`references/x.md` or `src/references/x.md`).
 //   (c) section-pointer    — pointers must read `§ <Code> <Title>` (or
 //        `§ <Title>`), with code AND title agreeing with a real heading in the
 //        target file. Existence alone is toothless: a pointer to `C.11` when
@@ -44,7 +46,16 @@ import { readFileSync, writeFileSync, existsSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const SCRIPT_ARG_RE = /\bnode\s+([^\s`'"]*scripts\/[A-Za-z0-9_.-]+\.mjs)/g;
+// DECISION plan-2026-09-01T100120-4f591469/D-012
+// A COMMAND GRAMMAR, not token adjacency: `node`, then any run of option
+// tokens (`-e`, `--test`, `--loader=x`), then the script argument. The prior
+// form required the path to be the token IMMEDIATELY after `node`, so ANY
+// interposed flag evaded rule (a) entirely — `node --experimental
+// src/scripts/bootstrap.mjs` PASSed while the identical flag-less line FAILed.
+// Do NOT relax the option run to a general token run (`(?:\S+\s+)*`): that
+// makes `node` in ordinary prose swallow an unrelated later path. Options are
+// recognized by their leading `-` only. See decisions.md D-012.
+const SCRIPT_ARG_RE = /\bnode(?:\s+-[^\s`'"]*)*\s+([^\s`'"]*scripts\/[A-Za-z0-9_.-]+\.mjs)/g;
 const CITATION_RE = /`([A-Za-z0-9_<][A-Za-z0-9_.<>/-]*\.md)`/g;
 // Trailing lookahead is `(?!\w)` (not `(?![\w.])`) so a sentence-final code —
 // "see Section B.10." — is still a code, not silently skipped.
@@ -135,15 +146,31 @@ export function scanScriptPaths(relPath, text, edges) {
   return issues;
 }
 
-/** (b) `references/<f>.md` citations that do not resolve. */
+// DECISION plan-2026-09-01T100120-4f591469/D-013
+/**
+ * Canonical repo-relative spelling of a cited doc path. `src/references/x.md`
+ * and `references/x.md` name the SAME file and both occur in shipped prose —
+ * both build channels' build-combined rewrite maps already enumerate the pair.
+ * Rules (b) and (c) must therefore agree on one spelling; do NOT reintroduce a
+ * `startsWith("references/")` prefix-equality guard in either (the `src/`
+ * spelling then silently skips validation, which is exactly how a dangling
+ * `src/references/nonexistent.md` citation used to PASS). See decisions.md D-013.
+ */
+export function canonicalDocPath(citation) {
+  const c = citation || "";
+  return c.startsWith("src/") ? c.slice("src/".length) : c;
+}
+
+/** (b) `references/<f>.md` citations that do not resolve (either spelling). */
 export function scanReferenceCitations(relPath, text, refExists, edges) {
   const issues = [];
   for (const line of tagLines(text)) {
     if (line.fenced) continue;
     for (const m of line.text.matchAll(CITATION_RE)) {
-      if (!m[1].startsWith("references/")) continue;
-      if (refExists(m[1].slice("references/".length))) {
-        edges?.push({ src: relPath, dst: `src/${m[1]}`, type: "reference-citation", line: line.no });
+      const cited = canonicalDocPath(m[1]);
+      if (!cited.startsWith("references/")) continue;
+      if (refExists(cited.slice("references/".length))) {
+        edges?.push({ src: relPath, dst: `src/${cited}`, type: "reference-citation", line: line.no });
         continue;
       }
       issues.push(issue("reference-citation", relPath, line.no,
@@ -156,10 +183,11 @@ export function scanReferenceCitations(relPath, text, refExists, edges) {
 /** Map a cited doc path to its repo-relative source path (null = unverifiable). */
 export function resolveTarget(citation, selfPath) {
   if (!citation) return selfPath;
-  if (citation.startsWith("references/")) return `src/${citation}`;
-  if (citation.startsWith("agents/")) return `src/${citation}`;
-  if (citation.startsWith("scripts/modules/")) return `src/${citation}`;
-  if (citation === "SKILL.md") return "src/SKILL.md";
+  const c = canonicalDocPath(citation);
+  if (c.startsWith("references/")) return `src/${c}`;
+  if (c.startsWith("agents/")) return `src/${c}`;
+  if (c.startsWith("scripts/modules/")) return `src/${c}`;
+  if (c === "SKILL.md") return "src/SKILL.md";
   return null;
 }
 

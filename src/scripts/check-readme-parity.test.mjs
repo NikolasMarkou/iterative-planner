@@ -62,6 +62,38 @@ describe("check-readme-parity", () => {
     assert.match(result.readmeVersion, /^\d+\.\d+\.\d+$/);
   });
 
+  it("checkVersionBadge (C4): anchored to the BADGE — a bare version string is not a badge", () => {
+    // Pre-fix this PASSed: /Skill-v(\d+\.\d+\.\d+)-/ matched anywhere, so a
+    // README with no badge but any surviving `Skill-v<VER>-` text looked fine.
+    const noBadge = "# Title\n\nThe badge markup is `Skill-v2.60.0-green.svg`.\n";
+    assert.strictEqual(checkVersionBadge(noBadge, "2.60.0").ok, false);
+    assert.strictEqual(checkVersionBadge(noBadge, "2.60.0").readmeVersion, "");
+    // The real badge line still passes (previously-clean stays clean).
+    const badge =
+      "[![Skill](https://img.shields.io/badge/Skill-v2.60.0-green.svg)](CHANGELOG.md)\n";
+    assert.strictEqual(checkVersionBadge(badge, "2.60.0").ok, true);
+    assert.strictEqual(checkVersionBadge(badge + noBadge, "2.60.0").ok, true);
+  });
+
+  it("real CLI FAIL (C4): badge deleted, version string still present -> exit 1", () => {
+    const root = mkdtempSync(join(tmpdir(), "crp-badge-"));
+    try {
+      writeFileSync(join(root, "VERSION"), "2.60.0\n");
+      writeFileSync(join(root, "TEST_COUNT"), "269\n");
+      writeFileSync(
+        join(root, "README.md"),
+        "# Title\n\nRelease `Skill-v2.60.0-green.svg` was cut today.\n" +
+          "[![Tests](https://img.shields.io/badge/tests-269%20passing-brightgreen.svg)](x)\n",
+      );
+      const result = runCliAgainst(root);
+      assert.strictEqual(result.status, 1, `stdout: ${result.stdout}\nstderr: ${result.stderr}`);
+      assert.match(result.stderr, /FAIL version badge/);
+      assert.match(result.stdout, /PASS test count/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("checkTestCount: wrong test count -> ok: false", () => {
     const readmeText = readFileSync(join(repoRoot, "README.md"), "utf8");
     const result = checkTestCount(readmeText, 999999);

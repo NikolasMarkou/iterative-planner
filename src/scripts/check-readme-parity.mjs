@@ -7,7 +7,8 @@
 //
 // Badge formats parsed (as found in README.md):
 //   Version:    ![Skill](https://img.shields.io/badge/Skill-v<VER>-green.svg)
-//               regex: /Skill-v(\d+\.\d+\.\d+)-/
+//               matched as a whole shields.io image badge (VERSION_BADGE_RE),
+//               not as a bare `Skill-v<VER>-` substring
 //   Test count: ![Tests](https://img.shields.io/badge/tests-<N>%20passing-brightgreen.svg)
 //               regex: /tests-(\d+)%20passing/
 //
@@ -18,6 +19,17 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+// DECISION plan-2026-09-01T100120-4f591469/D-014
+// Anchored to the BADGE, not to the version string. The prior
+// `/Skill-v(\d+\.\d+\.\d+)-/` matched anywhere in README, so deleting the badge
+// while any other line still carried `Skill-v<VERSION>-` (a CHANGELOG excerpt,
+// a quoted markdown sample) PASSed: the gate proved a string existed, not that
+// a badge did. Do NOT loosen this back to a bare substring match — the whole
+// claim of this check is "the README's version BADGE agrees with VERSION".
+// See decisions.md D-014.
+const VERSION_BADGE_RE =
+  /!\[[^\]]*\]\(https:\/\/img\.shields\.io\/badge\/Skill-v(\d+\.\d+\.\d+)-[^)]*\)/;
+
 /**
  * Check that the README version badge matches the expected version string.
  * @param {string} readmeText - Full README.md content.
@@ -25,7 +37,7 @@ import { fileURLToPath } from "node:url";
  * @returns {{ ok: boolean, readmeVersion: string, expected: string }}
  */
 export function checkVersionBadge(readmeText, version) {
-  const m = (readmeText || "").match(/Skill-v(\d+\.\d+\.\d+)-/);
+  const m = (readmeText || "").match(VERSION_BADGE_RE);
   const readmeVersion = m ? m[1] : "";
   return {
     ok: readmeVersion === version,

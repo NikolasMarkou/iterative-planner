@@ -11,6 +11,7 @@ import {
   resolveTarget,
   scanScriptPaths,
   scanReferenceCitations,
+  canonicalDocPath,
   scanSectionPointers,
   scanSkillPathResolution,
   report,
@@ -112,6 +113,80 @@ test("(a) ignores module-import paths — only `node` invocations count", () => 
 });
 
 // --- (b) reference-citation -------------------------------------------------
+
+test("(a) THE EVASION (C1): an interposed node flag no longer exempts a bare path", () => {
+  // Reproduced pre-fix: this exact line PASSed while the flag-less form FAILed,
+  // because SCRIPT_ARG_RE required the path to be the token right after `node`.
+  const issues = scanScriptPaths("a.md", "Run `node --experimental src/scripts/bootstrap.mjs status`.");
+  assert.equal(issues.length, 1);
+  assert.equal(issues[0].rule, "script-path");
+  assert.match(msgs(issues), /src\/scripts\/bootstrap\.mjs/);
+  // Any option shape, and runs of them.
+  assert.equal(scanScriptPaths("a.md", "node -e scripts/blast-radius.mjs").length, 1);
+  assert.equal(scanScriptPaths("a.md", "node --loader=x --test scripts/x.mjs").length, 1);
+});
+
+test("(a) flags do not break the passing <skill-path> form (no new false positive)", () => {
+  const edges = [];
+  const issues = scanScriptPaths(
+    "a.md",
+    "Run `node --test <skill-path>/scripts/emit-state.mjs --state plan`.",
+    edges,
+  );
+  assert.deepEqual(issues, []);
+  assert.deepEqual(edges, [
+    { src: "a.md", dst: "src/scripts/emit-state.mjs", type: "script-path", line: 1 },
+  ]);
+});
+
+test("(a) the option run does NOT swallow ordinary prose (over-fire guard)", () => {
+  // Forms taken from real shipped prose, not invented: ip-orchestrator.md's
+  // `node -e "import(...)"` snippet, and module-reference sentences.
+  const shipped =
+    'COMPRESS_OUT=$(node -e "import(\'<skill-path>/scripts/bootstrap.mjs\').then(m => m.x())")';
+  assert.deepEqual(scanScriptPaths("a.md", shipped), []);
+  assert.deepEqual(
+    scanScriptPaths("a.md", "Requires Node.js 18+; helpers live in `src/scripts/shared.mjs`."),
+    [],
+  );
+  assert.deepEqual(
+    scanScriptPaths("a.md", "node and the module `src/scripts/schema.mjs` are unrelated here"),
+    [],
+  );
+});
+
+test("(b) THE EVASION (C2): the `src/references/…` spelling is validated too", () => {
+  // Reproduced pre-fix: the `src/`-prefixed spelling was skipped outright by a
+  // startsWith("references/") guard, so a dangling citation PASSed.
+  const issues = scanReferenceCitations("a.md", "See `src/references/nope.md` for details.", refExists);
+  assert.equal(issues.length, 1);
+  assert.equal(issues[0].rule, "reference-citation");
+  assert.match(msgs(issues), /`src\/references\/nope\.md` does not resolve/);
+});
+
+test("(b) a resolving `src/references/…` citation passes and normalizes its edge dst", () => {
+  const edges = [];
+  assert.deepEqual(
+    scanReferenceCitations("a.md", "See `src/references/file-formats.md`.", refExists, edges),
+    [],
+  );
+  assert.deepEqual(edges, [
+    { src: "a.md", dst: "src/references/file-formats.md", type: "reference-citation", line: 1 },
+  ]);
+});
+
+test("canonicalDocPath collapses the two spellings; resolveTarget follows it", () => {
+  assert.equal(canonicalDocPath("src/references/x.md"), "references/x.md");
+  assert.equal(canonicalDocPath("references/x.md"), "references/x.md");
+  assert.equal(canonicalDocPath("src/SKILL.md"), "SKILL.md");
+  assert.equal(canonicalDocPath(""), "");
+  assert.equal(canonicalDocPath(undefined), "");
+  // Not a `src/`-prefixed doc path: untouched.
+  assert.equal(canonicalDocPath("{plan-dir}/plan.md"), "{plan-dir}/plan.md");
+  assert.equal(resolveTarget("src/references/x.md", "self.md"), "src/references/x.md");
+  assert.equal(resolveTarget("src/agents/ip-x.md", "self.md"), "src/agents/ip-x.md");
+  assert.equal(resolveTarget("src/SKILL.md", "self.md"), "src/SKILL.md");
+});
 
 test("(b) catches a dangling references/ citation", () => {
   const issues = scanReferenceCitations("a.md", "See `references/nope.md` for details.", refExists);
