@@ -303,6 +303,8 @@ Updated during EXPLORE. Corrected during PIVOT when earlier findings prove wrong
 
 `findings.md` = summary + index. Detailed findings → `findings/` as individual files. **Main agent** owns the index — subagents write to `findings/` only.
 
+The `## Index` may be written as bullets (below), as a numbered list, or as a table with one row per finding. All three count as indexed findings; the validator reads all three, so pick whichever reads best for the plan.
+
 ### findings.md (summary/index)
 
 ```markdown

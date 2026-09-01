@@ -339,15 +339,30 @@ function checkFindings(planDir, issues) {
   const state = readFile(join(planDir, "state.md"));
   const currentState = extractField(state, /^# Current State:\s*(.+)$/m) || "";
 
-  // Count indexed findings (lines starting with "- " or "N. " under ## Index).
-  // findingItems already captures both bullet links ("- [Foo](path)") and plain
-  // bullets ("- Foo") — links are a subset, so summing them with findingLinks
-  // would double-count. Use bullets + numbered to support mixed-style indexes.
+  // Count indexed findings under ## Index, in all three shapes the findings.md
+  // template permits. The template's Index body is just `*To be populated during
+  // EXPLORE.*` — no protocol file has ever instructed a bullets-only Index — so a
+  // table Index is conformant output and must not raise a WARN (B-class rule: every
+  // WARN corresponds to a rule some protocol file actually states).
+  //   bullets:   "- [Foo](path) — headline"  (links are a subset of bullets; counting
+  //              both would double-count, so only bullets are counted)
+  //   numbered:  "1. Foo"
+  //   table:     one row per finding, counted only AFTER a |---|---| separator row,
+  //              which excludes the header row and the separator itself.
   const indexSection = extractSection(findings, "Index");
   if (indexSection) {
-    const findingItems = indexSection.split("\n").filter((l) => l.match(/^- .+/));
-    const numberedItems = indexSection.split("\n").filter((l) => l.match(/^\d+\.\s+.+/));
-    const count = findingItems.length + numberedItems.length;
+    const lines = indexSection.split("\n");
+    const findingItems = lines.filter((l) => l.match(/^- .+/));
+    const numberedItems = lines.filter((l) => l.match(/^\d+\.\s+.+/));
+    let seenSeparator = false;
+    let tableRows = 0;
+    for (const raw of lines) {
+      const l = raw.trim();
+      if (!l.startsWith("|")) { seenSeparator = false; continue; }
+      if (/^\|[\s:|-]+\|?$/.test(l)) { seenSeparator = true; continue; }
+      if (seenSeparator) tableRows++;
+    }
+    const count = findingItems.length + numberedItems.length + tableRows;
 
     if (count < 3 && !["EXPLORE", "CLOSE"].includes(currentState.toUpperCase())) {
       issues.push({ severity: "WARN", check: "findings", message: `Only ${count} indexed findings (minimum 3 required before PLAN)` });
@@ -439,10 +454,27 @@ function checkChangeManifest(planDir, issues) {
 //   - legacy format:     `- Attempt M: …`        (pre-v2.18.0 plans; kept for
 //     backward compatibility so closed plans continue to validate identically)
 // Placeholder lines like `- (none yet)` and the `- Step N: LEASH HIT.` summary
-// line are intentionally NOT counted. Conservative: only fires during
+// line are intentionally NOT counted (a colon after the step number is not `[,\s]`). Conservative: only fires during
 // EXECUTE/REFLECT — outside those states the section is stale from a previous
 // step. WARN at 3, ERROR at 4+. Resets on step / PIVOT / user direction
 // (tracked by the agent rewriting the section).
+// DECISION plan-2026-09-01T100120-4f591469/D-026: this regex is ONE constant on
+// purpose. Do NOT re-inline it at the call sites, and do NOT tighten the step-number
+// fragment to schema.mjs's STEP_RE (`\d+(?:\.\d+)?`) for consistency's sake: two
+// copies is how the sub-step hole opened, and a tighter fragment makes an unforeseen
+// step number UNCOUNTED, which disables a safety cap silently. See decisions.md D-026.
+// ONE definition of the fix-attempt line shape, shared by the retrospective audit
+// (checkLeashCount) and the real-time --pre-step gate (runPreStepGate). Duplicating
+// it is how the sub-step hole opened: the two copies matched `Step \d+` only, so
+// `- Step 9.1, attempt 1:` — the completion-fix numbering CLAUDE.md mandates and
+// ip-orchestrator.md mints — silently bypassed BOTH tiers of the leash.
+// Step-number fragment is `\d+(?:\.\d+)*`: deliberately ONE quantifier looser than
+// schema.mjs's STEP_RE (`step-\d+(?:\.\d+)?`, which is the changelog field grammar
+// and allows a single sub-level). The leash is a safety cap, so an unforeseen
+// `Step 9.1.2` must be COUNTED, not silently skipped; over-counting an odd shape is
+// the fail-safe direction, under-counting is the defect being fixed here.
+const FIX_ATTEMPT_RE = /^-\s+(Step\s+\d+(?:\.\d+)*[,\s]+attempts?\s+\d+|Attempts?\s+\d+)/i;
+
 function checkLeashCount(planDir, issues) {
   const state = readFile(join(planDir, "state.md"));
   if (!state) return;
@@ -453,9 +485,9 @@ function checkLeashCount(planDir, issues) {
   const section = extractSection(state, "Fix Attempts");
   if (!section) return; // No section — legacy state.md or pre-template plan. Silent.
   // Alternation: documented `- Step N, attempt M` first, comma-optional/space-only variants
-  // (`- Step 1 attempt 1`, `- Step 1  attempts 2`), and legacy bare `- Attempt M` / `- Attempts M`.
-  // Plural `attempts?` tolerated; previously a non-canonical write silently bypassed the leash (F1).
-  const attempts = section.split("\n").filter((l) => /^-\s+(Step\s+\d+[,\s]+attempts?\s+\d+|Attempts?\s+\d+)/i.test(l));
+  // (`- Step 1 attempt 1`, `- Step 1  attempts 2`), sub-step numbering (`- Step 9.1, attempt 1`),
+  // and legacy bare `- Attempt M` / `- Attempts M`.
+  const attempts = section.split("\n").filter((l) => FIX_ATTEMPT_RE.test(l));
   // Two enforcement tiers (see SKILL.md §Autonomy Leash "Enforcement tiers"):
   // the real-time --pre-step gate HARD-blocks the 3rd spawn (cap = 2 attempts).
   // This full-run check is a RETROSPECTIVE audit, so 2 recorded attempts is
@@ -2407,9 +2439,8 @@ function runPreStepGate(planDir) {
   }
 
   const section = extractSection(state, "Fix Attempts");
-  // Same relaxed regex as checkLeashCount (F1): comma optional, attempts? plural ok.
-  const attemptRe = /^-\s+(Step\s+\d+[,\s]+attempts?\s+\d+|Attempts?\s+\d+)/i;
-  const attempts = section ? section.split("\n").filter((l) => attemptRe.test(l)).length : 0;
+  // Same shape as checkLeashCount, because it is literally the same constant (FIX_ATTEMPT_RE).
+  const attempts = section ? section.split("\n").filter((l) => FIX_ATTEMPT_RE.test(l)).length : 0;
   if (attempts >= 2) {
     console.log(`GATE:FAIL [leash-cap] attempts=${attempts} cap=2`);
     process.exit(2);

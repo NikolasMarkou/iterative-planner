@@ -428,6 +428,147 @@ describe("validate-plan.mjs checkLeashCount regex reconciliation", () => {
     const lines = leashLines(r.stdout);
     assert.ok(lines.some((l) => /ERROR/.test(l)), `expected ERROR [leash] for plural+no-comma forms, got:\n${r.stdout}`);
   });
+
+  // C2 (iter-1/step-6.1) — the counting regex required `Step <digits>` followed by
+  // `,` or space, so the `step-N.M` completion-fix numbering that CLAUDE.md mandates
+  // and ip-orchestrator.md mints was invisible to BOTH leash tiers. Reproduced by the
+  // reviewer end-to-end; these four lock the retrospective-audit half.
+  it("C2: sub-step numbering `- Step 9.1, attempt M` (3 attempts) → WARN [leash]", () => {
+    const cwd = getTempDir();
+    writePlan(cwd, {
+      fixAttemptsBody: [
+        "- Step 9.1, attempt 1: tried X — failed",
+        "- Step 9.1, attempt 2: tried Y — failed",
+        "- Step 9.1, attempt 3: tried Z — failed",
+      ].join("\n"),
+    });
+    const r = run(cwd);
+    const lines = leashLines(r.stdout);
+    assert.ok(lines.some((l) => /WARN/.test(l)), `expected WARN [leash] for sub-step numbering, got:\n${r.stdout}`);
+    assert.ok(!lines.some((l) => /ERROR/.test(l)), `unexpected ERROR [leash] at 3 attempts, got:\n${r.stdout}`);
+  });
+
+  it("C2: sub-step numbering (4 attempts) → ERROR [leash], identical to the plain-integer form", () => {
+    const cwd = getTempDir();
+    const body = (step) => [1, 2, 3, 4].map((n) => `- Step ${step}, attempt ${n}: a`).join("\n");
+    writePlan(cwd, { fixAttemptsBody: body("9.1") });
+    const r = run(cwd);
+    assert.ok(leashLines(r.stdout).some((l) => /ERROR/.test(l)), `expected ERROR [leash] for 4 sub-step attempts, got:\n${r.stdout}`);
+
+    // previously-clean-stays-clean: the plain-integer form must behave identically.
+    const cwd2 = getTempDir();
+    writePlan(cwd2, { fixAttemptsBody: body("9") });
+    const r2 = run(cwd2);
+    assert.ok(leashLines(r2.stdout).some((l) => /ERROR/.test(l)), `plain-integer form regressed, got:\n${r2.stdout}`);
+  });
+
+  // Decided behavior: the step-number fragment is `\d+(?:\.\d+)*`, one quantifier
+  // looser than schema.mjs's STEP_RE. An unforeseen deeper nesting is COUNTED —
+  // over-counting an odd shape is the fail-safe direction for a safety cap.
+  it("C2: deeper nesting `- Step 9.1.2, attempt M` (4 attempts) is COUNTED → ERROR [leash]", () => {
+    const cwd = getTempDir();
+    writePlan(cwd, {
+      fixAttemptsBody: [1, 2, 3, 4].map((n) => `- Step 9.1.2, attempt ${n}: a`).join("\n"),
+    });
+    const r = run(cwd);
+    assert.ok(leashLines(r.stdout).some((l) => /ERROR/.test(l)), `expected deeper nesting to be counted, got:\n${r.stdout}`);
+  });
+
+  it("C2: the `- Step N.M: LEASH HIT` summary line is still NOT counted as an attempt", () => {
+    const cwd = getTempDir();
+    writePlan(cwd, {
+      fixAttemptsBody: [
+        "- Step 6.1: LEASH HIT via pre-step gate. Transitioned to REFLECT.",
+        "- Step 6.1: LEASH HIT via pre-step gate. Transitioned to REFLECT.",
+        "- Step 6.1: LEASH HIT via pre-step gate. Transitioned to REFLECT.",
+        "- Step 6.1: LEASH HIT via pre-step gate. Transitioned to REFLECT.",
+      ].join("\n"),
+    });
+    const r = run(cwd);
+    assert.equal(leashLines(r.stdout).length, 0, `LEASH HIT lines must not be counted as attempts, got:\n${r.stdout}`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// W10 (iter-1/step-6.1) — checkFindings counted only bullets and numbered lines
+// under ## Index, so a TABLE index (four resolvable rows) was reported as
+// "Only 0 indexed findings". The findings.md template's Index body is just
+// "*To be populated during EXPLORE.*" — no protocol file instructs bullets-only —
+// so the table was conformant output and the validator was wrong.
+// ---------------------------------------------------------------------------
+describe("validate-plan.mjs findings Index shapes (W10)", () => {
+  let tempDirs = [];
+  function getTempDir() { const d = makeTempDir(); tempDirs.push(d); return d; }
+  afterEach(() => { for (const d of tempDirs) removeTempDir(d); tempDirs = []; });
+
+  /** Only the "N indexed findings" WARN — other [findings] checks are out of scope here. */
+  function indexWarns(stdout) {
+    return stdout.split("\n").filter((l) => /\[findings\]/.test(l) && /indexed findings/.test(l));
+  }
+
+  function withIndex(cwd, indexBody) {
+    const { planDir } = writePlan(cwd, { state: "EXECUTE" });
+    writeFileSync(join(planDir, "findings.md"),
+`# Findings
+
+## Index
+${indexBody}
+
+## Key Constraints
+- fixture constraint
+`);
+    return planDir;
+  }
+
+  it("bullet Index (3 items) → no indexed-findings WARN", () => {
+    const cwd = getTempDir();
+    withIndex(cwd, [
+      "- [F1](findings/f1.md) — fixture",
+      "- [F2](findings/f2.md) — fixture",
+      "- [F3](findings/f3.md) — fixture",
+    ].join("\n"));
+    const r = run(cwd);
+    assert.equal(indexWarns(r.stdout).length, 0, `bullet Index must not warn, got:\n${r.stdout}`);
+  });
+
+  it("numbered Index (3 items) → no indexed-findings WARN", () => {
+    const cwd = getTempDir();
+    withIndex(cwd, [
+      "1. [F1](findings/f1.md) — fixture",
+      "2. [F2](findings/f2.md) — fixture",
+      "3. [F3](findings/f3.md) — fixture",
+    ].join("\n"));
+    const r = run(cwd);
+    assert.equal(indexWarns(r.stdout).length, 0, `numbered Index must not warn, got:\n${r.stdout}`);
+  });
+
+  it("table Index (4 rows, this plan's own shape) → no indexed-findings WARN", () => {
+    const cwd = getTempDir();
+    withIndex(cwd, [
+      "| ID | Topic | File | Headline |",
+      "|----|-------|------|----------|",
+      "| F-01 | Core runtime scripts | `findings/f1.md` | fixture |",
+      "| F-02 | Gate scripts | `findings/f2.md` | fixture |",
+      "| F-03 | Protocol coherence | `findings/f3.md` | fixture |",
+      "| F-04 | End-to-end lifecycle | `findings/f4.md` | fixture |",
+    ].join("\n"));
+    const r = run(cwd);
+    assert.equal(indexWarns(r.stdout).length, 0, `table Index must not warn, got:\n${r.stdout}`);
+  });
+
+  it("table Index with only 2 data rows → still WARNs, and the header/separator rows are not counted", () => {
+    const cwd = getTempDir();
+    withIndex(cwd, [
+      "| ID | Topic | File | Headline |",
+      "|----|-------|------|----------|",
+      "| F-01 | Core runtime scripts | `findings/f1.md` | fixture |",
+      "| F-02 | Gate scripts | `findings/f2.md` | fixture |",
+    ].join("\n"));
+    const r = run(cwd);
+    const warns = indexWarns(r.stdout);
+    assert.equal(warns.length, 1, `a 2-row table Index must still warn, got:\n${r.stdout}`);
+    assert.match(warns[0], /Only 2 indexed findings/, `header + separator rows must not be counted, got:\n${warns[0]}`);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -597,6 +738,27 @@ describe("validate-plan.mjs --pre-step gate", () => {
     const r = runPreStep(cwd);
     assert.equal(r.exitCode, 2, `expected exit 2 for plural Attempts, got ${r.exitCode}\nstdout:\n${r.stdout}`);
     assert.ok(r.stdout.trim().startsWith("GATE:FAIL [leash-cap]"), `expected GATE:FAIL [leash-cap], got:\n${r.stdout}`);
+  });
+
+  // C2 (iter-1/step-6.1) — the reviewer's end-to-end reproduction, verbatim: three
+  // canonical `- Step 9.1, attempt N:` lines returned GATE:PASS/exit 0, while the same
+  // file with `9.1` rewritten to `9` returned GATE:FAIL [leash-cap] attempts=3 cap=2.
+  // The HARD gate was off for exactly the loop the protocol mandates.
+  it("(k) C2: FAIL [leash-cap] — 3 sub-step `- Step 9.1, attempt N` lines → exit 2, attempts=3", () => {
+    const cwd = getTempDir();
+    const body = (step) => [1, 2, 3].map((n) => `- Step ${step}, attempt ${n}: tried X — failed`).join("\n");
+    writePlan(cwd, { state: "EXECUTE", fixAttemptsBody: body("9.1") });
+    const r = runPreStep(cwd);
+    assert.equal(r.exitCode, 2, `expected exit 2 for sub-step numbering, got ${r.exitCode}\nstdout:\n${r.stdout}`);
+    assert.ok(r.stdout.trim().startsWith("GATE:FAIL [leash-cap]"), `expected GATE:FAIL [leash-cap], got:\n${r.stdout}`);
+    assert.ok(/attempts=3 cap=2/.test(r.stdout), `expected attempts=3 cap=2, got:\n${r.stdout}`);
+
+    // The plain-integer file must return the identical verdict (it already did).
+    const cwd2 = getTempDir();
+    writePlan(cwd2, { state: "EXECUTE", fixAttemptsBody: body("9") });
+    const r2 = runPreStep(cwd2);
+    assert.equal(r2.exitCode, r.exitCode, `sub-step and plain-integer verdicts must match`);
+    assert.equal(r2.stdout.trim(), r.stdout.trim(), `sub-step and plain-integer output must match`);
   });
 
   // F5 — REPLAN normalized to PIVOT in decisions-schema (Complexity Assessment required).
