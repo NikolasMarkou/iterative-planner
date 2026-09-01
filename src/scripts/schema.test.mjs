@@ -577,7 +577,7 @@ test("schema.mjs is a library: importing it has no side effects, and it exports 
 const CL_HEADER = [
   "# Changelog",
   "*Append-only per-edit ledger. One line per file edit.*",
-  "*Format: `UTC | iter-N/step-M[.K] | commit | path | OP(+N,-M) | radius:TIER(score) | D-NNN-or-dash | reason`*",
+  "*Field order: `UTC | iter-N/step-M[.K] | commit | path | op | radius | D-NNN-or-dash | reason`. Field shapes are defined once, in `CHANGELOG_SPEC` (scripts/schema.mjs) — read the spec, not a copy.*",
   "*See references/blast-radius.md for radius scoring.*",
 ];
 

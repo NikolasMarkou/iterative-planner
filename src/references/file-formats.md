@@ -1273,7 +1273,7 @@ See references/planning-rigor.md for definitions. -->
 ```markdown
 # Changelog
 *Append-only per-edit ledger. One line per file edit. Owner: ip-executor (writes). Reader: ip-reviewer at REFLECT.*
-*Format: `UTC | iter-N/step-M[.K] | commit | path | OP(+N,-M) | radius:TIER(score) | D-NNN-or-dash | reason`*
+*Field order: `UTC | iter-N/step-M[.K] | commit | path | op | radius | D-NNN-or-dash | reason`. Field shapes are defined once, in `CHANGELOG_SPEC` (scripts/schema.mjs) — read the spec, not a copy.*
 *See references/blast-radius.md for radius scoring. Decision-ref optional — `-` means no `# DECISION` anchor governs this edit.*
 ```
 

@@ -3262,7 +3262,7 @@ describe("bootstrap.mjs", () => {
     const CHANGELOG_HEADER = [
       "# Changelog",
       "*Append-only per-edit ledger. One line per file edit. Owner: ip-executor (writes). Reader: ip-reviewer at REFLECT.*",
-      "*Format: `UTC | iter-N/step-M[.K] | commit | path | OP(+N,-M) | radius:TIER(score) | D-NNN-or-dash | reason`*",
+      "*Field order: `UTC | iter-N/step-M[.K] | commit | path | op | radius | D-NNN-or-dash | reason`. Field shapes are defined once, in `CHANGELOG_SPEC` (scripts/schema.mjs) — read the spec, not a copy.*",
       "*See references/blast-radius.md for radius scoring. Decision-ref optional — `-` means no `# DECISION` anchor governs this edit.*"
     ];
 
@@ -4719,6 +4719,36 @@ describe("bootstrap.mjs — PLAN_TEMPLATES + renderTemplate", () => {
       assert.equal(typeof body, "string", `${slug} must be a raw string, not a function`);
       assert.ok(!/\$\{/.test(body), `${slug} still contains a \${...} interpolation site`);
     }
+  });
+
+  // The changelog header is served into EVERY new plan and is the first place an executor looks
+  // before writing a ledger line. It once spelled the op field `OP(+N,-M)` — a shape CHANGELOG_SPEC
+  // does not accept and that cannot express CREATE(+N), DELETE(-N) or RENAME(old→new), so three of
+  // the five real ops were unrepresentable in the only example bootstrap ships. This test is keyed
+  // off the SPEC's own op pattern, not off a sentence: any UPPERCASE(...) token in any template must
+  // be an op CHANGELOG_SPEC actually accepts, or not look like an op at all.
+  it("no template restates an op shape CHANGELOG_SPEC rejects", async () => {
+    const { PLAN_TEMPLATES } = await loadBootstrap();
+    const { CHANGELOG_SPEC } = await import(new URL("./schema.mjs", import.meta.url));
+    const opRe = CHANGELOG_SPEC.elements.entry.attrs.op.pattern;
+    assert.ok(opRe instanceof RegExp, "CHANGELOG_SPEC must declare the op field as a regex");
+    let scanned = 0;
+    for (const [slug, body] of Object.entries(PLAN_TEMPLATES)) {
+      for (const [tok] of String(body).matchAll(/\b[A-Z][A-Z_]{1,}\([^)\n]*\)/g)) {
+        scanned++;
+        assert.ok(opRe.test(tok),
+          `PLAN_TEMPLATES.${slug} spells \`${tok}\`, which CHANGELOG_SPEC's op pattern rejects — ` +
+          "name the field ORDER and point at the spec instead of restating a shape");
+      }
+    }
+    // Anti-vacuity: the old defect was one such token, so a scan finding zero tokens proves nothing
+    // about the regex. Assert the scanner still sees the real ops in the file-formats worked example.
+    const sample = "CREATE(+1) EDIT(+5,-2) DELETE(-3) REVERT(src/a.mjs)";
+    const found = [...sample.matchAll(/\b[A-Z][A-Z_]{1,}\([^)\n]*\)/g)].map((m) => m[0]);
+    assert.equal(found.length, 4, "the token scanner must match op-shaped tokens at all");
+    for (const t of found) assert.ok(opRe.test(t), `${t} is a real op and must pass`);
+    assert.ok(!opRe.test("OP(+N,-M)"), "OP(+N,-M) must remain a rejected shape");
+    void scanned;
   });
 
   it("golden bytes: the 7 per-plan files equal renderTemplate(PLAN_TEMPLATES[slug], that run's values)", async () => {

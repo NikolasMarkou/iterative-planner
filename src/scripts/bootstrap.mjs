@@ -511,7 +511,7 @@ See references/planning-rigor.md for definitions. -->
 
   changelog: `# Changelog
 *Append-only per-edit ledger. One line per file edit. Owner: ip-executor (writes). Reader: ip-reviewer at REFLECT.*
-*Format: \`UTC | iter-N/step-M[.K] | commit | path | OP(+N,-M) | radius:TIER(score) | D-NNN-or-dash | reason\`*
+*Field order: \`UTC | iter-N/step-M[.K] | commit | path | op | radius | D-NNN-or-dash | reason\`. Field shapes are defined once, in \`CHANGELOG_SPEC\` (scripts/schema.mjs) — read the spec, not a copy.*
 *See references/blast-radius.md for radius scoring. Decision-ref optional — \`-\` means no \`# DECISION\` anchor governs this edit.*
 `,
 
@@ -1228,7 +1228,11 @@ export function maybeCompressDecisions(planDir, opts = {}) {
 //
 // Append-only chronological ledger of per-file edits. Format (8 pipe-delimited
 // fields):
-//   UTC | iter-N/step-M | commit | path | OP(+N,-M) | radius:TIER(score) | D-NNN-or-dash | reason
+//   UTC | iter-N/step-M | commit | path | op | radius | D-NNN-or-dash | reason
+//
+// That is the field ORDER. What each field may CONTAIN is defined once, in schema.mjs's
+// CHANGELOG_SPEC, and is deliberately not copied here: the copy drifted, spelling the op
+// field `OP(+N,-M)`, a shape that cannot express CREATE(+N), DELETE(-N) or RENAME(old→new).
 //
 // Strategy: preserve verbatim any line that is "load-bearing" (HIGH/UNKNOWN
 // radius, REVERT op, or non-`-` decision-ref). Group consecutive elidable
