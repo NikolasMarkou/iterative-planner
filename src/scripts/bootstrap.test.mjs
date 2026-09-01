@@ -995,13 +995,17 @@ describe("bootstrap.mjs", () => {
       assert.ok(plan.includes(goal), "plan should contain special-char goal verbatim");
     });
 
-    it("empty goal defaults to fallback message", () => {
+    // v2.60.0 — behavior change (was: "empty goal defaults to fallback message").
+    // The "No goal specified" placeholder produced indistinguishable unlabelled plans:
+    // INDEX.md records only the first 60 chars of the goal, so a placeholder plan could
+    // not be told apart from any other, and nothing else in the corpus records intent.
+    // An empty goal is now refused rather than defaulted.
+    it("empty goal is rejected, not defaulted", () => {
       const dir = getTempDir();
       const r = run(dir, "new", "");
-      assert.equal(r.exitCode, 0, `stderr: ${r.stderr}`);
-      const planDir = getPointer(dir);
-      const plan = readPlanFile(dir, planDir, "plan.md");
-      assert.ok(plan.includes("No goal specified"), "should use default goal");
+      assert.notEqual(r.exitCode, 0, `expected rejection, got exit 0:\n${r.stdout}`);
+      assert.ok(r.stderr.includes("A plan goal is required"), `stderr: ${r.stderr}`);
+      assert.ok(!getPointer(dir), "no plan may be created without a goal");
     });
 
     it("near-miss subcommand is rejected with a suggestion", () => {
@@ -1012,14 +1016,27 @@ describe("bootstrap.mjs", () => {
       assert.ok(!getPointer(dir), "should not create a plan");
     });
 
-    it("single-word goal not near any subcommand still creates a plan", () => {
+    // v2.60.0 — behavior change (was: "single-word goal not near any subcommand still
+    // creates a plan"). A bare token far from every subcommand used to fall through to
+    // `new` and silently create a real plan directory; that is how an audit probe running
+    // `bootstrap.mjs <token>` produced a ghost plan that no health command could see.
+    // A lone word is now refused; `new "<word>"` is the explicit form.
+    it("single-word goal not near any subcommand is now rejected, and creates no plan", () => {
       const dir = getTempDir();
       const r = run(dir, "refactor");
+      assert.notEqual(r.exitCode, 0, `expected rejection, got exit 0:\n${r.stdout}`);
+      assert.ok(r.stderr.includes("is not a subcommand"), `stderr: ${r.stderr}`);
+      assert.ok(r.stderr.includes(`new "refactor"`), "should show the explicit form");
+      assert.ok(!getPointer(dir), "a bare token must not create a plan");
+    });
+
+    it("an explicit new with a single-word goal still works", () => {
+      const dir = getTempDir();
+      const r = run(dir, "new", "refactor");
       assert.equal(r.exitCode, 0, `stderr: ${r.stderr}`);
       const planDir = getPointer(dir);
-      assert.ok(planDir, "should create plan for a non-near single-word goal");
-      const plan = readPlanFile(dir, planDir, "plan.md");
-      assert.ok(plan.includes("refactor"), "should contain goal");
+      assert.ok(planDir, "explicit `new` must still accept a one-word goal");
+      assert.ok(readPlanFile(dir, planDir, "plan.md").includes("refactor"), "should contain goal");
     });
 
     it("multiple close-open cycles produce growing consolidated files", () => {
@@ -1470,11 +1487,73 @@ describe("bootstrap.mjs", () => {
   // =========================================================================
   // sliding window (consolidated file trimming)
   // =========================================================================
+  // v2.60.0 — a bare single token is never a plan goal. The previous guard rejected only
+  // near-misses (edit distance ≤ 2), so a token far from every subcommand fell through to
+  // `new` and silently created a real plan directory.
+  describe("unknown-subcommand rejection and blank-goal rejection", () => {
+    it("rejects a bare token that resembles nothing, and creates no plan directory", () => {
+      const dir = getTempDir();
+      const r = runFull(dir, "frobnicate");
+      assert.equal(r.exitCode, 1, `expected exit 1, got ${r.exitCode}:\n${r.stderr}`);
+      assert.match(r.stderr, /is not a subcommand/);
+      assert.ok(!existsSync(join(dir, "plans")), "no plans/ directory may be created by a rejected token");
+    });
+
+    it("still offers the did-you-mean hint for a near-miss", () => {
+      const dir = getTempDir();
+      const r = runFull(dir, "clse");
+      assert.equal(r.exitCode, 1);
+      assert.match(r.stderr, /did you mean "close"/);
+    });
+
+    it("still accepts a quoted multi-word goal as a goal (backward compatible)", () => {
+      const dir = getTempDir();
+      const r = runFull(dir, "fix the consolidated trim");
+      assert.equal(r.exitCode, 0, `a quoted goal phrase must still work, got ${r.exitCode}:\n${r.stderr}`);
+      assert.ok(getPointer(dir), "a plan should have been created");
+    });
+
+    it("rejects a whitespace-only goal", () => {
+      const dir = getTempDir();
+      const r = runFull(dir, "new", "   ");
+      assert.equal(r.exitCode, 1, `expected exit 1, got ${r.exitCode}:\n${r.stderr}`);
+      assert.match(r.stderr, /A plan goal is required/);
+    });
+  });
+
   describe("sliding window for consolidated files", () => {
-    it("trims consolidated files to 4 most recent plan sections", () => {
+    // v2.60.0 — MAX_CONSOLIDATED_PLANS is 25 (was 4), and the window no longer truncates
+    // positionally: a section past the window is dropped ONLY when its per-plan directory
+    // still exists (that directory is the other copy). An orphaned section is the LAST
+    // copy of that plan and is retained past the window.
+
+    /** Build a consolidated FINDINGS.md with `n` well-formed plan sections, newest first.
+     *  Returns the ids in file order. `liveDirs` ids also get a real plans/<id>/ dir. */
+    function seedConsolidated(dir, n, liveDirs = []) {
+      mkdirSync(join(dir, "plans"), { recursive: true });
+      const ids = [];
+      let content = `# Consolidated Findings\n*Archive.*\n`;
+      for (let i = 0; i < n; i++) {
+        const id = `plan-2026-08-01T${String(i).padStart(6, "0")}-${String(i).padStart(8, "0")}`;
+        ids.push(id);
+        content += `\n## ${id}\n\n### Topic\n\n- body ${i}\n`;
+        if (liveDirs.includes(i)) mkdirSync(join(dir, "plans", id), { recursive: true });
+      }
+      writeFileSync(join(dir, "plans", "FINDINGS.md"), content);
+      return ids;
+    }
+
+    /** Close one fresh plan, which is what triggers trimConsolidatedWindow. */
+    function triggerTrim(dir) {
+      run(dir, "new", "Trigger trim");
+      const planDir = getPointer(dir);
+      writeFileSync(join(dir, "plans", planDir, "findings.md"), `# Findings\n\n## Index\n- New\n`);
+      return runFull(dir, "close");
+    }
+
+    it("does not trim while every plan directory survives (10 plans, window 25)", () => {
       const dir = getTempDir();
       const planDirs = [];
-      // Create and close 10 plans with findings content
       for (let i = 0; i < 10; i++) {
         run(dir, "new", `Plan ${i}`);
         const planDir = getPointer(dir);
@@ -1486,15 +1565,46 @@ describe("bootstrap.mjs", () => {
         run(dir, "close");
       }
       const consolidated = readFileSync(join(dir, "plans", "FINDINGS.md"), "utf-8");
-      // Count plan sections
       const sections = consolidated.match(/\n## plan[-_]/g) || [];
-      assert.equal(sections.length, 4, "should keep exactly 4 plan sections");
-      // Newest (last created) should be present
-      assert.ok(consolidated.includes(planDirs[9]), "newest plan should be present");
-      assert.ok(consolidated.includes(planDirs[6]), "4th newest plan should be present");
-      // Oldest should be trimmed
-      assert.ok(!consolidated.includes(planDirs[0]), "oldest plan should be trimmed");
-      assert.ok(!consolidated.includes(planDirs[5]), "5th newest plan should be trimmed");
+      assert.equal(sections.length, 10, "10 sections are inside the 25-plan window");
+      for (const pd of planDirs) {
+        assert.ok(consolidated.includes(pd), `plan ${pd} should still be present`);
+      }
+    });
+
+    it("drops a section past the window when its plan directory still exists", () => {
+      const dir = getTempDir();
+      // 30 sections; the two oldest (indices 28, 29 — past the 25 window) keep their dirs.
+      const ids = seedConsolidated(dir, 30, [28, 29]);
+      triggerTrim(dir);
+      const result = readFileSync(join(dir, "plans", "FINDINGS.md"), "utf-8");
+      assert.ok(!result.includes(ids[28]), `${ids[28]} has a live directory and must be dropped`);
+      assert.ok(!result.includes(ids[29]), `${ids[29]} has a live directory and must be dropped`);
+      assert.ok(result.includes(ids[0]), "newest section must survive");
+    });
+
+    it("RETAINS a section past the window when its plan directory is gone (last copy)", () => {
+      const dir = getTempDir();
+      // 30 sections, no directories at all — every section past the window is an orphan.
+      const ids = seedConsolidated(dir, 30, []);
+      const r = triggerTrim(dir);
+      const result = readFileSync(join(dir, "plans", "FINDINGS.md"), "utf-8");
+      for (const id of ids) {
+        assert.ok(result.includes(id), `orphan ${id} is the last copy and must be retained`);
+      }
+      assert.ok(result.includes("body 29"), "retained section body must survive intact, not just its heading");
+      assert.match(r.stdout, /RETAINED:/, `close should report the retention, got:\n${r.stdout}`);
+    });
+
+    it("retains a section whose heading is not a well-formed plan-id (cannot verify a second copy)", () => {
+      const dir = getTempDir();
+      mkdirSync(join(dir, "plans"), { recursive: true });
+      let content = `# Consolidated Findings\n*Archive.*\n`;
+      for (let i = 0; i < 30; i++) content += `\n## plan_fake_${String(i).padStart(2, "0")}\n- body ${i}\n`;
+      writeFileSync(join(dir, "plans", "FINDINGS.md"), content);
+      triggerTrim(dir);
+      const result = readFileSync(join(dir, "plans", "FINDINGS.md"), "utf-8");
+      assert.ok(result.includes("plan_fake_29"), "an unresolvable id must fall to the safe side and be retained");
     });
 
     it("does not trim when ≤4 plan sections exist", () => {
@@ -1540,9 +1650,9 @@ describe("bootstrap.mjs", () => {
       assert.ok(result.includes("<!-- COMPRESSED-SUMMARY -->"), "open marker preserved");
       assert.ok(result.includes("<!-- /COMPRESSED-SUMMARY -->"), "close marker preserved");
       assert.ok(result.includes("Key finding"), "summary content preserved");
-      // Should have at most 4 plan sections
+      // 10 fake sections + 1 real = 11, inside the 25-plan window, so nothing is trimmed.
       const sections = result.match(/\n## plan[-_]/g) || [];
-      assert.ok(sections.length <= 4, `should have ≤4 sections, got ${sections.length}`);
+      assert.ok(sections.length <= 25, `should have ≤25 sections, got ${sections.length}`);
     });
   });
 
@@ -2571,13 +2681,19 @@ describe("bootstrap.mjs", () => {
       // Consolidated files are newest-first by protocol invariant. Section
       // ordered top-down is plan_05 (newest) → plan_01 (oldest). First
       // section sits at byte 0 (no H1 header) to exercise the B11 fix.
-      const synthetic = [
-        "## plan_2026-01-05_eeeeeeee\n### Index\n- E\n",
-        "## plan_2026-01-04_dddddddd\n### Index\n- D\n",
-        "## plan_2026-01-03_cccccccc\n### Index\n- C\n",
-        "## plan_2026-01-02_bbbbbbbb\n### Index\n- B\n",
-        "## plan_2026-01-01_aaaaaaaa\n### Index\n- A\n",
-      ].join("\n");
+      // v2.60.0 — the window is 25 and a section is only droppable when its plan directory
+      // still exists, so this fixture now needs >25 sections, each with a live directory,
+      // to make the trim observable. The byte-0 property under test is unchanged: the FIRST
+      // section sits at offset 0 with no H1 boilerplate. If byte-0 were missed, that section
+      // would fall outside the match set and survive in the header slice, leaving 26.
+      const ids = [];
+      for (let i = 0; i < 30; i++) {
+        // Legacy grammar, newest-first: descending day so index 0 is the newest.
+        const id = `plan_2026-01-${String(30 - i).padStart(2, "0")}_${String(i).padStart(8, "a")}`;
+        ids.push(id);
+        mkdirSync(join(dir, "plans", id), { recursive: true });
+      }
+      const synthetic = ids.map((id) => `## ${id}\n### Index\n- from ${id}\n`).join("\n");
       writeFileSync(join(dir, "plans", "FINDINGS.md"), synthetic);
       // Create a new plan, close it — close path calls trimConsolidatedWindow
       // unconditionally. Use a plan with no findings.md content so the merge
@@ -2589,13 +2705,13 @@ describe("bootstrap.mjs", () => {
       run(dir, "close");
       const merged = readFileSync(join(dir, "plans", "FINDINGS.md"), "utf-8");
       const sectionMatches = merged.match(/(^|\n)## plan_/g) || [];
-      assert.equal(sectionMatches.length, 4,
-        `expected exactly 4 plan sections after trim, got ${sectionMatches.length}; content=${JSON.stringify(merged.slice(0, 200))}`);
-      // Oldest section (plan_01) at the BOTTOM of the file is trimmed;
-      // the newest section (plan_05) at byte 0 is retained.
-      assert.ok(!merged.includes("plan_2026-01-01_aaaaaaaa"),
+      assert.equal(sectionMatches.length, 25,
+        `expected exactly 25 plan sections after trim (26 would mean the byte-0 section was not counted), got ${sectionMatches.length}; content=${JSON.stringify(merged.slice(0, 200))}`);
+      // Oldest section at the BOTTOM of the file is trimmed (its directory exists, so a
+      // second copy survives); the newest section, at byte 0, is retained.
+      assert.ok(!merged.includes(ids[29]),
         "oldest section (bottom of file) must be trimmed by sliding window");
-      assert.ok(merged.includes("plan_2026-01-05_eeeeeeee"),
+      assert.ok(merged.includes(ids[0]),
         "newest section (at byte 0) must be retained");
     });
 
@@ -4012,17 +4128,25 @@ describe("bootstrap.mjs: plan-id grammar union at the four enumeration/scan site
   const LEG_B = "plan_2026-01-02_bbbbbbbb";
   const LEG_C = "plan_2026-01-01_aaaaaaaa";        // oldest — must be trimmed
 
-  it("sliding-window trim keeps the 4 newest sections across a MIX of both grammars", () => {
+  it("sliding-window trim sees BOTH grammars when deciding what to drop", () => {
     const dir = getTempDir();
     mkdirSync(join(dir, "plans"), { recursive: true });
-    // Consolidated files are newest-first by protocol invariant. 5 sections in,
-    // 4 out. Pre-fix (`/\n## plan_/`) the two `## plan-…` sections were invisible,
-    // so only 3 positions were found, `positions.length <= 4` held, and the file
-    // was NEVER trimmed.
+    // Consolidated files are newest-first by protocol invariant. Pre-fix (`/\n## plan_/`)
+    // the `## plan-…` sections were invisible to the scan, so the file was never trimmed.
+    // v2.60.0: the window is 25 and a section is droppable only when its plan directory
+    // still exists, so the fixture is 30 sections of ALTERNATING grammar, each with a live
+    // directory. If either grammar were invisible the count would come out wrong.
+    const ids = [];
+    for (let i = 0; i < 30; i++) {
+      const n = String(i).padStart(8, "0");
+      const id = i % 2 === 0
+        ? `plan-2026-01-01T${String(i).padStart(6, "0")}-${n}`   // new grammar
+        : `plan_2026-01-${String((i % 28) + 1).padStart(2, "0")}_${n}`; // legacy grammar
+      ids.push(id);
+      mkdirSync(join(dir, "plans", id), { recursive: true });
+    }
     const synthetic = "# Consolidated Findings\n*Archive.*\n\n" +
-      [NEW_A, LEG_A, NEW_B, LEG_B, LEG_C]
-        .map((id) => `## ${id}\n### Index\n- from ${id}\n`)
-        .join("\n");
+      ids.map((id) => `## ${id}\n### Index\n- from ${id}\n`).join("\n");
     writeFileSync(join(dir, "plans", "FINDINGS.md"), synthetic);
     run(dir, "new", "trigger trim");
     const planDir = getPointer(dir);
@@ -4031,12 +4155,13 @@ describe("bootstrap.mjs: plan-id grammar union at the four enumeration/scan site
     run(dir, "close");
     const merged = readFileSync(join(dir, "plans", "FINDINGS.md"), "utf-8");
     const sections = merged.match(/(^|\n)## plan[-_]/g) || [];
-    assert.equal(sections.length, 4,
-      `expected exactly 4 plan sections after trim, got ${sections.length}; content=${JSON.stringify(merged.slice(0, 300))}`);
-    for (const kept of [NEW_A, LEG_A, NEW_B, LEG_B]) {
-      assert.ok(merged.includes(kept), `section ${kept} must be retained`);
-    }
-    assert.ok(!merged.includes(LEG_C), "oldest section must be trimmed by the sliding window");
+    assert.equal(sections.length, 25,
+      `expected exactly 25 plan sections after trim, got ${sections.length}; content=${JSON.stringify(merged.slice(0, 300))}`);
+    // Both grammars survive inside the window and both are dropped outside it.
+    assert.ok(merged.includes(ids[0]), "newest (new grammar) must be retained");
+    assert.ok(merged.includes(ids[1]), "newest (legacy grammar) must be retained");
+    assert.ok(!merged.includes(ids[28]), "oldest new-grammar section must be trimmed");
+    assert.ok(!merged.includes(ids[29]), "oldest legacy-grammar section must be trimmed");
   });
 
   it("INDEX.md date column is populated for a NEW-format plan id", () => {

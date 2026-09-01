@@ -4,6 +4,28 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.60.0] - 2026-09-01
+
+**The consolidated tier is now the durable copy, and a plan whose reasoning is gone says so.** An epistemic audit of this repo's own `plans/` tier found that `CHANGELOG.md` names 21 distinct plan-ids while two plan directories exist on disk — and 20 of the 21 occur nowhere in the system at all. The mechanism was a contradiction between two documented invariants: `bootstrap.mjs` claimed the sliding-window trim lost no information *because* old data was still in per-plan directories, while `references/decision-anchoring.md` states the directory is ephemeral and deleted routinely. The trim's correctness precondition was licensed away by another document, and nothing checked it. This release resolves the contradiction in favour of the ephemeral reading, makes the trim conditional so a last copy can never be dropped, and adds the detector for content that is genuinely gone.
+
+### Changed
+
+- **`trimConsolidatedWindow` filters sections instead of truncating positionally.** It keeps the newest `MAX_CONSOLIDATED_PLANS` sections plus *every* older section whose per-plan directory no longer exists. A section is dropped only when its directory still exists — that directory is then the other copy, so nothing is lost. A section whose heading is not a well-formed plan-id is also retained, since no directory can be resolved to prove a second copy exists; both cases fall to the safe side by construction. Retentions are reported on close as one summary line, emitted before the no-op short-circuit so a corpus that is entirely orphaned still reports.
+- **`MAX_CONSOLIDATED_PLANS` 4 → 25.** Durable retention is `min(MAX, N)/N`; the window is a constant, so retention falls as 1/N and the corpus churns rather than grows. At N=100 a window of 4 retains 4% of closed plans' findings and decisions, 25 retains 25%. Worth doing, and not the fix on its own — the orphan retention above is.
+- **A bare single token is no longer a plan goal.** `runCli`'s typo guard rejected only near-misses (edit distance ≤ 2), so a token far from every subcommand fell through to `new` and silently created a real plan directory. Any lone token with no whitespace is now refused; the edit-distance test only chooses the wording. A quoted goal phrase (one argv element containing whitespace) still works unchanged, because a subcommand never contains a space.
+- **A blank goal is refused rather than defaulted.** The `|| "No goal specified"` argv defaults caught only the empty string, so `new "   "` produced a real plan with no recoverable statement of intent — indistinguishable from any other, since `INDEX.md` records only the first 60 characters of the goal.
+- **`bootstrap.mjs:702-703` no longer claims "no information lost".** The comment now states what is true: the directory is ephemeral, the consolidated section may be the last copy, and that is why the trim below is conditional.
+
+### Added
+
+- **`validate-plan.mjs` gains a 30th check, `WARN [index-orphan]`.** It reports a plan named by `plans/INDEX.md` whose directory is gone *and* whose `## <plan-id>` section no longer survives in `plans/FINDINGS.md` or `plans/DECISIONS.md` — nothing survives that plan. A missing directory alone is deliberately NOT reported: it is normal and expected. WARN-only and never ERROR, because on any corpus with history it fires immediately for every plan already lost before the check shipped, and ERROR would block CLOSE on a backlog the current author cannot fix (same policy as `[lessons-eviction]`).
+
+### Notes
+
+- **Cost accounting for the new check** (per the CLAUDE.md rule on full-corpus walks): `[index-orphan]` is O(rows in `plans/INDEX.md`) `existsSync` calls plus at most 2 file reads total, both taken once outside the loop. It performs **no directory enumeration** — the O(all-plan-dirs) walk prohibited by `plan-2026-07-16T164852-47577439/D-001` is not reintroduced, and this is not a derived index: `INDEX.md` is written at CLOSE by its owner and read as-is. Full-validator path only, never `--pre-step`.
+- Four pre-existing tests encoded behaviour this release deliberately changes (the 4-section window in two forms, the goal fallback, and the single-word fallthrough). They were rewritten to assert the new contract with the reason recorded inline, not deleted. The byte-0 and mixed-grammar section-detection tests keep their original purpose — their fixtures were grown past the new window so the trim stays observable.
+- Test count: 752 (was 739 — net +13, live run).
+
 ## [2.59.0] - 2026-08-07
 
 **The plan presentation is now a summary, the steps, and a path.** PC-PLAN used to order the orchestrator to paste 11 sections of `plan.md` into chat verbatim — goal, problem statement, context, files table, steps, assumptions, failure modes, pre-mortem, success criteria, verification strategy, complexity budget. On a real plan that is a wall of text, and the thing the user is actually approving (the steps) is buried in the middle of it. The contract now renders the goal, a short summary, every step, and the `plan.md` path. Everything else is read from the file.

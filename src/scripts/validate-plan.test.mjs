@@ -3433,3 +3433,75 @@ describe("validate-plan.mjs Verdict independent acceptance corpus (D-013)", () =
       "5 authored MUST-ERROR shapes");
   });
 });
+
+// v2.60.0 — [index-orphan]: a plan named by INDEX.md with NO surviving copy anywhere.
+// The per-plan directory is ephemeral by design, so a missing directory alone is NORMAL and
+// must stay silent. The defect is a missing directory AND a missing consolidated section.
+describe("[index-orphan]: INDEX row with no surviving copy (E2 / F-1, F-2)", () => {
+  const tempDirs = [];
+  function getTempDir() { const d = makeTempDir(); tempDirs.push(d); return d; }
+  afterEach(() => { while (tempDirs.length) removeTempDir(tempDirs.pop()); });
+
+  const GONE = "plan-2026-07-01T101010-beefcafe";
+  const INDEX_HEADER =
+    "# Plan Index\n*Topic-to-directory mapping.*\n\n" +
+    "| Plan | Date | Goal | Key Topics |\n|------|------|------|------------|\n";
+
+  /** Fixture: active plan + an INDEX.md row naming GONE, with optional dir/section. */
+  function writeOrphanFixture(cwd, { withDir = false, withSection = false, index } = {}) {
+    const { planId } = writePlan(cwd);
+    writeFileSync(
+      join(cwd, "plans", "INDEX.md"),
+      index !== undefined ? index : INDEX_HEADER + `| ${GONE} | 2026-07-01 | fixture goal | |\n`,
+    );
+    if (withDir) mkdirSync(join(cwd, "plans", GONE), { recursive: true });
+    writeFileSync(
+      join(cwd, "plans", "FINDINGS.md"),
+      withSection
+        ? `# Consolidated Findings\n\n## ${GONE}\n\n### Topic\n\n- surviving body\n`
+        : `# Consolidated Findings\n*Archive.*\n`,
+    );
+    return planId;
+  }
+
+  it("(a) WARNs when both the directory and the consolidated section are gone", () => {
+    const cwd = getTempDir();
+    const planId = writeOrphanFixture(cwd);
+    const r = run(cwd, planId);
+    assert.match(r.stdout, /WARN\s+\[index-orphan\]/, `expected WARN, got:\n${r.stdout}`);
+    assert.match(r.stdout, new RegExp(GONE), "message must name the orphaned plan");
+  });
+
+  it("(b) stays silent when the consolidated section survives (directory gone is normal)", () => {
+    const cwd = getTempDir();
+    const planId = writeOrphanFixture(cwd, { withSection: true });
+    const r = run(cwd, planId);
+    assert.doesNotMatch(r.stdout, /\[index-orphan\]/,
+      `a surviving section means nothing was lost; got:\n${r.stdout}`);
+  });
+
+  it("(c) stays silent when the plan directory still exists", () => {
+    const cwd = getTempDir();
+    const planId = writeOrphanFixture(cwd, { withDir: true });
+    const r = run(cwd, planId);
+    assert.doesNotMatch(r.stdout, /\[index-orphan\]/, `got:\n${r.stdout}`);
+  });
+
+  it("(d) NEVER emits ERROR — the check must not block CLOSE on a pre-existing backlog", () => {
+    const cwd = getTempDir();
+    const planId = writeOrphanFixture(cwd);
+    const r = run(cwd, planId);
+    assert.doesNotMatch(r.stdout, /ERROR\s+\[index-orphan\]/,
+      "HARD constraint: [index-orphan] is WARN-only and must never block CLOSE");
+  });
+
+  it("(e) ignores header and separator rows, and a row whose first cell is not a plan-id", () => {
+    const cwd = getTempDir();
+    const planId = writeOrphanFixture(cwd, {
+      index: INDEX_HEADER + "| not-a-plan-id | 2026-07-01 | x | |\n| | | | |\n",
+    });
+    const r = run(cwd, planId);
+    assert.doesNotMatch(r.stdout, /\[index-orphan\]/,
+      `non-plan-id rows must be skipped, got:\n${r.stdout}`);
+  });
+});

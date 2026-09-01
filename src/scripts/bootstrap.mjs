@@ -677,7 +677,11 @@ export function stripCrossPlanNote(content) {
 }
 
 const CONSOLIDATED_COMPRESS_THRESHOLD = 500;
-const MAX_CONSOLIDATED_PLANS = 4;
+// v2.60.0: 4 → 25. Durable retention is min(MAX, N)/N — the window is a CONSTANT, so
+// retention falls as 1/N and the corpus churns rather than grows. At N=100 a window of 4
+// retains 4% of closed plans' findings/decisions; 25 retains 25%. Raising it is cheap and
+// real, but it is NOT the fix on its own — trimConsolidatedWindow's orphan retention is.
+const MAX_CONSOLIDATED_PLANS = 25;
 // COMPRESSED_SUMMARY_OPEN / COMPRESSED_SUMMARY_CLOSE now live in ./shared.mjs
 // (imported above) so the validator recognizes the same markers this produces.
 
@@ -699,25 +703,82 @@ function checkConsolidatedSize(filePath, label) {
 }
 
 function trimConsolidatedWindow(filePath) {
-  // Keep only the MAX_CONSOLIDATED_PLANS most recent plan sections.
-  // Old data is still in per-plan directories — no information lost.
+  // Keep the MAX_CONSOLIDATED_PLANS most recent plan sections, PLUS every older
+  // section whose per-plan directory is already gone.
+  //
+  // The per-plan directory is EPHEMERAL — references/decision-anchoring.md states it
+  // plainly ("being on disk is not the same as being durable"; "A plan directory is
+  // deleted routinely, not rarely"), and the plans glob is gitignored in every
+  // consuming project. So a consolidated `## <plan-id>` section whose directory no
+  // longer exists is not a duplicate of anything: it is the LAST COPY of that plan's
+  // findings/decisions. Dropping it destroys the only surviving record.
+  //
+  // This function used to claim "old data is still in per-plan directories — no
+  // information lost" and truncate positionally on that basis. The claim was false
+  // whenever a directory had been removed, and nothing checked it. The window is
+  // therefore applied by FILTERING sections, not by slicing at a cutoff: an orphaned
+  // section is retained past the window and reported, so the retention is visible
+  // rather than silent. validate-plan.mjs `[index-orphan]` is the detector half —
+  // it reports a plan that has neither a directory nor a surviving section.
   let content;
   try { content = readFileSync(filePath, "utf-8"); } catch { return; }
-  // Find all `## <plan-id>` section positions, BOTH grammars (shared.mjs
-  // PLAN_SECTION_PATTERN). It is line-anchored (`m`), so it also catches a section
-  // that begins at byte 0 with no preceding newline — the pathological
-  // consolidated file that lacks the boilerplate H1 header. Each match.index is
-  // already AT the heading, so slicing to `positions[N]` cleanly truncates
-  // before the Nth section.
+  // SECTION BOUNDARIES are found with the same prefix probe as before
+  // (PLAN_SECTION_PATTERN, "^## plan[-_]"), widened only to CAPTURE the trailing token so
+  // the id is available for the existence test. Do NOT narrow this to ANY_PLAN_ID_PATTERN:
+  // a heading whose token is not a well-formed plan-id (legacy fixtures, hand-edited or
+  // corrupted files) would then stop being recognized as a section at all, silently
+  // changing how the window counts and where it cuts. Boundaries stay maximally
+  // permissive; only the DROP decision below is conditional.
   //
-  // The pattern is a STRING; this instance is local and freshly built, so no
-  // `lastIndex` can be shared with any other caller. Keep it that way.
-  const sectionRe = new RegExp(PLAN_SECTION_PATTERN, "gm");
-  const positions = [...content.matchAll(sectionRe)].map((m) => m.index);
-  if (positions.length <= MAX_CONSOLIDATED_PLANS) return;
-  // Truncate after the Nth section (keep first N, they're the newest)
-  const cutoff = positions[MAX_CONSOLIDATED_PLANS];
-  const trimmed = content.slice(0, cutoff).trimEnd() + "\n";
+  // Line-anchored (`m`) so a section beginning at byte 0 with no preceding newline still
+  // matches — the pathological consolidated file that lacks the boilerplate H1. The
+  // instance is local and freshly built, so no `lastIndex` is shared with any caller.
+  const sectionRe = new RegExp(`^##[ \\t]+(plan[-_]\\S*)`, "gm");
+  const matches = [...content.matchAll(sectionRe)];
+  if (matches.length <= MAX_CONSOLIDATED_PLANS) return;
+
+  // Sections are newest-first (prependToConsolidated guarantees the ordering).
+  // Slice bounds: each section runs from its own heading to the next heading, or EOF.
+  const sections = matches.map((m, i) => ({
+    planId: m[1],
+    start: m.index,
+    end: i + 1 < matches.length ? matches[i + 1].index : content.length,
+  }));
+
+  const header = content.slice(0, sections[0].start);
+  const kept = [];
+  const retainedOrphans = [];
+  for (let i = 0; i < sections.length; i++) {
+    const s = sections[i];
+    if (i < MAX_CONSOLIDATED_PLANS) { kept.push(s); continue; }
+    // Beyond the window. A section is droppable ONLY when its per-plan directory still
+    // exists — that directory is then the other copy, and dropping the section loses
+    // nothing. Everything else is retained:
+    //   - directory gone        -> this section is the last copy
+    //   - id not a valid plan-id -> cannot resolve a directory to check, so cannot prove
+    //                               a second copy exists; retain rather than guess.
+    // Both fall to the safe side by construction.
+    const droppable = ANY_PLAN_ID_RE.test(s.planId) && existsSync(join(plansDir, s.planId));
+    if (!droppable) {
+      kept.push(s);
+      retainedOrphans.push(s.planId);
+    }
+  }
+  // Report retention BEFORE the write short-circuit. When every section past the window is
+  // an orphan there is nothing to drop and the bytes are left untouched — but the retention
+  // still happened and is exactly what the operator needs to know, so it must not be
+  // silenced by the early return. One summary line, not one per plan: at scale the per-plan
+  // form would bury the close output it is meant to annotate.
+  if (retainedOrphans.length > 0) {
+    const shown = retainedOrphans.slice(0, 3).join(", ");
+    const more = retainedOrphans.length > 3 ? `, +${retainedOrphans.length - 3} more` : "";
+    console.log(`  RETAINED: ${retainedOrphans.length} section(s) kept past the ${MAX_CONSOLIDATED_PLANS}-plan window in ${filePath} — their plan directories are gone, so these are the last copies (${shown}${more}).`);
+  }
+
+  if (kept.length === sections.length) return; // nothing droppable — leave bytes untouched
+
+  const body = kept.map((s) => content.slice(s.start, s.end).trimEnd()).join("\n\n");
+  const trimmed = (header + body).trimEnd() + "\n";
   writeFileSync(filePath + ".tmp", trimmed);
   renameSync(filePath + ".tmp", filePath);
 }
@@ -1460,6 +1521,18 @@ function snapshotLessons(planDirName) {
 // ---------------------------------------------------------------------------
 
 function cmdNew(goal, force) {
+  // v2.60.0 — refuse a blank goal. The two `|| "No goal specified"` argv defaults only
+  // ever caught the empty string; `new "   "` passed whitespace straight through to the
+  // templates and produced a real plan directory with no recoverable statement of intent.
+  // A plan whose goal is blank cannot be resumed, indexed or audited meaningfully — the
+  // INDEX row records the first 60 characters of the goal and nothing else about what the
+  // plan was for. Reject at the single funnel both argv paths pass through.
+  if (typeof goal !== "string" || goal.trim() === "") {
+    console.error(`ERROR: A plan goal is required.`);
+    console.error(`  Usage: new "<goal>"`);
+    process.exit(1);
+  }
+
   mkdirSync(plansDir, { recursive: true });
 
   // D-004 — acquire exclusive lock before ANY pointer/dir mutation. Releases
@@ -2196,19 +2269,34 @@ function runCli() {
       console.error(`ERROR: Unknown flag "${cmd}". Use "help" for usage.`);
       process.exit(1);
     }
-    // Typo guard: a single bare token closely matching a subcommand is almost
-    // certainly a mistyped subcommand, not a one-word goal. Multi-word args keep
-    // the backward-compat goal behavior untouched.
-    if (args.length === 1) {
+    // v2.60.0 — a SINGLE bare token is never a goal. It is rejected whether or not it
+    // resembles a subcommand; the edit-distance test now only chooses the wording of the
+    // error, not whether to error at all.
+    //
+    // The previous guard rejected only near-misses (edit distance <= 2), so a token FAR
+    // from every subcommand fell through to `cmdNew` and silently created a real plan
+    // directory. That is how an audit probe running `bootstrap.mjs <token>` created a
+    // ghost plan in this repository: the directory was made, closed, removed out of band,
+    // and left dangling INDEX/consolidated rows that `list`, `status`, `validate-plan` and
+    // `git status` all reported as healthy (plans/* is gitignored).
+    //
+    // The discriminator is WHITESPACE, not argv length: a subcommand never contains a
+    // space, so a lone argv element carrying one (`bootstrap.mjs "fix the thing"` — a
+    // quoted goal arrives as ONE element) is unambiguously a goal phrase and still works.
+    // Only a bare single word with no whitespace is rejected; `new "<word>"` remains the
+    // explicit form for a genuinely one-word goal.
+    if (args.length === 1 && !/\s/.test(cmd)) {
       const near = [...subcommands].find((s) => editDistance(cmd, s) <= 2);
       if (near) {
         console.error(`ERROR: "${cmd}" is not a subcommand (did you mean "${near}"?).`);
-        console.error(`  To use it as a plan goal, run: new "${cmd}"`);
-        process.exit(1);
+      } else {
+        console.error(`ERROR: "${cmd}" is not a subcommand. Use "help" for usage.`);
       }
+      console.error(`  To use it as a plan goal, run: new "${cmd}"`);
+      process.exit(1);
     }
-    // Backward compat: treat args as goal for `new`
-    cmdNew(args.join(" ") || "No goal specified", false);
+    // Backward compat: multi-word args are treated as a goal for `new`.
+    cmdNew(args.join(" "), false);
   } else if (cmd === "new") {
     // DECISION plan_2026-07-14_79ee0f59/D-004
     // `--force` is POSITIONAL: honored ONLY as the token immediately after `new`.
@@ -2220,7 +2308,10 @@ function runCli() {
     // See decisions.md D-004.
     const force = args[1] === "--force";
     const goalArgs = force ? args.slice(2) : args.slice(1);
-    const goal = goalArgs.join(" ") || "No goal specified";
+    // v2.60.0 — no `|| "No goal specified"` default. A missing goal is now an error in
+    // cmdNew, not a placeholder string: the placeholder produced indistinguishable
+    // unlabelled plans that INDEX.md could not describe.
+    const goal = goalArgs.join(" ");
     cmdNew(goal, force);
   } else if (cmd === "resume") {
     cmdResume();

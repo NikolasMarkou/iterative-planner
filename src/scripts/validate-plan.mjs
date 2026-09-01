@@ -711,6 +711,64 @@ function checkConsolidatedFiles(issues) {
   }
 }
 
+// v2.60.0 — [index-orphan]: a closed plan with NO surviving copy anywhere.
+//
+// The per-plan directory is EPHEMERAL by design (references/decision-anchoring.md), and the
+// plans glob is gitignored in every consuming project, so a MISSING DIRECTORY IS NORMAL and
+// is deliberately NOT reported here. The defect this check exists for is narrower and real:
+// a plan named by plans/INDEX.md whose directory is gone AND whose `## <plan-id>` section is
+// no longer in plans/FINDINGS.md or plans/DECISIONS.md. Nothing survives that plan — its
+// findings, decisions and reasoning are unrecoverable, and until now every health command in
+// this repo reported exit 0 over exactly that state.
+//
+// WARN, never ERROR. On any corpus with history this fires immediately for every plan already
+// lost before the check shipped; ERROR would block CLOSE on a pre-existing backlog the current
+// author cannot fix. Same policy as [lessons-eviction] — a signal of this class must never
+// block CLOSE.
+//
+// COST: O(rows in plans/INDEX.md) existsSync calls + at most 2 file reads total (FINDINGS.md,
+// DECISIONS.md, read once outside the loop). NO directory enumeration. The O(all-plan-dirs)
+// walk prohibited by plan-2026-07-16T164852-47577439/D-001 is NOT reintroduced, and this is
+// not a derived index — INDEX.md is written at CLOSE by its owner and read as-is.
+function checkIndexResolution(issues) {
+  const index = readFile(join(plansDir, "INDEX.md"));
+  if (index === null) return; // absence already reported by checkConsolidatedFiles as INFO
+
+  // Same INDEX row idiom as checkLessonsEviction: first cell of a pipe row, trimmed, must be
+  // a plan-id in either grammar. Header and separator rows fail the anchored test and are
+  // skipped for free.
+  const planIds = [];
+  for (const line of index.split("\n")) {
+    const m = /^\|([^|]+)\|/.exec(line);
+    if (!m) continue;
+    const cell = m[1].trim();
+    if (ANY_PLAN_ID_RE.test(cell)) planIds.push(cell);
+  }
+  if (planIds.length === 0) return;
+
+  // Read the consolidated tier once, only if at least one directory is actually missing.
+  const missing = planIds.filter((id) => !existsSync(join(plansDir, id)));
+  if (missing.length === 0) return;
+
+  const consolidated = [
+    readFile(join(plansDir, "FINDINGS.md")) || "",
+    readFile(join(plansDir, "DECISIONS.md")) || "",
+  ].join("\n");
+
+  for (const id of missing) {
+    // Capturing-section idiom, built from the shared non-capturing grammar (see
+    // collectKnownDecisionIdsByPlan). Escape nothing: plan-ids are [a-z0-9_-] plus digits
+    // and 'T' by grammar, so the id is regex-safe by construction.
+    const sectionRe = new RegExp(`^##[ \\t]+${id}[ \\t]*$`, "m");
+    if (sectionRe.test(consolidated)) continue;
+    issues.push({
+      severity: "WARN",
+      check: "index-orphan",
+      message: `plans/INDEX.md names ${id} but plans/${id}/ is gone AND no "## ${id}" section survives in plans/FINDINGS.md or plans/DECISIONS.md — that plan's findings and decisions have no surviving copy. Anchors in source may still reference it via plans/ANCHORS.md.`,
+    });
+  }
+}
+
 // v2.16.0 — System atlas cap enforcement.
 // plans/SYSTEM.md is the cross-plan system atlas (domain-neutral; rewritten
 // at CLOSE by ip-archivist; see references/file-formats.md ## plans/SYSTEM.md).
@@ -2218,6 +2276,7 @@ function validate(planDirName) {
   checkLessonsCap(issues);
   checkLessonsEviction(issues); // v2.53.0 (F1) — WARN/INFO only; full-validator path, never --pre-step
   checkCompressionMarkers(issues);
+  checkIndexResolution(issues); // v2.60.0 — WARN-only; never blocks CLOSE; full-validator path, never --pre-step
 
   // Step 3 additions (2.13.0): schema and anchor enforcement.
   checkDecisionsSchema(planDir, issues);
@@ -2379,6 +2438,7 @@ Checks:
   - plans/SYSTEM.md line count (ERROR [atlas-cap] on >300 lines, INFO [atlas-absent] when missing)
   - plans/LESSONS.md line count (ERROR [lessons-cap] on >200 lines, INFO [lessons-absent] when missing)
   - Compression-summary marker integrity in FINDINGS.md/DECISIONS.md (ERROR [compress-markers] on unbalanced/nested/duplicate)
+  - INDEX.md rows with no surviving copy (WARN [index-orphan] when both plans/<id>/ and the consolidated section are gone)
   - decisions.md entry header format (## D-NNN | PHASE | YYYY-MM-DD)
   - decisions.md D-NNN sequential numbering (no gaps, starts at D-001)
   - decisions.md **Trade-off**: line in every entry
