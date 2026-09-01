@@ -263,9 +263,9 @@ Complexity Assessment mandatory for all PIVOT entries.
 
 ### Intra-plan compression
 
-Mirrors the cross-plan `<!-- COMPRESSED-SUMMARY -->` pattern (see `SKILL.md` "Consolidated File Management"). Cross-plan files use a 4-plan sliding window to stay bounded; intra-plan `decisions.md` has no such window, so a threshold-triggered compression runs mid-plan.
+Mirrors the cross-plan `<!-- COMPRESSED-SUMMARY -->` pattern (see `SKILL.md` "Consolidated File Management"). Cross-plan files use a 25-plan sliding window to stay bounded; intra-plan `decisions.md` has no such window, so a threshold-triggered compression runs mid-plan.
 
-- **Trigger**: file >300 lines, evaluated at PLAN gate-in. Orchestrator dispatch is wired in step 10 of plan_2026-05-15_71ab18dd (see `agents/ip-orchestrator.md` PLAN State Dispatch).
+- **Trigger**: file >300 lines, evaluated at PLAN gate-in. The orchestrator's dispatch for it is PLAN step 0.5 in `agents/ip-orchestrator.md` (PLAN State Dispatch).
 - **Implementation**: `maybeCompressDecisions(planDir, { threshold, dryRun })` exported from the skill's `scripts/bootstrap.mjs`. Mechanical layer only — parses raw `## D-NNN` entries and emits a lookup-table block. Never invents content.
 - **Insertion position**: after the leading schema-example HTML comment block (if present) and the `*Plan: <plan-id>*` preamble, BEFORE the first `## D-NNN` entry. When an existing block is found, it is REPLACED in-place (never summarize a summary — failsafe mirrors the cross-plan rule).
 - **Append-only safety**: raw `## D-NNN` entries below the block are NEVER touched. Compression only writes the metadata block above them.
@@ -569,7 +569,7 @@ Cross-plan findings archive. Entries merged from per-plan `findings.md` on close
 
 **Newest first** — most recently closed plan appears at the top (after the header). This keeps the most relevant context immediately accessible without reading the entire file.
 
-**Sliding window**: Auto-trimmed to the **4 most recent** plan sections on each close. Old plan data remains in per-plan directories (`plans/<plan-id>/findings.md`). Keeps file naturally bounded at ~150-250 lines.
+**Sliding window**: Auto-trimmed to the **25 most recent** plan sections on each close. Old plan data remains in per-plan directories (`plans/<plan-id>/findings.md`). Keeps file naturally bounded at ~150-250 lines.
 
 **Read limit**: Always read with `limit: 600`. Compressed summary + recent plan sections fit within this.
 
@@ -634,7 +634,7 @@ Cross-plan decision archive. Entries merged from per-plan `decisions.md` on clos
 
 **Newest first** — most recently closed plan appears at the top (after the header).
 
-**Sliding window**: Auto-trimmed to the **4 most recent** plan sections on each close. Old plan data remains in per-plan directories (`plans/<plan-id>/decisions.md`). Keeps file naturally bounded at ~150-250 lines.
+**Sliding window**: Auto-trimmed to the **25 most recent** plan sections on each close. Old plan data remains in per-plan directories (`plans/<plan-id>/decisions.md`). Keeps file naturally bounded at ~150-250 lines.
 
 **Read limit**: Always read with `limit: 600`. Compressed summary + recent plan sections fit within this.
 
@@ -1093,7 +1093,7 @@ The regions below are the **exact bytes `bootstrap.mjs` writes** for each plan f
 - `{{TOKEN}}` placeholders are content. Leave them literal — they are substituted at plan-creation time by `renderTemplate()`, never here.
 - No skeleton body may contain a triple-backtick fence (it would close the block early) or the literal `<!-- TEMPLATE:` (it would truncate the last template slice emitted by `emit-template.mjs`). The checker enforces both.
 - The set is terminated by `<!-- SKELETON:END -->`. Nothing between the markers is prose — a region is bytes, not documentation.
-- **A template's HEADER belongs to this half alone.** HEADER = a template's leading lines up to its first blank line (the run bootstrap writes and agents never populate — they append below it). Rule `[header-copy]` FAILs the build if **any 2 consecutive header lines** reappear anywhere **before `<!-- TEMPLATE:END -->`**, in prose or in a fenced block: that would be a second, un-gated copy of bootstrap's bytes, and `emit-template` serves *that* half to agents. Worked examples therefore show each file **below its header** and point here. It is a byte comparison against `PLAN_TEMPLATES`, so there is no phrase to reword around — and no allowlist: if it fires on something a worked example genuinely needs, the rule's scope is wrong, not the line. Two gaps are known and deliberate: structural lines *below* a header (a table header, a `## Completed` heading) are legitimately reused and are **not** gated, and `plan`/`progress` have 1-line headers, below the 2-line threshold.
+- **A template's HEADER belongs to this half alone.** HEADER = a template's leading lines up to its first blank line (the run bootstrap writes and agents never populate — they append below it). Rule `[header-copy]` FAILs the build if **any 2 consecutive header lines** reappear inside a SERVED template body — the exact bytes `emit-template --name <slug>` hands an agent, for every one of its slugs — in prose or in a fenced block: that would be a second, un-gated copy of bootstrap's bytes, served as if it were the real thing. The check calls the same slicer `emit-template` calls, so what it scans is what agents receive; text outside every served body (this document's preamble, for instance) is NOT scanned. Worked examples therefore show each file **below its header** and point here. It is a byte comparison against `PLAN_TEMPLATES`, so there is no phrase to reword around — and no allowlist: if it fires on something a worked example genuinely needs, the rule's scope is wrong, not the line. Two gaps are known and deliberate: structural lines *below* a header (a table header, a `## Completed` heading) are legitimately reused and are **not** gated, and `plan`/`progress` have 1-line headers, below the 2-line threshold.
 
 <!-- SKELETON:state -->
 ```markdown

@@ -107,7 +107,7 @@ If `blast-radius.mjs` is missing or errors:
 - STOP immediately
 - Follow Revert-First: (1) revert? (2) delete? (3) one-liner? (4) none → report
 - 10-Line Rule: fix needs >10 new lines → not a fix → report failure
-- You have MAX 2 fix attempts. After 2 failures, report to orchestrator.
+- **You get ONE fix attempt in this spawn.** If it fails, revert and report FAILURE — do not try a second idea. The step's cap is 2 fix attempts TOTAL, counted in `state.md` across spawns, and the orchestrator spends the second one by re-spawning you with the failure context. Trying twice here would make the reachable worst case four tries against a stated cap of two.
 - Revert uncommitted changes: `git checkout -- <files>; git clean -fd`
 - **Manifest-touching steps**: `git checkout` alone does NOT restore installed dependencies. If the reverted step modified a package manifest/lockfile, follow the git revert with the ecosystem's strict reinstall (`npm ci` / `cargo build` / `poetry install --sync` / `bundle install` / `go mod download` / etc.) to reconcile the working tree with the restored lockfile. Full sequence: `references/code-hygiene.md` § Revert procedures — manifest-touching reverts.
 - For each reverted file, append a `REVERT(file)` line to `changelog.md` with reason `revert: <what failed>`.
@@ -121,9 +121,9 @@ Report back with:
   3. Commit hash + commit message
   4. Surprises encountered (or "none")
   5. Next step preview (one line)
-- If FAILURE: **First failure**: report fields 1-3 only (step intent, what happened, root-cause guess) — the orchestrator will re-spawn you with failure context. **Second failure (leash hit)**: report the 4 fields below (the 5th PC-EXECUTE-LEASH field — the user prompt — is authored by the orchestrator, not you) — the orchestrator pastes them into PC-EXECUTE-LEASH.
+- If FAILURE: **First failure**: report fields 1-3 only (step intent, what happened, root-cause guess) — the orchestrator will re-spawn you with failure context. **Second failure (leash hit — you were re-spawned with failure context and your fix failed too)**: report the 4 fields below (the 5th PC-EXECUTE-LEASH field — the user prompt — is authored by the orchestrator, not you) — the orchestrator pastes them into PC-EXECUTE-LEASH.
   1. What the step was supposed to do (verbatim from plan.md)
-  2. What actually happened (per attempt — list both attempts on the second failure)
+  2. What actually happened (per attempt — on the second failure list both attempts: this spawn's, and the previous spawn's from the failure context you were given)
   3. Root-cause guess (one paragraph)
   4. Available checkpoints (id + git hash + reason) from `checkpoints/*`
   - (Field 5 of PC-EXECUTE-LEASH, the user prompt, is orchestrator-owned — you do not author it.)

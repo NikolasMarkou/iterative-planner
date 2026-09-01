@@ -166,9 +166,9 @@ R = read only | W = update (implicit read + write) | R+W = distinct read and wri
 |------|---------|------|---------|---------|---------|-------|
 | state.md | W | W | R+W | W | W | W |
 | plan.md | — | W | R+W | R | R | R |
-| decisions.md | — | R+W* | R+W | R+W | R+W | R |
+| decisions.md | — | R+W* | R+W | R+W | R+W | R+W‡ |
 | findings.md | W | R | — | R | R+W | R |
-| findings/* | W | R | — | R | R+W | R |
+| findings/* | W | R | — | R+W† | R+W | R |
 | progress.md | — | W | R+W | R+W | W | R |
 | verification.md | — | W | — | W | R | R |
 | changelog.md | — | W* | W (append) | R | R | R |
@@ -185,13 +185,21 @@ R = read only | W = update (implicit read + write) | R+W = distinct read and wri
 
 `R?` = read on demand only, not as part of the eager cross-plan read set. See EXPLORE rules below for the triggers that warrant an INDEX.md read. `plans/FINDINGS.md` at PLAN is `R?` because the plan-writer reads per-plan `findings/*` files (already in PLAN dispatch), not the cross-plan consolidated `plans/FINDINGS.md`, unless explicitly needed for cross-plan context.
 
-`*` Intra-plan compression may insert a `<!-- COMPRESSED-SUMMARY -->` block at PLAN gate-in (decisions.md >300 lines, changelog.md >200 lines). Raw entries preserved verbatim; the W operation is bounded — only the metadata block is written. See `references/file-formats.md` § Intra-plan compression.
+`*` Intra-plan compression runs at PLAN gate-in (decisions.md >300 lines, changelog.md >200 lines). The two files compress differently, and the difference matters when you later read them as evidence:
+- `decisions.md` is **bounded**: a `<!-- COMPRESSED-SUMMARY -->` block is inserted above the entries and nothing else is written. Every `## D-NNN` entry survives verbatim.
+- `changelog.md` is **lossy**: a run of 5 or more low-decision-impact lines is DELETED and replaced by one `- (compressed: N low-decision-impact edits, ...)` line. So a compressed changelog is not a complete per-edit ledger — anything that reads it as one (PIVOT keep-vs-revert, the reviewer's REFLECT scan) must treat an elision line as unexpanded evidence and fall back to git history.
+
+`†` At REFLECT the only write under `findings/` is the Reviewer's own `findings/review-iter-N[-passM].md`; the explorer topic files stay read-only. The Ownership table below carries the matching per-file row.
+
+`‡` At CLOSE the only write to `decisions.md` is the Archivist's `**Anchor-Refs**:` backfill remediation (`agents/ip-archivist.md` Step 1). No new entries are authored at CLOSE.
+
+See `references/file-formats.md` § Intra-plan compression.
 
 ## Consolidated File Management
 
 `plans/FINDINGS.md` and `plans/DECISIONS.md` grow across plans. Two mechanisms prevent context window bloat:
 
-**Sliding window**: Bootstrap automatically trims consolidated files to the **4 most recent** plan sections on each close. Old plan sections are removed from the consolidated file but remain in their per-plan directories (`plans/<plan-id>/findings.md`, `plans/<plan-id>/decisions.md`). Use `plans/INDEX.md` to locate trimmed plans by topic. This keeps files naturally bounded at ~150-250 lines.
+**Sliding window**: Bootstrap automatically trims consolidated files to the **25 most recent** plan sections on each close. Old plan sections are removed from the consolidated file but remain in their per-plan directories (`plans/<plan-id>/findings.md`, `plans/<plan-id>/decisions.md`). Use `plans/INDEX.md` to locate trimmed plans by topic. This keeps files naturally bounded at ~150-250 lines.
 
 **Read limit**: Always read consolidated files with `limit: 600`. The compressed summary + most recent plan sections fit within this.
 
@@ -277,6 +285,7 @@ These guards operationalize three principles already wired into the protocol —
 
 When a step fails during EXECUTE:
 1. **2 fix attempts max** — each must follow Revert-First + 10-Line Rule.
+   - **The unit**: a fix attempt is one try at repairing the failed step, counted in `state.md` no matter who performs it. The step's original failure is not an attempt. Two is the total for the step, not a per-spawn allowance: with agents installed the executor makes at most ONE fix try before reporting back, so the two attempts are the two executor spawns the orchestrator records and the gate counts. Running single-threaded, you make the same two tries and record each one yourself.
 2. Both fail → **STOP COMPLETELY.** No 3rd fix. No silent alternative. No skipping ahead.
 3. Revert uncommitted changes to last clean commit. Codebase must be known-good before presenting.
 4. Present: what step should do, what happened, 2 attempts, root cause guess, available checkpoints for rollback.
@@ -286,7 +295,7 @@ Attempt counter in `state.md`. Resets on: user direction | new step | PIVOT. **R
 **Known reset gap**: the mechanical `reset-attempts` fires at three orchestrator sites — EXECUTE success, PIVOT dispatch, and REFLECT→EXECUTE re-entry. The path REFLECT→EXPLORE→PLAN→EXECUTE that starts a NEW iteration (no PIVOT, no completion-fix) passes through none of them, so a stale counter from a prior iteration's failed step can trip the leash-cap gate on the new iteration's first step. This is an accepted gap — clear it by running `bootstrap.mjs reset-attempts` when you start a new iteration after a leash hit.
 **No exceptions.** Unguided fix chains derail projects.
 
-**Pre-step gate** (v2.18.0+): `node <skill-path>/scripts/validate-plan.mjs --pre-step` runs in the orchestrator before each ip-executor spawn. Exit code 2 emits one of four `GATE:FAIL` slugs — `[no-plan]`, `[wrong-state]`, `[leash-cap]`, `[iteration-cap]`. `[leash-cap]` mechanically halts EXECUTE when 2 fix attempts are recorded — converting the leash from advisory to enforced. See `agents/ip-orchestrator.md` EXECUTE dispatch for the integration point and the full slug→action mapping.
+**Pre-step gate** (v2.18.0+): `node <skill-path>/scripts/validate-plan.mjs --pre-step` runs before each attempt to start an EXECUTE step — in the orchestrator before each ip-executor spawn, and, when no agent definitions are installed, in the single thread itself. Both paths get the imperative from the same place, `scripts/modules/state-execute.md` (what `emit-state --state execute` emits). Exit code 2 emits one of four `GATE:FAIL` slugs — `[no-plan]`, `[wrong-state]`, `[leash-cap]`, `[iteration-cap]`. `[leash-cap]` mechanically halts EXECUTE when 2 fix attempts are recorded — converting the leash from advisory to enforced. See `agents/ip-orchestrator.md` EXECUTE dispatch for the integration point and the full slug→action mapping.
 
 **Enforcement tiers** — the leash is enforced at two different points, with *intentionally* different thresholds. Do not "align" them:
 - **Real-time gate** (`--pre-step`, exit 2): HARD-blocks the **3rd** spawn — fires at `attempts >= 2`. This is the actual cap (2 attempts per step).
@@ -419,7 +428,7 @@ Each file has a clear owner. Only the owner writes. Others read. Co-ownership (m
 | `findings/review-iter-N[-passM].md` | Reviewer | Orchestrator |
 | `progress.md` | Orchestrator (Post-Step Gate) | All agents |
 | `verification.md` | Plan-writer (template) + Orchestrator (merges Verifier's returned results) | Orchestrator, Reviewer |
-| `changelog.md` | Executor (append per edit) + Orchestrator (Post-Step Gate: confirm one line per edited file) | Orchestrator (REFLECT Gate-In), Reviewer (REFLECT scan) |
+| `changelog.md` | Executor (append per edit) + Orchestrator (PLAN gate-in compression, which deletes elidable lines; Post-Step Gate: confirm one line per edited file) | Orchestrator (REFLECT Gate-In), Reviewer (REFLECT scan) |
 | `checkpoints/*` | Executor | Orchestrator (for PIVOT + EXECUTE leash-hit) |
 | `summary.md` | Archivist | — |
 | `plans/FINDINGS.md` | Archivist (via bootstrap) | Orchestrator, Plan-writer |

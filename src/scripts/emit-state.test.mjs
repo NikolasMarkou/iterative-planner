@@ -170,3 +170,33 @@ test("resolveModuleBody reports unknown state for an invalid state (default base
   assert.equal(r.ok, false);
   assert.match(r.message, /unknown state/);
 });
+
+// --- the EXECUTE module carries the pre-step gate imperative ------------------
+// This is the fix for a real gap: the hard leash gate was instructed ONLY in
+// agents/ip-orchestrator.md, which a single-threaded run never reads, so the
+// leash silently degraded to advice there. The per-state module is the one rule
+// body both paths read, so the imperative has to survive HERE. An un-pinned
+// prose fix regresses silently, which is the whole point.
+
+test("emitted EXECUTE rules instruct running the --pre-step gate", () => {
+  const body = readFileSync(moduleFileFor("execute"), "utf-8");
+  assert.match(body, /validate-plan\.mjs --pre-step/);
+  // The path must be skill-relative: a project-relative path resolves to
+  // nothing from a consuming project's root and silently disables the gate.
+  assert.match(body, /<skill-path>\/scripts\/validate-plan\.mjs --pre-step/);
+});
+
+test("emitted EXECUTE rules name all four pre-step gate slugs", () => {
+  const body = readFileSync(moduleFileFor("execute"), "utf-8");
+  for (const slug of ["no-plan", "wrong-state", "leash-cap", "iteration-cap"]) {
+    assert.ok(body.includes(slug), `EXECUTE module does not name gate slug ${slug}`);
+  }
+});
+
+test("emit-state --state execute serves the gate imperative to the caller", () => {
+  const r = spawnSync(process.execPath, [emitStatePath, "--state", "execute"], {
+    encoding: "utf-8",
+  });
+  assert.equal(r.status, 0);
+  assert.match(r.stdout, /validate-plan\.mjs --pre-step/);
+});
