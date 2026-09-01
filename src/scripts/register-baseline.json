@@ -1,14 +1,14 @@
 {
   "CLAUDE.md": {
-    "ceiling": 8.61,
+    "ceiling": 8.4,
     "markers": 51
   },
   "README.md": {
-    "ceiling": 8.85,
+    "ceiling": 8.8,
     "markers": 53
   },
   "src/SKILL.md": {
-    "ceiling": 5.86,
+    "ceiling": 5.8,
     "markers": 38
   },
   "src/agents/ip-archivist.md": {
@@ -60,7 +60,7 @@
     "markers": 9
   },
   "src/references/file-formats.md": {
-    "ceiling": 6.79,
+    "ceiling": 6.74,
     "markers": 78
   },
   "src/references/planning-rigor.md": {

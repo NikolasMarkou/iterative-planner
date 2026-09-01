@@ -199,7 +199,7 @@ See `references/file-formats.md` § Intra-plan compression.
 
 `plans/FINDINGS.md` and `plans/DECISIONS.md` grow across plans. Two mechanisms prevent context window bloat:
 
-**Sliding window**: Bootstrap automatically trims consolidated files to the **25 most recent** plan sections on each close. Old plan sections are removed from the consolidated file but remain in their per-plan directories (`plans/<plan-id>/findings.md`, `plans/<plan-id>/decisions.md`). Use `plans/INDEX.md` to locate trimmed plans by topic. This keeps files naturally bounded at ~150-250 lines.
+**Sliding window**: on each close, bootstrap keeps the **25 most recent** plan sections. A section past the window is dropped **only when its per-plan directory still exists** on disk (`trimConsolidatedWindow` in `scripts/bootstrap.mjs` tests `existsSync` per section) — that directory is then the second copy, so dropping loses nothing. A section whose directory is gone is the **last copy** of that plan's findings/decisions and is RETAINED past the window, with a `RETAINED: N section(s)…` line printed by `close`. Plan directories are ephemeral and the `plans/` glob is gitignored, so retention is normal, not exceptional: the window bounds how many *live* plans are carried, not the file's size. Use `plans/INDEX.md` to locate trimmed plans by topic, and the compression protocol below once a file passes 500 lines.
 
 **Read limit**: Always read consolidated files with `limit: 600`. The compressed summary + most recent plan sections fit within this.
 

@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Skill](https://img.shields.io/badge/Skill-v2.61.0-green.svg)](CHANGELOG.md)
-[![Tests](https://img.shields.io/badge/tests-852%20passing-brightgreen.svg)](src/scripts/bootstrap.test.mjs)
+[![Tests](https://img.shields.io/badge/tests-853%20passing-brightgreen.svg)](src/scripts/bootstrap.test.mjs)
 [![Sponsored by Electi](https://img.shields.io/badge/Sponsored%20by-Electi-red.svg)](https://www.electiconsulting.com)
 
 **A [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skill that stops an agent from losing the plot halfway through a hard task.**
@@ -182,7 +182,7 @@ If a step fails: **revert uncommitted**, two fix attempts max, each constrained 
 
 **Claude (REFLECT)** runs the verifier. The PASS/FAIL table from `verification.md` is rendered **verbatim** in the **PC-REFLECT** block. If it is iteration 2+ (or earlier by orchestrator choice — e.g. an iteration-1 attack-before-release pass ahead of a release/version bump), an `ip-reviewer` sub-agent runs an adversarial review and its concerns are folded in verbatim. Claude recommends close, pivot, or explore (or execute for a same-iteration completion-fix loop). **You** decide.
 
-**Claude (CLOSE)** spawns `ip-archivist` to write `summary.md`, audit `# DECISION plan-2026-05-07T091743-a3f1b2c9/D-NNN` anchors in source, rewrite `plans/LESSONS.md` (≤200 lines), and rewrite the `plans/SYSTEM.md` atlas (≤300 lines). Then `bootstrap.mjs close` merges per-plan findings and decisions into the consolidated cross-plan files (sliding window of the 4 most recent plans).
+**Claude (CLOSE)** spawns `ip-archivist` to write `summary.md`, audit `# DECISION plan-2026-05-07T091743-a3f1b2c9/D-NNN` anchors in source, rewrite `plans/LESSONS.md` (≤200 lines), and rewrite the `plans/SYSTEM.md` atlas (≤300 lines). Then `bootstrap.mjs close` merges per-plan findings and decisions into the consolidated cross-plan files (sliding window of the 25 most recent plans).
 
 The next plan starts with all of this on disk, waiting to be read.
 
@@ -200,7 +200,7 @@ Everything that matters lives on disk, not in the conversation. State, decisions
 
 This is the biggest second-order effect, and the easiest to miss. A single plan is a useful artifact. A *history* of plans is something else entirely: an understanding of your system that deepens every time you run one.
 
-When a plan closes, its findings and decisions merge into consolidated files at the `plans/` root, and the next plan reads them during EXPLORE. Migrations build on earlier debugging sessions; design plans inherit constraints found in prior research; failed approaches stay visible so nobody walks into the same wall twice. A **sliding window** keeps the consolidated files to the 4 most recent plans (older sections stay intact in their own directories, indexed by `plans/INDEX.md`).
+When a plan closes, its findings and decisions merge into consolidated files at the `plans/` root, and the next plan reads them during EXPLORE. Migrations build on earlier debugging sessions; design plans inherit constraints found in prior research; failed approaches stay visible so nobody walks into the same wall twice. A **sliding window** keeps the consolidated files to the 25 most recent plans — plus every older section whose plan directory has since been deleted, because that section is then the last surviving copy. `plans/INDEX.md` indexes them all.
 
 At the center of this sits the **system atlas** (`plans/SYSTEM.md`): a curated, domain-neutral map of *what the system being planned against actually is* — Identity, Components, Boundaries, Invariants, Flows, Known Patterns. Capped at 300 lines, rewritten at CLOSE, read at the start of every EXPLORE and PLAN. It is why the agent walks into each task already understanding your codebase instead of rediscovering it from scratch — and because the atlas is rewritten at the close of every plan, that understanding gets sharper with use. The curve bends the right way: the work gets easier as the map gets better.
 
@@ -470,7 +470,7 @@ No. They are an optimization layer. Without them, the monolithic skill drives th
 Run `bootstrap.mjs resume`. It reconstructs the current state from disk and prints a summary. The agent never starts over — it picks up from `state.md`.
 
 **Why plan-qualified DECISION anchors?**
-The consolidated `plans/DECISIONS.md` uses a 4-plan sliding window. Bare `D-NNN` anchors become orphans once their plan is trimmed. Plan-qualified anchors (`# DECISION <plan-id>/D-NNN`) survive the trim and resolve unambiguously.
+The consolidated `plans/DECISIONS.md` uses a 25-plan sliding window. Bare `D-NNN` anchors become orphans once their plan is trimmed. Plan-qualified anchors (`# DECISION <plan-id>/D-NNN`) survive the trim and resolve unambiguously.
 
 ---
 
@@ -513,7 +513,8 @@ node --test src/scripts/bootstrap.test.mjs \
 <summary><strong>Build and package commands (Make / PowerShell)</strong></summary>
 
 ```bash
-# Windows (PowerShell)
+# Windows (PowerShell 7+ — build.ps1 declares `#Requires -Version 7` and will refuse
+# to run under the Windows PowerShell 5.1 that ships with Windows; use `pwsh`)
 .\build.ps1 build            # build skill package structure
 .\build.ps1 build-combined   # build single-file skill with inlined references
 .\build.ps1 package          # create zip package

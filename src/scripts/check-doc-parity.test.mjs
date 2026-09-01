@@ -485,6 +485,32 @@ test("build channels: build-combined declares the same rewrite key/value pairs",
   assert.deepEqual(ps, mk, "the two build-combined rewrite maps have drifted");
 });
 
+// DECISION plan-2026-09-01T100120-4f591469/D-029
+// Do NOT "finish the job" by rewriting the ~22 surviving `node <skill-path>/scripts/...`
+// pointers in the combined file. They name real commands of the full package and have no
+// inlined substitute (unlike `emit-*`, whose output IS inlined), so rewriting them deletes
+// the reader's only record that the command exists. The honesty is published ONCE, in the
+// trailing Note, and this test is what keeps that Note identical in both build channels.
+// Do NOT move the Note above SKILL.md either: its YAML frontmatter must stay first.
+// See decisions.md D-029.
+test("build channels: build-combined emits the SAME trailing Note text", () => {
+  // W6/D-029: the combined file discloses ONCE that no script pointer in it is runnable,
+  // instead of rewriting ~22 pointers. A disclosure that exists in only one channel is
+  // worse than none — the Windows reader silently gets the old, narrower claim. The two
+  // channels build the same lines by different escaping (Make: shell `\\``; PowerShell: "``"),
+  // so compare the DECODED text, not the source lines.
+  const mkNote = [...makeRecipe(makefileSrc, "build-combined")
+    .matchAll(/^\t@echo "(> [^"]*)" >> /gm)].map((m) => m[1].replace(/\\`/g, "`"));
+  const psNote = [...psFunction(buildPs1Src, "Invoke-BuildCombined")
+    .matchAll(/^ +\$content \+= "(> .*?)`n"$/gm)].map((m) => m[1].replace(/``/g, "`"));
+  assert.ok(mkNote.length >= 5, `anti-vacuity: parsed only ${mkNote.length} Note lines from the Makefile`);
+  assert.deepEqual(psNote, mkNote, "the two build-combined Note blocks have drifted");
+  // The disclosure must actually make its claim, not merely exist.
+  const joined = mkNote.join(" ");
+  assert.match(joined, /runnable as written/, "the Note no longer states that script pointers are not runnable");
+  assert.match(joined, /scripts\/\.\.\./, "the Note no longer names the `node <skill-path>/scripts/...` form it disclaims");
+});
+
 test("build.ps1: declares #Requires -Version 7 and encodes every content round-trip", () => {
   assert.equal(buildPs1Src.split("\n")[0], "#Requires -Version 7");
   const io = buildPs1Src

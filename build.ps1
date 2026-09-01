@@ -118,10 +118,18 @@ function Invoke-BuildCombined {
     }
 
     $content += "`n---`n`n"
-    $content += "> **Note**: This combined file does not include ``bootstrap.mjs`` or the sub-agent`n"
-    $content += "> definitions (``src/agents/*.md``) — it runs in SKILL.md's single-thread monolithic-fallback`n"
-    $content += "> mode. Bootstrap commands referenced in the protocol require the full package. Plan`n"
-    $content += "> directories must be created manually or by using the zip/tarball distribution.`n"
+    # The single honest disclosure. Rewriting all ~22 surviving script pointers was
+    # rejected: they are protocol prose, and none is runnable here anyway. It sits at the
+    # END because SKILL.md's YAML frontmatter must remain the file's first bytes.
+    # Keep byte-identical to the Makefile note — check-doc-parity.test.mjs pins the pair.
+    $content += "> **Note**: This combined file is a PASTE-INTO-CONTEXT artifact, not an installed skill.`n"
+    $content += "> **No ``node <skill-path>/scripts/...`` invocation in this file is runnable as written** —`n"
+    $content += "> the file ships no scripts at all. Every such line names a command that requires the full`n"
+    $content += "> zip/tarball package; read them as pointers, not as instructions to run. ``emit-state`` and`n"
+    $content += "> ``emit-template`` pointers are the exception: their output is inlined above, so they are`n"
+    $content += "> rewritten in place. This file also omits the sub-agent definitions (``src/agents/*.md``),`n"
+    $content += "> so it runs in SKILL.md's single-thread monolithic-fallback mode, and plan directories`n"
+    $content += "> must be created with the full package or by hand.`n"
 
     # Rewrite references/ cross-references to anchor links (content is inlined above).
     # Keys are SINGLE-quoted, so backticks are literal — they must use SINGLE

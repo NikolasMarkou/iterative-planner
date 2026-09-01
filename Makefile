@@ -88,10 +88,18 @@ build-combined:
 	@echo "" >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	@echo "---" >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	@echo "" >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md
-	@echo "> **Note**: This combined file does not include \`bootstrap.mjs\` or the sub-agent" >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md
-	@echo "> definitions (\`src/agents/*.md\`) — it runs in SKILL.md's single-thread monolithic-fallback" >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md
-	@echo "> mode. Bootstrap commands referenced in the protocol require the full package. Plan" >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md
-	@echo "> directories must be created manually or by using the zip/tarball distribution." >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@# The single honest disclosure. Rewriting all ~22 surviving script pointers was
+	@# rejected: they are protocol prose, and none is runnable here anyway. It sits at the
+	@# END because SKILL.md's YAML frontmatter must remain the file's first bytes.
+	@# Keep byte-identical to build.ps1's note — check-doc-parity.test.mjs pins the pair.
+	@echo "> **Note**: This combined file is a PASTE-INTO-CONTEXT artifact, not an installed skill." >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@echo "> **No \`node <skill-path>/scripts/...\` invocation in this file is runnable as written** —" >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@echo "> the file ships no scripts at all. Every such line names a command that requires the full" >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@echo "> zip/tarball package; read them as pointers, not as instructions to run. \`emit-state\` and" >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@echo "> \`emit-template\` pointers are the exception: their output is inlined above, so they are" >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@echo "> rewritten in place. This file also omits the sub-agent definitions (\`src/agents/*.md\`)," >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@echo "> so it runs in SKILL.md's single-thread monolithic-fallback mode, and plan directories" >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@echo "> must be created with the full package or by hand." >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	@# Rewrite references/ cross-references to anchor links (content is inlined above)
 	@sed -i 's|`references/blast-radius\.md`|the Blast Radius Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	@sed -i 's|`references/code-hygiene\.md`|the Code Hygiene Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md

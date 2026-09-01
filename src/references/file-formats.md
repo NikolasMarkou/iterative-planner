@@ -571,7 +571,7 @@ Cross-plan findings archive. Entries merged from per-plan `findings.md` on close
 
 **Newest first** — most recently closed plan appears at the top (after the header). This keeps the most relevant context immediately accessible without reading the entire file.
 
-**Sliding window**: Auto-trimmed to the **25 most recent** plan sections on each close. Old plan data remains in per-plan directories (`plans/<plan-id>/findings.md`). Keeps file naturally bounded at ~150-250 lines.
+**Sliding window**: On each close, the **25 most recent** plan sections are kept. An older section is dropped only if `plans/<plan-id>/` still exists (that directory is the second copy); if the directory is gone the section is the last copy and is retained past the window, and `close` reports it. Size is therefore bounded by the window only for plans that still have directories — check the line count, do not assume it.
 
 **Read limit**: Always read with `limit: 600`. Compressed summary + recent plan sections fit within this.
 
@@ -636,7 +636,7 @@ Cross-plan decision archive. Entries merged from per-plan `decisions.md` on clos
 
 **Newest first** — most recently closed plan appears at the top (after the header).
 
-**Sliding window**: Auto-trimmed to the **25 most recent** plan sections on each close. Old plan data remains in per-plan directories (`plans/<plan-id>/decisions.md`). Keeps file naturally bounded at ~150-250 lines.
+**Sliding window**: On each close, the **25 most recent** plan sections are kept. An older section is dropped only if `plans/<plan-id>/` still exists (that directory is the second copy); if the directory is gone the section is the last copy and is retained past the window, and `close` reports it. Size is therefore bounded by the window only for plans that still have directories — check the line count, do not assume it.
 
 **Read limit**: Always read with `limit: 600`. Compressed summary + recent plan sections fit within this.
 
