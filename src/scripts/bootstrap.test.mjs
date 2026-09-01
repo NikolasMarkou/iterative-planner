@@ -4681,6 +4681,38 @@ describe("bootstrap.mjs — PLAN_TEMPLATES + renderTemplate", () => {
     );
   });
 
+  it("verification.md template header matches SKILL.md's File Lifecycle Matrix row (E4)", async () => {
+    // Spec-derived, not string-derived: the assertion reads the Matrix row and the header
+    // it governs. Before this, bootstrap stamped "updated during EXECUTE (per-step)" into
+    // every plan while the Matrix marked EXECUTE do-not-touch for this file.
+    const { PLAN_TEMPLATES } = await loadBootstrap();
+    const skill = readFileSync(resolve(import.meta.dirname, "..", "SKILL.md"), "utf-8").split("\n");
+    const cellsOf = (row) => row.split("|").slice(1, -1).map((c) => c.trim());
+    const headerRow = skill.find((l) => l.startsWith("| File | EXPLORE |"));
+    assert.ok(headerRow, "SKILL.md must carry the File Lifecycle Matrix header row");
+    const row = skill.find((l) => l.startsWith("| verification.md |"));
+    assert.ok(row, "SKILL.md must carry a verification.md File Lifecycle Matrix row");
+    const states = cellsOf(headerRow).slice(1);
+    const marks = cellsOf(row).slice(1);
+    assert.equal(marks.length, states.length, "matrix row width must match the header row");
+
+    // The template's HEADER run: its leading lines up to the first blank line — the lines
+    // bootstrap writes into every plan and no agent ever populates.
+    const header = PLAN_TEMPLATES.verification.split("\n\n")[0];
+    let checked = 0;
+    for (const [i, state] of states.entries()) {
+      const named = new RegExp(`during ${state}\\b`).test(header);
+      if (marks[i] === "W") {
+        checked++;
+        assert.ok(named, `Matrix says ${state}=W for verification.md — the template header must name it`);
+      } else if (marks[i] === "\u2014") {
+        checked++;
+        assert.ok(!named, `Matrix says ${state}=\u2014 (do not touch) for verification.md — the template header must not name it as a writing phase`);
+      }
+    }
+    assert.ok(checked >= 4, `expected at least 4 W/\u2014 cells to check, got ${checked}`);
+  });
+
   it("every template is a raw string — no leftover ${...} interpolation survived the extraction", async () => {
     const { PLAN_TEMPLATES } = await loadBootstrap();
     for (const [slug, body] of Object.entries(PLAN_TEMPLATES)) {

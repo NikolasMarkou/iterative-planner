@@ -433,7 +433,7 @@ Flat checklist. Updated in: PLAN (populate Remaining), EXECUTE (move items), REF
 <!-- TEMPLATE:verification -->
 ## verification.md
 
-Written during PLAN (initial template with criteria), updated during EXECUTE (per-step results), completed during REFLECT (full verification pass). Rewritten each iteration (not append-only — each REFLECT cycle produces a fresh verification).
+Written during PLAN (initial template with criteria), completed during REFLECT (full verification pass). Not written during EXECUTE — the File Lifecycle Matrix marks that cell do-not-touch, and the orchestrator is the sole writer, merging the verifier's returned results at REFLECT. Rewritten each iteration (not append-only — each REFLECT cycle produces a fresh verification).
 
 ```markdown
 # Verification Results (Iteration 3)
@@ -1215,7 +1215,7 @@ See references/planning-rigor.md for definitions. -->
 <!-- SKELETON:verification -->
 ```markdown
 # Verification Results
-*Populated during PLAN (template), updated during EXECUTE (per-step), completed during REFLECT (full pass).*
+*Populated during PLAN (template), completed during REFLECT (full pass).*
 *Rewritten each iteration — not append-only.*
 
 ## Criteria Verification

@@ -10,7 +10,8 @@
 //               matched as a whole shields.io image badge (VERSION_BADGE_RE),
 //               not as a bare `Skill-v<VER>-` substring
 //   Test count: ![Tests](https://img.shields.io/badge/tests-<N>%20passing-brightgreen.svg)
-//               regex: /tests-(\d+)%20passing/
+//               matched as a whole shields.io image badge (TEST_BADGE_RE),
+//               not as a bare `tests-<N>%20passing` substring
 //
 // Exports two pure functions (importable without side effects — isEntryPoint guard).
 // CLI reads VERSION, TEST_COUNT, README.md from repo root; exits 0 on all OK, 1 on any failure.
@@ -46,6 +47,14 @@ export function checkVersionBadge(readmeText, version) {
   };
 }
 
+// DECISION plan-2026-09-01T100120-4f591469/D-016
+// The sibling of VERSION_BADGE_RE above, anchored the same way and for the same
+// reason: `/tests-(\d+)%20passing/` matched anywhere in README, so deleting the
+// badge while any other line still carried `tests-<N>%20passing` PASSed. Do NOT
+// loosen this back to a bare substring match. See decisions.md D-016.
+const TEST_BADGE_RE =
+  /!\[[^\]]*\]\(https:\/\/img\.shields\.io\/badge\/tests-(\d+)%20passing-[^)]*\)/;
+
 /**
  * Check that the README test-count badge matches the expected count.
  * @param {string} readmeText - Full README.md content.
@@ -53,7 +62,7 @@ export function checkVersionBadge(readmeText, version) {
  * @returns {{ ok: boolean, readmeCount: number, expected: number }}
  */
 export function checkTestCount(readmeText, testCount) {
-  const m = (readmeText || "").match(/tests-(\d+)%20passing/);
+  const m = (readmeText || "").match(TEST_BADGE_RE);
   const readmeCount = m ? parseInt(m[1], 10) : NaN;
   return {
     ok: readmeCount === testCount,

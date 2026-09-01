@@ -94,6 +94,38 @@ describe("check-readme-parity", () => {
     }
   });
 
+  it("checkTestCount: anchored to the BADGE — a bare count string is not a badge", () => {
+    // Pre-fix this PASSed: /tests-(\d+)%20passing/ matched anywhere, so a README
+    // with no test badge but any surviving `tests-<N>%20passing` text looked fine.
+    const noBadge = "# Title\n\nThe badge markup is `tests-806%20passing-brightgreen.svg`.\n";
+    assert.strictEqual(checkTestCount(noBadge, 806).ok, false);
+    assert.ok(Number.isNaN(checkTestCount(noBadge, 806).readmeCount));
+    // The real badge line still passes (previously-clean stays clean).
+    const badge =
+      "[![Tests](https://img.shields.io/badge/tests-806%20passing-brightgreen.svg)](x)\n";
+    assert.strictEqual(checkTestCount(badge, 806).ok, true);
+    assert.strictEqual(checkTestCount(badge + noBadge, 806).ok, true);
+  });
+
+  it("real CLI FAIL: test badge deleted, count string still present -> exit 1", () => {
+    const root = mkdtempSync(join(tmpdir(), "crp-tbadge-"));
+    try {
+      writeFileSync(join(root, "VERSION"), "2.60.0\n");
+      writeFileSync(join(root, "TEST_COUNT"), "269\n");
+      writeFileSync(
+        join(root, "README.md"),
+        "[![Skill](https://img.shields.io/badge/Skill-v2.60.0-green.svg)](CHANGELOG.md)\n" +
+          "\nThe suite badge reads `tests-269%20passing-brightgreen.svg` today.\n",
+      );
+      const result = runCliAgainst(root);
+      assert.strictEqual(result.status, 1, `stdout: ${result.stdout}\nstderr: ${result.stderr}`);
+      assert.match(result.stderr, /FAIL test count/);
+      assert.match(result.stdout, /PASS version badge/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("checkTestCount: wrong test count -> ok: false", () => {
     const readmeText = readFileSync(join(repoRoot, "README.md"), "utf8");
     const result = checkTestCount(readmeText, 999999);

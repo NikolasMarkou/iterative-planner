@@ -455,7 +455,7 @@ See references/planning-rigor.md for definitions. -->
 `,
 
   verification: `# Verification Results
-*Populated during PLAN (template), updated during EXECUTE (per-step), completed during REFLECT (full pass).*
+*Populated during PLAN (template), completed during REFLECT (full pass).*
 *Rewritten each iteration — not append-only.*
 
 ## Criteria Verification
