@@ -16,7 +16,7 @@ import { randomBytes } from "crypto";
 
 const VALIDATOR = resolve(import.meta.dirname, "validate-plan.mjs");
 // Import-safe: validate-plan.mjs's CLI dispatch is guarded by isEntryPoint.
-import { collectKnownDecisionIdsByPlan, ANCHOR_SOURCE_EXTS, HTML_STYLE_EXTS } from "./validate-plan.mjs";
+import { collectKnownDecisionIdsByPlan, ANCHOR_SOURCE_EXTS, HTML_STYLE_EXTS, deriveIterationFromHistory, deriveConvergenceIteration } from "./validate-plan.mjs";
 import { BLOCK_COMMENT_EXTS } from "./shared.mjs";
 import { ANCHOR_SOURCE_EXTS as BOOTSTRAP_ANCHOR_SOURCE_EXTS } from "./bootstrap.mjs";
 // Import-safe: bootstrap.mjs's CLI dispatch is guarded by isEntryPoint. The
@@ -1486,28 +1486,118 @@ legacy section
   // Completion-fix (W1, same-iteration REFLECT->EXECUTE hop, plan-2026-07-31T203947-de0ded98):
   // checkCrossFileConsistency's Convergence-Metrics WARN was the THIRD declared-only
   // iteration reader in this file (after runPreStepGate and checkCheckpoints, both fixed
-  // above) — the exact N-place-fix miss plans/LESSONS.md [I:5] flags. It must also use
-  // max(declared, derived).
-  it("(m) iteration-trust: checkCrossFileConsistency's Convergence Metrics WARN also uses max(declared, derived)", () => {
+  // above) — the exact N-place-fix miss plans/LESSONS.md [I:5] flags. It must not be
+  // silenceable by understating the declared iteration.
+  //
+  // REWRITTEN at iter-2/step-3 (D-034). This test used to assert the property with SIX
+  // `EXECUTE → REFLECT` records — i.e. it asserted the very false positive that
+  // decision fixes, because a same-iteration completion-fix loop produces exactly those
+  // records without raising the iteration. The PROPERTY it was written to defend
+  // (max(declared, derived); an understated field cannot buy silence) is unchanged and is
+  // re-asserted below; only the derivation SIGNAL moved, from "work happened" to "a
+  // re-plan happened". The old fixture now lives on as test (n) with the inverted
+  // expectation, so the change of signal is pinned from both sides.
+  it("(m) iteration-trust: the Convergence Metrics WARN still uses max(declared, derived) — an understated field cannot silence it", () => {
     const cwd = getTempDir();
+    // Declared Iteration 1 (understated), but a real re-plan is recorded: PIVOT → PLAN is
+    // the SECOND arrival at PLAN in this history (writePlan's default supplies the opening
+    // EXPLORE → PLAN), so the convergence derivation reads iteration 2 and the WARN must
+    // fire even though the declared field says 1.
     const transitionHistory = [
-      "- EXECUTE → REFLECT (1)",
-      "- EXECUTE → REFLECT (2)",
-      "- EXECUTE → REFLECT (3)",
-      "- EXECUTE → REFLECT (4)",
-      "- EXECUTE → REFLECT (5)",
-      "- EXECUTE → REFLECT (6)",
+      "- REFLECT → PIVOT (3-strike, user approved)",
+      "- PIVOT → PLAN (re-planned)",
+      "- PLAN → EXECUTE (plan v2 approved; iteration 2)",
     ].join("\n");
-    // state=REFLECT + declared Iteration 1 (understated), but 6 real EXECUTE → REFLECT
-    // records → effective iteration is 6, which is >= 2, so the Convergence Metrics
-    // section requirement must fire even though writePlan's default verification.md
-    // fixture has no such section.
     writePlan(cwd, { state: "REFLECT", iteration: 1, transitionHistoryExtra: transitionHistory });
     const r = run(cwd); // no --pre-step
     const warns = r.stdout.split("\n").filter((l) => /WARN\s+\[convergence\]/.test(l));
     assert.ok(warns.length >= 1, `expected WARN [convergence] despite declared Iteration 1, got:\n${r.stdout}`);
     assert.ok(/missing Convergence Metrics section for iteration 2\+/.test(warns[0]),
       `expected the iteration-2+ Convergence Metrics message, got: ${warns[0]}`);
+  });
+
+  // D-034 fixture A — the defect itself, taken from this repo's own live state.md at the
+  // time it fired: iteration 1, with completion-fix REFLECT → EXECUTE loops. The protocol
+  // states the loop does NOT increment the iteration (SKILL.md Transitions, "Same
+  // iteration only"), so an EXTENDED check keyed to iteration 2+ must stay SILENT here.
+  // Every WARN must correspond to a rule some protocol file actually instructs an agent to
+  // follow; before D-034 this one did not.
+  it("(n) convergence: a same-iteration completion-fix loop does NOT fire the EXTENDED check", () => {
+    const cwd = getTempDir();
+    const transitionHistory = [
+      "- EXECUTE → REFLECT (all steps complete)",
+      "- REFLECT → EXECUTE (user approved completion fixes; iteration does NOT increment)",
+      "- EXECUTE → REFLECT (pass 2)",
+      "- REFLECT → EXECUTE (second completion fix; iteration still does NOT increment)",
+      "- EXECUTE → REFLECT (pass 3)",
+      "- EXECUTE → REFLECT (pass 4)",
+    ].join("\n");
+    writePlan(cwd, { state: "REFLECT", iteration: 1, transitionHistoryExtra: transitionHistory });
+    const r = run(cwd);
+    const warns = r.stdout.split("\n").filter((l) => /WARN\s+\[convergence\]/.test(l));
+    assert.equal(warns.length, 0, `[convergence] must be silent on a completion-fix loop at iteration 1 (D-034), got:\n${warns.join("\n")}`);
+  });
+
+  // D-034 fixture C — the SPLIT is the decision, so assert it explicitly rather than
+  // leaving a future reader to infer it. The SAME history that must leave the advisory
+  // convergence check silent must leave the SAFETY cap counting exactly as it did before:
+  // the cap asks "how much work has happened" and answers 6. Weakening it is the one
+  // direction D-009 forbids.
+  it("(o) convergence split: the iteration HARD CAP is unchanged on the same history", () => {
+    const cwd = getTempDir();
+    const transitionHistory = [
+      "- EXECUTE → REFLECT (all steps complete)",
+      "- REFLECT → EXECUTE (user approved completion fixes; iteration does NOT increment)",
+      "- EXECUTE → REFLECT (pass 2)",
+      "- REFLECT → EXECUTE (second completion fix; iteration still does NOT increment)",
+      "- EXECUTE → REFLECT (pass 3)",
+      "- EXECUTE → REFLECT (pass 4)",
+    ].join("\n");
+    const { planDir } = writePlan(cwd, { state: "REFLECT", iteration: 1, transitionHistoryExtra: transitionHistory });
+    const state = readFileSync(join(planDir, "state.md"), "utf8");
+    // 4 = the four EXECUTE → REFLECT records above. writePlan's default history contains
+    // none, so this number is exactly the fixture's own arrow count — the point being that
+    // the cap still counts every one of them, including the two that belong to
+    // completion-fix loops and therefore do NOT raise the real iteration.
+    assert.equal(deriveIterationFromHistory(state), 4,
+      "the hard cap's raw EXECUTE → REFLECT count must be untouched by D-034");
+    assert.equal(deriveConvergenceIteration(state), 1,
+      "the advisory convergence derivation must read 1 on the same history (no re-plan recorded)");
+  });
+
+  // D-034 fixture B — the other side of the split: a GENUINE iteration 2 (a real PIVOT
+  // → PLAN) must still fire. A fix that merely suppressed the warning would pass fixture
+  // (n) and fail here.
+  it("(p) convergence: a real PIVOT → PLAN re-plan DOES fire the EXTENDED check", () => {
+    const cwd = getTempDir();
+    const transitionHistory = [
+      "- EXECUTE → REFLECT (all steps complete)",
+      "- REFLECT → EXECUTE (completion fix; iteration does NOT increment)",
+      "- EXECUTE → REFLECT (pass 2)",
+      "- REFLECT → PIVOT (3-strike; user approved)",
+      "- PIVOT → PLAN (user chose Direction B)",
+      "- PLAN → EXECUTE (plan v2 approved; iteration 2)",
+    ].join("\n");
+    const { planDir } = writePlan(cwd, { state: "REFLECT", iteration: 2, transitionHistoryExtra: transitionHistory });
+    const r = run(cwd);
+    const warns = r.stdout.split("\n").filter((l) => /WARN\s+\[convergence\]/.test(l));
+    assert.ok(warns.length >= 1, `[convergence] must fire on a genuine iteration 2 (D-034), got:\n${r.stdout}`);
+    const state = readFileSync(join(planDir, "state.md"), "utf8");
+    assert.equal(deriveConvergenceIteration(state), 2,
+      "one re-plan after the opening EXPLORE → PLAN means convergence iteration 2");
+  });
+
+  // D-034 — the derivation counts ARRIVALS at PLAN minus the first, and the subtraction is
+  // load-bearing: every plan opens with EXPLORE → PLAN, so without it EVERY plan would
+  // read as iteration 2 and the check would fire on all of them. `PLAN → EXECUTE` is a
+  // DEPARTURE and must not count — a regex without the arrow direction would match it.
+  it("(q) convergence derivation: opening EXPLORE → PLAN and PLAN → EXECUTE departures do not count as re-plans", () => {
+    const bare = "## Transition History:\n- INIT → EXPLORE (task started)\n- EXPLORE → PLAN (enough context)\n- PLAN → EXECUTE (approved)\n- PLAN → EXECUTE (approved again)\n";
+    assert.equal(deriveConvergenceIteration(bare), 1,
+      "the opening arrival plus any number of departures is still iteration 1");
+    const replanned = bare + "- REFLECT → PIVOT (strike 3)\n- PIVOT -> PLAN (ASCII arrow, re-planned)\n";
+    assert.equal(deriveConvergenceIteration(replanned), 2,
+      "a second ARRIVAL at PLAN is a re-plan, and the ASCII `->` arrow form counts too");
   });
 });
 

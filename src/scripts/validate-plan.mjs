@@ -400,12 +400,17 @@ function checkCrossFileConsistency(planDir, issues) {
   // Check convergence metrics in verification.md for iteration 2+ REFLECT
   if (["REFLECT", "CLOSE"].includes(currentState.toUpperCase())) {
     const verification = readFile(join(planDir, "verification.md"));
-    // Mirrors checkIterationLimits (line ~564) and checkCheckpoints (line ~603):
-    // max(declared, derived) so an agent that forgets to bump the declared
-    // field cannot silently bypass this WARN by understating its iteration.
+    // DECISION plan-2026-09-01T100120-4f591469/D-034 — this is the one iteration reader
+    // that does NOT mirror checkIterationLimits. It asks "has this plan been re-planned?",
+    // so it derives from re-plan count, not from `EXECUTE → REFLECT` count. Do NOT
+    // "restore consistency" by swapping in deriveIterationFromHistory: that counts the
+    // same-iteration completion-fix loop as an iteration bump and fires this WARN on a
+    // plan the protocol says is still on iteration 1. See countRePlans (line ~530).
+    // The max(declared, derived) shape is kept for the same reason the cap keeps it: an
+    // agent that forgets to bump the declared field cannot silently bypass this WARN.
     const stateIterRaw = extractField(state, /^## Iteration:\s*(.+)$/m);
     const declaredIter = stateIterRaw ? parseInt(stateIterRaw, 10) : 0;
-    const derivedIter = deriveIterationFromHistory(state);
+    const derivedIter = deriveConvergenceIteration(state);
     const effectiveIter = Math.max(Number.isFinite(declaredIter) ? declaredIter : 0, derivedIter);
     if (verification && effectiveIter >= 2) {
       if (!verification.includes("## Convergence Metrics") || !verification.includes("Convergence score")) {
@@ -525,6 +530,43 @@ function countExecuteReflect(block) {
   let count = 0;
   while (re.exec(norm) !== null) count++;
   return count;
+}
+
+// DECISION plan-2026-09-01T100120-4f591469/D-034 — the ADVISORY iteration derivation, and
+// deliberately NOT the one the hard cap uses. The two answer different questions:
+//   countExecuteReflect  → "how much work has happened?"  (fail-CLOSED; may over-count)
+//   countRePlans         → "has this plan been RE-PLANNED?" (fail-QUIET; advisory only)
+// Do NOT unify them, in either direction. Feeding this count to `checkIterationLimits`
+// would let a plan that loops forever without re-planning escape the cap — an UNDER-count
+// in a safety mechanism, the one direction D-009 forbids. Feeding `countExecuteReflect` to
+// the convergence check is the defect this exists to fix: the protocol states that a
+// completion-fix `REFLECT → EXECUTE` loop does NOT increment the iteration (SKILL.md
+// Transitions, "Same iteration only"), yet that loop adds an `EXECUTE → REFLECT` record, so
+// the cap's counter read 2 on a plan that was correctly at iteration 1 and the EXTENDED
+// check fired on it. Every WARN must correspond to a rule some protocol file actually
+// instructs an agent to follow.
+//
+// Counts ARRIVALS at PLAN (`→ PLAN`), minus the first — the first arrival is the opening
+// `EXPLORE → PLAN` every plan has. A completion-fix loop produces no arrival; a real
+// PIVOT → PLAN or a re-plan produces one. Reads the STRIPPED block, per D-009's rule that
+// advisory scanners never pass `{ raw: true }`: a false advisory WARN is recoverable, and
+// bootstrap's template comment carries a literal `EXPLORE → PLAN` example that must stay
+// invisible here (it is the reason the subtraction cannot simply be dropped).
+/** Count re-plans: arrivals at PLAN in a Transition-History block, minus the first (null → 0). */
+function countRePlans(block) {
+  if (block === null) return 0;
+  const norm = block.replace(/[–—‐]/g, "-");
+  const re = /(?:→|->)\s*PLAN\b/g;
+  let arrivals = 0;
+  while (re.exec(norm) !== null) arrivals++;
+  return Math.max(0, arrivals - 1);
+}
+
+// Exported for testability ONLY (same precedent as deriveIterationFromHistory below: the
+// CLI cannot observe this number directly, it only observes whether the WARN fires).
+// The module's CLI dispatch is guarded by `isEntryPoint`, so importing is safe.
+export function deriveConvergenceIteration(state) {
+  return 1 + countRePlans(transitionHistoryBlock(state));
 }
 
 // DECISION plan_2026-07-14_79ee0f59/D-009 — this counter drives the iteration hard cap
