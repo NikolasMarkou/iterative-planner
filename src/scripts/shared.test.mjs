@@ -878,3 +878,75 @@ test("blockCommentSpans: an UNBALANCED quote masks nothing (under-mask, the loud
   const t = "it's fine\n/* DECISION x/D-004 */\n";
   assert.deepEqual(spanText(t), ["/* DECISION x/D-004 */"]);
 });
+
+// ---------------------------------------------------------------------------
+// Regex-literal lexing (D-025) — the completion fix for D-007's stray-closer
+// recovery, which read the `*/` inside an ordinary character class as a closer and
+// extended a comment span through live code.
+//
+// PROVENANCE: per D-023, these acceptance shapes were NOT authored by the pass that
+// designed the fix. Shapes 1-3 and 6 are taken verbatim from ip-reviewer Concern 3
+// (including the two REAL over-extended spans it found in this repo's own source);
+// shapes 4-5 are the prior corpus, kept to prove the fix does not regress D-007's win.
+// ---------------------------------------------------------------------------
+
+test("blockCommentSpans: [1] a regex CHARACTER CLASS `/[*/]/` does not end a span it never opened", () => {
+  // Reviewer Concern 3's headline reproduction. Pre-fix this returned ONE span running
+  // from the docblock through `const re = /[*`, so the anchor on line 2 was reported by
+  // the per-line scan AND the block scan — the double-report D-007 existed to close.
+  const t = "/* real comment */\n// DECISION p/D-001 first\nconst re = /[*/]/;\n";
+  assert.deepEqual(spanText(t), ["/* real comment */"], `got:\n${JSON.stringify(spanText(t))}`);
+});
+
+test("blockCommentSpans: [2] the live bootstrap.mjs shape `/^\\*Plan:\\s*/` does not extend a span", () => {
+  // The real cause of the 35-line over-extension at bootstrap.mjs:974-1009.
+  const t = "/**\n * doc\n */\nfunction f(t) {\n  if (/^\\*Plan:\\s*/.test(t)) return 1;\n}\n";
+  assert.deepEqual(spanText(t), ["/**\n * doc\n */"], `got:\n${JSON.stringify(spanText(t))}`);
+});
+
+test("blockCommentSpans: [3] the live check-agent-wiring.mjs shape `/§\\s*/g` does not extend a span", () => {
+  // The real cause of the 17-line over-extension at check-agent-wiring.mjs:194-211.
+  const t = "/**\n * doc\n */\nfor (const m of line.matchAll(/§\\s*/g)) { }\n";
+  assert.deepEqual(spanText(t), ["/**\n * doc\n */"], `got:\n${JSON.stringify(spanText(t))}`);
+});
+
+test("blockCommentSpans: [5] a prose closer STILL recovers when a regex literal follows (D-007's win is kept)", () => {
+  // The fix narrows the recovery; it must not disable it. The `/` handling SKIPS the
+  // literal and keeps hunting for the true terminator rather than giving up — giving up
+  // would re-open the silent-loss direction this whole primitive exists to close.
+  const t = "/**\n * The pattern is */ prose\n * DECISION p/D-002 keep me\n */\nconst r = /[*/]/;\n";
+  const got = spanText(t);
+  assert.equal(got.length, 1, `expected one span, got ${JSON.stringify(got)}`);
+  assert.ok(got[0].includes("D-002"), `anchor below the prose closer must stay INSIDE the span, got:\n${got[0]}`);
+  assert.ok(!got[0].includes("const r"), `the span must stop at the true terminator, got:\n${got[0]}`);
+});
+
+test("blockCommentSpans: a DIVISION is not mistaken for a regex literal", () => {
+  // `a / b` is division: the preceding significant token is an identifier, so the `/` must
+  // NOT start a literal skip. If it did, the recovery could step over a real closer.
+  const t = "/* one */\nconst q = a / b;\nconst w = xs[0] / n;\n/* two */\n";
+  assert.deepEqual(spanText(t), ["/* one */", "/* two */"]);
+});
+
+test("blockCommentSpans: a regex literal containing `/*` opens no phantom span (opener side)", () => {
+  // Pre-fix the `/*` inside the class opened a phantom span that ran to the `*/` in the
+  // string two lines down, swallowing (and so DOUBLE-reporting) the anchor between them.
+  const t = 'const r = /[/*]/;\n// DECISION p/D-003 y\nconst s = "a */ b";\n';
+  assert.deepEqual(spanText(t), []);
+});
+
+test("blockCommentSpans: an ODD backtick count inside a regex no longer masks the comments after it", () => {
+  // Live under-mask found by the full-repo differential: `/^(`{3,}|~{3,})/` has ONE
+  // backtick, which pre-fix opened a template literal that ran to the next backtick in
+  // the file and SWALLOWED every block comment in between (4 real spans across
+  // check-agent-wiring.mjs, check-doc-parity.mjs and shared.mjs itself).
+  const t = "const m = /^(`{3,}|~{3,})/.exec(s);\n/** DECISION p/D-004 swallowed pre-fix */\nconst t2 = `x`;\n";
+  assert.deepEqual(spanText(t), ["/** DECISION p/D-004 swallowed pre-fix */"]);
+});
+
+test("blockCommentSpans: a regex literal is NEVER skipped across a newline (mis-lex is bounded to one line)", () => {
+  // The bound that makes the regex-vs-division heuristic safe: an unterminated literal
+  // is ordinary text, so at worst one line is skipped, never a whole file.
+  const t = "/* one */\nconst q = (a / b\n  + c);\n/* two */\n";
+  assert.deepEqual(spanText(t), ["/* one */", "/* two */"]);
+});

@@ -5186,4 +5186,28 @@ describe("retire: block-comment stamping is span-aware (A3 / D-007)", () => {
     assert.equal((after.match(/\[STALE\]/g) || []).length, 3, `exactly 3 markers after re-run, got:\n${after}`);
     assert.ok(!/\[STALE\]\s+\[STALE\]/.test(after), `must not double-stamp, got:\n${after}`);
   });
+
+  // D-025 — the completion fix. Reviewer Concern 3's end-to-end reproduction: pre-fix the
+  // validator printed poison.mjs:2 TWICE (per-line scan + an over-extended block span)
+  // while retire stamped 2, so the report count and the stamp count DISAGREED. This is
+  // success criterion 5's second half, asserted on the reviewer's own fixture.
+  it("a regex CHARACTER CLASS does not desync the counts: validator reports 2, retire stamps 2 (D-025)", () => {
+    const dir = getTempDir();
+    run(dir, "new", "active work");
+    mkdirSync(join(dir, "src"), { recursive: true });
+    const f = join(dir, "src", "poison.mjs");
+    writeFileSync(f,
+      `/* real comment */\n` +
+      `// DECISION ${GONE}/D-910 first\n` +
+      `const re = /[*/]/;\n` +
+      `// DECISION ${GONE}/D-911 second\n`);
+    const reports = validatorReportCount(dir, GONE);
+    assert.equal(reports, 2, "each anchor must be reported exactly ONCE (pre-fix this was 3)");
+    const r = run(dir, "retire", GONE);
+    assert.equal(stampCount(r.stdout), reports,
+      `retire's stamp count must EQUAL the validator's report count, got:\n${r.stdout}`);
+    const after = readFileSync(f, "utf-8");
+    assert.equal((after.match(/\[STALE\]/g) || []).length, 2, `exactly 2 markers, got:\n${after}`);
+    assert.match(after, /const re = \/\[\*\/\]\/;/, "the regex literal itself must be byte-unchanged");
+  });
 });
