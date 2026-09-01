@@ -5187,11 +5187,20 @@ describe("retire: block-comment stamping is span-aware (A3 / D-007)", () => {
     assert.ok(!/\[STALE\]\s+\[STALE\]/.test(after), `must not double-stamp, got:\n${after}`);
   });
 
-  // D-025 — the completion fix. Reviewer Concern 3's end-to-end reproduction: pre-fix the
-  // validator printed poison.mjs:2 TWICE (per-line scan + an over-extended block span)
-  // while retire stamped 2, so the report count and the stamp count DISAGREED. This is
-  // success criterion 5's second half, asserted on the reviewer's own fixture.
-  it("a regex CHARACTER CLASS does not desync the counts: validator reports 2, retire stamps 2 (D-025)", () => {
+  // D-032 — the INVERSION of the D-025 fixture that used to live here. Deleting the
+  // regex-literal lexer reinstates the `/[*/]/` over-report ON PURPOSE, and this is the
+  // end-to-end shape of that cost, measured rather than asserted away: the validator
+  // prints D-910 TWICE (once from the per-line slash scan, once from the block span the
+  // character class over-extends across it) and D-911 once, for 3 reports; `retire`
+  // stamps each of the two anchors exactly once, for 2 stamps.
+  //
+  // The invariant that MATTERS is unbroken and is what the last two assertions pin:
+  // every anchor the validator reports is still stamped, so `retire` never UNDER-stamps.
+  // The 3-vs-2 divergence is a DOUBLE-REPORT, which lands in the validator's output where
+  // a maintainer reads it — not a missing stamp, which nobody would ever see. That is the
+  // whole fail-loud-over-fail-silent trade. Do NOT "repair" this by lexing regex literals
+  // again: that is strike 4 and it costs the JSX fixture below. See decisions.md D-032.
+  it("[OVER-REPORT PIN] a regex CHARACTER CLASS double-reports (3 reports / 2 stamps) — DELIBERATE (D-032)", () => {
     const dir = getTempDir();
     run(dir, "new", "active work");
     mkdirSync(join(dir, "src"), { recursive: true });
@@ -5201,14 +5210,35 @@ describe("retire: block-comment stamping is span-aware (A3 / D-007)", () => {
       `// DECISION ${GONE}/D-910 first\n` +
       `const re = /[*/]/;\n` +
       `// DECISION ${GONE}/D-911 second\n`);
-    const reports = validatorReportCount(dir, GONE);
-    assert.equal(reports, 2, "each anchor must be reported exactly ONCE (pre-fix this was 3)");
+    assert.equal(validatorReportCount(dir, GONE), 3,
+      "D-032: D-910 is reported TWICE by design (per-line scan + the over-extended block "
+    + "span). This over-report is the chosen behaviour, not an unnoticed defect — see "
+    + "decisions.md D-032 and the shared.test.mjs pins. Do not re-add the regex lexer.");
     const r = run(dir, "retire", GONE);
-    assert.equal(stampCount(r.stdout), reports,
-      `retire's stamp count must EQUAL the validator's report count, got:\n${r.stdout}`);
+    assert.equal(stampCount(r.stdout), 2,
+      `retire stamps each anchor ONCE — it must never UNDER-stamp, got:\n${r.stdout}`);
     const after = readFileSync(f, "utf-8");
-    assert.equal((after.match(/\[STALE\]/g) || []).length, 2, `exactly 2 markers, got:\n${after}`);
+    assert.equal((after.match(/\[STALE\]/g) || []).length, 2,
+      `both anchors stamped exactly once — no anchor is lost to the over-report, got:\n${after}`);
     assert.match(after, /const re = \/\[\*\/\]\/;/, "the regex literal itself must be byte-unchanged");
+  });
+
+  // D-032 — ip-reviewer pass-2 Concern 1's END-TO-END reproduction, VERBATIM, and the
+  // reason the lexer was deleted rather than patched. At 48ac075 this file produced
+  // `Summary: 0 error(s)` while the SAME file with `b={x}` removed produced the ERROR:
+  // the `/` of `/>` was read as a regex opener and swallowed the `{/*` after it, so the
+  // anchor was invisible to the validator AND to `retire`. Silent, in the durable-audit
+  // path. The corpus is the reviewer's, not this pass's (LESSONS [I:5]).
+  it("reviewer Concern 1 `comp.jsx`: a JSX comment anchor is visible again — 1 report, 1 stamp (was 0/0)", () => {
+    const dir = getTempDir();
+    run(dir, "new", "active work");
+    const f = join(dir, "comp.jsx");
+    writeFileSync(f, `<Foo b={x} /> {/* DECISION ${GONE}/D-999 jsx anchor */}\n`);
+    assert.equal(validatorReportCount(dir, "D-999"), 1,
+      "the JSX anchor must be reported exactly ONCE (at 48ac075 this was 0 — a silent loss)");
+    const r = run(dir, "retire", GONE);
+    assert.equal(stampCount(r.stdout), 1, `retire must stamp it too, got:\n${r.stdout}`);
+    assert.match(readFileSync(f, "utf-8"), /D-999 \[STALE\]/);
   });
 
   // D-031 / D-032 — ip-reviewer pass-2 Concern 2, VERBATIM. Four-line POSIX shell script,

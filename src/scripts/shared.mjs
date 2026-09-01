@@ -414,15 +414,19 @@ export function unterminatedCommentOpener(content) {
 // The failure direction here is chosen, same as maskLiteralRegions above: UNDER-mask when
 // unsure. An unterminated `/*` yields NO span; an unterminated quote is ordinary text.
 //
-// DECISION plan-2026-09-01T100120-4f591469/D-025 — regex literals ARE lexed (see
-// `skipRegexLiteral` below), and that lexing is load-bearing, not a nicety. Do NOT delete
-// it as "over-engineering for a scanner". Without it the stray-closer recovery reads the
-// `*/` inside an ordinary character class — `const re = /[*/]/;` — as a stray closer and
-// extends the preceding comment span through live code: two spans in THIS repo (35 and 17
-// lines) were misclassified that way, the anchor above `/[*/]/` was reported TWICE, and
-// `retire`'s stamp count and the validator's report count disagreed, falsifying this
-// plan's success criterion 5. Backslash escaping alone is NOT enough — it only covers the
-// `\*/` form, which is the shape the original author happened to imagine. See D-025.
+// DECISION plan-2026-09-01T100120-4f591469/D-025 [SUPERSEDED by D-032] — regex literals
+// are NOT lexed here any more, and must not be again. D-025 added a regex-literal lexer
+// (`isRegexLiteralStart` / `skipRegexLiteral`) so that the `*/` inside an ordinary
+// character class — `const re = /[*/]/;` — would stop ending a span it never opened. It
+// did fix that shape, and it bought a worse one: the `/` in `</div>` and in `/>` sits in
+// expression position, so an ordinary JSX comment (`</div> {/* … */}`) had its OPENER
+// eaten and the whole span vanished — every anchor inside it invisible to the validator
+// AND to `bootstrap.mjs retire`. That was the THIRD defect out of this one component
+// (D-031), so the 3-strike rule was invoked and the lexer DELETED rather than patched a
+// fourth time. Do NOT reintroduce it in any form — not "refuse a literal whose terminator
+// is `/*`", not "require a plausible regex body". Those are strike 4 by construction. The
+// `/[*/]/` over-report the lexer existed to remove is now the CHOSEN behaviour, pinned by
+// name in shared.test.mjs. See decisions.md D-025, D-031, D-032.
 //
 // KNOWN, DELIBERATE holes, and they do NOT fail in the same direction:
 //  - `#`-style line comments are not treated as comments. Inside a C-family file that is
@@ -435,11 +439,21 @@ export function unterminatedCommentOpener(content) {
 //    That is now closed at the SOURCE: `BLOCK_COMMENT_EXTS` below gates the scan to the
 //    19 extensions whose grammar actually has `/* */`, so a hash-family file never
 //    reaches this code. The hole survives only as the reason the gate exists.
-//  - Regex-vs-division is decided by the preceding significant token, the standard
-//    heuristic; a division whose left operand ends in `)` or an identifier is correctly
-//    read as division, but `if (x) /re/.test(y)` is not. A mis-read here can only make the
-//    recovery skip a run of text, and `skipRegexLiteral` refuses to cross a newline, so
-//    the miss is bounded to ONE line. UNDER-masks, by at most a line.
+//  - Regex literals are not lexed at all, so `/*` or `*/` written INSIDE one reads as
+//    real comment syntax. That OVER-masks, in shapes reproduced here and recorded in the
+//    step-2 report: `const re = /[*/]/;` on a line below a real comment extends that
+//    comment's span through live code, so the anchor between them is reported by the
+//    per-line scan AND the block scan; `throw /[*/]/;` and `if (x) /[*/]/.test(y)` do the
+//    same; and `/^\*Plan:\s*/` (bootstrap.mjs) and `/§\s*/g` (check-agent-wiring.mjs)
+//    are the two live victims in THIS repo. It is DELIBERATE (D-032): an over-report lands
+//    in the validator's output where a maintainer sees it, whereas the lexer that removed
+//    it silently deleted whole JSX comment regions from BOTH tools, where nobody does.
+//  - Template literals are not skipped either (D-033), so a `/* */` inside a backtick
+//    string opens a real span — the same currency, spent for the same reason. Skipping
+//    them is what let an odd backtick count inside a regex (`` /^(`{3,}|~{3,})/ ``) open a
+//    runaway template literal that MASKED 4 genuine comment regions across 3 files here,
+//    which is the silent direction. `"` and `'` strings ARE still skipped: neither may
+//    cross a newline, so a mis-read of one is bounded to a single line.
 // ---------------------------------------------------------------------------
 
 // DECISION plan-2026-09-01T100120-4f591469/D-032 — the block-comment scan is gated by
@@ -464,68 +478,29 @@ export const BLOCK_COMMENT_EXTS = new Set([
   ".c", ".h", ".cpp", ".hpp", ".cc", ".java", ".kt", ".swift", ".scala", ".cs", ".php",
 ]);
 
-const BLOCK_STRING_DELIMS = new Set(['"', "'", "`"]);
+// DECISION plan-2026-09-01T100120-4f591469/D-033 — the BACKTICK is deliberately ABSENT
+// from this set. Do NOT add it back "so template literals are skipped like the other
+// string forms". Skipping them is exactly what let an odd backtick count inside a regex
+// literal (`` /^(`{3,}|~{3,})/ ``) open a template literal that ran to the next backtick
+// anywhere in the file and swallowed 4 real comment spans across 3 files in this repo —
+// a silent LOSS, the one direction this scanner may not fail in, and the only form of
+// string skip that can run away past a whole file. The cost is known and accepted: a
+// `/* */` written inside a genuine template literal now opens a phantom span, a visible
+// over-report of the same kind D-032 already chose. See decisions.md D-032, D-033.
+const BLOCK_STRING_DELIMS = new Set(['"', "'"]);
 
 // Skip a quoted string starting at `i`. Returns the offset one past its closing quote,
 // or -1 when the quote never closes — in which case the caller must treat the quote as
-// ORDINARY TEXT (under-masking, the loud direction). A double or single quote may not
-// span a newline; a backtick template may. Backslash escapes the next character.
+// ORDINARY TEXT (under-masking, the loud direction). Neither delimiter may span a
+// newline, which BOUNDS a mis-read to one line. Backslash escapes the next character.
 function skipStringLiteral(content, i) {
   const quote = content[i];
-  const multiline = quote === "`";
   let j = i + 1;
   while (j < content.length) {
     const c = content[j];
     if (c === "\\") { j += 2; continue; }
     if (c === quote) return j + 1;
-    if (c === "\n" && !multiline) return -1;
-    j += 1;
-  }
-  return -1;
-}
-
-// Regex-literal lexing (D-025). A `/` starts a regex literal only in EXPRESSION position;
-// after a value it is division. The standard discriminator is the preceding significant
-// token, and these are the two closed sets it is tested against. `)` and `]` are
-// deliberately ABSENT: `(a + b) / c` and `xs[0] / n` are division.
-const REGEX_PREV_PUNCT = new Set(
-  ["(", ",", "=", ":", "[", "!", "&", "|", "?", "{", "}", ";", "+", "-", "*", "%", "~", "^", "<", ">", "\n"],
-);
-const REGEX_PREV_KEYWORDS = new Set(
-  ["return", "typeof", "instanceof", "in", "of", "new", "delete", "void", "case", "do", "else", "yield", "await"],
-);
-
-// Is the `/` at `i` the OPENING delimiter of a regex literal (rather than a division
-// operator)? Callers must already have excluded `/*` and `//`.
-function isRegexLiteralStart(content, i) {
-  let j = i - 1;
-  while (j >= 0 && (content[j] === " " || content[j] === "\t" || content[j] === "\r")) j -= 1;
-  if (j < 0) return true;
-  const p = content[j];
-  if (REGEX_PREV_PUNCT.has(p)) return true;
-  if (/[A-Za-z0-9_$]/.test(p)) {
-    let k = j;
-    while (k >= 0 && /[A-Za-z0-9_$]/.test(content[k])) k -= 1;
-    return REGEX_PREV_KEYWORDS.has(content.slice(k + 1, j + 1));
-  }
-  return false;
-}
-
-// Skip a regex literal whose opening `/` is at `i`. Returns the offset one past its
-// closing `/`, or -1 when it does not close ON THE SAME LINE — a regex literal may not
-// span a newline, and that refusal is what BOUNDS a mis-lex to a single line. A `/` inside
-// a `[...]` character class is literal, not the terminator: that class is the exact shape
-// (`/[*/]/`) whose `*/` used to be read as a stray block-comment closer.
-function skipRegexLiteral(content, i) {
-  let j = i + 1;
-  let inClass = false;
-  while (j < content.length) {
-    const c = content[j];
-    if (c === "\\") { j += 2; continue; }
     if (c === "\n") return -1;
-    if (inClass) { if (c === "]") inClass = false; j += 1; continue; }
-    if (c === "[") { inClass = true; j += 1; continue; }
-    if (c === "/") return j + 1;
     j += 1;
   }
   return -1;
@@ -547,15 +522,6 @@ function nextStrayBlockCloser(content, from) {
       if (nl < 0) return -1;
       i = nl + 1;
       continue;
-    }
-    if (c === "/") {
-      // A regex literal, not a closer. SKIP it and keep scanning — do NOT give up here:
-      // the true terminator of the comment we are recovering usually lies BEYOND the
-      // literal, and abandoning the search would re-open the silent-loss direction.
-      if (isRegexLiteralStart(content, i)) {
-        const e = skipRegexLiteral(content, i);
-        if (e > 0) { i = e; continue; }
-      }
     }
     if (BLOCK_STRING_DELIMS.has(c)) {
       const e = skipStringLiteral(content, i);
@@ -603,12 +569,6 @@ export function blockCommentSpans(content) {
       if (nl < 0) break;
       i = nl + 1;
       continue;
-    }
-    if (c === "/" && isRegexLiteralStart(content, i)) {
-      // A regex literal may CONTAIN `/*` (`/a\/*b/`), which would otherwise open a
-      // phantom span. Skipping it here is the opener-side half of D-025.
-      const e = skipRegexLiteral(content, i);
-      if (e > 0) { i = e; continue; }
     }
     if (BLOCK_STRING_DELIMS.has(c)) {
       const e = skipStringLiteral(content, i);
