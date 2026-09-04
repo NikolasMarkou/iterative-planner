@@ -345,6 +345,15 @@ if (isEntryPoint) {
   const issues = [];
   for (const rel of files) {
     const text = readFileSync(join(repoRoot, rel), "utf8");
+    // DECISION plan-2026-09-04T124202-72910089/D-001: rule (d)'s skill-path
+    // resolution scan is agents-only on purpose, not widened to
+    // src/scripts/modules/*.md. Agent prompts are spawned fresh each time and
+    // must locally resolve <skill-path> themselves; module bodies are always
+    // inlined into an already-resolved reading context by emit-state.mjs, so
+    // they never need their own resolution line. Do NOT widen this scan to
+    // modules/*.md without first adding a local <skill-path> resolution line
+    // to all 5 modules — none carries one today, so widening now would fail
+    // all 5 immediately (see decisions.md D-001).
     issues.push(
       ...scanScriptPaths(rel, text, edges),
       ...scanReferenceCitations(rel, text, refExists, edges),
