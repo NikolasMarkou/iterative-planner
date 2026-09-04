@@ -43,7 +43,7 @@ Update on every state transition.
 ## Fix Attempts (resets per plan step)
 - Step 2, attempt 1: reverted middleware change — still fails (type mismatch)
 - Step 2, attempt 2: deleted adapter, called service directly — new error (missing auth)
-- Step 2: LEASH HIT. Transitioned to REFLECT. Waiting for user direction.
+- Step 2: LEASH HIT via pre-step gate. Slug: leash-cap. Stdout: `GATE:FAIL [leash-cap] 2 fix attempts recorded for step 2`.
 ```
 
 **Change Manifest**: one line per step, formatted as `- Step N (commit-hash-or-"uncommitted"):` followed by each filename wrapped in backticks and comma-separated — e.g. `file1`, `file2`, `file3`. A step line carrying `uncommitted` (or no hash) has not yet landed; on failed step / PIVOT → revert those files. Backticking each filename is non-negotiable (see `code-hygiene.md` for why); capitalization/hyphenation of `Step N` vs `step-N` is a minor stylistic variant, not load-bearing. See `code-hygiene.md`.
