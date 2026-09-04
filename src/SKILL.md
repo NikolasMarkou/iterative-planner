@@ -311,13 +311,6 @@ Codebase must be known-good before any PLAN. See `references/code-hygiene.md`.
 
 Code from failed iterations carries invisible context. Anchor `# DECISION <plan-id>/D-NNN`
 at point of impact — state what NOT to do and why. Audit at CLOSE.
-When a plan is deleted or obsoleted while its qualified anchors still live in
-source, run `bootstrap.mjs retire <plan-id>` to mark those anchors `[STALE]`
-(orphan ERROR → WARN) instead of hand-editing each one — otherwise validate-plan
-ERRORs on the orphan and blocks the *current* plan's REFLECT→CLOSE gate.
-The plan-id prefix (e.g. `plan-2026-05-07T091743-7556fb98`, or a legacy
-`plan_2026-05-07_7556fb98` — both scan) makes the anchor globally
-unambiguous and resolvable after `plans/DECISIONS.md` sliding-window trim.
 See `references/decision-anchoring.md`.
 
 ## Register Discipline (CRITICAL)
