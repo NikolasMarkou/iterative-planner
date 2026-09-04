@@ -17,7 +17,7 @@ Default response to failure = simplify, not add.
 
 ## Complexity Budget
 
-This fenced block is the canonical shape (same 3 fields, same wording). The two `check-template-parity.mjs`-gated copies in `file-formats.md` (the `<!-- SKELETON:plan -->` region's block and the plan.md worked-example block) and SKILL.md's one-liner summary must match it.
+This fenced block is the canonical shape (same 3 fields, same wording). The two byte-gated copies in `file-formats.md` (the SKELETON:plan region's block and the plan.md worked-example block) and SKILL.md's one-liner summary must match it.
 
 Track in `plan.md`:
 
