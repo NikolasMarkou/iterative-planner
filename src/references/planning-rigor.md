@@ -120,17 +120,7 @@ Track how well the plan predicted reality. Builds institutional memory about sys
 
 When REFLECT follows a failure (step failed, leash hit, surprise discovery), structured root cause analysis prevents repeating the same class of mistake.
 
-> **Canonical schema location**: `references/file-formats.md` (decisions.md section) is the single source of truth for the Root Cause Analysis block format used in `decisions.md` entries. The format below is the same 4-part block — keep them in sync.
-
-**In `decisions.md`** — as part of the REFLECT entry:
-
-```markdown
-**Root Cause Analysis**:
-1. **Immediate cause**: [What directly caused the failure?]
-2. **Contributing factor**: [What allowed the immediate cause? Trace back one level — missing test? wrong assumption? insufficient exploration?]
-3. **Failed defense**: [Which barrier should have caught this earlier — a test, assumption check, explore step, failure-mode entry, pre-mortem signal — and why didn't it? If no defense existed, that's the prevention gap.]
-4. **Prevention**: [What would have caught this earlier? Add to LESSONS.md at CLOSE if pattern is recurring.]
-```
+> **Canonical schema location**: `references/file-formats.md` (decisions.md section) is the single source of truth for the Root Cause Analysis block format used in `decisions.md` entries — a 4-part block (Immediate cause, Contributing factor, Failed defense, Prevention) filled in as part of the REFLECT entry when REFLECT follows a failure.
 
 **If the failure is a regression** (something that previously worked), add a Change Analysis question before #1: *"What changed since the last passing state?"* Candidates: recent edits in this plan, a new assumption introduced in the last iteration, a ghost constraint (see Ghost Constraint Hunting below), an external dependency that moved. Regressions almost always have a traceable delta — finding it is usually faster than reasoning forward from symptoms.
 
@@ -143,7 +133,7 @@ When REFLECT follows a failure (step failed, leash hit, surprise discovery), str
 - **Stop rule.** Keep asking "but why was that possible?" until further whys either leave the system boundary (out of your control) or stop yielding actionable levers. Don't stop at the first plausible cause — that's premature closure, the most common RCA failure mode.
 - **No prevention without a verification plan.** If step 4 says "add a test" or "check X earlier," the next REFLECT must confirm it actually catches the regression it was meant to catch. Otherwise the lesson is theoretical.
 
-> **Structured methods**: the 4-part block above is the canonical schema kept HERE. For structured techniques to *fill* it — 5 Whys, fishbone category scan, optional fault tree, and a Cynefin domain selector — see `references/root-cause-analysis.md`.
+> **Structured methods**: the 4-part block is canonically defined in `references/file-formats.md` (see the callout above). For structured techniques to *fill* it — 5 Whys, fishbone category scan, optional fault tree, and a Cynefin domain selector — see `references/root-cause-analysis.md`.
 
 ## Ghost Constraint Hunting (PIVOT)
 
