@@ -3,30 +3,13 @@
 // Zero dependencies. Library only: no CLI, no side effects on import.
 //
 // DECISION plan_2026-07-14_79ee0f59/D-001 — this spec is the SINGLE SOURCE OF TRUTH for the
-// changelog's field shapes. It REPLACES the six hand-maintained regexes that lived inline in
-// validate-plan.mjs's checkChangelogFormat (TS / STEP / COMMIT / OP / RADIUS / DREF).
-//
-// The changelog artifact itself is MARKDOWN (pipe-delimited, one line per edit, appended
-// atomically). The XML encoding that briefly wrapped it was REVERTED in v2.35.0 — it turned an
-// O(1) line append into an O(file) read-modify-write and lost entries under concurrency. This
-// module is the part of that work that PAID OFF and stayed: the field shapes have exactly one
-// definition, and validate-plan.mjs's markdown path checks each line against it.
-//
-// What NOT to do here:
-//   - Do NOT re-declare a changelog field regex anywhere else (validate-plan.mjs, bootstrap.mjs).
-//     Six regexes kept in lockstep by hand is the defect this module exists to remove. If a field
-//     shape changes, it changes HERE and every consumer moves with it.
-//   - Do NOT loosen a field to `free-text` "to make a real changelog validate". A too-permissive
-//     spec passes all of its own tests and silently destroys validation the repo already had —
-//     that is this module's named failure mode. Every shape the six regexes rejected must still be
-//     rejected; schema.test.mjs enumerates them case by case. Weakening one means deleting its
-//     rejection test, which is a loud, reviewable act.
-//   - Do NOT re-derive the decision-id grammar. Import DECISION_ID_NUM_PATTERN from shared.mjs
-//     (D-005: a hand-copied `\d{3,}` without the boundary corrupts source in bootstrap retire).
-//   - Do NOT make validateElement() throw on invalid content. Invalid content is a FINDING: it is
-//     reported as an issue so the validator can rank it, batch it, and keep going. A validator that
-//     dies on the first bad row is useless.
-// See decisions.md D-001.
+// changelog's field shapes, replacing six regexes once duplicated inline in validate-plan.mjs.
+// The changelog itself stays plain markdown (an XML re-encoding was reverted in v2.35.0 — it
+// turned an O(1) append into an O(file) rewrite and lost entries under concurrency).
+// Do NOT: re-declare a field regex anywhere else; loosen a field to free-text (every rejected
+// shape has a test — weakening one means deleting its test, a loud act); re-derive the
+// decision-id grammar (import DECISION_ID_NUM_PATTERN from shared.mjs); or make
+// validateElement() throw — invalid content is a reported FINDING, not a crash.
 //
 // A spec is a plain object (no classes, no registry):
 //   { root, severity, check, elements: { <name>: { attrs, children, text } } }

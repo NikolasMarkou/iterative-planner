@@ -46,15 +46,9 @@ import { readFileSync, writeFileSync, existsSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// DECISION plan-2026-09-01T100120-4f591469/D-012
-// A COMMAND GRAMMAR, not token adjacency: `node`, then any run of option
-// tokens (`-e`, `--test`, `--loader=x`), then the script argument. The prior
-// form required the path to be the token IMMEDIATELY after `node`, so ANY
-// interposed flag evaded rule (a) entirely — `node --experimental
-// src/scripts/bootstrap.mjs` PASSed while the identical flag-less line FAILed.
-// Do NOT relax the option run to a general token run (`(?:\S+\s+)*`): that
-// makes `node` in ordinary prose swallow an unrelated later path. Options are
-// recognized by their leading `-` only. See decisions.md D-012.
+// DECISION plan-2026-09-01T100120-4f591469/D-012 — command grammar (`node`, option run, script
+// arg), not token adjacency: a flag between `node` and the path used to evade this rule entirely.
+// Do not widen the option run past a leading `-`, or `node` in ordinary prose swallows later paths.
 const SCRIPT_ARG_RE = /\bnode(?:\s+-[^\s`'"]*)*\s+([^\s`'"]*scripts\/[A-Za-z0-9_.-]+\.mjs)/g;
 const CITATION_RE = /`([A-Za-z0-9_<][A-Za-z0-9_.<>/-]*\.md)`/g;
 // Trailing lookahead is `(?!\w)` (not `(?![\w.])`) so a sentence-final code —
@@ -146,16 +140,10 @@ export function scanScriptPaths(relPath, text, edges) {
   return issues;
 }
 
-// DECISION plan-2026-09-01T100120-4f591469/D-013
-/**
- * Canonical repo-relative spelling of a cited doc path. `src/references/x.md`
- * and `references/x.md` name the SAME file and both occur in shipped prose —
- * both build channels' build-combined rewrite maps already enumerate the pair.
- * Rules (b) and (c) must therefore agree on one spelling; do NOT reintroduce a
- * `startsWith("references/")` prefix-equality guard in either (the `src/`
- * spelling then silently skips validation, which is exactly how a dangling
- * `src/references/nonexistent.md` citation used to PASS). See decisions.md D-013.
- */
+// DECISION plan-2026-09-01T100120-4f591469/D-013 — `src/references/x.md` and `references/x.md`
+// name the same file; rules (b) and (c) must agree via this one normalizer. Do not reintroduce a
+// `startsWith("references/")` guard in either — that let the `src/` spelling skip validation.
+/** Canonical repo-relative spelling of a cited doc path. */
 export function canonicalDocPath(citation) {
   const c = citation || "";
   return c.startsWith("src/") ? c.slice("src/".length) : c;
@@ -267,12 +255,9 @@ export function report(issues) {
   return issues.map((i) => `  ${i.file}:${i.line} [${i.rule}] ${i.message}`);
 }
 
-// DECISION plan-2026-07-16T085306-8bd12f33/D-004
-// Edges are ONLY verified-OK matches of rules (a)(b)(c), pushed from the same
-// match loops that feed `issues` — do NOT add a parallel collector/regex pass
-// (proxy-drift class), do NOT emit rule (d) / violating / unresolvable
-// matches, and do NOT sort with localeCompare (locale-dependent ordering
-// breaks cross-platform byte-identity). See decisions.md D-004.
+// DECISION plan-2026-07-16T085306-8bd12f33/D-004 — edges are ONLY verified-OK matches from the
+// same loops that feed `issues`; no parallel collector pass, no localeCompare sort (breaks
+// cross-platform byte-identity).
 /** Serialize edges to deterministic JSONL: dedupe, sort, fixed key order. */
 export function serializeEdges(edges) {
   const lines = (edges || [])
@@ -301,12 +286,8 @@ const isEntryPoint = (() => {
 })();
 
 if (isEntryPoint) {
-  // DECISION plan-2026-07-21T092933-3295714d/D-003: repoRoot override is an
-  // opt-in env var read HERE only (inside isEntryPoint) so tests can spawn the
-  // REAL CLI FAIL branches against fixture roots. Do NOT hoist this read to
-  // module scope, add an argv flag, or reintroduce a wrapper reimplementation:
-  // importers and the default (env-unset) CLI must stay byte-identical. See
-  // plan-2026-07-21T092933-3295714d decisions.md D-003.
+  // repoRoot override: opt-in env var read HERE only (inside isEntryPoint), so tests can
+  // spawn real CLI FAIL branches against fixture roots without touching module scope or CLI behavior.
   const repoRoot =
     process.env.IP_CHECK_AGENT_WIRING_ROOT ??
     join(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -379,11 +360,8 @@ if (isEntryPoint) {
     try {
       writeFileSync(edgesPath, out);
     } catch (err) {
-      // DECISION plan-2026-07-21T111733-38d0cd87/D-001: fail LOUD on any write
-      // failure — do NOT mkdirSync the parent. A typo'd --emit-edges path must
-      // exit 1 with a named slug, not silently create directories. err.code is
-      // reported verbatim (ENOENT, EACCES, ...) so non-ENOENT failures are not
-      // swallowed either. See decisions.md D-001.
+      // DECISION plan-2026-07-21T111733-38d0cd87/D-001 — fail LOUD, do not mkdirSync the parent:
+      // a typo'd --emit-edges path must exit 1 with err.code reported verbatim, never silently create dirs.
       console.error(`check-agent-wiring: FAIL [emit-edges-write-failed] ${edgesPath} (${err.code})`);
       process.exit(1);
     }

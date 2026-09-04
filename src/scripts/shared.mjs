@@ -96,27 +96,12 @@ export function blankCompressedSummaryBlock(content) {
 // ---------------------------------------------------------------------------
 // HTML comment regions in Markdown — the SINGLE definition of "where the comments are".
 //
-// DECISION plan_2026-07-14_79ee0f59/D-010 — every markdown scanner in this repo MUST
-// locate comments through `htmlCommentSpans()` below. Do NOT write a fifth
-// `/<!--[\s\S]*?-->/` regex at a call site. That pattern has now produced the same
-// bug THREE times (v2.32.0's `.md` anchor scanner; iter-1 defect #8's state.md
-// Transition-History scanners; iter-2 CRITICAL 3's `checkDecisionsSchema`), because a
-// bare regex is blind to markdown code spans: a backticked `` `<!--` `` written in
-// PROSE — which is exactly what an entry *documenting comment handling* contains —
-// supplies a phantom opener that pairs with the next `-->` anywhere downstream and
-// swallows everything between. Content inside a phantom span is INVISIBLE to
-// validation, so the check FAILS OPEN (a genuinely missing `**Trade-off**:` goes
-// silently unreported). Reproduced live against this plan's own decisions.md: D-008
-// and D-009 vanished entirely and D-007 lost its `**Complexity Assessment**` line.
-//
-// The two properties below are both load-bearing; do not "simplify" either away:
-//   1. LINE-COUNT PRESERVING. `stripHtmlComments` blanks, it does not delete. Every
-//      caller reports line numbers from the stripped text. The deleted `:769` regex
-//      used `.replace(..., "")` and every finding it emitted was off by the size of
-//      the stripped comment (observed: "D-007 (line 59)"; D-007 is at line 69).
-//   2. CODE-SPAN AWARE. A delimiter inside a backtick run or a fenced block is
-//      literal text and can neither open nor close a comment.
-// See decisions.md D-010.
+// DECISION plan_2026-07-14_79ee0f59/D-010 — every markdown scanner MUST locate comments
+// through `htmlCommentSpans()` below; do NOT write another `/<!--[\s\S]*?-->/` regex at a
+// call site (a bare regex is blind to a backticked `` `<!--` `` in prose, which opens a
+// phantom span and silently swallows real content — reproduced 3 times). The mask must stay
+// LINE-COUNT PRESERVING (blank, don't delete — callers report line numbers from it) and
+// CODE-SPAN AWARE (a delimiter inside a backtick run or fenced block is literal text).
 // ---------------------------------------------------------------------------
 
 /**
@@ -299,31 +284,13 @@ export function htmlCommentSpans(content) {
   return spans;
 }
 
-// DECISION plan_2026-07-14_79ee0f59/D-009 — CORRECTS a FALSE invariant this anchor used
-// to assert under D-003. The old note claimed the unterminated-comment branch below made
-// validate-plan.mjs's iteration hard cap fail SAFE: leave a dangling `<!--` untouched, the
-// story went, and a stray opener can only ever make the cap OVER-count. That was FALSE in
-// the shipped template's own shape. bootstrap.mjs ends EVERY state.md with a guidance
-// comment supplying a trailing `-->` (bootstrap.mjs:1383-1386), so a stray opener is never
-// unterminated: it PAIRS with that trailer and this helper dutifully blanks every real
-// transition record in between. Measured: a stray `<!-- note:` line + 4 real
-// `EXECUTE → REFLECT` records → the cap derived 0. The cap failed OPEN, silently.
-//
-// The fail-safe could not be repaired here, and MUST NOT be re-attempted here. Under HTML
-// rules that document genuinely IS one long comment; no purely-local rule distinguishes "a
-// `-->` belonging to a different comment" (a blank line does not — the decisions.md
-// template comment contains one; a heading does not; marker-balance counting does not —
-// left-to-right pairing finds the stray opener perfectly "balanced" against the trailer).
-// So the invariant was RELOCATED to the consumer that needs it: the cap now counts on the
-// RAW Transition-History block (validate-plan.mjs, `deriveIterationFromHistory`), which is
-// structurally incapable of under-counting for any comment shape.
-//
-// What that means for THIS function: it is a general-purpose, HTML-correct text helper and
-// nothing more. It is NOT a safety mechanism, and no caller may treat it as one. Keep the
-// unterminated branch (leaving the region untouched is still the least-surprising reading,
-// and blanking-to-EOF would wreck the advisory scanners), but do not restore any claim that
-// it protects a cap. An invariant asserted in a comment is not an invariant until a test
-// constructs the case it forbids — that test now exists. See decisions.md D-009.
+// DECISION plan_2026-07-14_79ee0f59/D-009 — this helper is NOT a safety mechanism and no
+// caller may treat it as one: a stray `<!--` can pair with a later real `-->` (e.g.
+// bootstrap's state.md trailer) and blank genuine content in between, so relying on it to
+// fail SAFE was false and cost the iteration hard cap an under-count. That cap now counts
+// on the RAW Transition-History block instead (validate-plan.mjs `deriveIterationFromHistory`).
+// Keep the unterminated-comment branch leaving the region untouched, but do not re-add any
+// claim that it protects a cap.
 /**
  * Blank out every complete HTML comment region (`<!-- ... -->`, markers included)
  * in `content`, preserving line count so downstream line numbers stay accurate —
@@ -385,120 +352,49 @@ export function unterminatedCommentOpener(content) {
 // scanner in this repo.
 //
 // DECISION plan-2026-09-01T100120-4f591469/D-007 — `blockCommentSpans` returns BYTE
-// OFFSETS into the ORIGINAL `content` (`start` at the `/` of `/*`, `end` one past the
-// `/` of `*/`), exactly like `htmlCommentSpans`. It is NOT a line-index API, and it must
-// never be paired with the output of a *stripping* helper. `stripHtmlComments` is
-// line-count-preserving but NOT byte-offset-preserving — it is `.replace(/[^\n]/g, "")`,
-// which DELETES non-newline bytes — and pairing offsets from one representation with text
-// from the other has already shipped a real bug in this plan (bootstrap's `stripHeader`
-// cut four lines into the wrong place; see decisions.md D-005). So: slice RAW `content`
-// with these offsets, or convert to a line number with
-// `content.slice(0, offset).split("\n").length`. Do not "simplify" a consumer by feeding
-// it stripped text.
+// OFFSETS into the ORIGINAL `content` (like `htmlCommentSpans`), never line indices, and
+// must never be paired with output from `stripHtmlComments` (which deletes bytes, not
+// line-count-preserving-only). Slice RAW content with these offsets.
 //
-// Do NOT go back to a bare `/\/\*([\s\S]*?)\*\//g` over raw text. That regex is
-// code-string-blind and fails in BOTH directions, which is why it needed replacing
-// rather than patching:
-//   1. A phantom OPENER — the bytes `/` then `*` in a string literal (`"plans/*"`) or in
-//      prose inside a `//` comment (blast-radius.mjs:214 has one today) — opens a span
-//      that never existed. Because the block scan runs IN ADDITION TO the per-line
-//      hash/slash/sql scans, every real anchor swallowed by that span is reported TWICE
-//      ("39 errors became 40"). Loud, but it trains people to distrust the scanner.
-//   2. A phantom CLOSER — a `*/` written as prose INSIDE a genuine block comment — ends
-//      the span early, and a real anchor below it is dropped with ZERO output. That is the
-//      FAIL-OPEN direction and it is strictly worse: the anchor becomes invisible to the
-//      validator AND to `bootstrap.mjs retire`, so a stale decision is never stamped.
-// (The institutional record long claimed a phantom OPENER "silently swallows every anchor
-// until the next `*/`". It does not — it double-reports. Loss comes from the closer.)
+// Do NOT go back to a bare `/\/\*([\s\S]*?)\*\//g` over raw text: it double-reports on a
+// phantom opener (e.g. `"plans/*"`) and, worse, silently drops anchors below a phantom
+// closer (`*/` written as prose inside a real comment) — invisible to both the validator
+// and `bootstrap.mjs retire`. Under-mask when unsure: an unterminated `/*` yields no span.
 //
-// The failure direction here is chosen, same as maskLiteralRegions above: UNDER-mask when
-// unsure. An unterminated `/*` yields NO span; an unterminated quote is ordinary text.
+// DECISION plan-2026-09-01T100120-4f591469/D-025 [SUPERSEDED by D-032] — a regex-literal
+// lexer was tried here to stop `/[*/]/` from ending a span early. It fixed that but ate
+// JSX comment openers (`{/* ... */}`) instead, the third defect from this component — the
+// 3-strike rule fired and the lexer was DELETED, not patched a 4th time. Do not reintroduce
+// it in any form; the `/[*/]/` over-report is the chosen, pinned behaviour.
 //
-// DECISION plan-2026-09-01T100120-4f591469/D-025 [SUPERSEDED by D-032] — regex literals
-// are NOT lexed here any more, and must not be again. D-025 added a regex-literal lexer
-// (`isRegexLiteralStart` / `skipRegexLiteral`) so that the `*/` inside an ordinary
-// character class — `const re = /[*/]/;` — would stop ending a span it never opened. It
-// did fix that shape, and it bought a worse one: the `/` in `</div>` and in `/>` sits in
-// expression position, so an ordinary JSX comment (`</div> {/* … */}`) had its OPENER
-// eaten and the whole span vanished — every anchor inside it invisible to the validator
-// AND to `bootstrap.mjs retire`. That was the THIRD defect out of this one component
-// (D-031), so the 3-strike rule was invoked and the lexer DELETED rather than patched a
-// fourth time. Do NOT reintroduce it in any form — not "refuse a literal whose terminator
-// is `/*`", not "require a plausible regex body". Those are strike 4 by construction. The
-// `/[*/]/` over-report the lexer existed to remove is now the CHOSEN behaviour, pinned by
-// name in shared.test.mjs. See decisions.md D-025, D-031, D-032.
-//
-// KNOWN, DELIBERATE holes, and they do NOT fail in the same direction:
-//  - `#`-style line comments are not treated as comments. Inside a C-family file that is
-//    harmless (a `#` there is a JS private field, not a comment) and it UNDER-masks. It
-//    used to be catastrophic in hash-family files, where it OVER-masks: this scan ran on
-//    every extension that was not HTML-style, so the four-line shell script
-//    `rm -rf build/*` / `# DECISION <plan>/D-777` / `cp src/*/lib dest/` opened a phantom
-//    span across the anchor line — the validator reported that anchor TWICE (block scan
-//    plus per-line hash scan) while `retire` stamped it once. Reproduced at 1b4f624.
-//    That is now closed at the SOURCE: `BLOCK_COMMENT_EXTS` below gates the scan to the
-//    19 extensions whose grammar actually has `/* */`, so a hash-family file never
-//    reaches this code. The hole survives only as the reason the gate exists.
-//  - Regex literals are not lexed at all, so `/*` or `*/` written INSIDE one reads as
-//    real comment syntax. That OVER-masks, in shapes reproduced here and recorded in the
-//    step-2 report: `const re = /[*/]/;` on a line below a real comment extends that
-//    comment's span through live code, so the anchor between them is reported by the
-//    per-line scan AND the block scan; `throw /[*/]/;` and `if (x) /[*/]/.test(y)` do the
-//    same; and `/^\*Plan:\s*/` (bootstrap.mjs) and `/§\s*/g` (check-agent-wiring.mjs)
-//    are the two live victims in THIS repo. It is DELIBERATE (D-032): an over-report lands
-//    in the validator's output where a maintainer sees it, whereas the lexer that removed
-//    it silently deleted whole JSX comment regions from BOTH tools, where nobody does.
-//  - Template literals are not skipped either (D-033), so a `/* */` inside a backtick
-//    string opens a real span — the same currency, spent for the same reason. Skipping
-//    them is what let an odd backtick count inside a regex (`` /^(`{3,}|~{3,})/ ``) open a
-//    runaway template literal that MASKED 4 genuine comment regions across 3 files here,
-//    which is the silent direction. `"` and `'` strings ARE still skipped: neither may
-//    cross a newline, so a mis-read of one is bounded to a single line.
-//    The shape that costs the most is the UNBALANCED one, and it is the SAME shape the
-//    family gate above just closed for shell scripts: `` const clean = `rm -rf build/*`; ``
-//    supplies a lone `/*`, a real comment further down supplies the `*/`, and the span
-//    runs across whatever lies between — so an anchor there is reported TWICE by the
-//    validator while `retire` stamps it ONCE. The hash-family desync is closed at the
-//    source; this C-family one is CHOSEN and measured (shared.test.mjs's D-037 cost pin
-//    and bootstrap.test.mjs's `build.mjs` fixture assert both counts). Do not read the
-//    2.62.0 lockstep claim as covering it. See decisions.md D-033, D-037.
+// Known, deliberate, disclosed holes (all fail LOUD, never silent): `#`-line comments
+// aren't scanned here (harmless in C-family; hash-family files are excluded by
+// BLOCK_COMMENT_EXTS below instead). Regex literals aren't lexed, so `/* */` bytes inside
+// one over-masks (double-reports) rather than losing anything. Template literals aren't
+// skipped either (D-033) — same over-report trade, chosen over the silent multi-file
+// masking an unbalanced backtick skip caused previously.
 // ---------------------------------------------------------------------------
 
 // DECISION plan-2026-09-01T100120-4f591469/D-032 — the block-comment scan is gated by
-// this ALLOWLIST, and only by it. Do NOT restore the old complement gate
-// (`!HTML_STYLE_EXTS.has(ext)`), and do NOT rewrite this as a denylist of the
-// hash/SQL families. The complement gate ran `blockCommentSpans` on all 33
-// `ANCHOR_SOURCE_EXTS` members, including 13 (`.py .rb .sh .bash .zsh .yml .yaml .toml
-// .r .pl .pm .tf .sql`) in which `/*` is not a comment opener at all — two shell globs
-// then supplied an opener and a closer, opened a phantom span across a real anchor, and
-// desynced the two tools (validator 2 reports, `retire` 1 stamp). An allowlist fails the
-// SAFE way for an extension nobody has classified yet: it gets no block scan (at worst a
-// `/* */` anchor is missed in ONE new language, and the exhaustive-partition test in
-// validate-plan.test.mjs turns the build red naming it), where a denylist would give it
-// phantom spans everywhere. DISCLOSED HOLE: `.tf` and `.sql` do have real `/* */`
-// comments, and they are deliberately absent here — an anchor written in their native
-// `#` / `--` line style stays visible, one written inside `/* */` does not. Both
-// consumers — `validate-plan.mjs`'s `findAnchorsInFile` and `bootstrap.mjs`'s `cmdRetire`
-// block-span arm — import THIS set; a second copy is how the two tools disagree about
-// what a comment is. See decisions.md D-031, D-032.
+// this ALLOWLIST only. Do NOT restore the old complement gate or rewrite as a denylist:
+// running the C-style block scan on hash/SQL-family extensions (13 of them have no `/* */`
+// at all) let two shell globs open a phantom span across a real anchor and desync the
+// validator from `retire`. An allowlist fails safe for an unclassified extension (no scan,
+// loud partition-test failure) where a denylist would give it phantom spans everywhere.
+// Disclosed hole: `.tf`/`.sql` do have real `/* */` comments and are deliberately absent —
+// anchors inside them go unscanned. Both consumers (`findAnchorsInFile`, `cmdRetire`)
+// import this one set.
 export const BLOCK_COMMENT_EXTS = new Set([
   ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".go", ".rs",
   ".c", ".h", ".cpp", ".hpp", ".cc", ".java", ".kt", ".swift", ".scala", ".cs", ".php",
 ]);
 
 // DECISION plan-2026-09-01T100120-4f591469/D-033 — the BACKTICK is deliberately ABSENT
-// from this set. Do NOT add it back "so template literals are skipped like the other
-// string forms". Skipping them is exactly what let an odd backtick count inside a regex
-// literal (`` /^(`{3,}|~{3,})/ ``) open a template literal that ran to the next backtick
-// anywhere in the file and swallowed 4 real comment spans across 3 files in this repo —
-// a silent LOSS, the one direction this scanner may not fail in, and the only form of
-// string skip that can run away past a whole file. The cost is known, accepted and
-// MEASURED: a `/* */` written inside a genuine template literal now opens a phantom span,
-// and in the unbalanced form (a glob such as `build/*` inside the literal, closed by a
-// real comment below) that span swallows the anchor between them — 2 validator reports
-// against 1 `retire` stamp, the same desync shape the family gate closed for hash-family
-// files, relocated here on purpose. A visible over-report of the same kind D-032 already
-// chose. See decisions.md D-032, D-033, D-037.
+// from this set; do not add it back. Skipping template literals previously let an odd
+// backtick count inside a regex literal run to the next backtick anywhere in the file and
+// silently swallow real comment spans — the one failure direction this scanner must not
+// take. The accepted cost is a visible over-report instead (a `/* */` inside a template
+// literal now opens a phantom span).
 const BLOCK_STRING_DELIMS = new Set(['"', "'"]);
 
 // Skip a quoted string starting at `i`. Returns the offset one past its closing quote,
@@ -594,32 +490,16 @@ export function blockCommentSpans(content) {
 // ---------------------------------------------------------------------------
 // Identifier grammars: plan-id and decision-id.
 //
-// DECISION plan_2026-07-14_79ee0f59/D-005 — these are the ONLY definitions of the
-// two id grammars in the codebase. Do NOT re-declare `PLAN_ID_RE` (or an inline
-// `plan_\d{4}-...` / `D-\d{3}` pattern) in bootstrap.mjs or validate-plan.mjs:
-// they diverged exactly that way once (bootstrap enforced 8 hex, the validator
-// accepted any hex tail "for forward compatibility"), which is a one-sided
-// migration hazard — the producer and the checker disagreeing about what a legal
-// id even is. Do NOT re-loosen the hex tail to `+` for "forward compatibility":
-// there is no other producer, and a permissive checker cannot catch a corrupt
-// pointer or a hand-typo'd anchor. If the id shape ever really changes, change it
-// HERE and both consumers move together. See decisions.md D-005.
+// DECISION plan_2026-07-14_79ee0f59/D-005 — the ONLY definitions of the two id grammars
+// in the codebase; do not re-declare a `PLAN_ID_RE` elsewhere (they diverged once when
+// duplicated) or loosen the hex tail "for forward compatibility" (a permissive checker
+// can't catch a typo'd anchor). Change it HERE only, both consumers move together.
 //
-// v2.36.0 EXTENSION of the rule above (decisions.md D-003 of plan_2026-07-14_317362c4;
-// deliberately NOT a second anchor — D-005 is the anchor and this is its amended body).
-// The rule is now: ONE *write* grammar (`PLAN_ID_PATTERN`, new format) and ONE *read*
-// union (`ANY_PLAN_ID_PATTERN` = new | legacy) — BOTH live here and nowhere
-// else. Every path that *validates or scans* an existing id (pointer, retire input,
-// `*Plan:*` preamble, the 4 anchor regexes, plan-dir enumeration, `## <plan-id>`
-// sections, sliding-window trim, INDEX date) uses the UNION. Only *generation* uses
-// `PLAN_ID_PATTERN`. Do NOT "clean this up" by deleting `LEGACY_PLAN_ID_PATTERN` once
-// new-format dirs exist: old dirs stay on disk, and the 18 committed anchors qualified
-// by the legacy id `plan_2026-07-14_79ee0f59` are matched only by the union. A
-// new-only read grammar does not make them loud orphans — it makes them match
-// *nothing*, silently deleting 18 still-binding decisions from the audit net. And do
-// NOT make `ANY_PLAN_ID_PATTERN` capturing: it is interpolated into the anchor regexes,
-// whose `pushMatch` reads m[1]=planName / m[2]=id / m[3]=stale by INDEX. A capture group
-// here shifts all three and mis-parses every anchor in the repo. See decisions.md D-003.
+// `PLAN_ID_PATTERN` (new format) is for GENERATION only; `ANY_PLAN_ID_PATTERN` (new |
+// legacy union) is for every read/validate path — do not delete the legacy half once
+// new-format dirs exist, or old committed anchors silently stop matching anything. Do
+// NOT make `ANY_PLAN_ID_PATTERN` capturing: it's interpolated into anchor regexes whose
+// `pushMatch` reads fixed group indices by position.
 // ---------------------------------------------------------------------------
 
 /**
@@ -690,17 +570,11 @@ export function planDateFromId(id) {
  * in every decision-id regex (decisions.md headers, the 4 anchor comment styles, the
  * consolidated DECISIONS.md scan, the changelog decision-ref field, retire's stamper).
  *
- * DECISION plan_2026-07-14_79ee0f59/D-005 — the trailing `(?!\d)` is LOAD-BEARING.
- * Do NOT "simplify" this to a bare `\d{3,}`. Once the id length is variable, a greedy
- * digit run can BACKTRACK to a shorter prefix to make the rest of an enclosing regex
- * match. The live casualty is `bootstrap.mjs retire`, whose stamper has no terminator
- * after the id (it must match `D-001:`, `D-001 `, and `D-001` at EOL alike): on an
- * already-stamped `D-1000 [STALE]` it matched just `D-100` — the next char is `0`, not
- * ` [STALE]`, so its idempotency lookahead passed — and re-stamped the file into the
- * corrupt `D-100 [STALE]0 [STALE]`. That is an irreversible source mutation. Pinning the
- * digit run to be MAXIMAL here makes every consumer boundary-safe by construction,
- * instead of each one having to re-derive that its own trailing `\|` / ` ` / `\b` / `$`
- * happens to forbid a digit. Zero-width, so capture groups still yield just the digits.
+ * DECISION plan_2026-07-14_79ee0f59/D-005 — the trailing `(?!\d)` is LOAD-BEARING; do not
+ * simplify to a bare `\d{3,}`. Without it a greedy digit run can backtrack to a shorter
+ * prefix (observed: `bootstrap.mjs retire` re-stamped an already-stamped `D-1000 [STALE]`
+ * into the corrupt `D-100 [STALE]0 [STALE]`, an irreversible source mutation). Zero-width,
+ * so capture groups still yield just the digits.
  * See decisions.md D-005.
  */
 export const DECISION_ID_NUM_PATTERN = "\\d{3,}(?!\\d)";

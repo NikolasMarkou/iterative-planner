@@ -55,13 +55,9 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PLAN_TEMPLATES } from "./bootstrap.mjs";
-// DECISION plan-2026-07-14T141152-113d5b92/D-009: import the SLICER itself (resolveTemplate) and
-// check its OUTPUT for all 17 slugs — the union of what emit-template serves agents — instead of
-// approximating where that output ends with a doc boundary. Five guards fell because each derived a
-// PROXY for the served region (a skeleton half, a phrase set, a boundary, an anchored-line grammar)
-// and every proxy diverged from resolveTemplate's UNANCHORED substring slicer. There is no boundary
-// left to import; the thing checked IS the thing served. TEMPLATE_MARKER stays (shared literal,
-// used by BANNED below). See decisions.md D-009.
+// DECISION plan-2026-07-14T141152-113d5b92/D-009 — import the slicer itself (resolveTemplate) and
+// check its real output for all 17 slugs, rather than approximating where it ends with a doc
+// boundary. Five prior proxy-boundary guards diverged from the slicer and broke; there is no boundary left to import.
 import { resolveTemplate, VALID_TEMPLATES, TEMPLATE_MARKER } from "./emit-template.mjs";
 
 export const DOC_REL = "src/references/file-formats.md";
@@ -168,15 +164,9 @@ export function checkParity(templates, docText, srcText = "", expectedSlugs = EX
     const h = header(templates[slug]);
     for (let i = 0; i + 1 < h.length; i++) if (!pairs.has(pair(h, i))) pairs.set(pair(h, i), slug);
   }
-  // DECISION plan-2026-07-14T141152-113d5b92/D-009: the SUBSTRATE is resolveTemplate's OUTPUT, not a
-  // doc region/boundary. For each slug in servedScope (default VALID_TEMPLATES — fail-closed: all 17,
-  // never a silent subset), resolveTemplate(slug, docBuf) returns the EXACT bytes emit-template
-  // serves that slug's agents; we scan THAT body. Do NOT reintroduce a boundary / served-region /
-  // docText line-window scan here — five reviewers broke every proxy for the served region because
-  // each diverged from this UNANCHORED slicer. A slug that fails to resolve is a LOUD FAIL naming it
-  // (a removed/renamed/redirected marker can NEVER silently drop a slug), never a bare `continue`.
-  // `docBuf` defaults to Buffer.from(docText) but the CLI passes the RAW file bytes it read once, so
-  // the served substrate is byte-identical to emit-template's own raw read even for invalid UTF-8.
+  // DECISION plan-2026-07-14T141152-113d5b92/D-009 — scan resolveTemplate's real output per slug
+  // (servedScope defaults to all 17, fail-closed), never a doc-region/boundary proxy. A slug that
+  // fails to resolve is a loud FAIL naming it, never a silent `continue`.
   let servedChecked = 0;
   for (const served of servedScope) {
     const r = resolveTemplate(served, docBuf);
@@ -273,12 +263,8 @@ const isEntryPoint = (() => {
 })();
 
 if (isEntryPoint) {
-  // DECISION plan-2026-07-21T092933-3295714d/D-003: repoRoot override is an
-  // opt-in env var read HERE only (inside isEntryPoint) so tests can spawn the
-  // REAL CLI FAIL branches against fixture roots. Do NOT hoist this read to
-  // module scope, add an argv flag, or reintroduce a wrapper reimplementation:
-  // importers and the default (env-unset) CLI must stay byte-identical. See
-  // plan-2026-07-21T092933-3295714d decisions.md D-003.
+  // repoRoot override: opt-in env var read HERE only (inside isEntryPoint), so tests can
+  // spawn real CLI FAIL branches against fixture roots without touching module scope or CLI behavior.
   const repoRoot =
     process.env.IP_CHECK_TEMPLATE_PARITY_ROOT ??
     join(dirname(fileURLToPath(import.meta.url)), "..", "..");

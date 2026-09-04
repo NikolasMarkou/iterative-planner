@@ -13,28 +13,13 @@
 // THE RULE, in one line: a file fails only when BOTH its density AND its raw
 // marker count rise above the committed pair.
 //
-// DECISION plan-2026-09-01T100120-4f591469/D-027: the conjunction is the whole
-// point — do NOT simplify this back to a density-only comparison. Density is
-// markers per 1000 WORDS, so DELETING plain prose raises it without adding any
-// jargon at all: the density-only form failed a doc for having 12 ordinary
-// sentences removed, which is exactly the simplification SKILL.md § Register
-// Discipline tells agents to prefer. Requiring the raw count to rise too makes
-// a pure deletion structurally incapable of failing, because you cannot raise a
-// count by removing text. See decisions.md D-027.
+// DECISION plan-2026-09-01T100120-4f591469/D-027 — the conjunction is the whole point: density
+// alone rises when plain prose is DELETED, punishing the exact simplification this repo wants.
+// Do not simplify back to density-only.
 //
-// DECISION plan-2026-09-01T100120-4f591469/D-021: entries are EXACT measured
-// values, not allowances. Do NOT restore per-file headroom "so ordinary edits
-// don't turn the build red" — headroom is precisely what made this a loose
-// ceiling instead of a ratchet for 24 releases. The first baseline (v2.36.0)
-// added a uniform allowance to each measurement, leaving 17%-100% slack on
-// every file. Re-measured at HEAD in v2.61.0; all 19 ceilings fell. Adding one
-// marker to a doc turns the build red, and that is the intent — the reply is to
-// write the sentence plainly, or, when the marker is genuinely earned, to raise
-// that ONE entry by name (`--regenerate --raise <file>`) in the same commit,
-// where a reviewer can see it. The pin test
-// in check-register.test.mjs asserts every committed entry EQUALS its file's
-// live measurement, so the baseline can never silently sit above reality.
-// See decisions.md D-021.
+// DECISION plan-2026-09-01T100120-4f591469/D-021 — entries are EXACT measured values, not
+// allowances. Do not restore per-file headroom; that is what made this a loose ceiling instead
+// of a ratchet for 24 releases. A pin test asserts every committed entry equals its file's live measurement.
 //
 // Baseline shape — one object per scanned doc:
 //   { "CLAUDE.md": { "ceiling": 9.06, "markers": 118 }, ... }
@@ -99,14 +84,9 @@ export function jargonMarkers(text) {
   const bracket = (t.match(bracketRe) || []).length;
   const coded = (t.match(/\b(?:PC-[A-Z]+|D-\d{2,3}|[A-Z]-\d{3}|[UFWNS]\d)\b/g) || [])
     .length;
-  // DECISION plan-2026-07-23T191907-b8d237ed/D-001: strip bracket-tag spans BEFORE the
-  // compound regex — do NOT range-dedupe overlapping matches or add a shared
-  // dedupe helper. A 3+-segment bracket tag's inner slug (e.g. [doc-parity-floor])
-  // would otherwise be double-counted by both bracket AND compound. bracket↔compound
-  // is the ONLY overlap (coded is uppercase, disjoint), so a single-pair range-dedupe
-  // abstraction is unearned. Replace with a SPACE (not "") to keep token boundaries so
-  // adjacent tokens don't fuse into a false compound. Keeps the gate count-invariant /
-  // non-fuzzy (D-001, LESSONS [I:5]). See decisions.md D-001.
+  // DECISION plan-2026-07-23T191907-b8d237ed/D-001 — strip bracket-tag spans BEFORE the compound
+  // regex (replace with a space, not "", to keep token boundaries), so a tag's inner slug isn't
+  // double-counted by both. Do not add a range-dedupe helper for this one overlap.
   const noBrackets = t.replace(bracketRe, " ");
   const compound = (noBrackets.match(/\b[a-z]+-[a-z]+-[a-z]+(?:-[a-z]+)*\b/g) || [])
     .length;
@@ -358,12 +338,8 @@ const isEntryPoint = (() => {
 })();
 
 if (isEntryPoint) {
-  // DECISION plan-2026-07-21T092933-3295714d/D-003: repoRoot override is an
-  // opt-in env var read HERE only (inside isEntryPoint) so tests can spawn the
-  // REAL CLI FAIL branches against fixture roots. Do NOT hoist this read to
-  // module scope, add an argv flag, or reintroduce a wrapper reimplementation:
-  // importers and the default (env-unset) CLI must stay byte-identical. See
-  // decisions.md D-003.
+  // repoRoot override: opt-in env var read HERE only (inside isEntryPoint), so tests can
+  // spawn real CLI FAIL branches against fixture roots without touching module scope or CLI behavior.
   const repoRoot =
     process.env.IP_CHECK_REGISTER_ROOT ??
     join(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -371,43 +347,16 @@ if (isEntryPoint) {
   const measurements = measureAll(repoRoot);
   const baselinePath = join(repoRoot, "src/scripts/register-baseline.json");
 
-  // DECISION plan-2026-09-01T100120-4f591469/D-028: --regenerate exists so the
-  // "the baseline IS the live measurement" claim is reproducible by anyone, and
-  // it REFUSES to write from a scan below EXPECTED_MIN_FILES — do NOT drop that
-  // guard for convenience, or a gutted scan could be laundered into a fresh
-  // baseline that then passes the floor it just failed. The equality itself is
-  // asserted by the second `pin:` test in check-register.test.mjs, not by this
-  // gate: without it a ceiling set ABOVE live density passed every check.
-  // See decisions.md D-028.
-  // DECISION plan-2026-09-01T100120-4f591469/D-035: --regenerate LOWERS or
-  // HOLDS a ceiling freely and REFUSES to raise one that was not named with
-  // --raise. Do NOT relax this to "warn and write anyway", and do not drop the
-  // flag because it is inconvenient on a doc-heavy commit. The conjunction gate
-  // above cannot see an equal swap — add three new tags, delete three old
-  // marker-bearing lines and 40 plain lines, and the count holds while density
-  // rises 11.27 -> 15.78, so the gate passes. The only thing that then turns
-  // red is the pin test, and its one repair is a regenerate; an unguarded
-  // regenerate is therefore the laundering path itself, whatever the drift rule
-  // says. Guarding the ratchet's write instead of the metric is what makes a
-  // raise greppable in the commit that earns it. Guarding a raise of the raw
-  // MARKER count too was considered and left out on purpose: drift needs the
-  // density above the ceiling, so the ceiling is the binding number, and a
-  // marker rise under a falling density is the dilution case D-027 already
-  // disclosed as accepted. See decisions.md D-035.
-  // DECISION plan-2026-09-01T100120-4f591469/D-037: what this guard does NOT
-  // do, stated here because the PASS text used to claim otherwise. It guards
-  // ONE code path to the baseline — `--regenerate` — not the file. Hand-editing
-  // register-baseline.json to the live number reaches green here, through
-  // `make validate` and through the whole suite; nothing in this script can see
-  // it. The thing that catches a hand-edit is the D-028 pin test, and only
-  // because it demands every committed ceiling EQUAL its file's live
-  // measurement — so a hand-edit survives exactly when it writes what
-  // `--regenerate` would have written. Do NOT restore the claim that this shape
-  // "can only reach green through --regenerate --raise"; it was false when it
-  // shipped (ip-reviewer iteration-2 Concern 3, reproduced in one editor
-  // action). Closing the hole means guarding the WRITE (a committed-vs-previous
-  // ceiling diff read from git, or a raise ledger), which is a different gate
-  // with a different failure surface and is not attempted here.
+  // DECISION plan-2026-09-01T100120-4f591469/D-028 — --regenerate refuses to write from a scan
+  // below EXPECTED_MIN_FILES, so a gutted scan can't launder a fresh baseline past the floor it
+  // just failed. Do not drop that guard for convenience.
+  // DECISION plan-2026-09-01T100120-4f591469/D-035 — --regenerate lowers or holds a ceiling
+  // freely but refuses to raise one not named with --raise: the conjunction gate can't see an
+  // equal tag-swap (add jargon, delete enough plain prose to hold the count), and an unguarded
+  // regenerate would launder that swap through the pin test's own repair path.
+  // DECISION plan-2026-09-01T100120-4f591469/D-037 — this guard covers only the --regenerate
+  // code path, not the baseline file: hand-editing register-baseline.json to the live number
+  // still reaches green. Only the D-028 pin test (every ceiling must equal live measurement) catches that.
   const argv = process.argv.slice(2);
   const wantsRegenerate = argv.includes("--regenerate");
   const raiseNames = new Set();

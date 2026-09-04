@@ -221,47 +221,17 @@ function isPivotPhase(s) {
   return false;
 }
 
-// DECISION plan_2026-07-14_79ee0f59/D-003 — state.md's Transition History MUST be
-// read comment-blind. bootstrap.mjs's own state.md template ends with an HTML-comment
-// guidance block that embeds a literal example transition (`- EXPLORE → PLAN (...)`),
-// so a raw scan of the block ingests template prose as if it were a real transition
-// record: it made [exploration-confidence] WARN on EVERY fresh plan, and it would let
-// a future template example inject a phantom (possibly ILLEGAL) transition into the
-// legality check and the iteration hard-cap counter.
-// NOTE: this is the SAME comment-region-blindness class the repo already fixed once in
-// v2.32.0 for the .md DECISION-anchor scanner (see HTML_STYLE_EXTS below, ~:904). The
-// state.md scanners never learned that lesson; this helper is the single place they do.
-// Do NOT re-introduce a raw `state.slice(indexOf("## Transition History:"))` scan —
-// route every Transition-History reader through this function.
-// CORRECTED at iter-2/step-5 (D-009): this note used to add "and do NOT improve
-// stripHtmlComments to blank an unterminated `<!--` to EOF, because that would disable the
-// iteration hard cap". That framing was wrong — it located a SAFETY property in a
-// general-purpose text helper. The stripper's behaviour never protected the cap (a stray
-// opener pairs with bootstrap's template trailer, so it is never unterminated in the first
-// place). The cap protects itself, by reading RAW: see deriveIterationFromHistory below.
-// DECISION plan_2026-07-14_79ee0f59/D-010 — the heading is located with a LINE-ANCHORED
-// match (`/^## Transition History:/m`), never a bare `stripped.indexOf("## Transition
-// History:")`. Do not "simplify" it back to indexOf. A substring search also matches the
-// heading's own NAME written mid-line in prose — and state.md's Change Manifest quotes it
-// verbatim (iteration 1 recorded: "All raw `state.indexOf(\"## Transition History:\")`
-// scans replaced..."). The block then began at the Change Manifest instead of the real
-// heading 45 lines later, so ~40 lines of prose were scanned as transition records. This
-// was INVISIBLE until CRITICAL 3 was fixed, because the code-span-blind comment scrub was
-// blanking the very lines it corrupted — two bugs cancelling out. Measured on this repo's
-// own state.md: the block started at line 17, the transition-legality check saw 14
-// transition-shaped prose lines, and the iteration hard-cap counter derived **0** from 3
-// real `EXECUTE → REFLECT` records. A heading is a LINE, so match it as one.
+// DECISION plan_2026-07-14_79ee0f59/D-003 — state.md's Transition History is read
+// comment-blind: bootstrap's own template embeds an example transition inside an HTML
+// comment, and a raw scan ingests it as a real record. Route every reader through this
+// function; do not re-introduce a raw indexOf/slice scan.
+// DECISION plan_2026-07-14_79ee0f59/D-010 — the heading is matched LINE-ANCHORED
+// (`/^## Transition History:/m`), never `indexOf`: a bare substring search also matches
+// the heading's own name quoted in prose elsewhere in the file.
 // DECISION plan_2026-07-14_79ee0f59/D-009 — the `raw` option exists for exactly ONE
-// caller: deriveIterationFromHistory (the iteration hard cap). Do NOT pass `{ raw: true }`
-// from an advisory scanner "for consistency" — they MUST keep reading the stripped block,
-// where bootstrap's template example transition is invisible and a false WARN would be
-// recoverable anyway. See the fail-closed note on deriveIterationFromHistory below.
-// The heading is located in whichever text the caller reads, NOT always in the stripped
-// text: a stray `<!--` ABOVE the heading blanks the heading itself, so a stripped-only
-// lookup returns null and the cap derives 0 from ANY number of real records. Measured on
-// the reviewer's fixture (stray opener + 4 real records + the template trailer): the
-// stripped lookup derives **0**, not the 2 the review reported. Locating in raw text is
-// what makes the cap structurally incapable of under-counting.
+// caller, deriveIterationFromHistory (the iteration hard cap), which must read RAW text
+// so a stray `<!--` above the heading can't blank it and silently under-count. Every
+// other (advisory) caller keeps reading the stripped block.
 function transitionHistoryBlock(state, { raw = false } = {}) {
   if (!state) return null;
   const text = raw ? state : stripHtmlComments(state);
@@ -400,14 +370,10 @@ function checkCrossFileConsistency(planDir, issues) {
   // Check convergence metrics in verification.md for iteration 2+ REFLECT
   if (["REFLECT", "CLOSE"].includes(currentState.toUpperCase())) {
     const verification = readFile(join(planDir, "verification.md"));
-    // DECISION plan-2026-09-01T100120-4f591469/D-034 — this is the one iteration reader
-    // that does NOT mirror checkIterationLimits. It asks "has this plan been re-planned?",
-    // so it derives from re-plan count, not from `EXECUTE → REFLECT` count. Do NOT
-    // "restore consistency" by swapping in deriveIterationFromHistory: that counts the
-    // same-iteration completion-fix loop as an iteration bump and fires this WARN on a
-    // plan the protocol says is still on iteration 1. See countRePlans (line ~530).
-    // The max(declared, derived) shape is kept for the same reason the cap keeps it: an
-    // agent that forgets to bump the declared field cannot silently bypass this WARN.
+    // DECISION plan-2026-09-01T100120-4f591469/D-034 — asks "has this plan been re-planned?",
+    // via re-plan count (countRePlans below), not `EXECUTE → REFLECT` count — the latter
+    // wrongly counts a same-iteration completion-fix loop as a new iteration. Do not swap in
+    // deriveIterationFromHistory here.
     const stateIterRaw = extractField(state, /^## Iteration:\s*(.+)$/m);
     const declaredIter = stateIterRaw ? parseInt(stateIterRaw, 10) : 0;
     const derivedIter = deriveConvergenceIteration(state);
@@ -464,21 +430,11 @@ function checkChangeManifest(planDir, issues) {
 // EXECUTE/REFLECT — outside those states the section is stale from a previous
 // step. WARN at 3, ERROR at 4+. Resets on step / PIVOT / user direction
 // (tracked by the agent rewriting the section).
-// DECISION plan-2026-09-01T100120-4f591469/D-026: this regex is ONE constant on
-// purpose. Do NOT re-inline it at the call sites, and do NOT tighten the step-number
-// fragment to schema.mjs's STEP_RE (`\d+(?:\.\d+)?`) for consistency's sake: two
-// copies is how the sub-step hole opened, and a tighter fragment makes an unforeseen
-// step number UNCOUNTED, which disables a safety cap silently. See decisions.md D-026.
-// ONE definition of the fix-attempt line shape, shared by the retrospective audit
-// (checkLeashCount) and the real-time --pre-step gate (runPreStepGate). Duplicating
-// it is how the sub-step hole opened: the two copies matched `Step \d+` only, so
-// `- Step 9.1, attempt 1:` — the completion-fix numbering CLAUDE.md mandates and
-// ip-orchestrator.md mints — silently bypassed BOTH tiers of the leash.
-// Step-number fragment is `\d+(?:\.\d+)*`: deliberately ONE quantifier looser than
-// schema.mjs's STEP_RE (`step-\d+(?:\.\d+)?`, which is the changelog field grammar
-// and allows a single sub-level). The leash is a safety cap, so an unforeseen
-// `Step 9.1.2` must be COUNTED, not silently skipped; over-counting an odd shape is
-// the fail-safe direction, under-counting is the defect being fixed here.
+// DECISION plan-2026-09-01T100120-4f591469/D-026: ONE shared constant for the fix-attempt
+// line shape (checkLeashCount + runPreStepGate) — two copies previously matched `Step \d+`
+// only, so `- Step 9.1, attempt 1:` (completion-fix numbering) bypassed the leash entirely.
+// Step-number fragment is deliberately looser than schema.mjs's STEP_RE: a safety cap must
+// over-count an unforeseen shape like `Step 9.1.2`, never silently skip it.
 const FIX_ATTEMPT_RE = /^-\s+(Step\s+\d+(?:\.\d+)*[,\s]+attempts?\s+\d+|Attempts?\s+\d+)/i;
 
 function checkLeashCount(planDir, issues) {
@@ -532,42 +488,16 @@ function countExecuteReflect(block) {
   return count;
 }
 
-// DECISION plan-2026-09-01T100120-4f591469/D-034 — the ADVISORY iteration derivation, and
-// deliberately NOT the one the hard cap uses. The two answer different questions:
-//   countExecuteReflect  → "how much work has happened?"  (fail-CLOSED; may over-count)
-//   countRePlans         → "has this plan been RE-PLANNED?" (fail-QUIET; advisory only)
-// Do NOT unify them, in either direction. Feeding this count to `checkIterationLimits`
-// would let a plan that loops forever without re-planning escape the cap — an UNDER-count
-// in a safety mechanism, the one direction D-009 forbids. Feeding `countExecuteReflect` to
-// the convergence check is the defect this exists to fix: the protocol states that a
-// completion-fix `REFLECT → EXECUTE` loop does NOT increment the iteration (SKILL.md
-// Transitions, "Same iteration only"), yet that loop adds an `EXECUTE → REFLECT` record, so
-// the cap's counter read 2 on a plan that was correctly at iteration 1 and the EXTENDED
-// check fired on it. Every WARN must correspond to a rule some protocol file actually
-// instructs an agent to follow.
-//
-// Counts arrivals at PLAN that BEGIN A NEW ITERATION, and only those. The edge set is
-// read off SKILL.md's own Transitions table rather than guessed: three edges arrive at
-// PLAN — `EXPLORE → PLAN`, `PLAN → PLAN` and `PIVOT → PLAN` — and an arrival begins a new
-// iteration only when the plan got there by LEAVING REFLECT, i.e.
-//   REFLECT → PIVOT   … PIVOT → PLAN     (the re-plan after a pivot), or
-//   REFLECT → EXPLORE … EXPLORE → PLAN   (SKILL.md § Autonomy Leash, "Known reset gap",
-//                                         names this path as one that starts a NEW
-//                                         iteration with no PIVOT in it).
-// Everything else arriving at PLAN is same-iteration work the table declares legal and
-// routine: the opening `EXPLORE → PLAN`, `PLAN → PLAN` (the user rejected the plan — it
-// happens on every revision round), and `PLAN → EXPLORE → PLAN` (gap-filling before the
-// user has ever approved anything). Counting bare `→ PLAN` arrivals minus the first read
-// all three of those as iteration 2 and fired this WARN on iteration-1 plans; that was
-// ip-reviewer iteration-2 Concern 1, orchestrator-reproduced end to end.
-//
-// Implemented as ONE ordered pass with ONE bit of state (`leftReflect`), not as a set of
-// per-shape special cases: leaving REFLECT arms it, the next arrival at PLAN spends it.
-// Reads the STRIPPED block, per D-009's rule that advisory scanners never pass
-// `{ raw: true }` — a false advisory WARN is recoverable. bootstrap's state.md template
-// comment carries a literal `EXPLORE → PLAN` example, which under this rule contributes
-// nothing whether it is stripped or not (no REFLECT departure precedes it), so the
-// arithmetic no longer depends on a subtraction that hid it.
+// DECISION plan-2026-09-01T100120-4f591469/D-034 — the ADVISORY iteration derivation,
+// deliberately separate from the hard cap's countExecuteReflect: this asks "has the plan
+// been re-planned?", not "how much work happened?". Do not unify them — feeding this count
+// to the hard cap would let an endless non-replanning loop escape it (an under-count in a
+// safety mechanism); feeding countExecuteReflect here wrongly flags a same-iteration
+// completion-fix loop as a new iteration.
+// Counts arrivals at PLAN that begin a new iteration: only `REFLECT → PIVOT → PLAN` and
+// `REFLECT → EXPLORE → PLAN` (SKILL.md § Autonomy Leash "Known reset gap"). Every other
+// arrival at PLAN (`EXPLORE → PLAN`, `PLAN → PLAN`, `PLAN → EXPLORE → PLAN`) is routine
+// same-iteration work per the Transitions table and must not count.
 /** Count re-plans: arrivals at PLAN that follow a departure from REFLECT (null → 0). */
 function countRePlans(block) {
   if (block === null) return 0;
@@ -598,35 +528,12 @@ export function deriveConvergenceIteration(state) {
 }
 
 // DECISION plan_2026-07-14_79ee0f59/D-009 — this counter drives the iteration hard cap
-// (a SAFETY mechanism), and it therefore counts on the **RAW** history block. Do NOT
-// "unify" it with the advisory scanners by dropping the raw read.
-//
-// This CORRECTS a false invariant that shipped here under D-003. That note claimed the
-// cap could only ever OVER-count, because `stripHtmlComments` leaves an unterminated
-// `<!--` untouched. The claim was FALSE in the shipped template's own shape:
-// bootstrap.mjs ends EVERY state.md with a guidance comment that supplies a trailing
-// `-->` (bootstrap.mjs:1383-1386), so a stray opener is never unterminated — it pairs
-// with that trailer and blanks everything between. Reproduced: a stray `<!-- note:` line
-// above the heading + 4 real `EXECUTE → REFLECT` records → the cap derived **0**. The
-// safety cap silently disappeared. It failed OPEN.
-//
-// The fail-safe cannot live in the stripper. Under HTML rules that document genuinely IS
-// one long comment, and no purely-local rule distinguishes "a `-->` belonging to another
-// comment": a blank line does not, a heading does not, and marker-balance counting does
-// not (left-to-right pairing finds the stray opener perfectly "balanced" against the
-// template's closer). So the invariant is RELOCATED to the consumer that needs it — this
-// one. Counting `max(raw, stripped)` (raw is the whole region a comment could hide) makes
-// under-counting STRUCTURALLY IMPOSSIBLE for any comment shape, and the cap can then only
-// OVER-count: the loud, recoverable, agent-visible direction.
-//
-// Advisory scanners (checkExplorationConfidence, transition legality, the PC advisory)
-// deliberately keep reading the STRIPPED block: a false WARN there is recoverable, a false
-// ERROR would not be. The price of raw counting is re-acquiring the template-example
-// exposure D-003 removed — safe today ONLY because the template's sole example transition
-// is `EXPLORE → PLAN`, never `EXECUTE → REFLECT` (assumption B4, re-verified against
-// bootstrap.mjs:1383-1386 at iter-2/step-5). If a template example ever adds an
-// `EXECUTE → REFLECT` line, this over-counts by one on EVERY fresh plan — and
-// [state-comment-anomaly] fires to say why. See decisions.md D-009.
+// (a SAFETY mechanism), so it reads `max(raw, stripped)`, never stripped-only: a stray
+// `<!--` above the heading pairs with bootstrap's own trailing `-->` and can blank real
+// records, making the cap derive 0 and fail OPEN. Raw counting makes under-counting
+// structurally impossible; the cap can then only over-count, which is the safe direction.
+// Advisory scanners deliberately keep reading stripped-only — a false WARN is recoverable,
+// a false ERROR would not be.
 // Exported for testability ONLY (the CLI cannot observe a derived count below 5 — the cap
 // prints nothing under its WARN threshold — and the review's fixture measures exactly 4).
 // The module's CLI dispatch is already guarded by `isEntryPoint`, so importing is safe.
@@ -637,18 +544,10 @@ export function deriveIterationFromHistory(state) {
   );
 }
 
-// DECISION plan_2026-07-14_79ee0f59/D-009 — the DIAGNOSTIC half of the fail-closed cap.
-// Raw counting (above) makes the cap incapable of under-counting, but it buys that with the
-// possibility of an OVER-count whenever a comment region embeds a transition-shaped line.
-// An unexplained over-count would be its own kind of silent failure ("why does the validator
-// think I am on iteration 8?"), so this check exists to always EXPLAIN one.
-//
-// WARN ONLY. Do NOT promote this to an ERROR and do NOT add it to the --pre-step gate's
-// HARD-fail slugs. A stray comment marker in state.md is an authoring accident, not a
-// protocol violation: the cap already handles the safety consequence, and an ERROR here
-// would BLOCK a plan over a typo in a file the agent is actively editing. It also must stay
-// silent on a fresh `bootstrap.mjs new` plan dir and on this repo's own plan dir — a WARN
-// that fires on every plan is noise, and noise is how a real signal gets ignored.
+// DECISION plan_2026-07-14_79ee0f59/D-009 — the DIAGNOSTIC half of the fail-closed cap:
+// explains an over-count from a stray unterminated `<!--`. WARN only, never promoted to
+// ERROR or to the --pre-step HARD-fail slugs — a stray marker is an authoring accident,
+// not a protocol violation, and the cap already handles the safety consequence.
 function checkStateCommentAnomaly(planDir, issues) {
   const state = readFile(join(planDir, "state.md"));
   if (!state) return; // absence is already reported by checkStateTransitions
@@ -1024,17 +923,10 @@ function checkLessonsCap(issues) {
 // plans/INDEX.md's last data row — INDEX is append-only, one row per close,
 // so the last plan-id row IS the most recent close).
 //
-// DECISION plan-2026-07-16T164852-47577439/D-001 — severity is WARN/INFO ONLY,
-// and the trigger is the COUNT invariant alone. Do NOT add a similarity
-// threshold, normalization pass, or any fuzzy content matching to "catch
-// swaps" — that is the proxy-gate failure class the repo's own [I:5] lesson
-// documents (a threshold-dependent approximation never has an unambiguous
-// "the property held" signal), and an equal-count content swap is explicitly
-// a recorded limitation left to human judgment. Do NOT promote to ERROR:
-// merges/tightening of [I:5] entries are legitimate curation, and this gate
-// must never block CLOSE. The verbatim-line diff attached to the WARN is
-// decision-support for a human, not a matcher.
-// See plan-2026-07-16T164852-47577439/decisions.md D-001.
+// DECISION plan-2026-07-16T164852-47577439/D-001 — severity is WARN/INFO only, triggered by
+// the COUNT invariant alone; no fuzzy content matching. An equal-count content swap is a
+// recorded limitation left to human judgment. Never promote to ERROR — [I:5] curation must
+// not block CLOSE.
 function checkLessonsEviction(issues) {
   const lessons = readFile(join(plansDir, "LESSONS.md"));
   if (lessons === null) return; // absent/unreadable — checkLessonsCap already reports absence
@@ -1142,18 +1034,9 @@ function parseDecisionsEntries(content) {
   // in bootstrap.mjs (wrapped in <!-- ... -->) does not register as a real D-001.
   //
   // DECISION plan_2026-07-14_79ee0f59/D-010 — both scrubs are LINE-COUNT PRESERVING and
-  // the comment scrub is CODE-SPAN AWARE. Do NOT restore the regex that stood here:
-  //   blankCompressedSummaryBlock(content).replace(/<!--[\s\S]*?-->/g, "")
-  // It was wrong twice over. (1) It DELETED lines, so every line number this function
-  // reports was offset by the size of any stripped comment — it reported "D-007 (line 59)"
-  // for an entry at line 69 on this repo's own decisions.md. (2) It was blind to code
-  // spans, so a backticked `` `<!--` `` in an entry that merely *writes about* comments
-  // opened a phantom span that ran to the next `-->` in a LATER entry — silently
-  // deleting real entries. On this repo's own decisions.md it made D-008 and D-009
-  // vanish and emitted two FALSE ERRORs (a bogus "sequence broken … got D-010" and a
-  // bogus "missing **Complexity Assessment**"). The dangerous half is the inverse: a
-  // decision genuinely missing `**Trade-off**:` inside a swallowed span was reported by
-  // NOTHING. The check failed OPEN. See decisions.md D-010 and shared.mjs
+  // code-span aware. Do not restore a raw `.replace(/<!--[\s\S]*?-->/g, "")`: it shifted
+  // reported line numbers and, worse, let a backticked `<!--` in real prose open a phantom
+  // span that silently swallowed later entries (failed OPEN). Use shared.mjs's
   // `htmlCommentSpans` — the single definition of where the comments are.
   const stripped = stripHtmlComments(blankCompressedSummaryBlock(content));
   const lines = stripped.split("\n");
@@ -1348,37 +1231,16 @@ function checkVerificationVerdict(planDir, issues) {
   // five required labels (or a separator-joined compound of them). Everything
   // else in the section — lead-ins, commentary, deferred-work notes — is not.
   //
-  // DECISION plan-2026-08-04T092155-0063b038/D-011 — SUPERSEDED by D-013 below, and
-  // kept here as the thing NOT to do. This anchor used to justify deriving the field
-  // list as "keyword-matching bullets at the MINIMUM indent among keyword-matching
-  // bullets". That rule closed the original defect but made indentation load-bearing
-  // for the first time, so ANY keyword-matching bullet shallower than the real fields
-  // silently deleted them. It shipped six CLOSE-blocking false positives in v2.57.9,
-  // every one on a Verdict whose five real fields were present, filled and IN ORDER:
-  // a RAGGED indent (four fields at 0, the fifth at 2) reported `missing required
-  // bullet(s): Recommended transition`, and five fields nested under a lead-in that
-  // itself matched a keyword (`- Criteria passed summary:`) reported the other four
-  // missing. Do NOT restore it, and do NOT reach for indent again — see D-013.
+  // DECISION plan-2026-08-04T092155-0063b038/D-011 — SUPERSEDED by D-013, kept as the
+  // thing NOT to do: a "keyword bullet at minimum indent" rule made indentation
+  // load-bearing and shipped six CLOSE-blocking false positives on correctly-indented
+  // Verdicts. Do not restore it and do not reach for indent again.
   //
   // DECISION plan-2026-08-04T092155-0063b038/D-013 — the discriminator is LABEL
-  // TIGHTNESS. It must never be POSITION (indent), and both ways of reaching for
-  // position have now shipped a CLOSE-blocking false positive:
-  //   * Do NOT use an ABSOLUTE indent rule ("a field must be at indent 0"). Verdicts
-  //     written with a uniform 2-space, 4-space or tab indent are clean today and
-  //     this repo writes them; an absolute rule turns every one of them into a hard
-  //     `missing required bullet(s)` ERROR at CLOSE.
-  //   * Do NOT use a RELATIVE indent rule either — not minimum-indent-over-all-
-  //     bullets, and specifically not the min-over-keyword-matching-bullets rule
-  //     D-011 above describes. Indentation has now failed TWICE as the axis; there
-  //     is no third variant of it worth trying. Nothing below reads an indent.
-  //   * Do NOT go back to UNANCHORED keyword substrings with no tightness test.
-  //     That is the original defect: "Recommendation-related follow-up" contains
-  //     "Recommendation", so a deferred-work note satisfied a required field.
-  // Tightness separates the two classes without consulting position at all: a real
-  // field's label essentially IS the required label, while every observed decoy is
-  // that label embedded in a longer phrase. Deriving ONE list also keeps the PENDING
-  // scan's stated intent ("a sub-bullet is not a Verdict field") and its
-  // implementation from diverging. See decisions.md D-013 (and D-011 for history).
+  // TIGHTNESS, never position: a bullet is a field only when its label essentially IS
+  // the required label. Both absolute and relative indent rules have shipped a
+  // CLOSE-blocking false positive (see D-011); unanchored keyword substrings are the
+  // original defect ("Recommendation-related follow-up" matched "Recommendation").
   const FIELD_LABEL_PATTERNS = [
     /^criteria\s+pass(?:ed|es|ing)?(?:\s+count)?$/,
     /^regressions?$/,
@@ -1671,17 +1533,10 @@ function findAnchorsInFile(file, projectRoot, prefixPattern = ANY_PLAN_ID_PATTER
   // where the grammar applies instead of guessing where it does not; gate on the
   // extension, never by path (that hides real anchors in a whole directory).
   //
-  // DECISION plan-2026-09-01T100120-4f591469/D-007 — the spans come from shared.mjs's
-  // `blockCommentSpans`, NOT from a local `/\/\*([\s\S]*?)\*\//g` over raw text. Do not
-  // inline one back. That regex is code-string-blind and failed in BOTH directions: the
-  // bytes `/` then `*` inside a string literal or inside `//` prose opened a phantom span,
-  // and because this scan runs IN ADDITION TO the per-line scans above, every anchor it
-  // swallowed was reported TWICE; and a `*/` written as prose inside a genuine block
-  // comment ended the span early, silently DROPPING every anchor below it — invisible to
-  // this validator and to `bootstrap.mjs retire` alike. The offsets are BYTE offsets into
-  // `text`; slice raw text with them and derive line numbers by counting newlines. Never
-  // pair them with stripped text (see shared.mjs D-007 and decisions.md D-005). retire's
-  // stamper consumes the SAME primitive — change one, change both. See decisions.md D-007.
+  // DECISION plan-2026-09-01T100120-4f591469/D-007 — spans come from shared.mjs's
+  // `blockCommentSpans`, never a local raw-text regex (code-string-blind, and shipped both
+  // double-reporting and silent anchor loss). Byte offsets into `text`, never paired with
+  // stripped text. `bootstrap.mjs retire` consumes the same primitive — change one, change both.
   if (BLOCK_COMMENT_EXTS.has(ext)) {
     for (const { start, end } of blockCommentSpans(text)) {
       const body = text.slice(start + 2, end - 2); // strip "/*" and its closer
@@ -1707,15 +1562,10 @@ function findAnchorsInFile(file, projectRoot, prefixPattern = ANY_PLAN_ID_PATTER
   // stamps exactly what the validator scans" contract holds on malformed input.
   // A `#`- or `//`-style example inside a fenced code block is prose, not an anchor.
   //
-  // DECISION plan_2026-07-14_79ee0f59/D-010 — the comment spans come from shared.mjs's
-  // `htmlCommentSpans`, NOT from a local `/<!--([\s\S]*?)-->/g`. Do not inline one back:
-  // that regex is code-span-blind, so a backticked `` `<!--` `` in prose opens a phantom
-  // span and the scanner then sees anchors inside doc examples (or misses a real one
-  // whose span boundary moved). That hole was previously only PAPERED OVER by policy —
-  // CLAUDE.md tells doc authors to use placeholder ids — which is a policy patch over a
-  // code bug. It is now closed in code. bootstrap.mjs retire's stamper consumes the SAME
-  // primitive, which is what makes the "the validator sees exactly what retire stamps"
-  // contract true by construction. Change one, change both. See decisions.md D-010.
+  // DECISION plan_2026-07-14_79ee0f59/D-010 — comment spans come from shared.mjs's
+  // `htmlCommentSpans`, never a local raw regex (code-span-blind: a backticked `<!--` in
+  // prose opened a phantom span). `bootstrap.mjs retire` consumes the same primitive, which
+  // is what makes "the validator sees exactly what retire stamps" true by construction.
   if (HTML_STYLE_EXTS.has(ext)) {
     for (const { start, end } of htmlCommentSpans(text)) {
       const body = text.slice(start + 4, end - 3); // strip "<!--" and "-->"
@@ -1733,17 +1583,10 @@ function findAnchorsInFile(file, projectRoot, prefixPattern = ANY_PLAN_ID_PATTER
   return out;
 }
 
-// DECISION plan_2026-07-14_317362c4/D-005 — anchors whose plan-id prefix is not a legal
-// plan-id are found by a SECOND, loose-prefix pass, and reported as WARN. Do NOT "fix"
-// this by widening the read union (shared.mjs) to also accept the commit-tag shape
-// `plan-YYYY-MM-DD-HASH`: that would make a mis-derived prefix *resolve*, and the anchor
-// would then be silently attributed to a plan directory that does not exist. The union is
-// the grammar of things that ARE plan-ids; this pass is the net under it. And do NOT
-// promote this to ERROR: the anchor still documents a real decision, the id still
-// resolves by eye, and a cosmetic prefix typo must not hard-block a REFLECT→CLOSE gate.
-// Bare anchors (no prefix at all) are NOT reported here — `anchor-unqualified` already
-// owns them; double-reporting the same line under two checks trains people to ignore both.
-// See decisions.md D-005.
+// DECISION plan_2026-07-14_317362c4/D-005 — anchors with an illegal plan-id prefix are
+// found by a second, loose pass and reported as WARN, never ERROR (a cosmetic typo must
+// not block CLOSE). Do not widen the plan-id grammar to make a mis-derived prefix resolve
+// — that would silently attribute the anchor to a plan directory that doesn't exist.
 function findBadPrefixAnchorsInFile(file, projectRoot) {
   return findAnchorsInFile(file, projectRoot, LOOSE_ANCHOR_PREFIX_PATTERN)
     .filter((a) => a.qualified && !ANY_PLAN_ID_RE.test(a.planName));
@@ -1754,24 +1597,11 @@ function findBadPrefixAnchorsInFile(file, projectRoot) {
 // section-aware: each `## <plan-id>` heading begins a section; `### D-NNN`
 // entries within belong to that plan.
 //
-// DECISION plan-2026-07-16T164852-47577439/D-001 — the per-plan decisions.md reads are
-// scoped to `referencedPlanIds` (the plan-ids that STRICT qualified anchors actually name
-// in source, collected by checkReverseAnchors's pass 1), NOT a readdirSync walk of every
-// plans/ directory ever created. Do NOT restore the full-corpus walk: it is O(all-plan-dirs)
-// file reads per full validation, unbounded as closed plans accumulate, and the sole
-// consumer only ever looks up plan-ids it found in source anchors. Do NOT replace it with a
-// committed/generated index file either — that adds a staleness surface (index diverging
-// from the per-plan files) plus an artifact class this repo has explicitly rejected.
-// AMENDED 2026-08-04 (v2.58.0): that prohibition is about a REPLACEMENT index DERIVED from
-// the per-plan files — a copy that can silently diverge from its source. It still stands.
-// The manifest tier added below is ADDITIVE, is not derived from anything (it is written
-// once at CLOSE by the file's owner, from the closing plan's own decisions.md), and is the
-// only tier that survives the plans directory being gitignored — which it is, in every
-// consuming project. Its staleness mode is "a line is missing", which produces exactly
-// today's ERROR rather than a false PASS. The O(all-plan-dirs) walk stays forbidden.
-// The complete read set is {active plan ∪ referenced plans} + consolidated plans/DECISIONS.md
-// (sliding-window trimming means either source may be the sole holder of a plan's entries)
-// + the one committed plans/ANCHORS.md manifest.
+// DECISION plan-2026-07-16T164852-47577439/D-001 — per-plan decisions.md reads are scoped
+// to `referencedPlanIds` (plan-ids actually named by anchors in source), never a readdirSync
+// walk of every plans/ directory (O(all-plan-dirs), unbounded). Also never a generated index
+// derived from the per-plan files — that's a staleness surface. Read set: {active ∪
+// referenced plans} + consolidated plans/DECISIONS.md + committed plans/ANCHORS.md.
 // `baseDir` exists solely so tests can point at a fixture tree — the module-level
 // `plansDir` binds to cwd at import time. Exported for the decoy-dirs unit test.
 // See plan-2026-07-16T164852-47577439/decisions.md D-001.
@@ -1837,16 +1667,11 @@ export function collectKnownDecisionIdsByPlan(planDir, activePlanName, reference
   // independent of how many plan directories exist. Never runs on the --pre-step
   // path, which bypasses the full validator entirely.
   //
-  // DECISION plan-2026-08-04T092155-0063b038/D-010 — do NOT generate these lines by
-  // scanning `# DECISION` anchors out of source. That would make an anchor its own
-  // proof of validity: a typo'd plan-id would write itself into the manifest and then
-  // resolve, silently retiring the typo detection anchor-unknown-plan exists to
-  // provide (plan criterion C-13). The manifest is written from the closing plan's own
-  // decisions.md, which is the authoritative record. And do NOT widen this line regex
-  // toward free text — it is anchored at line start and requires the pipe delimiter
-  // immediately after the id so that ordinary prose, including a rationale that
-  // happens to mention another id, can never register a decision. A loose regex here
-  // makes unrelated text silently satisfy anchors. See decisions.md D-010.
+  // DECISION plan-2026-08-04T092155-0063b038/D-010 — never generate these lines by scanning
+  // `# DECISION` anchors out of source (an anchor would become its own proof of validity,
+  // silently retiring typo detection). Written only from the closing plan's own decisions.md.
+  // Line regex stays anchored at line start with the pipe delimiter immediate — never widen
+  // toward free text, or ordinary prose could register a decision.
   const manifest = readFile(join(baseDir, "ANCHORS.md"));
   if (manifest) {
     const manifestLineRe = new RegExp(
@@ -1862,15 +1687,10 @@ export function collectKnownDecisionIdsByPlan(planDir, activePlanName, reference
   return map;
 }
 
-// DECISION plan-2026-09-01T100120-4f591469/D-008 — an orphan message may name ONLY the
-// sources that were actually read. The old text ("plan exists but no D-NNN entry in its
-// decisions.md") asserted two facts the check never established: when an anchor resolves
-// through `plans/ANCHORS.md` alone, no plan directory and no decisions.md were opened at
-// all, so the message sent a maintainer to a path that does not exist. Do NOT "improve"
-// this by stat-ing the plan directory here — that re-derives, at report time and per
-// orphan, something `collectKnownDecisionIdsByPlan` already knows for free at `add()`
-// time; the tier set travels on the returned Map's `tiersByPlan` sidecar. See
-// decisions.md D-008.
+// DECISION plan-2026-09-01T100120-4f591469/D-008 — an orphan message names ONLY the
+// sources actually read (via the Map's `tiersByPlan` sidecar), not a fixed list — the old
+// text pointed at a decisions.md that was never opened when resolution came from
+// plans/ANCHORS.md alone.
 function tierList(knownByPlan, planName) {
   const set = knownByPlan.tiersByPlan?.get(planName);
   if (!set || set.size === 0) return "no decision source";
@@ -2023,17 +1843,9 @@ function checkVerificationEvidence(planDir, issues) {
     if (cells.length > 0 && cells[0] === "") cells.shift();
     if (cells.length > 0 && cells[cells.length - 1] === "") cells.pop();
     if (cells.length < 6) continue; // schema: # | Criterion | Method | Cmd | Result | Evidence
-    // DECISION plan-2026-09-01T100120-4f591469/D-011
-    // Discriminate on the CRITERION cell, never on the Evidence cell. Bootstrap
-    // writes one skeleton row — `| 1 | *To be populated during PLAN* | - | - | PENDING | - |`
-    // — so a freshly created plan WARNed on the validator's own template bytes, while
-    // the sibling checkPlanSections already tolerated the identical shape via
-    // PLACEHOLDER_PATTERNS. That constant is REUSED here rather than a second
-    // exemption list grown: one placeholder policy per validator.
-    // Do NOT widen this to the Evidence cell (`-` / `PENDING`) — that is exactly the
-    // condition this check EXISTS to report at REFLECT, and exempting it would delete
-    // the check while appearing to fix it. A row naming a REAL criterion with an empty
-    // or PENDING Evidence cell must still WARN. See decisions.md D-011.
+    // DECISION plan-2026-09-01T100120-4f591469/D-011 — discriminate on the CRITERION cell
+    // (reusing PLACEHOLDER_PATTERNS), never the Evidence cell: an empty/PENDING Evidence
+    // cell beside a REAL criterion is exactly what this check exists to WARN on at REFLECT.
     const criterion = cells[1] || "";
     if (PLACEHOLDER_PATTERNS.some((p) => p.test(criterion))) continue;
     const evidence = cells[5];
@@ -2082,20 +1894,11 @@ function checkFindingsTopicSections(planDir, issues) {
     { name: "Code Patterns", re: /^##\s+Code Patterns\b/m },
     { name: "Risks", re: /^##\s+Risks\b/m },
   ];
-  // DECISION plan-2026-09-01T100120-4f591469/D-010
-  // `findings/` holds TWO artifact schemas, not one. Explorer topic files use the
-  // Summary/Key Findings/Constraints/Code Patterns/Risks template; REVIEWER output
-  // (`agents/ip-reviewer.md` § Output Format) uses Concerns/Blind Spots/Verdict and
-  // is named `review-iter-N.md` (bare) or `review-iter-N-passM.md` (re-review pass).
-  // Do NOT go back to one required-list for every `.md` in the dir: that WARNed
-  // "missing Summary, Key Findings, Constraints, Code Patterns, Risks" on every
-  // CONFORMANT review file, at every iteration>=2 REFLECT and again at archivist
-  // Step 1 — and the remedy an agent reaches for is editing the review file into the
-  // explorer schema, destroying the Concerns/Verdict blocks the orchestrator relays.
-  // Also do NOT "fix" this by SKIPPING review-*.md: the discriminator SWITCHES the
-  // required list, it does not exempt. A file named like reviewer output that lacks
-  // `## Verdict` must still WARN — that section is consumed by REFLECT routing.
-  // See decisions.md D-010; required sections derived from ip-reviewer.md, not fixtures.
+  // DECISION plan-2026-09-01T100120-4f591469/D-010 — `findings/` holds TWO artifact schemas:
+  // explorer topic files (Summary/Key Findings/Constraints/Code Patterns/Risks) and reviewer
+  // output (`review-iter-N[-passM].md`, Concerns/Blind Spots/Verdict per ip-reviewer.md). The
+  // filename discriminator SWITCHES the required list, never exempts — a reviewer file
+  // missing `## Verdict` must still WARN, since REFLECT routing consumes that section.
   const reviewerRequired = [
     { name: "Concerns", re: /^##\s+Concerns\b/m },
     { name: "Blind Spots", re: /^##\s+Blind Spots\b/m },
@@ -2267,20 +2070,11 @@ function checkAnchorRefsValidity(planDir, planDirName, issues, projectRoot) {
 // deliberately not copied here — this comment used to spell the op field `OP(+N,-M)`, a
 // shape the spec rejects and which cannot express CREATE(+N), DELETE(-N) or RENAME(old→new).
 //
-// DECISION plan_2026-07-14_79ee0f59/D-001 — the SIX hand-maintained field regexes that used to live
-// right here (TS / STEP / COMMIT / OP / RADIUS / DREF) are GONE. They now exist exactly once, as
-// typed fields in schema.mjs's CHANGELOG_SPEC: each line is split by splitChangelogFields(), turned
-// into a synthetic <entry> node by entryFromFields(), and checked by validateElement().
-//
-// What NOT to do:
-//   - Do NOT reintroduce a changelog field regex here. Two copies of a field shape kept in lockstep
-//     by hand is the exact defect the schema exists to remove; that is why validateElement() and
-//     entryFromFields() are exported at all. (The XML encoding that once wrapped this file was
-//     reverted in v2.35.0 — the SCHEMA is what survived, and it is the whole point.)
-//   - Do NOT promote [changelog-malformed] to ERROR. The changelog is ADVISORY (file-formats.md:
-//     "Changelog issues are advisory only. Never blocks CLOSE."). A bug in our own line parser must
-//     never be able to block a CLOSE.
-// See decisions.md D-001.
+// DECISION plan_2026-07-14_79ee0f59/D-001 — the six changelog field regexes live exactly
+// once, as typed fields in schema.mjs's CHANGELOG_SPEC (split by splitChangelogFields,
+// checked by validateElement). Do not reintroduce a field regex here — two hand-kept copies
+// is the defect the schema removes. [changelog-malformed] stays WARN, never ERROR: the
+// changelog is advisory and a bug in our own parser must never block CLOSE.
 function checkChangelogFormat(planDir, issues) {
   const file = join(planDir, "changelog.md");
   const content = readFile(file);
@@ -2327,25 +2121,11 @@ function checkChangelogFormat(planDir, issues) {
 // ---------------------------------------------------------------------------
 // v2.51.0 — changelog dref join integrity (WARN-only)
 // ---------------------------------------------------------------------------
-// DECISION plan-2026-07-16T085306-8bd12f33/D-001 — join integrity is a SEPARATE
-// flat check, string-set membership only, called ONLY from validate().
-// What NOT to do:
-//   - Do NOT re-validate the dref SHAPE here (no `D-\d{3,}` regex, no new field
-//     constants): checkChangelogFormat REPORTS shape violations via CHANGELOG_SPEC
-//     but does NOT gate them out of this check — the join fires on any 8-field
-//     line's non-`-` dref, shape-valid or not, so a shape-invalid dref (e.g.
-//     `D-1`) draws both [changelog-malformed] and [changelog-dref-orphan]
-//     (accepted double-WARN, WARN-only, by design). The source-grep test in
-//     validate-plan.test.mjs pins this file as regex-free for the six changelog
-//     fields. This check compares the raw dref string against
-//     parseDecisionsEntries()'s idStr set — nothing more.
-//   - Do NOT wire this into runPreStepGate (state.md-only, <50ms, exit-2 contract)
-//     and do NOT promote to ERROR (the changelog is advisory; a stale dref must
-//     never block a CLOSE).
-//   - Do NOT add a second decisions.md parser: parseDecisionsEntries is the one
-//     parser (it is already comment/compression-blind — a dref whose decision was
-//     compressed away legitimately WARNs; accepted trade-off).
-// See decisions.md D-001 (plan-2026-07-16T085306-8bd12f33).
+// DECISION plan-2026-07-16T085306-8bd12f33/D-001 — join integrity is a separate flat
+// check (string-set membership against parseDecisionsEntries' idStr set), called only from
+// validate(). It does not re-validate dref shape (that's CHANGELOG_SPEC's job — a
+// shape-invalid dref may draw both WARNs, by design) and stays out of --pre-step and out
+// of ERROR: the changelog is advisory and must never block a CLOSE.
 function checkChangelogDrefIntegrity(planDir, issues) {
   const content = readFile(join(planDir, "changelog.md"));
   if (!content) return; // Optional file — same convention as checkChangelogFormat.
@@ -2380,21 +2160,11 @@ function checkChangelogDrefIntegrity(planDir, issues) {
 }
 
 // ---------------------------------------------------------------------------
-// DECISION plan-2026-09-01T100120-4f591469/D-009
-// ---------------------------------------------------------------------------
-// There is deliberately NO Presentation Contract check here. A
-// `checkPresentationContractLog` lived at this spot from v2.17.0 and WARNed
-// [presentation-contract-unlogged] unless the literal string PC-PLAN / PC-REFLECT /
-// PC-PIVOT appeared in state.md, decisions.md or progress.md.
-//
-// Do NOT restore it, and do NOT write a new one. It verified an UNOBSERVABLE
-// property: a Presentation Contract is a chat-only artifact by definition
-// (SKILL.md "User Interaction", references/file-formats.md "Presentation
-// Contracts"), and NO protocol file — SKILL.md, any agents/*.md, any
-// scripts/modules/*.md, any references/*.md — instructs any agent to write a
-// contract name into a plan file. So a correctly-run plan WARNed, and the only way
-// to silence it was an undocumented convention that exactly one historical plan
-// happened to follow.
+// DECISION plan-2026-09-01T100120-4f591469/D-009 — deliberately NO Presentation Contract
+// check here. `checkPresentationContractLog` (v2.17.0) WARNed unless PC-PLAN/PC-REFLECT/
+// PC-PIVOT appeared in a plan file, but a Presentation Contract is chat-only by definition
+// and no protocol file instructs writing one to disk — so a correctly-run plan WARNed. Do
+// not restore it or write a new one.
 //
 // The tempting "fix" — adding that instruction to the orchestrator and the REFLECT
 // module — was rejected: an agent that logs the contract name proves only that it

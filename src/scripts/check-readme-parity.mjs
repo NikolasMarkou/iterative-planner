@@ -20,14 +20,9 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// DECISION plan-2026-09-01T100120-4f591469/D-014
-// Anchored to the BADGE, not to the version string. The prior
-// `/Skill-v(\d+\.\d+\.\d+)-/` matched anywhere in README, so deleting the badge
-// while any other line still carried `Skill-v<VERSION>-` (a CHANGELOG excerpt,
-// a quoted markdown sample) PASSed: the gate proved a string existed, not that
-// a badge did. Do NOT loosen this back to a bare substring match — the whole
-// claim of this check is "the README's version BADGE agrees with VERSION".
-// See decisions.md D-014.
+// DECISION plan-2026-09-01T100120-4f591469/D-014 — anchored to the BADGE, not a bare version
+// substring: the old regex passed as long as any line carried the string, badge or not.
+// Do not loosen this back to a substring match.
 const VERSION_BADGE_RE =
   /!\[[^\]]*\]\(https:\/\/img\.shields\.io\/badge\/Skill-v(\d+\.\d+\.\d+)-[^)]*\)/;
 
@@ -52,11 +47,8 @@ export function checkVersionBadge(readmeText, version) {
   };
 }
 
-// DECISION plan-2026-09-01T100120-4f591469/D-016
-// The sibling of VERSION_BADGE_RE above, anchored the same way and for the same
-// reason: `/tests-(\d+)%20passing/` matched anywhere in README, so deleting the
-// badge while any other line still carried `tests-<N>%20passing` PASSed. Do NOT
-// loosen this back to a bare substring match. See decisions.md D-016.
+// DECISION plan-2026-09-01T100120-4f591469/D-016 — sibling of VERSION_BADGE_RE, same reason:
+// anchored to the badge, not a bare substring.
 const TEST_BADGE_RE =
   /!\[[^\]]*\]\(https:\/\/img\.shields\.io\/badge\/tests-(\d+)%20passing-[^)]*\)/;
 
@@ -88,12 +80,8 @@ const isEntryPoint = (() => {
 })();
 
 if (isEntryPoint) {
-  // DECISION plan-2026-07-21T092933-3295714d/D-003: repoRoot override is an
-  // opt-in env var read HERE only (inside isEntryPoint) so tests can spawn the
-  // REAL CLI FAIL branches against fixture roots. Do NOT hoist this read to
-  // module scope, add an argv flag, or reintroduce a wrapper reimplementation:
-  // importers and the default (env-unset) CLI must stay byte-identical. See
-  // decisions.md D-003.
+  // repoRoot override: opt-in env var read HERE only (inside isEntryPoint), so tests can
+  // spawn real CLI FAIL branches against fixture roots without touching module scope or CLI behavior.
   const repoRoot =
     process.env.IP_CHECK_README_PARITY_ROOT ??
     join(dirname(fileURLToPath(import.meta.url)), "..", "..");

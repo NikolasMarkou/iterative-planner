@@ -34,13 +34,9 @@ import { fileURLToPath } from "node:url";
 
 export const VALID_TEMPLATES = ["state","plan","decisions","findings","progress","verification","checkpoints","findings-consolidated","decisions-consolidated","lessons","system","index","lessons-snapshot","changelog","summary","presentation-contracts","lessons-synthesis"];
 
-// DECISION plan-2026-07-14T141152-113d5b92/D-008: the single owner of the marker literal.
-// This literal governs resolveTemplate's per-slice terminator scan; the checker imports it for
-// its `BANNED` (encodability) list. Do NOT re-declare "<!-- TEMPLATE:" anywhere else (esp. NOT in
-// the checker) — the whole failure class this fixes is two hand-maintained copies of one grammar
-// diverging. One definition, imported by every consumer. (D-009 deleted the old served-region
-// boundary function — the checker no longer derives a boundary at all; it checks resolveTemplate's
-// served bytes directly, for all 17 slugs.)
+// DECISION plan-2026-07-14T141152-113d5b92/D-008 — single owner of the marker literal;
+// do NOT re-declare "<!-- TEMPLATE:" anywhere else, including the checker, which imports
+// this constant instead.
 export const TEMPLATE_MARKER = "<!-- TEMPLATE:";
 
 const USAGE = "Usage: node emit-template.mjs --name <" + VALID_TEMPLATES.join("|") + ">";

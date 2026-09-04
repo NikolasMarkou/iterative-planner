@@ -214,15 +214,9 @@ function reverseDeps() {
   // .git — without them, a basename mentioned in prose inside plans/*/changelog.md
   // (or a vendored copy under node_modules/) inflates the deps count for the
   // fallback path only, making the two paths disagree on the same file.
-  // DECISION plan-2026-07-21T092933-3295714d/D-002 — the pathspec set is
-  // root-framed: the exclude uses rootRel (a cwd-relative repoRel silently
-  // excluded the WRONG path when invoked from a subdir), and the inclusive
-  // `:(top)` is REQUIRED, not decorative — verified live: with only exclude
-  // pathspecs, git grep still limits the search to the cwd subtree, so a
-  // subdir invocation missed every importer outside it. Do NOT drop `:(top)`
-  // and do NOT swap the `-- repoRel` diff pathspecs elsewhere to rootRel
-  // (git resolves those against cwd). Output stays cwd-relative; the
-  // `l !== repoRel` filter below is kept as defense in depth.
+  // DECISION plan-2026-07-21T092933-3295714d/D-002 — pathspecs are root-framed (rootRel,
+  // not repoRel) and `:(top)` is REQUIRED: without it a subdir invocation misses importers
+  // outside its own subtree. Do not drop `:(top)` or swap diff pathspecs elsewhere to rootRel.
   const gitGrep = execArgs("git", ["grep", "-E", "-l", "--untracked", "--no-color", pat,
                                    "--", ":(top)", `:(top,exclude)${rootRel}`, ":(top,exclude)plans/"]);
   if (gitGrep.noMatch) return { score: 0, count: 0 };
@@ -387,17 +381,10 @@ function emitUnknown(reason) {
 
 if (!isGitRepo()) emitUnknown("no-git");
 
-// DECISION plan-2026-07-21T092933-3295714d/D-002 — root-frame derivation.
-// The tool's contract (`<repo-rel-path>` changelog field, root-relative state.md
-// manifests) is ROOT-framed, but cwd may be any subdirectory. Derive the repo
-// root ONCE, after the isGitRepo() gate; on rev-parse failure fall back to the
-// CWD frame (pre-fix behavior exactly — no new failure path, exit stays 0).
-// Do NOT move git pathspec args (`-- repoRel`) or display output to rootRel:
-// git resolves cwd-relative pathspecs itself, and root-invoked output is pinned
-// by existing tests. Only sharedPath(), reverseDeps()'s exclude pathspec,
-// testDelta()'s self-skip + file reads (fourth consumer, missed by the first
-// pass and caught by the iteration-1 review — the [I:5] N-place-fix class),
-// and iterationHistory() consume the root frame. See decisions.md D-002.
+// DECISION plan-2026-07-21T092933-3295714d/D-002 — root-frame derivation: derive the repo
+// root ONCE here (fallback to cwd on rev-parse failure), consumed by sharedPath(),
+// reverseDeps(), testDelta(), iterationHistory(). Do not move git pathspec args to rootRel —
+// git resolves those against cwd, and output is pinned root-relative by existing tests.
 const root = tryExecArgs("git", ["rev-parse", "--show-toplevel"]) ?? cwd;
 const rootRel = relative(root, filePath);
 if (!existsSync(filePath)) {
