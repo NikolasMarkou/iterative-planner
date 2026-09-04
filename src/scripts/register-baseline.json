@@ -8,7 +8,7 @@
     "markers": 53
   },
   "src/SKILL.md": {
-    "ceiling": 5.77,
+    "ceiling": 5.83,
     "markers": 38
   },
   "src/agents/ip-archivist.md": {
@@ -64,7 +64,7 @@
     "markers": 78
   },
   "src/references/planning-rigor.md": {
-    "ceiling": 1.01,
+    "ceiling": 1.05,
     "markers": 2
   },
   "src/references/python-software.md": {
@@ -72,7 +72,7 @@
     "markers": 10
   },
   "src/references/root-cause-analysis.md": {
-    "ceiling": 1.8,
+    "ceiling": 1.81,
     "markers": 2
   }
 }
