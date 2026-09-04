@@ -28,7 +28,7 @@ Formalize as a numbered why-chain:
 4. Why? — the author assumed the class had one member. (← lever: assumptions must be sweep-verified, not example-verified.)
 5. Why was *that* possible? — no test asserted the sweep. (← lever: add the sweep assertion.)
 
-Stop at 5: whys 4 and 5 each yield an actionable lever, and a sixth ("why did the author assume?") leaves the system boundary into individual judgement. **Do not stop at the first plausible cause** — that is premature closure, the most common RCA failure mode.
+Stop at 5: whys 4 and 5 each yield an actionable lever, and a sixth ("why did the author assume?") leaves the system boundary into individual judgement — applying `planning-rigor.md`'s Stop rule to this worked example.
 
 ## Fishbone / Ishikawa category scan
 
