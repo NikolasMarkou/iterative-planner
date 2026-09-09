@@ -393,7 +393,7 @@ A sub-agent can terminate WITHOUT reporting — killed by the user, harness inte
 - **EXPLORE**: expected `findings/{topic-slug}.md` missing or empty → re-spawn that topic once (orchestrator dispatch step 5; delete an empty stale copy first).
 - **PLAN**: `plan.md` truncated or sections missing → orchestrator section-verify catches it (dispatch step 3); re-spawn naming the defective sections.
 - **EXECUTE**: killed executor → Recovery step 12 (commit-tag grep, then dirty-tree check, then changelog-tail cross-check).
-- **REFLECT**: partial `verification.md` (fewer Criteria rows than plan.md's Success Criteria) or a review file missing its `## Verdict` line → treat as interrupted evidence and re-spawn (for a reviewer, per the `-passM` naming rule; a re-spawned verifier just returns results — verification.md has no passM scheme) (REFLECT Gate-In).
+- **REFLECT**: partial `verification.md` (fewer Criteria rows than plan.md's Success Criteria) or a review file missing its `## Verdict` line → treat as interrupted evidence and re-spawn (for a reviewer, per the `-passM` naming rule; a re-spawned verifier just returns results — verification.md has no passM scheme) (REFLECT Gate-In). A `findings/hygiene-iter-N[-passM].md` that is missing, or that is present without its `## Verdict` line, is interrupted evidence in the same way: re-spawn the BoyScout under the `-passM` naming rule, and do not read the file's existence as proof the sweep finished.
 - **CLOSE**: archivist interrupted → Recovery item 13 (pointer check; archivist Steps 1-5 batch-safe, Step 6 exactly once).
 
 ### Agent Definitions
@@ -406,6 +406,7 @@ A sub-agent can terminate WITHOUT reporting — killed by the user, harness inte
 | Executor | `agents/ip-executor.md` | Implements one plan step | Read, Edit, Write, Bash, Grep, Glob | inherit |
 | Verifier | `agents/ip-verifier.md` | Runs verification checks | Read, Bash, Grep, Glob | sonnet |
 | Reviewer | `agents/ip-reviewer.md` | Adversarial review (iteration ≥ 2 by default; earlier by orchestrator choice, e.g. an iteration-1 attack-before-release pass) | Read, Write, Grep, Glob, Bash | opus |
+| BoyScout | `agents/ip-boyscout.md` | Read-only hygiene sweep (REFLECT) | Read, Write, Bash, Grep, Glob | sonnet |
 | Archivist | `agents/ip-archivist.md` | CLOSE housekeeping | Read, Write, Edit, Grep, Glob, Bash | sonnet |
 
 ### File Ownership Model
