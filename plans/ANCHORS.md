@@ -3,3 +3,11 @@
 *Format: `<plan-id>/D-NNN | YYYY-MM-DD | one-line rationale`. Never edited, never reordered, never trimmed.*
 *Written by ip-archivist at CLOSE. Read by validate-plan.mjs as the durable anchor-resolution tier.*
 plan-2026-09-04T124202-72910089/D-001 | 2026-09-04 | Leave check-agent-wiring.mjs rule (d)'s agents-only scan scope unchanged (no module resolution lines exist to check yet) and document the reasoning in-code instead of widening it.
+plan-2026-09-09T082122-64c4de78/D-002 | 2026-09-09 | Add a HYGIENE_FILE_RE schema branch (Inherited/Introduced/Verdict) rather than fitting the hygiene report to the explorer findings schema.
+plan-2026-09-09T082122-64c4de78/D-003 | 2026-09-09 | scar-scan.mjs shells out to validate-plan.mjs and parses its report lines rather than importing or re-declaring the anchor grammar.
+plan-2026-09-09T082122-64c4de78/D-005 | 2026-09-09 | No count-of-findings floor for the scanner; guard instead with a categories-implemented floor and an exit-1 [scan-unavailable] on an unreadable/absent upstream.
+plan-2026-09-09T082122-64c4de78/D-010 | 2026-09-09 | Completion fix iter-1/step-1.1: exclude the protocol's own -iter-N artifact names from the collision rule, and compute categoriesRan from categories that actually ran instead of a constant.
+plan-2026-09-09T082122-64c4de78/D-011 | 2026-09-09 | Completion fix iter-1/step-5.1: repair all six Makefile for-loops whose `|| ( ... exit 1)` shape enforced only the last-listed check, so any earlier failure was silently ignored.
+plan-2026-09-09T082122-64c4de78/D-012 | 2026-09-09 | Completion fix iter-1/step-1.2: attribute category-A findings by anchor identity (plan-id match) not file membership, and stop the active plan's own in-flight checkpoints from being flagged as orphan residue.
+plan-2026-09-09T082122-64c4de78/D-013 | 2026-09-09 | Corroborate the upstream's declared issue count against its own parsed issue lines rather than trusting a bare Summary line as proof of a real run.
+plan-2026-09-09T082122-64c4de78/D-018 | 2026-09-09 | Move the complexity-budget line grammar to one shared declaration (shared.mjs) imported by both validate-plan.mjs and scar-scan.mjs, after a duplicated stricter copy silently suppressed a real budget-breach finding.
