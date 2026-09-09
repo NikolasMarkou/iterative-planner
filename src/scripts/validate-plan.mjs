@@ -1894,21 +1894,36 @@ function checkFindingsTopicSections(planDir, issues) {
     { name: "Code Patterns", re: /^##\s+Code Patterns\b/m },
     { name: "Risks", re: /^##\s+Risks\b/m },
   ];
-  // DECISION plan-2026-09-01T100120-4f591469/D-010 — `findings/` holds TWO artifact schemas:
-  // explorer topic files (Summary/Key Findings/Constraints/Code Patterns/Risks) and reviewer
-  // output (`review-iter-N[-passM].md`, Concerns/Blind Spots/Verdict per ip-reviewer.md). The
-  // filename discriminator SWITCHES the required list, never exempts — a reviewer file
-  // missing `## Verdict` must still WARN, since REFLECT routing consumes that section.
+  // DECISION plan-2026-09-01T100120-4f591469/D-010 — `findings/` holds THREE artifact schemas:
+  // explorer topic files (Summary/Key Findings/Constraints/Code Patterns/Risks), reviewer
+  // output (`review-iter-N[-passM].md`, Concerns/Blind Spots/Verdict per ip-reviewer.md), and
+  // hygiene-sweep output (`hygiene-iter-N[-passM].md`, Inherited/Introduced/Verdict per
+  // ip-boyscout.md). The filename discriminator SWITCHES the required list, never exempts — a
+  // reviewer or hygiene file missing `## Verdict` must still WARN, since REFLECT routing
+  // consumes that section.
   const reviewerRequired = [
     { name: "Concerns", re: /^##\s+Concerns\b/m },
     { name: "Blind Spots", re: /^##\s+Blind Spots\b/m },
     { name: "Verdict", re: /^##\s+Verdict\b/m },
   ];
+  // DECISION plan-2026-09-09T082122-64c4de78/D-002 — the hygiene report gets its OWN required
+  // list rather than being reshaped to fit the explorer schema. Do NOT "simplify" this by
+  // dropping the branch and having ip-boyscout emit Summary/Key Findings/Code Patterns: that
+  // is free in code and wrong in substance, because it leaves the routing-critical `## Verdict`
+  // ungated while mandating a decorative `## Code Patterns` heading. See decisions.md D-002.
+  const hygieneRequired = [
+    { name: "Inherited", re: /^##\s+Inherited\b/m },
+    { name: "Introduced", re: /^##\s+Introduced\b/m },
+    { name: "Verdict", re: /^##\s+Verdict\b/m },
+  ];
   const REVIEW_FILE_RE = /^review-iter-\d+(?:-pass\d+)?\.md$/;
+  const HYGIENE_FILE_RE = /^hygiene-iter-\d+(?:-pass\d+)?\.md$/;
   for (const f of files) {
     const text = readFile(join(dir, f));
     if (!text) continue;
-    const required = REVIEW_FILE_RE.test(f) ? reviewerRequired : explorerRequired;
+    let required = explorerRequired;
+    if (REVIEW_FILE_RE.test(f)) required = reviewerRequired;
+    else if (HYGIENE_FILE_RE.test(f)) required = hygieneRequired;
     const missing = required.filter((r) => !r.re.test(text)).map((r) => r.name);
     if (missing.length > 0) {
       issues.push({

@@ -1939,6 +1939,64 @@ describe("validate-plan.mjs — M7: targeted check-function coverage", () => {
     const r = run(cwd);
     assert.doesNotMatch(r.stdout, /\[findings-topic\]/, `conformant explorer output must not warn, got:\n${r.stdout}`);
   });
+
+  // -------------------------------------------------------------------------
+  // D-002 — findings/ holds a THIRD schema: hygiene-sweep output
+  // (`hygiene-iter-N[-passM].md`, Inherited / Introduced / Verdict per
+  // ip-boyscout.md). Same rule as the reviewer branch: the discriminator
+  // SWITCHES the required list, it never exempts.
+  // -------------------------------------------------------------------------
+  it("checkFindingsTopicSections: conformant hygiene-iter-N.md → no [findings-topic] WARN", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    writeFileSync(join(planDir, "findings", "hygiene-iter-1.md"),
+      "# Hygiene Sweep — Iteration 1\n\n## Inherited\n- 64 orphaned anchors (not this plan's regression)\n\n## Introduced\n(none)\n\n## Verdict\nCLEAN\n");
+    const r = run(cwd);
+    assert.doesNotMatch(r.stdout, /\[findings-topic\]/, `conformant hygiene output must not warn, got:\n${r.stdout}`);
+  });
+
+  it("checkFindingsTopicSections: hygiene file missing ## Verdict still WARNs (discriminator switches the list, never exempts)", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    writeFileSync(join(planDir, "findings", "hygiene-iter-1.md"),
+      "# Hygiene Sweep — Iteration 1\n\n## Inherited\n- x\n\n## Introduced\n- y\n");
+    const r = run(cwd);
+    assert.match(r.stdout, /\[findings-topic\]/, `a hygiene file missing Verdict must warn, got:\n${r.stdout}`);
+    assert.match(r.stdout, /hygiene-iter-1\.md missing required section\(s\): Verdict/);
+    assert.doesNotMatch(r.stdout, /Key Findings/, `hygiene files must never be linted against the explorer schema, got:\n${r.stdout}`);
+  });
+
+  it("checkFindingsTopicSections: hygiene-iter-N-passM.md is matched by the hygiene branch, not the explorer branch", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    // Deliberately carries NONE of the explorer sections. If the -passM name failed to
+    // match HYGIENE_FILE_RE it would fall through to the explorer schema and be asked
+    // for Summary / Key Findings / Constraints / Code Patterns / Risks.
+    writeFileSync(join(planDir, "findings", "hygiene-iter-2-pass2.md"),
+      "# Hygiene Sweep — Iteration 2, pass 2\n\n## Inherited\n- x\n\n## Introduced\n(none)\n\n## Verdict\nCLEAN\n");
+    const r = run(cwd);
+    assert.doesNotMatch(r.stdout, /\[findings-topic\]/, `re-review pass naming must be recognized, got:\n${r.stdout}`);
+    for (const explorerOnly of ["Summary", "Key Findings", "Constraints", "Code Patterns", "Risks"]) {
+      assert.doesNotMatch(r.stdout, new RegExp(`hygiene-iter-2-pass2\\.md missing required section\\(s\\):[^\\n]*${explorerOnly}`),
+        `hygiene files must never be asked for the explorer section "${explorerOnly}", got:\n${r.stdout}`);
+    }
+  });
+
+  it("checkFindingsTopicSections: adding the hygiene branch leaves the explorer and reviewer branches unchanged", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    // All three schemas present in one findings/ dir, each incomplete in its OWN way.
+    writeFileSync(join(planDir, "findings", "auth-flow.md"),
+      "# auth-flow\n\n## Summary\ns\n\n## Key Findings\nk\n\n## Constraints\nc\n\n## Code Patterns\np\n");
+    writeFileSync(join(planDir, "findings", "review-iter-1.md"),
+      "# Adversarial Review — Iteration 1\n\n## Concerns\n1. [NOTE] x\n\n## Verdict\nNEEDS_WORK\n");
+    writeFileSync(join(planDir, "findings", "hygiene-iter-1.md"),
+      "# Hygiene Sweep — Iteration 1\n\n## Introduced\n(none)\n\n## Verdict\nCLEAN\n");
+    const r = run(cwd);
+    assert.match(r.stdout, /auth-flow\.md missing required section\(s\): Risks/, `explorer schema unchanged, got:\n${r.stdout}`);
+    assert.match(r.stdout, /review-iter-1\.md missing required section\(s\): Blind Spots/, `reviewer schema unchanged, got:\n${r.stdout}`);
+    assert.match(r.stdout, /hygiene-iter-1\.md missing required section\(s\): Inherited/, `hygiene schema applied, got:\n${r.stdout}`);
+  });
 });
 
 // ---------------------------------------------------------------------------
