@@ -516,6 +516,27 @@ test("category C negative: a populated artifact, a CITED checkpoint, and the man
   assert.deepEqual(classifyPlanArtifacts({}), [], "an empty listing must not throw");
 });
 
+test("category C negative: a PROTOCOL-assigned `-iter-N` / `-passN` name is not a collision suffix", () => {
+  const populated = "# T\n\n## Summary\nfour real lines here\nand another\n";
+  const items = classifyPlanArtifacts({
+    findings: [
+      { name: "review-iter-2.md", content: populated },
+      { name: "review-iter-3-pass2.md", content: populated },
+      { name: "hygiene-iter-2.md", content: populated },
+      { name: "auth-system-2.md", content: populated },
+    ],
+  });
+  assert.deepEqual(
+    items.map((i) => i.file),
+    ["findings/auth-system-2.md"],
+    "ip-reviewer.md names its artifacts `review-iter-N[-passM].md` and ip-boyscout.md names its own " +
+      "`hygiene-iter-N.md`: those numbers are ASSIGNED BY THE PROTOCOL, not minted by a slug collision, " +
+      "so flagging them makes the tool report its own output as residue from iteration 2 onward. " +
+      "The collision shape that must still be caught is an explorer topic slug (`auth-system-2.md`).",
+  );
+  assert.equal(items[0].kind, "collision-suffix");
+});
+
 // ---------------------------------------------------------------------------
 // Category D — the Forbidden Leftovers code sweep
 // ---------------------------------------------------------------------------
@@ -869,13 +890,18 @@ test("CLI: a clean run exits 0 whatever it FINDS — the scanner reports, it doe
   }
 });
 
-test("CLI: --self-check exits 0, reports 5/5 categories ran, and confirms the floor is pinned", () => {
+test("CLI: --self-check exits 0, counts the categories that REALLY ran, and confirms the floor is pinned", () => {
   const { root } = makeFixtureRoot();
   try {
     const stub = writeStub(root, "proof.mjs", STUB_PROOF);
     const res = runCliAgainst(root, ["--self-check"], stub);
     assert.equal(res.status, EXIT_OK, `expected exit ${EXIT_OK}; stderr=${res.stderr}`);
-    assert.match(res.stdout, /5\/5 categories ran/);
+    // The numerator is COMPUTED from the per-category statuses, so it depends on whether
+    // this fixture root has git; what is invariant is that the count never exceeds the
+    // number that ran, and that a shortfall is named rather than rounded up to 5/5.
+    const ran = insideGitWorkTree(root) ? 5 : 3;
+    assert.match(res.stdout, new RegExp(`${ran}/${EXPECTED_MIN_CATEGORIES} categories ran`));
+    assert.match(res.stdout, ran === 5 ? /no category degraded\./ : /DEGRADED: B \(unavailable\), E \(unavailable\)/);
     assert.match(
       res.stdout,
       new RegExp(`floor pinned: EXPECTED_MIN_CATEGORIES == CATEGORIES\\.length == ${EXPECTED_MIN_CATEGORIES}`),
@@ -996,6 +1022,42 @@ test("degradation: with no git, B and E report `unavailable` while A, C and D st
     assert.match(plain.stdout, /DEGRADED: B, E/);
     assert.match(plain.stdout, /a degraded category is NOT a clean category/);
     assert.doesNotMatch(plain.stdout, /All categories ran/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("the [scan-floor] guards categories REPORTED, not categories RAN — a degraded run stays an honest exit 0", (t) => {
+  const { root } = makeFixtureRoot();
+  try {
+    if (insideGitWorkTree(root)) {
+      t.skip(`${tmpdir()} is inside a git work tree on this machine, so the degraded run cannot be staged here.`);
+      return;
+    }
+    const stub = writeStub(root, "proof.mjs", STUB_PROOF);
+    const json = JSON.parse(runCliAgainst(root, ["--json"], stub).stdout);
+    assert.equal(json.categoriesRan, 3, "categoriesRan must be COMPUTED from the statuses, never the constant CATEGORIES.length");
+    assert.equal(
+      json.categoriesReported,
+      EXPECTED_MIN_CATEGORIES,
+      "a category that degrades at runtime STILL reports a status row; only a category deleted from the " +
+        "sweep body lowers this number, and that is the vacuity the floor exists to catch",
+    );
+
+    // The consequence, asserted rather than assumed: had the floor been pointed at
+    // categoriesRan, every git-less run would exit 1 [scan-floor] and the honest partial
+    // report this tool exists to produce would become a hard failure instead.
+    const selfCheck = runCliAgainst(root, ["--self-check"], stub);
+    assert.equal(selfCheck.status, EXIT_OK, `a degraded run is not an untrustworthy scan; stderr=${selfCheck.stderr}`);
+    assert.doesNotMatch(selfCheck.stderr, /scan-floor/);
+    assert.match(selfCheck.stdout, /3\/5 categories ran/);
+    assert.doesNotMatch(selfCheck.stdout, /5\/5 categories ran/);
+    assert.match(
+      selfCheck.stdout,
+      /2 DEGRADED: B \(unavailable\), E \(unavailable\) — a degraded category is NOT a clean category\./,
+      "--self-check must NAME the degraded categories. Printing `5/5 categories ran` from a constant while " +
+        "B and E are unavailable is the false all-clear this whole module argues against, in miniature.",
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

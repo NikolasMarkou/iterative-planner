@@ -37,7 +37,9 @@
 //   0  the scan completed, REGARDLESS of what it found
 //   1  [scan-unavailable] — the upstream validator is absent, crashed, timed
 //      out, or produced no parseable proof-of-run line
-//   1  [scan-floor]       — fewer than EXPECTED_MIN_CATEGORIES categories ran
+//   1  [scan-floor]       — fewer than EXPECTED_MIN_CATEGORIES categories REPORTED a
+//      status, i.e. one was deleted from the sweep body. A category that DEGRADED at
+//      runtime (no git) still reports, and still exits 0 — see decisions.md D-010.
 //
 // A FALSE ALL-CLEAR IS THE WORST OUTPUT THIS TOOL CAN PRODUCE. On
 // [scan-unavailable] the process writes NOTHING to stdout — no findings block,
@@ -67,6 +69,12 @@
 //   5. Category B and E need git. Without it they report "unavailable" and say
 //      so; A, C and D still run. A degraded category is NOT a clean category
 //      and the report never lets the two look alike.
+//   6. Category C's collision-suffix rule excludes names carrying a protocol-
+//      assigned `-iter-N` / `-passN` segment, so a topic slug that genuinely
+//      collided AND happens to end that way (`retry-iter-2.md`) is invisible to
+//      it. Accepted: the alternative was reporting `review-iter-2.md` and this
+//      tool's own `hygiene-iter-2.md` as residue on every run from iteration 2
+//      onward — a rule that fires on correct names is a rule that gets ignored.
 //
 // COST. No new full-corpus walk over `plans/`: B, C and E read ONE plan
 // directory (O(1) in plan-dir count), A delegates to validate-plan.mjs whose
@@ -335,6 +343,14 @@ const MANDATORY_CHECKPOINT_RE = /^cp-0+-iter1$/;
 const MIN_FINDINGS_LINES = 3;
 
 /**
+ * A PROTOCOL-ASSIGNED iteration/pass suffix, which is not a collision suffix.
+ * `ip-reviewer.md` names its artifacts `review-iter-N[-passM].md` and `ip-boyscout.md`
+ * names its own `hygiene-iter-N.md`, so the bare `-[2-9].md` test below reported the
+ * protocol's own iteration-2 output — including this tool's — as orphan residue.
+ */
+const PROTOCOL_ITER_SUFFIX_RE = /-(?:iter-|pass-?)\d+\.md$/;
+
+/**
  * Classify plan-directory residue from an already-read listing.
  *
  * Contract: ({ findings, checkpoints, referenceText }) -> Item[], where
@@ -359,7 +375,11 @@ export function classifyPlanArtifacts({ findings = [], checkpoints = [], referen
         remediation: "populate the artifact or delete it — an empty findings file reads as evidence that was never gathered",
       });
     }
-    if (/-\d+\.md$/.test(f.name) && /-[2-9]\.md$/.test(f.name)) {
+    // The shape this catches is an EXPLORER TOPIC SLUG that collided and took a `-2`
+    // suffix under ip-explorer.md's collision rule (`auth-system-2.md`). Names carrying
+    // a protocol-assigned `-iter-N` / `-passN` segment are excluded first (disclosed
+    // hole 6): they are assigned by the protocol, not minted by a slug collision.
+    if (!PROTOCOL_ITER_SUFFIX_RE.test(f.name) && /-[2-9]\.md$/.test(f.name)) {
       items.push({
         category: "C",
         kind: "collision-suffix",
@@ -889,7 +909,12 @@ export function runScan({ root, planDirArg = null, validatorPath }) {
     planDir: plan.planDirRel ?? null,
     gitAvailable,
     categories,
-    categoriesRan: categories.length,
+    // Two different numbers, and conflating them was defect (2) of decisions.md D-010.
+    // REPORTED = how many categories produced a status row at all (the floor's subject).
+    // RAN = how many actually completed; a category that degraded is NOT counted here,
+    // because --self-check and the banner must never let a degraded one look clean.
+    categoriesReported: categories.length,
+    categoriesRan: categories.filter((c) => c.status === "ran").length,
     counts: { inherited: inherited.length, introduced: introduced.length, byCategory },
     inherited,
     introduced,
@@ -979,7 +1004,8 @@ Usage: node scar-scan.mjs [--plan-dir <dir>] [--json] [--self-check]
 
   --plan-dir <dir>  sweep this plan directory instead of plans/.current_plan
   --json            emit the full machine-readable report (nothing truncated)
-  --self-check      run the sweep and confirm all ${EXPECTED_MIN_CATEGORIES} categories ran
+  --self-check      run the sweep and report how many of the ${EXPECTED_MIN_CATEGORIES} categories
+                    actually ran, naming every degraded one
 
 Exit codes:
   0  the scan completed, regardless of what it found
@@ -1012,16 +1038,31 @@ false all-clear is the worst output this tool can produce.`);
     process.exit(EXIT_UNTRUSTWORTHY);
   }
 
-  if (report.categoriesRan < EXPECTED_MIN_CATEGORIES) {
+  // DECISION plan-2026-09-09T082122-64c4de78/D-010 — the floor guards categoriesREPORTED,
+  // never categoriesRan. Two failure shapes look alike in a count and are opposites: a
+  // category DELETED from the sweep body (vacuity — CATEGORIES still lists it, the pin test
+  // still passes, and the report quietly covers less than it claims) versus a category that
+  // DEGRADED at runtime because git is absent (legitimate — B and E say `unavailable`, and
+  // the header promises A/C/D still run and the process still exits 0). Testing `ran` here
+  // would turn every non-git run into a hard failure and destroy the honest partial report
+  // this tool exists to produce. Degradation is reported loudly instead — by the banner, by
+  // --self-check, and by each row's own status. See decisions.md D-010.
+  if (report.categoriesReported < EXPECTED_MIN_CATEGORIES) {
     console.error(
-      `scar-scan: FAIL [scan-floor] — only ${report.categoriesRan} categor(ies) ran, below EXPECTED_MIN_CATEGORIES = ${EXPECTED_MIN_CATEGORIES}`,
+      `scar-scan: FAIL [scan-floor] — only ${report.categoriesReported} categor(ies) reported a status, below EXPECTED_MIN_CATEGORIES = ${EXPECTED_MIN_CATEGORIES}`,
     );
     console.error("scar-scan: no findings reported; this is NOT an all-clear.");
     process.exit(EXIT_UNTRUSTWORTHY);
   }
 
   if (selfCheck) {
-    console.log(`scar-scan --self-check: ${report.categoriesRan}/${EXPECTED_MIN_CATEGORIES} categories ran`);
+    const degradedCats = report.categories.filter((c) => c.status !== "ran");
+    console.log(`scar-scan --self-check: ${report.categoriesRan}/${report.categoriesReported} categories ran`);
+    console.log(
+      degradedCats.length === 0
+        ? "  no category degraded."
+        : `  ${degradedCats.length} DEGRADED: ${degradedCats.map((c) => `${c.id} (${c.status})`).join(", ")} — a degraded category is NOT a clean category.`,
+    );
     for (const c of report.categories) {
       console.log(`  ${c.id}  ${c.key.padEnd(22)} ${c.status.padEnd(12)} — ${c.note}`);
     }
