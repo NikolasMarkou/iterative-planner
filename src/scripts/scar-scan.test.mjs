@@ -179,6 +179,27 @@ function runCliAgainst(root, args = [], validatorPath = realValidator) {
   });
 }
 
+/**
+ * Turn a fixture root into a real git repository and lay down one commit per
+ * message, in order. Deliberately UNGUARDED: if git is missing the assertions
+ * that follow fail loudly, because a test that quietly skips itself is the
+ * defect this suite was rewritten to remove (decisions.md D-013).
+ *
+ * Contract: (root: string, messages: string[]) -> void. Never throws.
+ */
+function gitInitFixture(root, messages) {
+  const run = (...args) =>
+    spawnSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  run("init", "-q", "-b", "main", ".");
+  run("config", "user.email", "scar-scan@test.invalid");
+  run("config", "user.name", "scar-scan tests");
+  run("config", "commit.gpgsign", "false");
+  for (const message of messages) {
+    run("add", "-A");
+    run("commit", "-q", "--allow-empty", "-m", message);
+  }
+}
+
 /** Is `dir` inside a git work tree? Guards the deliberately non-git fixture. */
 function insideGitWorkTree(dir) {
   const r = spawnSync("git", ["rev-parse", "--is-inside-work-tree"], {
@@ -316,6 +337,30 @@ test("category A: proof-of-run accepts either the Summary or the PASS line, and 
   assert.equal(parseValidatorOutput("").proofOfRun, false, "empty output is not proof");
   assert.equal(parseValidatorOutput(undefined).proofOfRun, false, "undefined must not throw");
   assert.deepEqual(parseValidatorOutput(undefined).anchors, []);
+});
+
+test("category A: the upstream's DECLARED issue count is corroborated against the lines the parser actually consumed", () => {
+  const ok = parseValidatorOutput(VALIDATOR_OUT);
+  assert.equal(ok.declaredIssues, 4, "1 error + 2 warnings + 1 info is what the summary line says the upstream printed");
+  assert.equal(ok.parsedIssues, 4, "ISSUE_LINE_RE consumed all four, including the two lines that are not anchor checks");
+
+  // The concern-3 shape: the SUMMARY line survives a format change and the
+  // per-issue lines do not. Proof-of-run alone reads this as a clean category A
+  // over a repo with real orphan anchors, which is the false all-clear.
+  const drifted = [
+    "Validation: plans/x",
+    "    ERROR [anchor-orphan]: src/a.mjs:12 anchor plan-2026-01-01T000000-deadbeef/D-003 points at nothing",
+    "Summary: 1 error(s), 0 warning(s), 0 info(s)",
+  ].join("\n");
+  const d = parseValidatorOutput(drifted);
+  assert.equal(d.proofOfRun, true, "the summary line is intact, so the proof-of-run test alone still passes — that IS the defect");
+  assert.equal(d.declaredIssues, 1);
+  assert.equal(d.parsedIssues, 0, "not one issue line parsed, so `anchors: []` is drift evidence, never clean-repo evidence");
+  assert.deepEqual(d.anchors, []);
+
+  const clean = parseValidatorOutput("PASS: plans/x — no issues found");
+  assert.equal(clean.declaredIssues, 0, "a genuinely clean run declares nothing, so the corroboration cannot fire on it");
+  assert.equal(clean.parsedIssues, 0);
 });
 
 test("category A: a bare (unqualified) anchor names no plan, and a [STALE] anchor is flagged", () => {
@@ -687,6 +732,66 @@ test("pin: the kinds category D can actually emit are exactly LEFTOVER_KINDS", (
 // Category E — Complexity Budget reconciliation
 // ---------------------------------------------------------------------------
 
+test("category D: zero discovered source files is a DEGRADED discovery, never a clean sweep", () => {
+  const { root } = makeFixtureRoot({ files: { "docs/notes.md": "markdown is not a swept extension\n" } });
+  try {
+    rmSync(join(root, "src"), { recursive: true, force: true });
+    const stub = writeStub(root, "proof.mjs", STUB_PROOF);
+    const report = JSON.parse(runCliAgainst(root, ["--json"], stub).stdout);
+    const d = report.categories.find((c) => c.id === "D");
+    assert.equal(
+      d.status,
+      "degraded",
+      "a wrong root, a SKIP_DIRS entry that swallowed the tree, and a project whose extensions CODE_EXTS does " +
+        "not know all produce zero discovered files. `0 source file(s) swept` reported as `ran` reads as an all-clear.",
+    );
+    assert.match(d.note, /0 source file\(s\) discovered/);
+    assert.equal(d.findings, 0);
+    const plain = runCliAgainst(root, [], stub).stdout;
+    assert.doesNotMatch(plain, /All categories ran/, "the banner must never call a sweep of nothing a clean sweep");
+    assert.match(plain, /DEGRADED: [A-E, ]*\bD\b/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("category E: both branches that measured NOTHING report `degraded`, so --self-check can never call them 5/5", () => {
+  // (i) No commit carries this plan's tag. The predecessor called this "nothing to
+  // reconcile" and reported `ran` — but plan.md states a cap, so there IS something to
+  // reconcile and it simply was not measured.
+  const untagged = makeFixtureRoot();
+  try {
+    gitInitFixture(untagged.root, ["unrelated work carrying no plan tag"]);
+    const stub = writeStub(untagged.root, "proof.mjs", STUB_PROOF);
+    const report = JSON.parse(runCliAgainst(untagged.root, ["--json"], stub).stdout);
+    assert.equal(report.gitAvailable, true, "this branch is reachable only WITH git; without it E reports `unavailable`");
+    const e = report.categories.find((c) => c.id === "E");
+    assert.equal(e.status, "degraded", "an unmeasured budget claim is not a reconciled one");
+    assert.match(e.note, /no commit yet carries this plan's tag/);
+    assert.match(e.note, /the budget claim is unreconciled/);
+    const self = runCliAgainst(untagged.root, ["--self-check"], stub);
+    assert.doesNotMatch(self.stdout, /5\/5 categories ran/, "a category that measured nothing must not count as having run");
+    assert.doesNotMatch(self.stdout, /no category degraded/);
+    assert.match(self.stdout, /4\/5 categories ran/);
+  } finally {
+    rmSync(untagged.root, { recursive: true, force: true });
+  }
+
+  // (ii) The tagged commit IS the root commit, so `<hash>^` does not resolve and the
+  // diff cannot be taken at all.
+  const rooted = makeFixtureRoot();
+  try {
+    gitInitFixture(rooted.root, [`[${commitTagPrefix(rooted.planId)}/iter-1/step-1] the first commit has no parent`]);
+    const stub = writeStub(rooted.root, "proof.mjs", STUB_PROOF);
+    const report = JSON.parse(runCliAgainst(rooted.root, ["--json"], stub).stdout);
+    const e = report.categories.find((c) => c.id === "E");
+    assert.equal(e.status, "degraded");
+    assert.match(e.note, /could not resolve this plan's base commit — diff not measured/);
+  } finally {
+    rmSync(rooted.root, { recursive: true, force: true });
+  }
+});
+
 test("category E positive: the budget is read from its OWN section, and an over-cap diff is a finding", () => {
   const planText = [
     "# Plan v1",
@@ -1006,6 +1111,32 @@ test("falsification: an upstream that prints NO proof-of-run line exits 1 [scan-
     assertScanUnavailable(res, "no proof-of-run line");
     assert.match(res.stderr, /no proof-of-run line/);
     assert.match(res.stderr, /format may have drifted/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("falsification: an upstream whose ISSUE lines drift while its SUMMARY survives exits 1 [scan-unavailable]", () => {
+  const { root } = makeFixtureRoot();
+  try {
+    // Every earlier falsification test kills the upstream outright. This one lets it
+    // run, exit 1 as a real validator with findings does, and print an intact summary
+    // line — only the per-issue lines, the ones category A actually feeds on, are at an
+    // indent ISSUE_LINE_RE does not match. Before the corroboration this printed
+    // `A orphaned-anchors ran 0 finding(s)` and exited 0.
+    const drift = writeStub(root, "issue-drift.mjs", [
+      'console.log("Validation: drifted");',
+      'console.log("    ERROR [anchor-orphan]: src/a.mjs:12 anchor plan-2026-01-01T000000-deadbeef/D-003 points at nothing");',
+      'console.log("Summary: 1 error(s), 0 warning(s), 0 info(s)");',
+      "process.exit(1);",
+      "",
+    ].join("\n"));
+    for (const mode of [[], ["--json"], ["--self-check"]]) {
+      const res = runCliAgainst(root, mode, drift);
+      assertScanUnavailable(res, `issue-line drift in ${mode.length ? mode[0] : "plain"} mode`);
+      assert.match(res.stderr, /declared 1 issue\(s\)/, "the reason must quote the upstream's own count");
+      assert.match(res.stderr, /none of its issue lines parsed/);
+    }
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

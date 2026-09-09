@@ -38,7 +38,8 @@
 // EXIT CODES (named constants below):
 //   0  the scan completed, REGARDLESS of what it found
 //   1  [scan-unavailable] — the upstream validator is absent, crashed, timed
-//      out, or produced no parseable proof-of-run line
+//      out, produced no parseable proof-of-run line, or declared a non-zero
+//      issue count that this module's issue-line parser could not corroborate
 //   1  [scan-floor]       — fewer than EXPECTED_MIN_CATEGORIES categories REPORTED a
 //      status, i.e. one was deleted from the sweep body. A category that DEGRADED at
 //      runtime (no git) still reports, and still exits 0 — see decisions.md D-010.
@@ -59,18 +60,29 @@
 //   2. Category D's file discovery does not read `.gitignore`. It walks the
 //      tree with a fixed SKIP_DIRS set, so a build directory outside that set
 //      is swept. Chosen so D still runs with no git at all.
-//   3. Category D's debug-statement and commented-out-code rules are anchored
-//      at line start. A debug call chained mid-line, or after a `;`, is missed.
-//      That anchoring is what keeps the rules from firing on every line of
-//      prose that merely NAMES a debug function — including these comments.
+//   3. ALL THREE of category D's line rules — marker-comment, debug-statement
+//      and commented-out-code — are anchored at line start. A debug call
+//      chained mid-line is missed, and so is a marker in a TRAILING comment,
+//      which is the commonest form in real code. Dropping the anchor from the
+//      marker rule was measured on this repo and rejected: it produces three
+//      findings, every one of them a marker string quoted inside
+//      scar-scan.test.mjs's own fixtures. The false-positive class is CODE THAT
+//      QUOTES A MARKER — test suites, linter configs, docs generators — not
+//      prose files, so limiting the sweep to CODE_EXTS does not buy the anchor
+//      back. A rule that fires on correct lines is a rule that gets ignored.
 //   4. `console.log` / `print()` are deliberately NOT flagged as debug logging
 //      even though code-hygiene.md lists them: every gate in this repo is a CLI
 //      whose entire output channel is console.log, so the rule would fire on
 //      hundreds of correct lines, and a rule that fires on correct lines is a
 //      rule that gets ignored.
 //   5. Category B and E need git. Without it they report "unavailable" and say
-//      so; A, C and D still run. A degraded category is NOT a clean category
-//      and the report never lets the two look alike.
+//      so; A, C and D still run. E further reports "degraded" whenever the diff
+//      itself could not be measured — no commit yet carries the plan's tag, or
+//      the base commit will not resolve — because an unmeasured budget is not a
+//      reconciled one. Category D reports "degraded" when it discovers zero
+//      source files, since an empty discovery is not a clean sweep. A degraded
+//      category is NOT a clean category and the report never lets the two look
+//      alike.
 //   6. Category C's collision-suffix rule excludes names carrying a protocol-
 //      assigned `-iter-N` / `-passN` segment, so a topic slug that genuinely
 //      collided AND happens to end that way (`retry-iter-2.md`) is invisible to
@@ -84,6 +96,13 @@
 //      plan-id. (b) The unreferenced-checkpoint rule does not fire on the
 //      ACTIVE plan, so a checkpoint that stays uncited for the whole run is
 //      invisible until that plan is closed and swept with --plan-dir.
+//   8. Category A's corroboration (decisions.md D-013) catches TOTAL issue-line
+//      drift: the upstream declares N>0 issues and ISSUE_LINE_RE parses none.
+//      It does NOT catch PARTIAL drift — if other checks' lines still parse
+//      while the anchor checks' lines do not, the parsed count is non-zero and
+//      category A still reports a clean 0. The stricter rule (parsed count ==
+//      declared count) would close this and is deliberately not taken; the hole
+//      is named here rather than left to be rediscovered.
 //
 // COST. No new full-corpus walk over `plans/`: B, C and E read ONE plan
 // directory (O(1) in plan-dir count), A delegates to validate-plan.mjs whose
@@ -213,7 +232,7 @@ export function commitTagPrefix(planId) {
 // See decisions.md D-003.
 
 const ISSUE_LINE_RE = /^\s{2}(ERROR|WARN|INFO)\s*\[([a-z-]+)\]:\s(.*)$/;
-const PROOF_SUMMARY_RE = /^Summary: \d+ error\(s\), \d+ warning\(s\), \d+ info\(s\)$/m;
+const PROOF_SUMMARY_RE = /^Summary: (\d+) error\(s\), (\d+) warning\(s\), (\d+) info\(s\)$/m;
 const PROOF_PASS_RE = /^PASS: .+ — no issues found$/m;
 const FILE_LINE_RE = /^(\S+):(\d+)\s/;
 const ANCHOR_ID_RE = new RegExp(`(${ANY_PLAN_ID_PATTERN})/D-${DECISION_ID_NUM_PATTERN}`);
@@ -222,19 +241,28 @@ const ANCHOR_ID_RE = new RegExp(`(${ANY_PLAN_ID_PATTERN})/D-${DECISION_ID_NUM_PA
  * Parse `validate-plan.mjs` stdout into anchor findings plus PROOF that the run
  * really happened.
  *
- * Contract: (stdout: string) -> { proofOfRun: boolean, anchors: Item[] }.
+ * Contract: (stdout: string) -> { proofOfRun: boolean, declaredIssues: number,
+ * parsedIssues: number, anchors: Item[] }.
  * `proofOfRun` is false whenever the output carries neither the `Summary: N
- * error(s), ...` line nor the `PASS: <dir> — no issues found` line. A caller
- * MUST treat `proofOfRun === false` as [scan-unavailable] and MUST NOT treat
- * `anchors: []` as evidence of a clean repo. Never throws.
+ * error(s), ...` line nor the `PASS: <dir> — no issues found` line.
+ * `declaredIssues` is the summary line's own error+warning+info total (0 when
+ * the run reported PASS or printed no summary); `parsedIssues` counts the issue
+ * lines ISSUE_LINE_RE actually consumed, of EVERY check, not just the anchor
+ * ones. A caller MUST treat `proofOfRun === false` as [scan-unavailable], MUST
+ * treat `declaredIssues > 0 && parsedIssues === 0` as [scan-unavailable], and
+ * MUST NOT treat `anchors: []` as evidence of a clean repo. Never throws.
  */
 export function parseValidatorOutput(stdout) {
   const text = stdout || "";
-  const proofOfRun = PROOF_SUMMARY_RE.test(text) || PROOF_PASS_RE.test(text);
+  const summary = PROOF_SUMMARY_RE.exec(text);
+  const proofOfRun = summary !== null || PROOF_PASS_RE.test(text);
+  const declaredIssues = summary ? Number(summary[1]) + Number(summary[2]) + Number(summary[3]) : 0;
+  let parsedIssues = 0;
   const anchors = [];
   for (const raw of text.split("\n")) {
     const m = ISSUE_LINE_RE.exec(raw);
     if (!m) continue;
+    parsedIssues += 1;
     const [, severity, check, message] = m;
     if (!ANCHOR_CHECKS.has(check)) continue;
     const loc = FILE_LINE_RE.exec(message);
@@ -255,7 +283,7 @@ export function parseValidatorOutput(stdout) {
       remediation: null, // filled by remediationForAnchor once provenance is known
     });
   }
-  return { proofOfRun, anchors };
+  return { proofOfRun, declaredIssues, parsedIssues, anchors };
 }
 
 /** Suggested standalone command for an inherited anchor finding. */
@@ -813,6 +841,23 @@ export function runScan({ root, planDirArg = null, validatorPath }) {
           "validate-plan.mjs produced no proof-of-run line (expected `Summary: N error(s), ...` or `PASS: ... — no issues found`); its report format may have drifted",
       };
     }
+    // DECISION plan-2026-09-09T082122-64c4de78/D-013 — the proof-of-run line above is NOT
+    // sufficient. It proves the SUMMARY line survived; ISSUE_LINE_RE is what actually feeds
+    // category A, and nothing proved it. A stub emitting a correct summary plus issue lines at
+    // any other indent yielded `A orphaned-anchors ran 0 finding(s)` and exit 0 — a silent
+    // clean category over a repo with 75 real orphan anchors. The upstream's own counts are
+    // the corroborating witness: it says how many issues it printed, so a non-zero count with
+    // nothing parsed means the issue-line format drifted, not that the repo is clean. Do NOT
+    // relax this to "the summary parsed, so the run is trustworthy", and do NOT downgrade it
+    // to a degraded category-A status — a parser that consumed none of an upstream's output
+    // cannot report a finding count at all. See decisions.md D-013.
+    if (parsed.declaredIssues > 0 && parsed.parsedIssues === 0) {
+      return {
+        unavailable:
+          `validate-plan.mjs declared ${parsed.declaredIssues} issue(s) in its summary line but none of its ` +
+          "issue lines parsed; its per-issue report format has drifted",
+      };
+    }
     for (const a of parsed.anchors) a.remediation = remediationForAnchor(a);
     findings.push(...parsed.anchors);
     status("A", "ran", `delegated to validate-plan.mjs (${parsed.anchors.length} anchor issue(s))`, parsed.anchors.length);
@@ -881,7 +926,18 @@ export function runScan({ root, planDirArg = null, validatorPath }) {
   }
   leftovers.push(...findOrphanedTestFiles(codeFiles, (p) => fileSet.has(p)));
   findings.push(...leftovers);
-  status("D", "ran", `${codeFiles.length} source file(s) swept for ${LEFTOVER_KINDS.length} leftover kind(s)`, leftovers.length);
+  // Zero discovered files is a DEGRADED discovery, not a clean sweep: a wrong root, a
+  // SKIP_DIRS entry that swallowed the tree, or a project whose extensions CODE_EXTS does
+  // not know all produce it, and `0 source file(s) swept` under status `ran` reads as an
+  // all-clear. This is category D's swept-file floor.
+  status(
+    "D",
+    codeFiles.length === 0 ? "degraded" : "ran",
+    codeFiles.length === 0
+      ? `0 source file(s) discovered under ${root} — nothing was swept, so this is not a clean D`
+      : `${codeFiles.length} source file(s) swept for ${LEFTOVER_KINDS.length} leftover kind(s)`,
+    leftovers.length,
+  );
 
   // --- E: Complexity Budget reconciliation --------------------------------
   if (!plan.planDirAbs) {
@@ -896,8 +952,15 @@ export function runScan({ root, planDirArg = null, validatorPath }) {
     const hashes = tagged ? tagged.split("\n").filter(Boolean) : [];
     let measured = null;
     let note;
+    // Either unmeasured branch below is DEGRADED, not `ran`. The predecessor said
+    // "nothing to reconcile" and reported `ran`, which made --self-check print
+    // `5/5 categories ran / no category degraded` over a category whose own note
+    // said it had measured nothing. There IS something to reconcile whenever plan.md
+    // states a cap — it just could not be measured, and an unmeasured budget claim
+    // must not be reported with the same status as a reconciled one.
+    let eStatus = "degraded";
     if (hashes.length === 0) {
-      note = "no commit yet carries this plan's tag — nothing to reconcile";
+      note = "no commit yet carries this plan's tag — the diff was not measured, so the budget claim is unreconciled";
     } else {
       const base = git(["rev-parse", `${hashes[hashes.length - 1]}^`], root);
       const nameStatus = base ? git(["diff", "--name-status", base, "HEAD"], root) : null;
@@ -909,12 +972,13 @@ export function runScan({ root, planDirArg = null, validatorPath }) {
           .split("\n")
           .filter((l) => l.startsWith("?? ") && !l.startsWith("?? plans/"));
         measured = added.length + untracked.length;
+        eStatus = "ran";
         note = `budget caps files added at ${budget.filesAddedMax ?? "n/a"}; measured ${measured} (${added.length} committed + ${untracked.length} untracked)`;
       }
     }
     const items = reconcileComplexityBudget(budget, measured);
     findings.push(...items);
-    status("E", "ran", note, items.length);
+    status("E", eStatus, note, items.length);
   }
 
   // --- partition ----------------------------------------------------------
