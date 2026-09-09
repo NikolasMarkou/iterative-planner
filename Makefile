@@ -262,6 +262,7 @@ lint:
 	node --check src/scripts/bootstrap.mjs
 	node --check src/scripts/validate-plan.mjs
 	node --check src/scripts/blast-radius.mjs
+	node --check src/scripts/scar-scan.mjs
 	node --check src/scripts/shared.mjs
 	node --check src/scripts/check-doc-parity.mjs
 	node --check src/scripts/check-readme-parity.mjs
@@ -283,7 +284,7 @@ lint:
 .PHONY: test
 test: lint
 	@echo "Running all test suites..."
-	node --test src/scripts/bootstrap.test.mjs src/scripts/validate-plan.test.mjs src/scripts/blast-radius.test.mjs src/scripts/check-doc-parity.test.mjs src/scripts/emit-state.test.mjs src/scripts/emit-template.test.mjs src/scripts/check-readme-parity.test.mjs src/scripts/check-changelog-parity.test.mjs src/scripts/shared.test.mjs src/scripts/check-test-count.test.mjs src/scripts/schema.test.mjs src/scripts/check-agent-wiring.test.mjs src/scripts/check-template-parity.test.mjs src/scripts/check-register.test.mjs
+	node --test src/scripts/bootstrap.test.mjs src/scripts/validate-plan.test.mjs src/scripts/blast-radius.test.mjs src/scripts/check-doc-parity.test.mjs src/scripts/emit-state.test.mjs src/scripts/emit-template.test.mjs src/scripts/check-readme-parity.test.mjs src/scripts/check-changelog-parity.test.mjs src/scripts/shared.test.mjs src/scripts/check-test-count.test.mjs src/scripts/schema.test.mjs src/scripts/check-agent-wiring.test.mjs src/scripts/check-template-parity.test.mjs src/scripts/check-register.test.mjs src/scripts/scar-scan.test.mjs
 	@echo "Checking TEST_COUNT against the live suite result..."
 	node src/scripts/check-test-count.mjs
 	@echo "Tests passed!"
