@@ -67,44 +67,6 @@ Reach for it when the task is big enough that "what did I already try?" is a que
 
 ---
 
-## How It Works
-
-Six states, one loop. Every transition is logged, every decision recorded, and the filesystem — not the conversation — is the source of truth.
-
-```mermaid
-stateDiagram-v2
-    [*] --> EXPLORE
-    EXPLORE --> PLAN : enough context
-    PLAN --> EXPLORE : need more context
-    PLAN --> PLAN : user rejects / revise
-    PLAN --> EXECUTE : user approves
-    EXECUTE --> REFLECT : phase ends/failed/surprise/leash
-    REFLECT --> CLOSE : all criteria met
-    REFLECT --> PIVOT : failed / better approach
-    REFLECT --> EXPLORE : need more context
-    REFLECT --> EXECUTE : same-iteration completion-fix
-    PIVOT --> PLAN : new approach ready
-    CLOSE --> [*]
-```
-
-<details>
-<summary><strong>No mermaid renderer? The same six states as a table</strong></summary>
-
-| State | What happens | Guardrails |
-|-------|-------------|------------|
-| **EXPLORE** | Read, search, ask. Pull cross-plan findings, decisions, lessons, and the system atlas. | Read-only on the project. All notes go to the plan directory. Minimum 3 indexed findings before PLAN. |
-| **PLAN** | Design the approach. Identify every artifact to create or modify. Write success criteria, verification strategy, assumptions, failure modes, and a pre-mortem. | No code changes. User must approve before execution. |
-| **EXECUTE** | Implement one step at a time. Commit after each success. Append a per-edit changelog line for every file edited. | 2 fix attempts max. Revert-first on failure. Surprises trigger REFLECT. |
-| **REFLECT** | Three phases: Gate-In (read everything), Evaluate (verify, diff review, regression check, scope drift, root cause, run validator), Gate-Out (write results, present to user). | Evidence-based only. Regressions and simplification blockers prevent CLOSE. Contradicted findings trigger EXPLORE. |
-| **PIVOT** | Diagnose the failure, hunt for ghost constraints, propose a new direction. | Must explain what failed and why. User approves new direction. |
-| **CLOSE** | Write summary. Audit decision anchors. Merge knowledge into consolidated files. Rewrite LESSONS.md and SYSTEM.md. | Verify clean output. No leftover artifacts. |
-
-</details>
-
-**The runaway brake.** Iterations increment on each PLAN → EXECUTE transition. At **iteration 5** the protocol forces a decomposition analysis — carve the goal into 2-3 independent sub-goals that could each be their own plan. At **iteration 6+** it hard-stops. This is the deliberate cure for the "just one more iteration" spiral that quietly destroys plans.
-
----
-
 ## Get Started in 60 Seconds
 
 **Requires**: Node.js 18+ (for the bootstrap and validator scripts). No npm install, no runtime dependencies — the scripts are plain ESM on Node builtins.
@@ -278,6 +240,46 @@ And three mechanisms keep the workspace honest, all of them auditable on disk.
 - **Clean output hygiene** — every change is tracked in a manifest, failed steps revert immediately, and forbidden leftovers (TODOs, debug prints, commented-out code, orphan helpers) are flagged at REFLECT. The workspace is always known-good before new work begins.
 
 </details>
+
+That's the pitch. Everything from here is reference: the exact mechanism, every file, every gate.
+
+---
+
+## How It Works
+
+Six states, one loop. Every transition is logged, every decision recorded, and the filesystem — not the conversation — is the source of truth.
+
+```mermaid
+stateDiagram-v2
+    [*] --> EXPLORE
+    EXPLORE --> PLAN : enough context
+    PLAN --> EXPLORE : need more context
+    PLAN --> PLAN : user rejects / revise
+    PLAN --> EXECUTE : user approves
+    EXECUTE --> REFLECT : phase ends/failed/surprise/leash
+    REFLECT --> CLOSE : all criteria met
+    REFLECT --> PIVOT : failed / better approach
+    REFLECT --> EXPLORE : need more context
+    REFLECT --> EXECUTE : same-iteration completion-fix
+    PIVOT --> PLAN : new approach ready
+    CLOSE --> [*]
+```
+
+<details>
+<summary><strong>No mermaid renderer? The same six states as a table</strong></summary>
+
+| State | What happens | Guardrails |
+|-------|-------------|------------|
+| **EXPLORE** | Read, search, ask. Pull cross-plan findings, decisions, lessons, and the system atlas. | Read-only on the project. All notes go to the plan directory. Minimum 3 indexed findings before PLAN. |
+| **PLAN** | Design the approach. Identify every artifact to create or modify. Write success criteria, verification strategy, assumptions, failure modes, and a pre-mortem. | No code changes. User must approve before execution. |
+| **EXECUTE** | Implement one step at a time. Commit after each success. Append a per-edit changelog line for every file edited. | 2 fix attempts max. Revert-first on failure. Surprises trigger REFLECT. |
+| **REFLECT** | Three phases: Gate-In (read everything), Evaluate (verify, diff review, regression check, scope drift, root cause, run validator), Gate-Out (write results, present to user). | Evidence-based only. Regressions and simplification blockers prevent CLOSE. Contradicted findings trigger EXPLORE. |
+| **PIVOT** | Diagnose the failure, hunt for ghost constraints, propose a new direction. | Must explain what failed and why. User approves new direction. |
+| **CLOSE** | Write summary. Audit decision anchors. Merge knowledge into consolidated files. Rewrite LESSONS.md and SYSTEM.md. | Verify clean output. No leftover artifacts. |
+
+</details>
+
+**The runaway brake.** Iterations increment on each PLAN → EXECUTE transition. At **iteration 5** the protocol forces a decomposition analysis — carve the goal into 2-3 independent sub-goals that could each be their own plan. At **iteration 6+** it hard-stops. This is the deliberate cure for the "just one more iteration" spiral that quietly destroys plans.
 
 ---
 
