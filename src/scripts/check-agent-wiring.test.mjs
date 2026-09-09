@@ -709,3 +709,75 @@ test("CLI no-flag purity: exit 0, PASS line, no emission output, default artifac
     assert.ok(readFileSync(defaultPath).equals(bytesBefore), "no-flag run changed default artifact bytes");
   }
 });
+
+// --- agent capability contract ------------------------------------------------
+// Concern 6 (iteration-1 review): no gate read `disallowedTools` at all, and
+// nothing pinned the orchestrator's Agent(...) grant, so deleting
+// `disallowedTools: Edit, Agent` from an agent, or dropping an agent from the
+// grant, passed both `make validate` and `make test`. Lives here because this
+// file already owns the agent-prose invariants and already discovers
+// `src/agents/` from disk (the EXPECTED_MIN_PROSE_FILES pin).
+//
+// Both rules are DERIVED from the filesystem — no roster of seven or eight
+// names is written down, so a ninth agent is checked rather than ignored. The
+// read-only set is not enumerated either: requiring every agent to declare
+// Edit exactly once means a read-only agent can only satisfy it by carrying
+// `disallowedTools: Edit`.
+
+const AGENTS_DIR = join(repoRoot, "src", "agents");
+const agentNames = () =>
+  readdirSync(AGENTS_DIR)
+    .filter((f) => f.startsWith("ip-") && f.endsWith(".md"))
+    .map((f) => f.slice(0, -3));
+
+const frontmatterField = (agent, key) => {
+  const text = readFileSync(join(AGENTS_DIR, `${agent}.md`), "utf8");
+  const m = text.match(new RegExp(`^${key}:(.*)$`, "m"));
+  return m ? m[1] : "";
+};
+
+// `Agent(ip-a, ip-b)` is one grant token, not one token per grantee.
+const toolTokens = (line) =>
+  line
+    .replace(/Agent\([^)]*\)/g, "Agent")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+test("agent contract: the orchestrator's Agent(...) grant names every ip-* agent except itself, both directions", () => {
+  const grant = frontmatterField("ip-orchestrator", "tools").match(/Agent\(([^)]*)\)/);
+  assert.ok(grant, "src/agents/ip-orchestrator.md frontmatter carries no Agent(...) grant");
+  const granted = grant[1].split(",").map((s) => s.trim()).filter(Boolean);
+  const expected = agentNames().filter((n) => n !== "ip-orchestrator");
+  for (const name of expected) {
+    assert.ok(
+      granted.includes(name),
+      `src/agents/${name}.md exists but ${name} is not in the orchestrator's Agent(...) grant — ` +
+        "the orchestrator cannot spawn it, and no other gate notices",
+    );
+  }
+  for (const name of granted) {
+    assert.ok(
+      expected.includes(name),
+      `Agent(...) grants ${name}, which is not a src/agents/ip-*.md agent`,
+    );
+  }
+});
+
+test("agent contract: every agent declares Edit and Agent exactly once — granted in tools: or refused in disallowedTools:", () => {
+  for (const name of agentNames()) {
+    const tools = toolTokens(frontmatterField(name, "tools"));
+    const denied = toolTokens(frontmatterField(name, "disallowedTools"));
+    for (const cap of ["Edit", "Agent"]) {
+      const granted = tools.includes(cap);
+      const refused = denied.includes(cap);
+      assert.notStrictEqual(
+        granted,
+        refused,
+        `src/agents/${name}.md ${granted ? "both grants and refuses" : "neither grants nor refuses"} ` +
+          `${cap}. Every agent states each capability once: list it in tools: or in disallowedTools:. ` +
+          "A read-only agent that loses its disallowedTools line silently gains the capability.",
+      );
+    }
+  }
+});
