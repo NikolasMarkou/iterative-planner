@@ -148,9 +148,20 @@ cp src/agents/*.md ~/.claude/agents/
 
 The skill works without this step too — sub-agents are an optimization layer, not a requirement.
 
+`cp -r` above is fine for a first install, but it only ever adds files — it can't remove one that was deleted upstream, so re-running it after a `git pull` leaves orphans behind. To update an existing from-source install, `git pull` then run the sync target instead:
+
+```bash
+make sync-skill          # Unix/Linux/macOS
+.\build.ps1 sync-skill   # Windows
+```
+
+This prunes before copying and verifies every synced tree with `diff -rq`, so deleted files actually disappear from the install.
+
 ### First run
 
 In any project directory, give Claude a complex task or just say **"plan this"**. Claude runs `bootstrap.mjs new "<your goal>"`, drops into EXPLORE, and walks the cycle.
+
+A new release does not retroactively update an already-installed skill — re-run the relevant install step to pick up a new version: re-download and unzip for Option 1, re-download for Option 2, or `git pull` + `make sync-skill` for Option 3.
 
 ---
 
