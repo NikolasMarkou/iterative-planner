@@ -173,8 +173,17 @@ validate:
 	@test -d src/scripts || (echo "ERROR: src/scripts/ directory not found" && exit 1)
 	@# Verify all references/ cross-references in SKILL.md resolve to actual files
 	@echo "Checking cross-references..."
+	@# LOOP FAILURE SHAPE - read this before editing any `for` loop in this target.
+	@# Inside a loop, write `|| { echo "ERROR: ..." && exit 1; }`. Never `|| (echo ... && exit 1)`:
+	@# `exit 1` in a `( )` subshell ends only that subshell, and a shell `for` loop's exit status
+	@# is its LAST iteration's - so a failure in any earlier iteration printed ERROR and the recipe
+	@# still returned 0, and `make validate` went on to print "Validation passed!". All six loops
+	@# below shipped that way, enforcing only whichever entry was listed last. A `{ }` brace group
+	@# runs in the recipe shell, so `exit 1` ends the recipe and make fails. Single-line uses
+	@# OUTSIDE a loop (where the subshell is the whole recipe line) are correct - do not churn them.
+	@# DECISION plan-2026-09-09T082122-64c4de78/D-011
 	@for ref in $$(grep -oE 'references/[a-z0-9_-]+\.md' $(SKILL_FILE) | sort -u); do \
-		test -f "src/$$ref" || (echo "ERROR: $(SKILL_FILE) references src/$$ref but file not found" && exit 1); \
+		test -f "src/$$ref" || { echo "ERROR: $(SKILL_FILE) references src/$$ref but file not found" && exit 1; }; \
 	done
 	@# Verify bootstrap.mjs creates expected plan directory files
 	@echo "Checking bootstrap file list..."
@@ -182,13 +191,13 @@ validate:
 		grep -q "\"$$f\"" src/scripts/bootstrap.mjs || \
 		grep -q "'$$f'" src/scripts/bootstrap.mjs || \
 		grep -q "$$f" src/scripts/bootstrap.mjs || \
-		(echo "ERROR: bootstrap.mjs does not create $$f" && exit 1); \
+		{ echo "ERROR: bootstrap.mjs does not create $$f" && exit 1; }; \
 	done
 	@# Verify bootstrap.mjs creates expected subdirectories
 	@echo "Checking bootstrap directory creation..."
 	@for d in checkpoints findings; do \
 		grep -q "$$d" src/scripts/bootstrap.mjs || \
-		(echo "ERROR: bootstrap.mjs does not create $$d/ directory" && exit 1); \
+		{ echo "ERROR: bootstrap.mjs does not create $$d/ directory" && exit 1; }; \
 	done
 	@# Verify bootstrap.mjs references consolidated files
 	@echo "Checking consolidated file references..."
@@ -204,9 +213,9 @@ validate:
 	@echo "Checking agent definitions..."
 	@if [ -d src/agents ]; then \
 		for agent in src/agents/*.md; do \
-			grep -q "^name:" "$$agent" || (echo "ERROR: $$agent missing 'name' in frontmatter" && exit 1); \
-			grep -q "^description:" "$$agent" || (echo "ERROR: $$agent missing 'description' in frontmatter" && exit 1); \
-			grep -q "^tools:" "$$agent" || (echo "ERROR: $$agent missing 'tools' in frontmatter" && exit 1); \
+			grep -q "^name:" "$$agent" || { echo "ERROR: $$agent missing 'name' in frontmatter" && exit 1; }; \
+			grep -q "^description:" "$$agent" || { echo "ERROR: $$agent missing 'description' in frontmatter" && exit 1; }; \
+			grep -q "^tools:" "$$agent" || { echo "ERROR: $$agent missing 'tools' in frontmatter" && exit 1; }; \
 		done; \
 	fi
 	@# Verify every protocol transition appears as a literal Mermaid edge in SKILL.md's state diagram.
@@ -218,7 +227,7 @@ validate:
 		"EXECUTE --> REFLECT" "REFLECT --> CLOSE" "REFLECT --> PIVOT" "REFLECT --> EXPLORE" \
 		"REFLECT --> EXECUTE" "PIVOT --> PLAN"; do \
 		grep -qE "^[[:space:]]+$$edge([[:space:]]|$$)" $(SKILL_FILE) || \
-		(echo "ERROR: Mermaid edge '$$edge' missing from SKILL.md state diagram" && exit 1); \
+		{ echo "ERROR: Mermaid edge '$$edge' missing from SKILL.md state diagram" && exit 1; }; \
 	done
 	@# Verify validate-plan.mjs VALID_TRANSITIONS covers all SKILL.md transitions
 	@echo "Checking validator transition coverage..."
@@ -226,7 +235,7 @@ validate:
 		"REFLECT→CLOSE" "REFLECT→PIVOT" "REFLECT→EXPLORE" "REFLECT→EXECUTE" \
 		"PIVOT→PLAN"; do \
 		grep -qF "\"$$pair\"" src/scripts/validate-plan.mjs || \
-		(echo "ERROR: validate-plan.mjs VALID_TRANSITIONS missing $$pair" && exit 1); \
+		{ echo "ERROR: validate-plan.mjs VALID_TRANSITIONS missing $$pair" && exit 1; }; \
 	done
 	@# Verify README <-> SKILL.md File Ownership table parity
 	@echo "Checking doc parity (README <-> SKILL.md File Ownership)..."
