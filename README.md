@@ -115,11 +115,20 @@ Download the latest zip from [Releases](https://github.com/NikolasMarkou/iterati
 unzip iterative-planner-v*.zip -d ~/.claude/skills/
 ```
 
+The unzipped skill already contains the sub-agent definitions at `~/.claude/skills/iterative-planner/agents/*.md`. To enable parallel agent dispatch (explorers in parallel, a dedicated verifier, an adversarial reviewer), copy them into Claude Code's shared agents directory:
+
+```bash
+mkdir -p ~/.claude/agents
+cp ~/.claude/skills/iterative-planner/agents/*.md ~/.claude/agents/
+```
+
+The skill works without this step too — sub-agents are an optimization layer, not a requirement.
+
 ### Option 2 — Single-file skill
 
 Download `iterative-planner-combined.md` from [Releases](https://github.com/NikolasMarkou/iterative-planner/releases) and add it to Claude Code's Custom Instructions (Settings → Custom Instructions).
 
-> The single-file version does not include `bootstrap.mjs` or the sub-agent definitions (`src/agents/*.md`) — the combined file runs in SKILL.md's single-thread monolithic-fallback mode. Plan directories must be created manually. For full bootstrap and sub-agent support, use the zip package.
+> The single-file version does not include `bootstrap.mjs` or the sub-agent definitions (`src/agents/*.md`) — no agent files ship with this option at all. The combined file runs in SKILL.md's single-thread monolithic-fallback mode. Plan directories must be created manually. For full bootstrap and sub-agent support, use the zip package.
 
 ### Option 3 — Clone and install
 
@@ -130,16 +139,14 @@ make build
 cp -r build/iterative-planner ~/.claude/skills/
 ```
 
-### Sub-agents (optional but recommended)
-
-To enable parallel agent dispatch (explorers in parallel, a dedicated verifier, an adversarial reviewer):
+To enable parallel agent dispatch (explorers in parallel, a dedicated verifier, an adversarial reviewer), copy the sub-agent definitions from source into Claude Code's shared agents directory:
 
 ```bash
 mkdir -p ~/.claude/agents
 cp src/agents/*.md ~/.claude/agents/
 ```
 
-The skill works without sub-agents — they are an optimization layer, not a requirement.
+The skill works without this step too — sub-agents are an optimization layer, not a requirement.
 
 ### First run
 
