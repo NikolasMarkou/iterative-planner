@@ -13,7 +13,7 @@ Three phases: Gate-In (gather context), Evaluate (verify + analyze), Gate-Out (d
 All seven reads are CORE. Do not evaluate until all are complete.
 
 #### Phase 2: Evaluate
-*(Continues the numbering from Phase 1's 7 reads — Evaluate runs 8–27.)*
+*(Continues the numbering from Phase 1's 7 reads — Evaluate runs 8–24.)*
 8. **Cross-validate plan vs progress** — every `[x]` in plan.md must be "Completed" in progress.md. Fix drift before proceeding.
 9. **Diff review** — review actual code changes (git diff or change manifest in state.md). Check for: debug artifacts, commented-out code, TODO/FIXME/HACK leftovers, unintended modifications to files not in the plan. This checks code quality; verification (below) checks correctness.
 10. **Changelog scan (v2.15.0+)** — read `changelog.md`. List HIGH-radius edits and "tiny edit big radius" outliers (small `EDIT(+N,-M)` paired with MED/HIGH radius). Flag thin reasons. Surface concerns in the review output (or `findings/review-iter-N[-passM].md` when an `ip-reviewer` runs). Informational only — never blocks CLOSE.
@@ -31,11 +31,13 @@ All seven reads are CORE. Do not evaluate until all are complete.
 22. **Devil's advocate** *(EXTENDED — skip for iteration 1)* — before routing to CLOSE: name one reason this might still be wrong despite passing verification. If you can't think of one, be more suspicious, not less. Record in `decisions.md`.
 23. **Adversarial review** *(EXTENDED — iteration 2+ by default; the orchestrator may spawn it earlier by choice, e.g. an iteration-1 attack-before-release pass ahead of a release/version bump — the iteration-2+ default is unchanged)* — spawn an `ip-reviewer` agent (or Task subagent) with `verification.md`, `plan.md` (criteria), and `decisions.md`. Its job: are criteria adequate? what wasn't tested? does evidence support CLOSE? Output → `findings/review-iter-N[-passM].md` (bare for a first pass, `-passM` for re-reviews per ip-reviewer's naming rule). Main agent must address each concern in `decisions.md` before routing to CLOSE, AND honor the review's `## Verdict` (READY_TO_CLOSE / NEEDS_WORK / NEEDS_INVESTIGATION): a non-`READY_TO_CLOSE` verdict must be reflected in the routing recommendation — don't recommend CLOSE over it without a justified override in `decisions.md`. See "Sub-Agent Architecture" section for dispatch details.
 
+24. **Hygiene sweep** *(run it when the work looks close to done — a reviewer ran and returned `READY_TO_CLOSE`, or no reviewer ran and every criterion passed with no regressions; skip it otherwise, because a tree that is about to change would be swept stale)* — sweep the repository for accumulated residue and separate what this plan introduced from what was already there. With sub-agents, spawn an `ip-boyscout` and let it do the work. Single-threaded, do the same work in place: run `node <skill-path>/scripts/scar-scan.mjs --json`, then `node <skill-path>/scripts/scar-scan.mjs --self-check` to learn how many sweep categories ran and which ran degraded. Check the exit code before reading anything — exit 1 means the scan cannot be trusted, standard output is empty by design, and the honest report says so and sets its Verdict to `SCAN_UNTRUSTWORTHY`; reporting a clean sweep there would be the false all-clear the scanner refuses to produce. Output → `findings/hygiene-iter-N[-passM].md` (bare for a first sweep, `-passM` for a re-sweep, matching the reviewer's naming rule), with the three required headings `## Inherited`, `## Introduced` and `## Verdict`. Apply the same partition discipline either way: keep every item on the side the scanner put it, report inherited residue as a total with a standalone command and never fix it here, and treat an introduced item as actionable only when a line in `changelog.md` names its file and so attributes it to a numbered step. The Verdict feeds the routing decision below. Full report schema: `ip-boyscout.md`.
+
 #### Phase 3: Gate-Out (write + present)
-24. Write `verification.md` — complete Verdict section. 0 verified criteria (an empty or placeholder Verification Strategy) is FAIL-equivalent for the item-5 recommendation below: never recommend CLOSE on an empty Verification Strategy without calling it out explicitly.
-25. Write `decisions.md` — what happened, what was learned, root cause (if failure). Include Simplification Checks output.
-26. Write `progress.md` — update status of all items.
-27. Write `state.md` — log evaluation summary, update transition.
+25. Write `verification.md` — complete Verdict section. 0 verified criteria (an empty or placeholder Verification Strategy) is FAIL-equivalent for the item-5 recommendation below: never recommend CLOSE on an empty Verification Strategy without calling it out explicitly.
+26. Write `decisions.md` — what happened, what was learned, root cause (if failure). Include Simplification Checks output.
+27. Write `progress.md` — update status of all items.
+28. Write `state.md` — log evaluation summary, update transition.
 
 **Present to user before routing — PC-REFLECT contract** (see `references/file-formats.md` "Presentation Contracts"). Emit a 5-item block (exactly 5 — collapsing violates the contract):
 1. What was completed (verbatim from `progress.md`)
@@ -47,7 +49,7 @@ All seven reads are CORE. Do not evaluate until all are complete.
 | Condition | → Transition |
 |-----------|--------------|
 | All criteria verified PASS in `verification.md`, no regressions, no simplification blockers + **user confirms** | → CLOSE |
-| Completion-fix remediation surfaced during REFLECT: small fixes to finish the SAME iteration's work (not a new approach → not PIVOT; not more context → not EXPLORE) + **user confirms** | → EXECUTE (same iteration; `iter` does not increment) |
+| Completion-fix remediation surfaced during REFLECT: small fixes to finish the SAME iteration's work (not a new approach → not PIVOT; not more context → not EXPLORE) + **user confirms**. This is also the path the hygiene sweep's remediation takes: each `## Introduced` item a `changelog.md` line attributes to a numbered step becomes one sub-step here, and an unattributable item is reported and never minted. Bound it at two hygiene remediation rounds per iteration — each round re-enters REFLECT, which sweeps again, so a third sweep in the same iteration reports only. | → EXECUTE (same iteration; `iter` does not increment) |
 | Failure understood, new approach clear | → PIVOT |
 | Unknowns need investigation, or findings contradicted | → EXPLORE (update findings first) |
 
