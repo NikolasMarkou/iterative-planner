@@ -36,13 +36,12 @@ This is one skill file plus a handful of scripts — no server, no extra service
 
 **Start here**
 - [When to Use This](#when-to-use-this)
-- [How It Works](#how-it-works)
 - [Get Started in 60 Seconds](#get-started-in-60-seconds)
 - [A Worked Example](#a-worked-example)
 - [Why This Works](#why-this-works)
 
 **Reference**
-[The Plan Directory](#the-plan-directory) · [Bootstrapping](#bootstrapping) · [Sub-Agent Architecture](#sub-agent-architecture) · [Presentation Contracts](#presentation-contracts) · [Validator](#validator) · [Git Integration](#git-integration) · [FAQ](#faq)
+[How It Works](#how-it-works) · [The Plan Directory](#the-plan-directory) · [Bootstrapping](#bootstrapping) · [Sub-Agent Architecture](#sub-agent-architecture) · [Presentation Contracts](#presentation-contracts) · [Validator](#validator) · [Git Integration](#git-integration) · [FAQ](#faq)
 
 **Project**
 [Contributing](#contributing) · [Project Structure](#project-structure) · [Sponsored by](#sponsored-by) · [License](#license)
