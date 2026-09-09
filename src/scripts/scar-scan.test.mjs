@@ -325,7 +325,7 @@ test("category A: a bare (unqualified) anchor names no plan, and a [STALE] ancho
     "Summary: 0 error(s), 2 warning(s), 0 info(s)",
   ].join("\n");
   const { anchors } = parseValidatorOutput(out);
-  assert.equal(anchors[0].planId, null, "a bare D-NNN anchor names no plan — it must fall back to the file test in classifyProvenance");
+  assert.equal(anchors[0].planId, null, "a bare D-NNN anchor names no plan — classifyProvenance must call it INHERITED, never fall back to the file test");
   assert.equal(anchors[0].stale, false);
   assert.equal(anchors[1].stale, true, "the [STALE] marker must survive into the finding");
 });
@@ -514,6 +514,31 @@ test("category C negative: a populated artifact, a CITED checkpoint, and the man
       "ever cites it, so an uncited cp-000 is protocol compliance and must never be reported as residue",
   );
   assert.deepEqual(classifyPlanArtifacts({}), [], "an empty listing must not throw");
+});
+
+test("category C: the unreferenced-checkpoint rule is scoped OFF for the ACTIVE plan and stays ON for a closed one", () => {
+  const listing = { checkpoints: [{ name: "cp-001-iter1.md" }], referenceText: "nothing cites it yet" };
+  assert.deepEqual(
+    classifyPlanArtifacts({ ...listing, planIsActive: true }),
+    [],
+    "decisions.md D-012: a checkpoint the run NOW IN PROGRESS created minutes ago is the protocol working, not " +
+      "residue — the plan file that will cite it may not be written yet",
+  );
+  const closed = classifyPlanArtifacts({ ...listing, planIsActive: false });
+  assert.deepEqual(
+    closed.map((i) => [i.kind, i.file]),
+    [["unreferenced-checkpoint", "checkpoints/cp-001-iter1.md"]],
+    "NARROWED, NOT DELETED: a dangling checkpoint in a CLOSED plan is still real residue and must still be reported",
+  );
+  assert.deepEqual(
+    classifyPlanArtifacts({
+      findings: [{ name: "hollow.md", content: "# T\n" }],
+      checkpoints: [{ name: "cp-002-iter1.md" }],
+      planIsActive: true,
+    }).map((i) => i.kind),
+    ["empty-findings-file"],
+    "the active-plan scope suppresses the CHECKPOINT rule only — the findings rules still fire",
+  );
 });
 
 test("category C negative: a PROTOCOL-assigned `-iter-N` / `-passN` name is not a collision suffix", () => {
@@ -739,11 +764,19 @@ test("partition: an ANCHOR is classified by PLAN-ID alone, never by whether the 
       "moment an unrelated plan touched that file, and the report would read as a permanent false regression",
   );
 
-  const bare = classifyProvenance(
-    { category: "A", kind: "anchor-unqualified", planId: null, file: "src/touched.mjs" },
-    ctx,
-  );
-  assert.equal(bare.provenance, "introduced", "a bare anchor names no plan, so it falls back to the file test — and this file IS in the changelog");
+  // decisions.md D-012. An anchor whose plan-id does not RESOLVE cannot equal the active
+  // plan-id, so the rule's second clause can never hold. The predecessor fell through to
+  // the file test and reported three pre-existing [anchor-badprefix] anchors as INTRODUCED
+  // for the sole reason that this plan had edited their file: file membership is proximity,
+  // not attribution.
+  for (const kind of ["anchor-unqualified", "anchor-badprefix"]) {
+    const unresolvable = classifyProvenance({ category: "A", kind, planId: null, file: "src/touched.mjs" }, ctx);
+    assert.equal(
+      unresolvable.provenance,
+      "inherited",
+      `${kind}: an anchor with no resolvable plan-id must be INHERITED even though its file IS in the changelog`,
+    );
+  }
 });
 
 test("partition: plan-directory artifacts are this plan's by construction; other files go by changelog membership", () => {
@@ -1165,8 +1198,14 @@ test("live repo: a SYNTHETIC anchor bearing the active plan-id classifies INTROD
     file: "src/scripts/scar-scan.mjs",
     line: 116,
   };
+  const paths = changelogPaths(readFileSync(join(plan.planDirAbs, "changelog.md"), "utf8"));
+  assert.ok(
+    paths.has(synthetic.file),
+    `${synthetic.file} must appear in this plan's changelog for this test to mean anything — it pins that the ` +
+      "D-012 narrowing (no resolvable plan-id => inherited) did NOT collapse into 'always inherited'",
+  );
   const { provenance, why } = classifyProvenance(synthetic, {
-    paths: changelogPaths(readFileSync(join(plan.planDirAbs, "changelog.md"), "utf8")),
+    paths,
     planId: plan.planId,
     planDirRel: plan.planDirRel,
   });

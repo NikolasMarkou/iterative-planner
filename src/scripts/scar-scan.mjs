@@ -29,9 +29,11 @@
 // permanent false regression: readers learn to ignore the section and a
 // genuinely new orphan hides inside it forever. Every finding is classified
 // INHERITED (predates this plan — reported with a suggested standalone command,
-// never auto-remediated) or INTRODUCED (attributable to a file this plan's own
-// changelog.md touched — the only items an orchestrator may mint as
-// `iter-N/step-M.K` completion fixes).
+// never auto-remediated) or INTRODUCED (the only items an orchestrator may mint
+// as `iter-N/step-M.K` completion fixes). INTRODUCED means a file named by this
+// plan's own changelog.md — EXCEPT for category A, which is decided by ANCHOR
+// IDENTITY alone: an anchor is this plan's only when its plan-id RESOLVES and
+// EQUALS the active plan-id. File membership is proximity, not attribution.
 //
 // EXIT CODES (named constants below):
 //   0  the scan completed, REGARDLESS of what it found
@@ -75,6 +77,13 @@
 //      it. Accepted: the alternative was reporting `review-iter-2.md` and this
 //      tool's own `hygiene-iter-2.md` as residue on every run from iteration 2
 //      onward — a rule that fires on correct names is a rule that gets ignored.
+//   7. Two deliberate narrowings the partition pays for (decisions.md D-012).
+//      (a) A category-A anchor with NO resolvable plan-id is always INHERITED,
+//      so an `[anchor-badprefix]` anchor this plan itself wrote reads as
+//      backlog. A NEW orphan is still caught, because it carries the active
+//      plan-id. (b) The unreferenced-checkpoint rule does not fire on the
+//      ACTIVE plan, so a checkpoint that stays uncited for the whole run is
+//      invisible until that plan is closed and swept with --plan-dir.
 //
 // COST. No new full-corpus walk over `plans/`: B, C and E read ONE plan
 // directory (O(1) in plan-dir count), A delegates to validate-plan.mjs whose
@@ -353,15 +362,18 @@ const PROTOCOL_ITER_SUFFIX_RE = /-(?:iter-|pass-?)\d+\.md$/;
 /**
  * Classify plan-directory residue from an already-read listing.
  *
- * Contract: ({ findings, checkpoints, referenceText }) -> Item[], where
+ * Contract: ({ findings, checkpoints, referenceText, planIsActive }) -> Item[], where
  *   findings   = [{ name, content }] from the plan's findings/ dir
  *   checkpoints= [{ name }] .md files from the plan's checkpoints/ dir
  *   referenceText = the concatenated text of the plan's other files, searched
  *                   for checkpoint mentions
+ *   planIsActive = true when the swept plan is the one plans/.current_plan
+ *                  points at, which suppresses the unreferenced-checkpoint rule
+ *                  only (findings rules are unaffected)
  * Kept pure (takes a listing, not a path) so the test suite can drive every
  * branch without a fixture tree. Never throws.
  */
-export function classifyPlanArtifacts({ findings = [], checkpoints = [], referenceText = "" }) {
+export function classifyPlanArtifacts({ findings = [], checkpoints = [], referenceText = "", planIsActive = false }) {
   const items = [];
   for (const f of findings) {
     const body = (f.content || "").split("\n").filter((l) => l.trim() !== "");
@@ -390,7 +402,11 @@ export function classifyPlanArtifacts({ findings = [], checkpoints = [], referen
       });
     }
   }
-  for (const c of checkpoints) {
+  // The ACTIVE plan's checkpoints are IN FLIGHT: one created minutes ago by the run now
+  // in progress is the protocol working, not residue, and the plan file that will cite it
+  // may not be written yet. Narrowed, not deleted (decisions.md D-012) — a dangling
+  // checkpoint in a CLOSED plan is still real residue and is still reported.
+  for (const c of planIsActive ? [] : checkpoints) {
     const stem = c.name.replace(/\.md$/, "");
     if (MANDATORY_CHECKPOINT_RE.test(stem)) continue;
     if (referenceText.includes(stem)) continue;
@@ -654,8 +670,9 @@ export function changelogPaths(changelogText) {
  *    already carry inherited anchors from dead plans; a file-membership test
  *    would flip those to INTRODUCED the moment a plan touched the file for an
  *    unrelated reason, which is exactly the permanent-false-regression failure
- *    the partition exists to prevent. A bare (unqualified) anchor names no plan,
- *    so it falls back to the file test.
+ *    the partition exists to prevent. An anchor whose plan-id does not RESOLVE
+ *    at all (an `[anchor-badprefix]` item) can never equal the active plan-id,
+ *    so it is INHERITED too — it does NOT fall back to the file test.
  *  - Everything INSIDE the plan directory (categories B, C, E) is this plan's by
  *    construction — the changelog logs source edits and never lists its own dir.
  *  - Everything else (category D) is INTRODUCED iff its file appears in the
@@ -663,7 +680,18 @@ export function changelogPaths(changelogText) {
  * Never throws.
  */
 export function classifyProvenance(item, { paths, planId, planDirRel }) {
-  if (item.category === "A" && item.planId) {
+  // DECISION plan-2026-09-09T082122-64c4de78/D-012 — category A is attributed by ANCHOR
+  // IDENTITY, never by file membership. Do NOT restore a `&& item.planId` guard here: it
+  // let an anchor with NO resolvable plan-id fall through to the changelog test below, and
+  // three pre-existing `[anchor-badprefix]` anchors were reported INTRODUCED for the sole
+  // reason that this plan had edited their file for an unrelated purpose. File membership
+  // is not attribution; it is proximity. The permanent-false-regression failure that turns
+  // every inherited finding in a touched file into a fresh regression is the exact outcome
+  // this partition exists to prevent — see decisions.md D-012.
+  if (item.category === "A") {
+    if (!item.planId) {
+      return { provenance: "inherited", why: "anchor names no resolvable plan-id, so it cannot be this plan's" };
+    }
     return item.planId === planId
       ? { provenance: "introduced", why: `anchor names the active plan-id ${planId}` }
       : { provenance: "inherited", why: `anchor names ${item.planId}, not the active plan` };
@@ -833,10 +861,12 @@ export function runScan({ root, planDirArg = null, validatorPath }) {
     const referenceText = ["state.md", "progress.md", "plan.md", "decisions.md", "changelog.md", "findings.md"]
       .map((f) => readOr(join(plan.planDirAbs, f)))
       .join("\n");
+    const pointed = basename(readOr(join(root, "plans", ".current_plan"), "").trim());
     const items = classifyPlanArtifacts({
       findings: findingFiles,
       checkpoints: checkpointFiles,
       referenceText,
+      planIsActive: pointed !== "" && pointed === plan.planId,
     }).map((i) => ({ ...i, file: `${plan.planDirRel}/${i.file}` }));
     findings.push(...items);
     status("C", "ran", `${findingFiles.length} findings artifact(s), ${checkpointFiles.length} checkpoint(s) inspected`, items.length);
