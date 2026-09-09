@@ -1,14 +1,14 @@
 {
   "CLAUDE.md": {
-    "ceiling": 8.24,
-    "markers": 52
+    "ceiling": 8.11,
+    "markers": 59
   },
   "README.md": {
-    "ceiling": 8.8,
+    "ceiling": 8.66,
     "markers": 53
   },
   "src/SKILL.md": {
-    "ceiling": 5.83,
+    "ceiling": 5.75,
     "markers": 38
   },
   "src/agents/ip-archivist.md": {
@@ -28,7 +28,7 @@
     "markers": 1
   },
   "src/agents/ip-orchestrator.md": {
-    "ceiling": 11.27,
+    "ceiling": 9.92,
     "markers": 43
   },
   "src/agents/ip-plan-writer.md": {
@@ -48,7 +48,7 @@
     "markers": 4
   },
   "src/references/code-hygiene.md": {
-    "ceiling": 2.37,
+    "ceiling": 2.19,
     "markers": 3
   },
   "src/references/complexity-control.md": {
