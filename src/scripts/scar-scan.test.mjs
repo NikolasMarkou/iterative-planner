@@ -27,7 +27,6 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {
-  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -71,11 +70,40 @@ const repoRoot = join(here, "..", "..");
 const script = join(here, "scar-scan.mjs");
 const realValidator = join(here, "validate-plan.mjs");
 
-// The closed plan directory D-008 measured. It is gitignored, so it exists in
-// THIS working tree and is absent from a fresh clone — the tests that read it
-// skip with an explicit reason rather than passing silently on nothing.
+// The closed plan directory D-008 measured. Its changelog is CAPTURED VERBATIM
+// below rather than read from `plans/`: plan directories are gitignored, so the
+// tests that read the live corpus passed here and SKIPPED in every fresh clone,
+// which broke `make test` under a version bump (decisions.md D-013). A skipping
+// test is a test that has disabled itself. The capture is the durable record —
+// the directory it was taken from will be deleted when the plan is archived.
 const CLOSED_PLAN = "plan-2026-09-04T124202-72910089";
-const closedPlanAbs = join(repoRoot, "plans", CLOSED_PLAN);
+
+/**
+ * `plans/plan-2026-09-04T124202-72910089/changelog.md`, byte-for-byte at the
+ * commit that closed it. Two entry lines (6 and 10) carry a genuinely stale
+ * `uncommitted` COMMIT field; lines 14 and 15 are append-only CORRECTION
+ * entries whose REASON text contains the same word. That difference is the
+ * whole point of the capture: the EXPLORE baseline's `grep -c uncommitted`
+ * counted 4 here and the true answer is 2 (decisions.md D-008).
+ */
+const D008_CHANGELOG = [
+  "# Changelog",
+  "*Append-only per-edit ledger. One line per file edit. Owner: ip-executor (writes). Reader: ip-reviewer at REFLECT.*",
+  "*Field order: `UTC | iter-N/step-M[.K] | commit | path | op | radius | D-NNN-or-dash | reason`. Field shapes are defined once, in `CHANGELOG_SPEC` (scripts/schema.mjs) — read the spec, not a copy.*",
+  "*See references/blast-radius.md for radius scoring. Decision-ref optional — `-` means no `# DECISION` anchor governs this edit.*",
+  "2026-09-04T12:53:17Z | iter-1/step-1 | ee94b0e | src/SKILL.md | EDIT(+0,-7) | radius:LOW(2) | - | trim Decision Anchoring section to summary+pointer",
+  "2026-09-04T13:05:00Z | iter-1/step-2 | uncommitted | src/references/planning-rigor.md | EDIT(+2,-12) | radius:LOW(1) | - | fix RCA self-contradiction, remove duplicated 4-part block",
+  "2026-09-04T13:10:00Z | iter-1/step-3 | 906003d | src/references/root-cause-analysis.md | EDIT(+1,-1) | radius:LOW(1) | - | dedup \"don't stop at first cause\" sentence, point to planning-rigor.md Stop rule",
+  "2026-09-04T12:56:32Z | iter-1/step-4 | d5136d6 | src/references/complexity-control.md | EDIT(+2,-0) | radius:LOW(1) | - | mark Complexity Budget block canonical, name the two gated copies to match",
+  "2026-09-04T12:57:33Z | iter-1/step-5 | 903dd2d | src/references/file-formats.md | EDIT(+1,-1) | radius:LOW(2) | - | fix stale LEASH HIT worked example to canonical pre-step-gate shape",
+  "2026-09-04T13:15:00Z | iter-1/step-6 | uncommitted | src/scripts/check-agent-wiring.mjs | EDIT(+9,-0) | radius:LOW(2) | D-001 | document rule (d) agents-only scope decision, warn against widening without module resolution lines",
+  "2026-09-04T13:20:00Z | iter-1/step-4.1 | 4ccf299 | src/references/complexity-control.md | EDIT(+1,-1) | radius:LOW(1) | - | reword to drop check-template-parity script name, fix register-gate 3-segment compound marker",
+  "2026-09-04T14:05:00Z | iter-1/step-5.1 | 1584de5 | src/references/file-formats.md | EDIT(+1,-1) | radius:LOW(2) | - | replace invented Stdout example with ip-orchestrator.md:140 canonical <verbatim> shape, dropping stray [leash-cap] bracket-tag marker",
+  "2026-09-04T14:15:00Z | iter-1/step-9 | 590eebd | src/scripts/register-baseline.json | EDIT(+3,-3) | radius:LOW(1) | - | regenerate baseline, raise 3 ceilings (SKILL.md, planning-rigor.md, root-cause-analysis.md) whose density rose from pure prose deletion, marker counts held",
+  "2026-09-04T14:25:00Z | iter-1/step-2 | 40ee60d | src/references/planning-rigor.md | EDIT(+0,-0) | radius:LOW(1) | - | correction: line 6 above still read \"uncommitted\" after this step's real commit landed; correcting the commit field here (append-only, original line left as-is, no new file changes)",
+  "2026-09-04T14:25:00Z | iter-1/step-6 | 509fd10 | src/scripts/check-agent-wiring.mjs | EDIT(+0,-0) | radius:LOW(2) | D-001 | correction: line 10 above still read \"uncommitted\" after this step's real commit landed; correcting the commit field here (append-only, original line left as-is, no new file changes)",
+  "",
+].join("\n");
 
 // ---------------------------------------------------------------------------
 // Fixture helpers
@@ -458,16 +486,8 @@ test("category B negative: the word `uncommitted` in a REASON field is not a sta
   assert.deepEqual(findStaleCommitFields(null), [], "a missing changelog must not throw");
 });
 
-test("category B on the real closed-plan corpus: exactly 2 stale fields, at lines 6 and 10 (D-008's correction, executable)", (t) => {
-  if (!existsSync(closedPlanAbs)) {
-    t.skip(
-      `${CLOSED_PLAN} is absent — plan directories are gitignored, so this measurement is unavailable in a ` +
-        "fresh clone. Skipped with a reason rather than passed silently on nothing.",
-    );
-    return;
-  }
-  const text = readFileSync(join(closedPlanAbs, "changelog.md"), "utf8");
-  const stale = findStaleCommitFields(text);
+test("category B on the captured D-008 corpus: exactly 2 stale fields, at lines 6 and 10 (D-008's correction, executable)", () => {
+  const stale = findStaleCommitFields(D008_CHANGELOG);
   assert.deepEqual(
     stale.map((s) => s.lineNo),
     [6, 10],
@@ -478,44 +498,52 @@ test("category B on the real closed-plan corpus: exactly 2 stale fields, at line
   assert.deepEqual(stale.map((s) => s.step), ["iter-1/step-2", "iter-1/step-6"]);
 });
 
-test("category B end-to-end: --plan-dir at the closed plan reports both stale fields, and the frame is the SWEPT plan", (t) => {
-  if (!existsSync(closedPlanAbs)) {
-    t.skip(`${CLOSED_PLAN} is absent (gitignored) — end-to-end measurement unavailable in a fresh clone.`);
-    return;
-  }
-  const report = runScan({
-    root: repoRoot,
-    planDirArg: `plans/${CLOSED_PLAN}`,
-    validatorPath: realValidator,
+test("category B end-to-end: --plan-dir at a closed plan reports both stale fields, and the frame is the SWEPT plan", () => {
+  // A replica of the D-008 situation built in tmp: an ACTIVE plan the pointer names,
+  // a second CLOSED plan directory carrying the captured corpus, and real commits
+  // carrying that closed plan's step tags so git can corroborate both hashes. The
+  // predecessor read the live `plans/` tree and skipped in every fresh clone.
+  const { root } = makeFixtureRoot({
+    files: { [`plans/${CLOSED_PLAN}/changelog.md`]: D008_CHANGELOG },
   });
-  assert.ok(!report.unavailable, `expected a real scan; got unavailable: ${report.unavailable}`);
-  const b = [...itemsOf(report, "B", "inherited"), ...itemsOf(report, "B", "introduced")];
-  assert.equal(b.length, 2, `expected exactly 2 category-B findings, got ${JSON.stringify(b.map((i) => i.line))}`);
-  assert.deepEqual(b.map((i) => i.line), [6, 10]);
-  for (const i of b) {
-    assert.match(i.evidence, /still reads `uncommitted`/);
-    assert.match(i.remediation, /rewrite the commit field to [0-9a-f]{7,}/, "git corroborated the hash, so the fix names it");
-    // The reference frame of the partition is the plan being SWEPT, not the one
-    // in plans/.current_plan: --plan-dir re-points the whole scan, and a
-    // finding inside the swept plan's own directory is that plan's by
-    // construction (see classifyProvenance's contract). decisions.md D-008
-    // describes these two as INHERITED, which is true relative to the ACTIVE
-    // plan — the assertion for that frame is the next one down.
-    assert.equal(i.provenance, "introduced", "swept-plan frame: the finding lives in the swept plan's own directory");
-  }
-  // D-008's actual invariant, in the frame it was written about: relative to a
-  // DIFFERENT active plan, this closed plan's residue is not that plan's regression.
-  for (const i of b) {
-    const { provenance } = classifyProvenance(i, {
-      paths: new Set(),
-      planId: FIXTURE_PLAN_ID,
-      planDirRel: `plans/${FIXTURE_PLAN_ID}`,
-    });
-    assert.equal(
-      provenance,
-      "inherited",
-      "relative to any other active plan, a closed plan's stale commit fields are inherited backlog and must never be minted as a fix",
-    );
+  try {
+    gitInitFixture(root, [
+      "[plan-2026-09-04-72910089/iter-1/step-2] the commit line 6 still calls uncommitted",
+      "[plan-2026-09-04-72910089/iter-1/step-6] the commit line 10 still calls uncommitted",
+    ]);
+    const stub = writeStub(root, "proof.mjs", STUB_PROOF);
+    const report = runScan({ root, planDirArg: `plans/${CLOSED_PLAN}`, validatorPath: stub });
+    assert.ok(!report.unavailable, `expected a real scan; got unavailable: ${report.unavailable}`);
+    const b = [...itemsOf(report, "B", "inherited"), ...itemsOf(report, "B", "introduced")];
+    assert.equal(b.length, 2, `expected exactly 2 category-B findings, got ${JSON.stringify(b.map((i) => i.line))}`);
+    assert.deepEqual(b.map((i) => i.line), [6, 10]);
+    for (const i of b) {
+      assert.match(i.evidence, /still reads `uncommitted`/);
+      assert.match(i.remediation, /rewrite the commit field to [0-9a-f]{7,}/, "git corroborated the hash, so the fix names it");
+      // The reference frame of the partition is the plan being SWEPT, not the one
+      // in plans/.current_plan: --plan-dir re-points the whole scan, and a
+      // finding inside the swept plan's own directory is that plan's by
+      // construction (see classifyProvenance's contract). decisions.md D-008
+      // describes these two as INHERITED, which is true relative to the ACTIVE
+      // plan — the assertion for that frame is the next one down.
+      assert.equal(i.provenance, "introduced", "swept-plan frame: the finding lives in the swept plan's own directory");
+    }
+    // D-008's actual invariant, in the frame it was written about: relative to a
+    // DIFFERENT active plan, this closed plan's residue is not that plan's regression.
+    for (const i of b) {
+      const { provenance } = classifyProvenance(i, {
+        paths: new Set(),
+        planId: FIXTURE_PLAN_ID,
+        planDirRel: `plans/${FIXTURE_PLAN_ID}`,
+      });
+      assert.equal(
+        provenance,
+        "inherited",
+        "relative to any other active plan, a closed plan's stale commit fields are inherited backlog and must never be minted as a fix",
+      );
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
 });
 
@@ -1270,81 +1298,124 @@ test("partition end-to-end: the SAME leftover flips inherited -> introduced when
   }
 });
 
+
 // ---------------------------------------------------------------------------
-// The live repository — Pre-Mortem scenario 2's STOP-IF
+// The REAL validator over a fixture tree — Pre-Mortem scenario 2's STOP-IF
 // ---------------------------------------------------------------------------
 
-test("live repo: the real inherited anchor backlog classifies INHERITED, and NOTHING of category A classifies introduced", (t) => {
-  const report = runScan({ root: repoRoot, validatorPath: realValidator });
-  assert.ok(!report.unavailable, `the real validator must be runnable from the repo; got: ${report.unavailable}`);
-  const categoryA = report.categories.find((c) => c.id === "A");
-  if (categoryA.status !== "ran") {
-    t.skip(
-      `category A is ${categoryA.status} (${categoryA.note}) — plan directories are gitignored, so the anchor ` +
-        "corpus this measurement needs does not exist in a fresh clone. Skipped with a reason, never passed silently.",
+/**
+ * A fixture whose SOURCE tree carries two real decision anchors: one naming a
+ * plan that does not exist, one naming the fixture's own active plan with no
+ * matching entry. `plans/<active>/decisions.md` carries the preamble line the
+ * validator needs to RESOLVE the plan-id, which is what makes the second anchor
+ * an [anchor-orphan] rather than a second [anchor-unknown-plan]. This plan's
+ * changelog names BOTH files, so file membership alone would call both
+ * introduced — the D-012 identity rule is the only thing that separates them.
+ *
+ * The two tests below run the REAL validate-plan.mjs against this tree. That is
+ * deliberate: their predecessors swept the live repository, which made them the
+ * only tests that would notice the upstream's report format drifting — and also
+ * made them SKIP in every fresh clone, since `plans/` is gitignored (D-013).
+ * Driving the real upstream over a fixture keeps the drift-catching property
+ * and drops the environment dependency.
+ *
+ * The anchor text below is INTERPOLATED, never inlined. `${...}` in the literal
+ * is what stops validate-plan.mjs from scanning this very file and reporting
+ * two fresh orphan anchors against the repo. Do not "simplify" it to a plain
+ * string.
+ *
+ * Contract: () -> { root, planId, DEAD_PLAN }. Caller removes `root`.
+ */
+const DEAD_PLAN = "plan-2026-01-01T000000-deadbeef";
+
+function makeAnchorFixture() {
+  return makeFixtureRoot({
+    planFiles: {
+      "decisions.md": [
+        "# Decision Log",
+        `*Plan: ${FIXTURE_PLAN_ID}*`,
+        "",
+        "## D-001 | PLAN | 2026-01-02",
+        "**Decision**: the one entry this plan records.",
+        "",
+      ].join("\n"),
+      "changelog.md": [
+        "# Changelog",
+        "2026-01-02T03:04:05Z | iter-1/step-1 | abc1234 | src/inherited.mjs | EDIT(+1,-0) | radius:LOW(1) | - | this plan edited the file the OLD anchor lives in",
+        "2026-01-02T03:05:05Z | iter-1/step-2 | abc1234 | src/introduced.mjs | EDIT(+1,-0) | radius:LOW(1) | - | and the file the new one lives in",
+        "",
+      ].join("\n"),
+    },
+    files: {
+      "src/inherited.mjs": `// DECISION ${DEAD_PLAN}/D-003 — an anchor naming a plan that no longer exists\nexport const inherited = 1;\n`,
+      "src/introduced.mjs": `// DECISION ${FIXTURE_PLAN_ID}/D-009 — this plan's own id, with no D-009 entry to point at\nexport const introduced = 2;\n`,
+    },
+  });
+}
+
+test("category A end-to-end on the REAL validator: a dead-plan anchor is INHERITED even in a file this plan edited", () => {
+  const { root } = makeAnchorFixture();
+  try {
+    const report = runScan({ root, validatorPath: realValidator });
+    assert.ok(
+      !report.unavailable,
+      `the real validator must run AND its issue lines must parse; got: ${report.unavailable}. This assertion is ` +
+        "the drift detector: if validate-plan.mjs's report format changes, the corroboration added in D-013 turns " +
+        "the run into [scan-unavailable] and this line fails loudly instead of reporting a clean category A.",
     );
-    return;
-  }
+    assert.equal(report.categories.find((c) => c.id === "A").status, "ran");
 
-  const inheritedA = itemsOf(report, "A", "inherited");
-  const introducedA = itemsOf(report, "A", "introduced");
+    const inheritedA = itemsOf(report, "A", "inherited");
+    const item = inheritedA.find((i) => i.file === "src/inherited.mjs");
+    assert.ok(item, `expected the dead-plan anchor among ${JSON.stringify(inheritedA.map((i) => i.file))}`);
+    assert.equal(item.kind, "anchor-unknown-plan", "the upstream's own check name must survive the parse");
+    assert.equal(item.planId, DEAD_PLAN);
+    assert.equal(item.line, 1);
+    assert.equal(
+      item.remediation,
+      `node <skill-path>/scripts/bootstrap.mjs retire ${DEAD_PLAN}`,
+      "the dead-plan-id backlog's suggested fix is `bootstrap.mjs retire <plan-id>`, run deliberately and on its own",
+    );
 
-  assert.ok(
-    inheritedA.length >= 64,
-    `expected at least 64 INHERITED category-A items, got ${inheritedA.length}. This floor is the repo's measured ` +
-      "orphan-anchor backlog (75 at the time of writing: 64 [anchor-unknown-plan] errors plus 11 " +
-      "[anchor-badprefix] warnings). It is a floor, not an equality, because the number moves whenever a plan " +
-      "closes or `bootstrap.mjs retire` runs. If the backlog was genuinely remediated, LOWER this number in the " +
-      "same commit that remediates it — do not delete the assertion.",
-  );
-  assert.deepEqual(
-    introducedA.map((i) => `${i.file}:${i.line} ${i.planId}`),
-    [],
-    "Pre-Mortem scenario 2's STOP-IF. Not one of the repo's inherited anchors may be attributed to the active " +
-      "plan: a report that blames a plan for a backlog it did not create reads as a permanent false regression, " +
-      "readers learn to ignore the section, and a genuinely new orphan hides in it forever.",
-  );
-  for (const i of inheritedA) {
-    assert.notEqual(i.planId, report.planId, "an inherited anchor must not name the active plan");
-    assert.ok(i.remediation, "every inherited item carries a suggested STANDALONE command — reported, never auto-remediated");
+    // Pre-Mortem scenario 2's STOP-IF. The file IS in this plan's changelog, so
+    // file membership alone would blame this plan for an anchor it did not write.
+    assert.ok(
+      changelogPaths(readFileSync(join(root, "plans", FIXTURE_PLAN_ID, "changelog.md"), "utf8")).has("src/inherited.mjs"),
+      "the file must appear in this plan's changelog for the assertion below to mean anything",
+    );
+    assert.deepEqual(
+      itemsOf(report, "A", "introduced").map((i) => i.file),
+      ["src/introduced.mjs"],
+      "not one anchor bearing another plan's id may be attributed to the active plan: a report that blames a plan " +
+        "for a backlog it did not create reads as a permanent false regression, readers learn to ignore the " +
+        "section, and a genuinely new orphan hides in it forever.",
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
-  assert.ok(
-    inheritedA.some((i) => /bootstrap\.mjs retire /.test(i.remediation)),
-    "the dead-plan-id backlog's suggested fix is `bootstrap.mjs retire <plan-id>`, run deliberately and on its own",
-  );
 });
 
-test("live repo: a SYNTHETIC anchor bearing the active plan-id classifies INTRODUCED — the partition discriminates, it does not just label everything inherited", (t) => {
+test("category A end-to-end: an anchor bearing the ACTIVE plan-id is INTRODUCED — the partition discriminates on a live run", () => {
   // The other half of scenario 2's STOP-IF. Without this, a classifier hard-wired
   // to return "inherited" would pass the test above with full marks.
-  const plan = resolvePlanDir({ root: repoRoot });
-  if (!plan.planDirAbs) {
-    t.skip(`no active plan (${plan.reason}) — plan directories are gitignored, so there is no active plan-id in a fresh clone.`);
-    return;
+  const { root, planId } = makeAnchorFixture();
+  try {
+    const report = runScan({ root, validatorPath: realValidator });
+    assert.ok(!report.unavailable, `the real validator must run and parse; got: ${report.unavailable}`);
+    const introducedA = itemsOf(report, "A", "introduced");
+    assert.equal(introducedA.length, 1, `expected exactly one introduced anchor, got ${JSON.stringify(introducedA)}`);
+    const [item] = introducedA;
+    assert.equal(item.file, "src/introduced.mjs");
+    assert.equal(item.kind, "anchor-orphan", "the plan-id resolves, so the upstream reports an ORPHAN, not an unknown plan");
+    assert.equal(
+      item.planId,
+      planId,
+      "an anchor naming the ACTIVE plan is the one shape the orchestrator may mint as an iter-N/step-M.K fix; " +
+        "if this ever reads inherited, the tool reports a backlog it will never act on and nothing else",
+    );
+    assert.match(item.why, new RegExp(planId));
+    assert.equal(item.remediation, "remove the anchor, or add the missing decisions.md entry it points at");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
-  const synthetic = {
-    category: "A",
-    kind: "anchor-orphan",
-    planId: plan.planId,
-    file: "src/scripts/scar-scan.mjs",
-    line: 116,
-  };
-  const paths = changelogPaths(readFileSync(join(plan.planDirAbs, "changelog.md"), "utf8"));
-  assert.ok(
-    paths.has(synthetic.file),
-    `${synthetic.file} must appear in this plan's changelog for this test to mean anything — it pins that the ` +
-      "D-012 narrowing (no resolvable plan-id => inherited) did NOT collapse into 'always inherited'",
-  );
-  const { provenance, why } = classifyProvenance(synthetic, {
-    paths,
-    planId: plan.planId,
-    planDirRel: plan.planDirRel,
-  });
-  assert.equal(
-    provenance,
-    "introduced",
-    "an anchor naming the ACTIVE plan is the one shape the orchestrator may mint as an iter-N/step-M.K fix; " +
-      "if this ever returns inherited, the tool reports a backlog it will never act on and nothing else",
-  );
-  assert.match(why, new RegExp(plan.planId));
 });
