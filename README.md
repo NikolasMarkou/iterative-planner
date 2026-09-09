@@ -42,19 +42,10 @@ This is one skill file plus a handful of scripts — no server, no extra service
 - [Why This Works](#why-this-works)
 
 **Reference**
-- [The Plan Directory](#the-plan-directory)
-- [Bootstrapping](#bootstrapping)
-- [Sub-Agent Architecture](#sub-agent-architecture)
-- [Presentation Contracts](#presentation-contracts)
-- [Validator](#validator)
-- [Git Integration](#git-integration)
-- [FAQ](#faq)
+[The Plan Directory](#the-plan-directory) · [Bootstrapping](#bootstrapping) · [Sub-Agent Architecture](#sub-agent-architecture) · [Presentation Contracts](#presentation-contracts) · [Validator](#validator) · [Git Integration](#git-integration) · [FAQ](#faq)
 
 **Project**
-- [Contributing](#contributing)
-- [Project Structure](#project-structure)
-- [Sponsored by](#sponsored-by)
-- [License](#license)
+[Contributing](#contributing) · [Project Structure](#project-structure) · [Sponsored by](#sponsored-by) · [License](#license)
 
 ---
 
