@@ -1038,8 +1038,8 @@ Approve to enter EXECUTE, or request revisions.
   1. **What was completed** — copied from `progress.md` Completed section.
   2. **What remains** — copied from `progress.md` Remaining + In Progress sections (or "none").
   3. **Verification results summary** — PASS/FAIL counts plus the per-criterion table from `verification.md` Criteria Verification, rendered verbatim.
-  4. **Issues found** — regressions, scope drift, unverified areas, simplification blockers; **plus** any CRITICAL/WARNING items from `findings/review-iter-N[-passM].md` (when a review ran) folded in verbatim; **plus** any verifier **Concerns** (suspicious-but-PASS observations, per the Relay Contract in `ip-verifier.md`) folded in verbatim; **plus** the reviewer's `## Blind Spots` bullets (what wasn't tested and why it matters) folded in.
-  5. **Recommendation** — one of CLOSE / PIVOT / EXPLORE / EXECUTE (EXECUTE only for a same-iteration completion-fix remediation loop — small fixes to finish the current iteration's work; `iter` does not increment), with one-sentence justification, then explicit prompt for user confirmation.
+  4. **Issues found** — regressions, scope drift, unverified areas, simplification blockers; **plus** any CRITICAL/WARNING items from `findings/review-iter-N[-passM].md` (when a review ran) folded in verbatim; **plus** any verifier **Concerns** (suspicious-but-PASS observations, per the Relay Contract in `ip-verifier.md`) folded in verbatim; **plus** the reviewer's `## Blind Spots` bullets (what wasn't tested and why it matters) folded in; **plus**, when a hygiene sweep ran, every entry under `## Introduced` in `findings/hygiene-iter-N[-passM].md` folded in verbatim, one line each, and that report's `## Inherited` section as ONE labelled line carrying the total and saying plainly that it is not this plan's regression — never the individual items, which can number in the dozens and would bury the introduced list. A sweep whose Verdict is `SCAN_UNTRUSTWORTHY` is reported as exactly that, in place of a count.
+  5. **Recommendation** — one of CLOSE / PIVOT / EXPLORE / EXECUTE (EXECUTE only for a same-iteration completion-fix remediation loop — small fixes to finish the current iteration's work; `iter` does not increment), with one-sentence justification, then explicit prompt for user confirmation. When a hygiene sweep returned `REMEDIATE`, the recommendation is EXECUTE, and each attributable entry from its `## Introduced` list is minted as a completion fix `iter-N/step-M.K`, where M is the step whose `changelog.md` line named that entry's file; an entry no changelog line attributes to a numbered step is reported in item 4 and never minted. At most two hygiene remediation rounds per iteration.
 - **Fidelity**: verbatim for items 1-3 (progress + verification table + reviewer + verifier concerns); digest for items 4-5 commentary, but the underlying lists must be enumerated (no rolling-up into prose).
 - **Minimum sections** (floor): all 5 items. The block is defined by its 5-item structure; collapsing to fewer items violates the contract.
 
@@ -1061,6 +1061,7 @@ Approve to enter EXECUTE, or request revisions.
 - `agents/ip-plan-writer.md` — Output Format references PC-PLAN.
 - `agents/ip-verifier.md` — Relay Contract references PC-REFLECT item 3.
 - `agents/ip-reviewer.md` — Relay Contract references PC-REFLECT item 4.
+- `agents/ip-boyscout.md` — cites this section as the authority for the gate block its report feeds; its `## Introduced` and `## Inherited` sections land in PC-REFLECT items 4 and 5.
 - `agents/ip-executor.md` — Output Format references PC-EXECUTE-STEP and PC-EXECUTE-LEASH.
 - `SKILL.md` — User Interaction table cell references the contract by name.
 

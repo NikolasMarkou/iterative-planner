@@ -48,7 +48,7 @@
     "markers": 4
   },
   "src/references/code-hygiene.md": {
-    "ceiling": 2.19,
+    "ceiling": 2.06,
     "markers": 3
   },
   "src/references/complexity-control.md": {
@@ -64,8 +64,8 @@
     "markers": 11
   },
   "src/references/file-formats.md": {
-    "ceiling": 6.72,
-    "markers": 78
+    "ceiling": 6.71,
+    "markers": 79
   },
   "src/references/planning-rigor.md": {
     "ceiling": 1.05,
