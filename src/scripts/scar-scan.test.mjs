@@ -833,7 +833,7 @@ test("category E positive: the budget is read from its OWN section, and an over-
     "- **Files added: 99/99 max** — a number quoted in prose, outside the budget section",
   ].join("\n");
   const budget = parseComplexityBudget(planText);
-  assert.deepEqual(budget, { filesAdded: 4, filesAddedMax: 3, abstractions: 1, abstractionsMax: 2 });
+  assert.deepEqual(budget, { filesAdded: 4, filesAddedMax: 3, abstractions: 1, abstractionsMax: 2, capStated: true });
 
   const items = reconcileComplexityBudget(budget, 4);
   assert.equal(items.length, 1, "4 measured against a cap of 3 is over budget");
@@ -853,9 +853,46 @@ test("category E negative: at or under the cap, an unmeasurable diff, and a plan
   );
   assert.deepEqual(
     parseComplexityBudget("# Plan v1\n\n## Goal\nno budget section here\n"),
-    { filesAdded: null, filesAddedMax: null, abstractions: null, abstractionsMax: null },
+    { filesAdded: null, filesAddedMax: null, abstractions: null, abstractionsMax: null, capStated: false },
   );
   assert.deepEqual(reconcileComplexityBudget(parseComplexityBudget(""), 99), [], "an all-null budget states no cap to exceed");
+});
+
+// D-018. The grammar disagreement that produced a live false all-clear: the
+// scanner declared its own stricter copy of a line validate-plan.mjs already
+// owned, so a plan.md edit that satisfied the validator broke the scanner's
+// parse and category E reported a clean `ran` over a plan whose own budget line
+// said OVER BUDGET. Both halves are pinned: ONE grammar, and an unparseable cap
+// is reported as UNMEASURED rather than as nothing-to-reconcile.
+test("category E: the budget grammar is the validator's, and a stated-but-unparseable cap is flagged as unmeasured", () => {
+  // The exact real line that broke the old `max**`-adjacent regex.
+  const real = [
+    "## Complexity Budget",
+    "- **Files added: 4/3 max** — OVER BUDGET, recorded not waived (justified: the fourth is `plans/ANCHORS.md`; see D-016).",
+  ].join("\n");
+  const parsed = parseComplexityBudget(real);
+  assert.equal(parsed.filesAddedMax, 3, "trailing text after `max` must not defeat the parse — this is the D-018 regression");
+  assert.equal(parsed.capStated, true);
+  assert.equal(reconcileComplexityBudget(parsed, 4).length, 1, "the over-budget finding must survive the wording");
+
+  // The tolerances the validator's grammar carries and the old scanner copy did not.
+  for (const line of [
+    "**Files added: 4/3 max**",
+    "- Files added: 4/3 max",
+    "  * **Files added (source files only): 4 / 3 max** (as of step 9)",
+  ]) {
+    assert.equal(parseComplexityBudget(`## Complexity Budget\n${line}\n`).filesAddedMax, 3, `must parse: ${line}`);
+  }
+
+  // A cap that is PRESENT but in no grammar's shape: null max, but capStated.
+  const malformed = parseComplexityBudget("## Complexity Budget\n- **Files added: four of three max**\n");
+  assert.equal(malformed.filesAddedMax, null);
+  assert.equal(malformed.capStated, true, "an unparseable cap is still a STATED cap — this is what makes category E degrade");
+
+  // A genuinely prose-only budget states no cap, so it must NOT degrade.
+  const prose = parseComplexityBudget("## Complexity Budget\n- Keep the diff small and reversible.\n");
+  assert.equal(prose.capStated, false);
+  assert.equal(prose.filesAddedMax, null);
 });
 
 // ---------------------------------------------------------------------------

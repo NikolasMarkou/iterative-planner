@@ -56,6 +56,28 @@ export function splitChangelogFields(line) {
 }
 
 // ---------------------------------------------------------------------------
+// plan.md `## Complexity Budget` counted-cap grammar — ONE declaration.
+//
+// DECISION plan-2026-09-09T082122-64c4de78/D-018 — every reader of a budget cap
+// line MUST import this regex; do NOT declare a second, stricter one at a call
+// site. scar-scan.mjs did exactly that (it required the bold close adjacent to
+// `max`), so a plan.md line the validator accepted parsed to `filesAddedMax:
+// null` in the scanner, `reconcileComplexityBudget` returned nothing, and
+// category E reported a clean `ran` over a plan whose own line said OVER BUDGET
+// — the tool's worst output, a false all-clear, on its own plan. See D-018.
+//
+// Group 1 = label, 2 = used (N), 3 = cap (M) from `<label>...: N/M max`.
+// Tolerances, all observed in real plan.md files: a list bullet, bold wrappers,
+// a parenthetical inside the label, whitespace around the slash, and any
+// trailing text after `max`. Non-global on purpose (no `lastIndex` state), so a
+// single shared instance is safe to `exec` from any number of call sites.
+// The "Lines added vs removed: +900/-150" line is deliberately NOT counted: it
+// is a target, not a cap, and its N/M are signed deltas rather than a ratio.
+// ---------------------------------------------------------------------------
+
+export const COUNTED_BUDGET_RE = /^\s*(?:[-*+]\s*)?\**\s*(Files added|New abstractions)\b[^:\n]*:\s*\**\s*(\d+)\s*\/\s*(\d+)\s*max/i;
+
+// ---------------------------------------------------------------------------
 // Intra-plan compression markers + recognizers.
 //
 // Single source of truth shared by the PRODUCER (bootstrap.mjs maybeCompress*)

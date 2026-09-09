@@ -9,7 +9,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "fs";
+import { readFileSync, readdirSync } from "fs";
 import { resolve } from "path";
 
 const SHARED = resolve(import.meta.dirname, "shared.mjs");
@@ -36,6 +36,7 @@ import {
   PLAN_SECTION_PATTERN,
   planDateFromId,
   DECISION_ID_NUM_PATTERN,
+  COUNTED_BUDGET_RE,
 } from "./shared.mjs";
 
 // ---------------------------------------------------------------------------
@@ -1049,4 +1050,35 @@ test("the gate, not the lexer, is what protects hash-family files: the shell sha
   const t = "rm -rf build/*\n# DECISION plan/D-777 why\ncp src/*/lib dest/\n";
   assert.equal(blockCommentSpans(t).length, 1,
     "the primitive is language-agnostic by design; BLOCK_COMMENT_EXTS decides where it runs");
+});
+
+// ---------------------------------------------------------------------------
+// COUNTED_BUDGET_RE — the plan.md budget-cap grammar, declared exactly ONCE.
+// Mirrors the "six field regexes are DELETED" pin in validate-plan.test.mjs:
+// scar-scan.mjs used to carry a second, stricter copy of this line's grammar,
+// and the disagreement between the two produced a live false all-clear on this
+// repo's own plan (D-018). A source grep is the only thing that keeps a third
+// copy from being written at the next call site that needs to read a cap.
+// ---------------------------------------------------------------------------
+
+test("COUNTED_BUDGET_RE: exactly one declaration across src/scripts, and it is shared.mjs's", () => {
+  const dir = import.meta.dirname;
+  const declarers = readdirSync(dir)
+    .filter((f) => f.endsWith(".mjs") && !f.endsWith(".test.mjs"))
+    .filter((f) => /(?:Files added\|New abstractions)/.test(readFileSync(resolve(dir, f), "utf-8")));
+  assert.deepEqual(declarers, ["shared.mjs"],
+    `the budget-cap grammar must be declared once, in shared.mjs, and imported everywhere else (D-018); found in: ${declarers.join(", ")}`);
+});
+
+test("COUNTED_BUDGET_RE: parses the tolerated shapes and refuses the target line", () => {
+  const cap = (line) => { const m = COUNTED_BUDGET_RE.exec(line); return m ? [m[1], Number(m[2]), Number(m[3])] : null; };
+  assert.deepEqual(cap("- **Files added: 4/3 max** — OVER BUDGET (justified: ...)"), ["Files added", 4, 3],
+    "trailing text after `max` must parse — the D-018 regression");
+  assert.deepEqual(cap("**Files added: 4/3 max**"), ["Files added", 4, 3]);
+  assert.deepEqual(cap("  * New abstractions (classes/modules): 1 / 2 max"), ["New abstractions", 1, 2]);
+  assert.equal(cap("- **Lines added vs removed: +900/-150**"), null, "a target line is not a counted cap");
+  assert.equal(cap("- Files added: four of three max"), null, "a prose count states no readable cap");
+  assert.equal(cap("prose mentioning Files added: 4/3 max mid-sentence"), null, "the grammar is line-anchored");
+  // Non-global: a shared instance carries no lastIndex, so repeated execs agree.
+  assert.deepEqual(cap("**Files added: 4/3 max**"), ["Files added", 4, 3]);
 });

@@ -76,9 +76,10 @@
 //      hundreds of correct lines, and a rule that fires on correct lines is a
 //      rule that gets ignored.
 //   5. Category B and E need git. Without it they report "unavailable" and say
-//      so; A, C and D still run. E further reports "degraded" whenever the diff
-//      itself could not be measured — no commit yet carries the plan's tag, or
-//      the base commit will not resolve — because an unmeasured budget is not a
+//      so; A, C and D still run. E further reports "degraded" on any of three
+//      arms — no commit yet carries the plan's tag, the base commit will not
+//      resolve, or plan.md states a "Files added" cap in a shape the shared
+//      budget grammar cannot read — because an unmeasured budget is not a
 //      reconciled one. Category D reports "degraded" when it discovers zero
 //      source files, since an empty discovery is not a clean sweep. A degraded
 //      category is NOT a clean category and the report never lets the two look
@@ -122,6 +123,7 @@ import {
   ANY_PLAN_ID_PATTERN,
   ANY_PLAN_ID_RE,
   BLOCK_COMMENT_EXTS,
+  COUNTED_BUDGET_RE,
   DECISION_ID_NUM_PATTERN,
   splitChangelogFields,
 } from "./shared.mjs";
@@ -620,10 +622,13 @@ export function collectCodeFiles(root) {
  * Parse the numeric claims out of plan.md's `## Complexity Budget` section.
  *
  * Contract: (planText: string) -> { filesAdded, filesAddedMax, abstractions,
- * abstractionsMax } with null for anything absent or unparseable. A plan that
- * states its budget in prose only yields all-null, and the caller reports the
- * category as ran-with-nothing-to-reconcile rather than inventing a cap.
- * Never throws.
+ * abstractionsMax, capStated } with null for any count absent or unparseable.
+ * `capStated` is true when the section carries a "Files added" line AT ALL,
+ * parseable or not — that is what separates a plan stating its budget in prose
+ * (all-null, nothing to reconcile) from a plan stating a cap in a shape no
+ * grammar reads (all-null, cap UNMEASURED — the caller degrades on it). Reads
+ * the cap line through shared.mjs's COUNTED_BUDGET_RE, the same grammar
+ * validate-plan.mjs uses; see the D-018 anchor there. Never throws.
  */
 export function parseComplexityBudget(planText) {
   // Sliced line-wise, not by regex: a "section runs to the next `## ` or EOF"
@@ -635,18 +640,24 @@ export function parseComplexityBudget(planText) {
   for (let i = start + 1; start >= 0 && i < lines.length; i += 1) {
     if (/^##\s/.test(lines[i])) { end = i; break; }
   }
-  const body = start < 0 ? "" : lines.slice(start + 1, end).join("\n");
-  const num = (re) => {
-    const m = re.exec(body);
-    return m ? { got: Number(m[1]), max: Number(m[2]) } : null;
-  };
-  const files = num(/\*\*Files added:\s*(\d+)\s*\/\s*(\d+)\s*max\*\*/i);
-  const abs = num(/\*\*New abstractions:\s*(\d+)\s*\/\s*(\d+)\s*max\*\*/i);
+  const body = start < 0 ? [] : lines.slice(start + 1, end);
+  const counted = { "files added": null, "new abstractions": null };
+  let capStated = false;
+  for (const line of body) {
+    if (/files added/i.test(line)) capStated = true;
+    const m = COUNTED_BUDGET_RE.exec(line);
+    if (!m) continue;
+    const key = m[1].toLowerCase();
+    if (!counted[key]) counted[key] = { got: Number(m[2]), max: Number(m[3]) };
+  }
+  const files = counted["files added"];
+  const abs = counted["new abstractions"];
   return {
     filesAdded: files ? files.got : null,
     filesAddedMax: files ? files.max : null,
     abstractions: abs ? abs.got : null,
     abstractionsMax: abs ? abs.max : null,
+    capStated,
   };
 }
 
@@ -975,6 +986,14 @@ export function runScan({ root, planDirArg = null, validatorPath }) {
         eStatus = "ran";
         note = `budget caps files added at ${budget.filesAddedMax ?? "n/a"}; measured ${measured} (${added.length} committed + ${untracked.length} untracked)`;
       }
+    }
+    // Third degraded arm (D-018): the cap is PRESENT but no grammar reads it.
+    // An unparseable cap is an unmeasured cap — the same principle the two arms
+    // above encode, and the one that was missing when a `plan.md` edit moved
+    // four characters and turned a real over-budget finding into a clean `ran`.
+    if (budget.capStated && budget.filesAddedMax === null) {
+      eStatus = "degraded";
+      note = `plan.md states a "Files added" budget line that the shared budget grammar cannot read — the cap is unparseable, so it was NOT reconciled${measured === null ? "" : ` against the measured ${measured}`}`;
     }
     const items = reconcileComplexityBudget(budget, measured);
     findings.push(...items);

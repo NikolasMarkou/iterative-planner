@@ -26,6 +26,7 @@ import {
   ANY_PLAN_ID_RE,
   PLAN_SECTION_PATTERN,
   DECISION_ID_NUM_PATTERN,
+  COUNTED_BUDGET_RE,
 } from "./shared.mjs";
 // Changelog field shapes are schema-driven (see checkChangelogFormat / D-001).
 import { CHANGELOG_SPEC, entryFromFields, validateElement } from "./schema.mjs";
@@ -645,8 +646,8 @@ function checkCheckpoints(planDir, issues) {
 
 // Counted budget lines: only the two capped counters ("Files added",
 // "New abstractions"). Everything else in the section is prose or a target.
-// Group 1 = label, 2 = used (N), 3 = cap (M) from `<label>...: N/M max`.
-const COUNTED_BUDGET_RE = /^\s*(?:[-*+]\s*)?\**\s*(Files added|New abstractions)\b[^:\n]*:\s*\**\s*(\d+)\s*\/\s*(\d+)\s*max/i;
+// COUNTED_BUDGET_RE now lives in ./shared.mjs (imported above) — scar-scan.mjs
+// reads the same line and used to declare its own stricter copy (D-018).
 // The escape hatch. Anywhere on the same line, bold/backticks/parens tolerated.
 const JUSTIFIED_RE = /\(\s*justified\s*:/i;
 
@@ -672,12 +673,9 @@ function checkComplexityBudget(planDir, issues) {
   // documented cap ("Files added: N/M max") was never actually compared: a plan
   // could declare `Files added: 9/3 max` and validate clean.
   //
-  // Tolerances baked into COUNTED_BUDGET_RE, all observed in real plan.md files:
-  //   - list bullet (`- `), bold wrappers (`**Files added: 8/3 max**`)
-  //   - a parenthetical inside the label ("New abstractions (classes/modules/interfaces):")
-  //   - whitespace around the slash
-  // The "Lines added vs removed: +900/-150" line is deliberately NOT counted:
-  // it is a *target*, not a cap, and its N/M are signed deltas, not a ratio.
+  // The tolerances (list bullet, bold wrappers, parenthetical label, trailing
+  // text) and the deliberate exclusion of the "Lines added vs removed" target
+  // line are documented at COUNTED_BUDGET_RE's declaration in shared.mjs.
   //
   // WARN-only, by design. This is an authoring-quality signal, not a
   // correctness gate. DO NOT promote it to ERROR and DO NOT wire it into the
