@@ -21,6 +21,17 @@ Use it for refactors, migrations, debugging, system design, or deep research —
 
 ---
 
+## At a Glance
+
+Say "plan this" and here is what actually happens:
+
+- The agent explores first — reading the codebase, not guessing at it — before proposing anything.
+- A written plan comes back for your approval before any code changes.
+- Work proceeds one step at a time, each one committed, so a bad turn is a `git revert`, not a rewrite.
+- Progress is checked against the plan as it goes, and the plan adjusts if reality disagrees with it.
+
+This is one skill file plus a handful of scripts — no server, no extra service to run. See [Get Started](#get-started-in-60-seconds) to install it, and [A Worked Example](#a-worked-example) to see the whole loop on a real task.
+
 ## Table of Contents
 
 **Start here**
