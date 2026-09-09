@@ -30,6 +30,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -193,6 +194,26 @@ function writeStub(root, name, body) {
   return abs;
 }
 
+/**
+ * Make a fixture root's git condition a property of the FIXTURE, not of the
+ * machine. `mkdtemp` puts the root under $TMPDIR, and $TMPDIR is inside a git
+ * work tree on plenty of real machines — so git's upward discovery walked out
+ * of the fixture, found that unrelated repo, and a root staged as "no git"
+ * silently became "git present". `GIT_CEILING_DIRECTORIES` stops the walk at
+ * the fixture's parent: a root with no `.git` of its own is then git-less
+ * everywhere, and one that `gitInitFixture` initialised is its own repo
+ * everywhere. Both spellings of the parent are listed because git compares
+ * ceiling entries against the RESOLVED cwd and $TMPDIR is a symlink on macOS.
+ *
+ * Contract: (root: string) -> { GIT_CEILING_DIRECTORIES: string }. Never throws.
+ */
+function gitCeilingEnv(root) {
+  const parent = dirname(root);
+  let real = parent;
+  try { real = realpathSync(parent); } catch { /* parent always exists; be safe anyway */ }
+  return { GIT_CEILING_DIRECTORIES: real === parent ? parent : `${parent}:${real}` };
+}
+
 /** Spawn the REAL CLI against a fixture root via the two opt-in env overrides. */
 function runCliAgainst(root, args = [], validatorPath = realValidator) {
   return spawnSync(process.execPath, [script, ...args], {
@@ -201,6 +222,7 @@ function runCliAgainst(root, args = [], validatorPath = realValidator) {
     timeout: 60_000,
     env: {
       ...process.env,
+      ...gitCeilingEnv(root),
       IP_SCAR_SCAN_ROOT: root,
       IP_SCAR_SCAN_VALIDATOR: validatorPath,
     },
@@ -228,12 +250,18 @@ function gitInitFixture(root, messages) {
   }
 }
 
-/** Is `dir` inside a git work tree? Guards the deliberately non-git fixture. */
+/**
+ * Is `dir` inside a git work tree, as the CLI under test will see it? Runs
+ * under the SAME ceiling `runCliAgainst` sets, so this answer and the scanner's
+ * cannot disagree — an assertion staged on a different git condition from the
+ * one the process under test observes is worse than no assertion.
+ */
 function insideGitWorkTree(dir) {
   const r = spawnSync("git", ["rev-parse", "--is-inside-work-tree"], {
     cwd: dir,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "ignore"],
+    env: { ...process.env, ...gitCeilingEnv(dir) },
   });
   return r.status === 0 && (r.stdout ?? "").trim() === "true";
 }
@@ -1094,17 +1122,26 @@ test("CLI: a clean run exits 0 whatever it FINDS — the scanner reports, it doe
 });
 
 test("CLI: --self-check exits 0, counts the categories that REALLY ran, and confirms the floor is pinned", () => {
-  const { root } = makeFixtureRoot();
+  const { root, planId } = makeFixtureRoot();
   try {
+    // The all-ran count is STAGED, not inherited. The predecessor read the git
+    // condition off the fixture root (`insideGitWorkTree(root) ? 5 : 3`), which
+    // made the expected number a property of whoever's $TMPDIR the suite ran
+    // under — and once E learned to degrade on an unmeasured budget the 5/5 arm
+    // became simply wrong on a machine whose $TMPDIR sits in a work tree. Here
+    // git is real, one untagged base commit exists so `<tagged>^` resolves, and
+    // every category can therefore genuinely run. The no-git 3/5 counterpart is
+    // asserted, equally deterministically, by the [scan-floor] test below.
+    gitInitFixture(root, [
+      "an untagged base commit, so this plan's base resolves",
+      `[${commitTagPrefix(planId)}/iter-1/step-1] the tagged commit E measures from`,
+    ]);
+    assert.equal(insideGitWorkTree(root), true, "this fixture is staged WITH git; the assertions below depend on it");
     const stub = writeStub(root, "proof.mjs", STUB_PROOF);
     const res = runCliAgainst(root, ["--self-check"], stub);
     assert.equal(res.status, EXIT_OK, `expected exit ${EXIT_OK}; stderr=${res.stderr}`);
-    // The numerator is COMPUTED from the per-category statuses, so it depends on whether
-    // this fixture root has git; what is invariant is that the count never exceeds the
-    // number that ran, and that a shortfall is named rather than rounded up to 5/5.
-    const ran = insideGitWorkTree(root) ? 5 : 3;
-    assert.match(res.stdout, new RegExp(`${ran}/${EXPECTED_MIN_CATEGORIES} categories ran`));
-    assert.match(res.stdout, ran === 5 ? /no category degraded\./ : /DEGRADED: B \(unavailable\), E \(unavailable\)/);
+    assert.match(res.stdout, new RegExp(`${EXPECTED_MIN_CATEGORIES}/${EXPECTED_MIN_CATEGORIES} categories ran`));
+    assert.match(res.stdout, /no category degraded\./);
     assert.match(
       res.stdout,
       new RegExp(`floor pinned: EXPECTED_MIN_CATEGORIES == CATEGORIES\\.length == ${EXPECTED_MIN_CATEGORIES}`),
@@ -1223,13 +1260,14 @@ test("falsification: an upstream exiting 3 exits 1 [scan-unavailable], even thou
 
 // --- DEGRADATION: no git.
 
-test("degradation: with no git, B and E report `unavailable` while A, C and D still run — and the banner says so", (t) => {
+test("degradation: with no git, B and E report `unavailable` while A, C and D still run — and the banner says so", () => {
   const { root } = makeFixtureRoot();
   try {
-    if (insideGitWorkTree(root)) {
-      t.skip(`${tmpdir()} is inside a git work tree on this machine, so the no-git degradation cannot be staged here.`);
-      return;
-    }
+    // No skip branch: gitCeilingEnv makes "this root has no git" true on every
+    // machine, so the condition is ASSERTED. A test that disables itself where
+    // $TMPDIR happens to sit inside a repo is the self-disabling shape D-013
+    // removed from this suite once already.
+    assert.equal(insideGitWorkTree(root), false, "this fixture is staged WITHOUT git; the ceiling must keep git's discovery inside it");
     const stub = writeStub(root, "proof.mjs", STUB_PROOF);
     const res = runCliAgainst(root, ["--json"], stub);
     assert.equal(res.status, EXIT_OK, `degradation is not failure; stderr=${res.stderr}`);
@@ -1256,13 +1294,10 @@ test("degradation: with no git, B and E report `unavailable` while A, C and D st
   }
 });
 
-test("the [scan-floor] guards categories REPORTED, not categories RAN — a degraded run stays an honest exit 0", (t) => {
+test("the [scan-floor] guards categories REPORTED, not categories RAN — a degraded run stays an honest exit 0", () => {
   const { root } = makeFixtureRoot();
   try {
-    if (insideGitWorkTree(root)) {
-      t.skip(`${tmpdir()} is inside a git work tree on this machine, so the degraded run cannot be staged here.`);
-      return;
-    }
+    assert.equal(insideGitWorkTree(root), false, "this fixture is staged WITHOUT git; the ceiling must keep git's discovery inside it");
     const stub = writeStub(root, "proof.mjs", STUB_PROOF);
     const json = JSON.parse(runCliAgainst(root, ["--json"], stub).stdout);
     assert.equal(json.categoriesRan, 3, "categoriesRan must be COMPUTED from the statuses, never the constant CATEGORIES.length");
