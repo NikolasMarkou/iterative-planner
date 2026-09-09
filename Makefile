@@ -223,7 +223,8 @@ validate:
 	@# Verify validate-plan.mjs VALID_TRANSITIONS covers all SKILL.md transitions
 	@echo "Checking validator transition coverage..."
 	@for pair in "EXPLORE→PLAN" "PLAN→EXPLORE" "PLAN→PLAN" "PLAN→EXECUTE" "EXECUTE→REFLECT" \
-		"REFLECT→CLOSE" "REFLECT→PIVOT" "REFLECT→EXPLORE" "PIVOT→PLAN"; do \
+		"REFLECT→CLOSE" "REFLECT→PIVOT" "REFLECT→EXPLORE" "REFLECT→EXECUTE" \
+		"PIVOT→PLAN"; do \
 		grep -qF "\"$$pair\"" src/scripts/validate-plan.mjs || \
 		(echo "ERROR: validate-plan.mjs VALID_TRANSITIONS missing $$pair" && exit 1); \
 	done

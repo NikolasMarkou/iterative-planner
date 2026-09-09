@@ -355,7 +355,8 @@ function Invoke-Validate {
         $requiredTransitions = @(
             "EXPLORE→PLAN", "PLAN→EXPLORE", "PLAN→PLAN",
             "PLAN→EXECUTE", "EXECUTE→REFLECT", "REFLECT→CLOSE",
-            "REFLECT→PIVOT", "REFLECT→EXPLORE", "PIVOT→PLAN"
+            "REFLECT→PIVOT", "REFLECT→EXPLORE", "REFLECT→EXECUTE",
+            "PIVOT→PLAN"
         )
         foreach ($t in $requiredTransitions) {
             if (-not $vpContent.Contains("`"$t`"")) {
