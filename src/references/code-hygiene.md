@@ -108,6 +108,8 @@ After any revert, grep for these — if found, revert is incomplete:
   ```
   A `# DECISION <plan-id>/D-NNN` (or `// …`, `/* … */`) comment whose `D-NNN` points at a decision tied to reverted code is a leftover and must be removed. Anchors only live on surviving code (see `decision-anchoring.md`). Alternative: mark with `[STALE]` per the staleness rule in `decision-anchoring.md` if it lands.
 
+This list is now also run mechanically. `node <skill-path>/scripts/scar-scan.mjs` sweeps for five of the kinds above — leftover markers, debug statements, commented-out code, imports of removed modules, and test files whose subject is gone — and reports what it finds without failing a build. It deliberately does not flag `console.log` or `print()`, even though the list names them, because every gate in this repository is a command line tool whose entire output channel is `console.log`, so that rule would fire on hundreds of correct lines. The list here stays the canonical definition: the scanner covers part of it, and the rest is still read by eye.
+
 ## Interface Contracts for Shared Assets
 
 A function or module imported by ≥2 callers (a shared/reused asset) carries a short interface contract at its definition: parameters, return shape, and failure mode. Undocumented shared code is a hygiene leftover — reuse fails when the contract is unclear, so developers re-duplicate instead of reusing. (Document everything you mean to reuse.)
