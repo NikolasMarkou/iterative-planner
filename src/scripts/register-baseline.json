@@ -15,6 +15,10 @@
     "ceiling": 10.1,
     "markers": 19
   },
+  "src/agents/ip-boyscout.md": {
+    "ceiling": 1.45,
+    "markers": 3
+  },
   "src/agents/ip-executor.md": {
     "ceiling": 8.89,
     "markers": 16

@@ -1946,6 +1946,19 @@ describe("validate-plan.mjs — M7: targeted check-function coverage", () => {
   // ip-boyscout.md). Same rule as the reviewer branch: the discriminator
   // SWITCHES the required list, it never exempts.
   // -------------------------------------------------------------------------
+  it("checkFindingsTopicSections: ip-boyscout.md's mandated sections are the three this check requires (spec-derived)", () => {
+    // Mirrors the ip-reviewer.md spec-derived test above. The required-section list is
+    // taken FROM the agent spec, not from fixtures authored by this pass, so the branch
+    // and the agent definition cannot drift apart (LESSONS [I:5]).
+    const spec = readFileSync(resolve(import.meta.dirname, "..", "agents", "ip-boyscout.md"), "utf-8");
+    for (const section of ["## Inherited", "## Introduced", "## Verdict"]) {
+      assert.ok(spec.includes(section), `ip-boyscout.md must mandate ${section}`);
+    }
+    // ...and the naming rule the filename discriminator encodes.
+    assert.ok(spec.includes("hygiene-iter-N.md"), "ip-boyscout.md must state the hygiene-iter-N.md naming rule");
+    assert.ok(spec.includes("hygiene-iter-N-passM.md"), "ip-boyscout.md must state the re-sweep passM naming rule");
+  });
+
   it("checkFindingsTopicSections: conformant hygiene-iter-N.md → no [findings-topic] WARN", () => {
     const cwd = getTempDir();
     const { planDir } = writePlan(cwd);

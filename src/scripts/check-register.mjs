@@ -55,14 +55,15 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // Anti-vacuity floor: the real scanned-doc count today (3 fixed docs +
-// src/agents/*.md + src/references/*.md). A broken glob or a deleted docs dir
+// src/agents/*.md + src/references/*.md) — 20 files: CLAUDE.md, README.md,
+// src/SKILL.md, 8 agents, 9 references. A broken glob or a deleted docs dir
 // that makes the scanner resolve FEWER docs than this must FAIL loud
 // ([register-floor]), never vacuously PASS on an empty scan. Bump deliberately
 // when the real doc count changes; the `pin:` test in check-register.test.mjs
 // asserts this constant EQUALS the live scanned count (and that the baseline
 // has exactly that many keys), so a drifted constant fails rather than passing
 // on slack.
-export const EXPECTED_MIN_FILES = 19;
+export const EXPECTED_MIN_FILES = 20;
 
 // A scanned doc below this word count has been gutted/truncated — a floor fail,
 // not a silently-passing near-empty file.

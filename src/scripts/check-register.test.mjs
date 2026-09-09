@@ -43,6 +43,7 @@ const script = join(here, "check-register.mjs");
 // spurious [register-floor] "no committed ceiling" / "missing" fires.
 const AGENTS = [
   "ip-archivist",
+  "ip-boyscout",
   "ip-executor",
   "ip-explorer",
   "ip-orchestrator",

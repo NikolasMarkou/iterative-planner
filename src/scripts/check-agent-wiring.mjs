@@ -62,7 +62,7 @@ const OK_PREFIX = "<skill-path>/scripts/";
 // silently and the gate still printed PASS over whatever was left. The CLI
 // fails loud (`FAIL [scan-floor]`) when any of the three scanned dirs
 // contributes zero .md files or the total file count sinks below this floor.
-// Real count today: 22 files (7 agents + 5 modules + SKILL.md + 9 references)
+// Real count today: 23 files (8 agents + 5 modules + SKILL.md + 9 references)
 // — the floor is set EQUAL to it, matching the exact-floor idiom of
 // EXPECTED_MIN_FILES (check-register.mjs) and EXPECTED_SLUGS
 // (check-template-parity.mjs); a floor with headroom lets that many runtime
@@ -73,7 +73,7 @@ const OK_PREFIX = "<skill-path>/scripts/";
 // silently widening the gap. Enforced in the CLI (isEntryPoint) only — the
 // pure scan functions take explicit text and have no discovery step to floor,
 // so importers are unchanged.
-export const EXPECTED_MIN_PROSE_FILES = 22;
+export const EXPECTED_MIN_PROSE_FILES = 23;
 
 const issue = (rule, file, line, message) => ({ rule, file, line, message });
 
