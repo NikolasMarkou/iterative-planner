@@ -365,12 +365,12 @@ When `close` merges per-plan files into `plans/FINDINGS.md` and `plans/DECISIONS
 
 ## Sub-Agent Architecture
 
-The orchestrator coordinates seven specialized agents. Sub-agents cannot spawn other sub-agents — the orchestrator is the sole coordinator. And the whole layer is **optional**: if the agent definitions are not installed under `~/.claude/agents/`, the monolithic skill drives the same state machine in a single thread.
+The orchestrator coordinates eight specialized agents. Sub-agents cannot spawn other sub-agents — the orchestrator is the sole coordinator. And the whole layer is **optional**: if the agent definitions are not installed under `~/.claude/agents/`, the monolithic skill drives the same state machine in a single thread.
 
 When the skill activates with the definitions present, the conversation assumes the orchestrator role **in-thread** — it reads `agents/ip-orchestrator.md` and adopts it, rather than spawning a separate orchestrator. See [`src/SKILL.md`](src/SKILL.md) "Orchestrator Role Assumption."
 
 <details>
-<summary><strong>The seven agents: roles, tools, models</strong></summary>
+<summary><strong>The eight agents: roles, tools, models</strong></summary>
 
 | Agent | Role | Tools | Model |
 |-------|------|-------|-------|
@@ -380,9 +380,10 @@ When the skill activates with the definitions present, the conversation assumes 
 | **ip-executor** | Implements one plan step at a time (EXECUTE) | Read, Edit, Write, Bash, Grep, Glob | inherit |
 | **ip-verifier** | Runs verification checks, returns results for the Orchestrator to merge into `verification.md` (REFLECT) | Read, Bash, Grep, Glob | sonnet |
 | **ip-reviewer** | Adversarial review, iteration ≥ 2 by default; earlier by orchestrator choice, e.g. an iteration-1 attack-before-release pass (REFLECT) | Read, Write, Grep, Glob, Bash | opus |
+| **ip-boyscout** | Read-only hygiene sweep once the work looks close-ready, separating residue this plan introduced from residue already there (REFLECT) | Read, Write, Bash, Grep, Glob | sonnet |
 | **ip-archivist** | CLOSE housekeeping: `summary.md`, anchor audit, LESSONS, SYSTEM | Read, Write, Edit, Grep, Glob, Bash | sonnet |
 
-**Dispatch by state**: EXPLORE — 1-3 explorers in parallel, one per topic. PLAN — one plan-writer. EXECUTE — one executor per step, sequential (exactly one executor at a time — plan steps are sequential, so executor file conflicts cannot arise). REFLECT — verifier(s) for checks, reviewer (iteration 2+ by default, or earlier by orchestrator choice — e.g. an iteration-1 attack-before-release pass) for adversarial review. CLOSE — archivist for the housekeeping.
+**Dispatch by state**: EXPLORE — 1-3 explorers in parallel, one per topic. PLAN — one plan-writer. EXECUTE — one executor per step, sequential (exactly one executor at a time — plan steps are sequential, so executor file conflicts cannot arise). REFLECT — verifier(s) for checks, reviewer (iteration 2+ by default, or earlier by orchestrator choice — e.g. an iteration-1 attack-before-release pass) for adversarial review, and a boyscout for the hygiene sweep once the work looks close-ready. CLOSE — archivist for the housekeeping.
 
 </details>
 
@@ -496,12 +497,13 @@ node --test src/scripts/bootstrap.test.mjs \
             src/scripts/schema.test.mjs \
             src/scripts/check-agent-wiring.test.mjs \
             src/scripts/check-template-parity.test.mjs \
-            src/scripts/check-register.test.mjs
-# 739 tests across 14 suites: bootstrap 248, validate-plan 152, shared 71, schema 53,
-#                  check-agent-wiring 52, blast-radius 41, check-template-parity 40,
-#                  check-test-count 17, check-doc-parity 17, emit-state 12,
-#                  emit-template 11, check-register 11, check-changelog-parity 8,
-#                  check-readme-parity 6
+            src/scripts/check-register.test.mjs \
+            src/scripts/scar-scan.test.mjs
+# 939 tests across 15 suites: bootstrap 288, validate-plan 198, shared 95,
+#                  check-agent-wiring 59, schema 53, scar-scan 44, blast-radius 41,
+#                  check-template-parity 41, check-register 31, check-doc-parity 24,
+#                  check-test-count 17, emit-state 15, check-readme-parity 14,
+#                  emit-template 11, check-changelog-parity 8
 ```
 
 `node src/scripts/check-test-count.mjs` re-runs the suite and fails if the live pass count disagrees with the `TEST_COUNT` file. It runs as part of `make test` (not `make validate`, which stays suite-free and fast). The per-suite numbers above are hand-maintained prose — if they drift, `TEST_COUNT` and the badge remain the machine-checked source of truth.
@@ -583,6 +585,7 @@ iterative-planner/
     │   ├── ip-executor.md          # code execution (EXECUTE)
     │   ├── ip-verifier.md          # verification checks (REFLECT)
     │   ├── ip-reviewer.md          # adversarial review (REFLECT, iteration ≥ 2 by default; earlier by orchestrator choice)
+    │   ├── ip-boyscout.md          # read-only hygiene sweep (REFLECT, once the work looks close-ready)
     │   └── ip-archivist.md         # CLOSE housekeeping
     ├── scripts/
     │   ├── bootstrap.mjs           # plan directory lifecycle (Node.js 18+)
@@ -606,6 +609,8 @@ iterative-planner/
     │   ├── check-register.mjs      # register-density ratchet gate (run via make validate)
     │   ├── check-register.test.mjs # register test suite (node:test)
     │   ├── register-baseline.json  # per-file jargon-density ceilings consumed by check-register.mjs
+    │   ├── scar-scan.mjs           # hygiene scanner: five sweep categories, inherited vs introduced partition (run by ip-boyscout, reports rather than gates)
+    │   ├── scar-scan.test.mjs      # scar-scan test suite (node:test)
     │   ├── schema.mjs              # CHANGELOG_SPEC — the one declarative definition of the changelog's field shapes (used by validate-plan.mjs)
     │   ├── schema.test.mjs         # schema test suite (node:test)
     │   ├── emit-state.mjs          # per-state rule router; emits scripts/modules/state-<s>.md on demand
