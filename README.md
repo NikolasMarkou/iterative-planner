@@ -308,6 +308,7 @@ Usually the orchestrator is the non-authoring co-writer, confined to Post-Step G
 | `findings.md` (index) | Orchestrator | Plan-writer, Reviewer |
 | `findings/{topic}.md` | Explorer (one per file; orchestrator may delete an empty stale copy before a re-spawn, and appends `[CORRECTED iter-N]` annotations at PIVOT) | Orchestrator, Plan-writer |
 | `findings/review-iter-N[-passM].md` | Reviewer | Orchestrator |
+| `findings/hygiene-iter-N[-passM].md` | BoyScout | Orchestrator |
 | `progress.md` | Orchestrator (Post-Step Gate) | All agents |
 | `verification.md` | Plan-writer (template) + Orchestrator (merges Verifier's returned results) | Orchestrator, Reviewer |
 | `changelog.md` | Executor (append per edit) + Orchestrator (PLAN gate-in compression, which deletes elidable lines; Post-Step Gate: confirm one line per edited file) | Orchestrator (REFLECT Gate-In), Reviewer (REFLECT scan) |

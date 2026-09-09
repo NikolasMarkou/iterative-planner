@@ -169,6 +169,7 @@ R = read only | W = update (implicit read + write) | R+W = distinct read and wri
 | decisions.md | — | R+W* | R+W | R+W | R+W | R+W‡ |
 | findings.md | W | R | — | R | R+W | R |
 | findings/* | W | R | — | R+W† | R+W | R |
+| findings/hygiene-iter-N[-passM].md | — | — | — | R+W | — | R |
 | progress.md | — | W | R+W | R+W | W | R |
 | verification.md | — | W | — | W | R | R |
 | changelog.md | — | W* | W (append) | R | R | R |
@@ -189,7 +190,7 @@ R = read only | W = update (implicit read + write) | R+W = distinct read and wri
 - `decisions.md` is **bounded**: a `<!-- COMPRESSED-SUMMARY -->` block is inserted above the entries and nothing else is written. Every `## D-NNN` entry survives verbatim.
 - `changelog.md` is **lossy**: a run of 5 or more low-decision-impact lines is DELETED and replaced by one `- (compressed: N low-decision-impact edits, ...)` line. So a compressed changelog is not a complete per-edit ledger — anything that reads it as one (PIVOT keep-vs-revert, the reviewer's REFLECT scan) must treat an elision line as unexpanded evidence and fall back to git history.
 
-`†` At REFLECT the only write under `findings/` is the Reviewer's own `findings/review-iter-N[-passM].md`; the explorer topic files stay read-only. The Ownership table below carries the matching per-file row.
+`†` At REFLECT two files under `findings/` are written: the Reviewer's own `findings/review-iter-N[-passM].md`, and the BoyScout's `findings/hygiene-iter-N[-passM].md` when the hygiene sweep runs. The explorer topic files stay read-only. The Ownership table below carries a matching row for each of the two.
 
 `‡` `decisions.md` is append-only and past entries are never edited. **The one authorized exception**: at CLOSE, the Archivist may back-fill a past entry's `**Anchor-Refs**:` line (Step 1 remediation) — that field, that agent, that phase, and nothing else. (`agents/ip-archivist.md` Step 1 is where the Archivist performs it.) No new entries are authored at CLOSE.
 
@@ -419,6 +420,7 @@ Each file has a clear owner. Only the owner writes. Others read. Co-ownership (m
 | `findings.md` (index) | Orchestrator | Plan-writer, Reviewer |
 | `findings/{topic}.md` | Explorer (one per file; orchestrator may delete an empty stale copy before a re-spawn, and appends `[CORRECTED iter-N]` annotations at PIVOT) | Orchestrator, Plan-writer |
 | `findings/review-iter-N[-passM].md` | Reviewer | Orchestrator |
+| `findings/hygiene-iter-N[-passM].md` | BoyScout | Orchestrator |
 | `progress.md` | Orchestrator (Post-Step Gate) | All agents |
 | `verification.md` | Plan-writer (template) + Orchestrator (merges Verifier's returned results) | Orchestrator, Reviewer |
 | `changelog.md` | Executor (append per edit) + Orchestrator (PLAN gate-in compression, which deletes elidable lines; Post-Step Gate: confirm one line per edited file) | Orchestrator (REFLECT Gate-In), Reviewer (REFLECT scan) |
