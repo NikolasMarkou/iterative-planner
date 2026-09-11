@@ -1977,11 +1977,14 @@ function checkHygieneSweepGate(planDir, issues) {
   }
   if (hasReport) return;
 
-  // (b) arrow-free "- HYGIENE SKIP (iter N): <reason>" bullet in Transition History.
-  // Arrow-free by construction, so checkStateTransitions' FROM → TO regex
-  // (line ~267) never matches it — avoids adding a REFLECT→REFLECT entry to
-  // VALID_TRANSITIONS. (Anchor comment for this design decision added in a
-  // later plan step.)
+  // DECISION plan-2026-09-11T141919-e5db2894/D-001: (b) arrow-free
+  // "- HYGIENE SKIP (iter N): <reason>" bullet in Transition History.
+  // Do NOT write this as an arrow-based line (e.g. "REFLECT -> REFLECT" or
+  // "REFLECT → REFLECT") — checkStateTransitions' FROM → TO regex (line ~267)
+  // would then misparse it as a spurious state transition, requiring a new
+  // REFLECT→REFLECT entry in VALID_TRANSITIONS: a larger, riskier change this
+  // plan deliberately avoids. The arrow-free bullet is invisible to that
+  // regex by construction. See decisions.md D-001/D-003.
   const historyBlock = transitionHistoryBlock(state);
   const skipRe = new RegExp(`^-\\s+HYGIENE SKIP \\(iter ${iter}\\):\\s+\\S.*$`, "m");
   const hasSkip = historyBlock ? skipRe.test(historyBlock) : false;
