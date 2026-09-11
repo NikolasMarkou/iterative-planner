@@ -22,9 +22,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Notes
 
-- This closes the exact gap the goal named: before this release, whether the hygiene sweep ran or was legitimately skipped before CLOSE was pure orchestrator judgment, with nothing mechanical that verified either. It now escalates WARN at REFLECT to ERROR at CLOSE, mirroring `[atlas-cap]`'s precedent rather than inventing a new mechanism — and, after the adversarial-review round above, that escalation now actually reaches the archivist.
+- This closes the exact gap the goal named: before this release, whether the hygiene sweep ran or was legitimately skipped before CLOSE was pure orchestrator judgment, with nothing mechanical that verified either. It now escalates WARN at REFLECT to ERROR at CLOSE, mirroring `[atlas-cap]`'s precedent — but, as the Fixed bullet above discloses, the ERROR branch itself remains structurally unreachable at `ip-archivist` Step 1 on the documented CLOSE path, since `# Current State:` never reads `CLOSE` before that step runs. What reaches the archivist, and what it now blocks on, is the WARN: after the adversarial-review round above, Step 1 treats a `[hygiene-gate]` finding at either severity as the genuine blocker, so the mechanism is not left toothless by the unreachable ERROR — it just does not oversell reaching a branch that cannot fire here.
 - Two known, pre-existing gaps were found and deliberately left open rather than fixed here: `bootstrap.mjs close` and `bootstrap.mjs new --force` are both documented administrative exits that bypass every protocol CLOSE step — the decision-anchor audit, `summary.md`, `LESSONS.md`, and now `[hygiene-gate]` alike — not a hole this release opened. And the gate is a pure existence check on the skip line; it does not and is not meant to judge reason quality, the same "content, not quality" boundary the check's Verdict-blindness already draws.
-- Test count: 970 (was 949 — net +21, live run; `TEST_COUNT` synced mechanically to the live `node --test` pass count).
+- Test count: 974 (was 949 — net +25, live run; `TEST_COUNT` synced mechanically to the live `node --test` pass count).
 
 ## [2.63.0] - 2026-09-09
 

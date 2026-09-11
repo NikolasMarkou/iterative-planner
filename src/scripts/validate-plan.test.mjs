@@ -1026,6 +1026,28 @@ describe("validate-plan.mjs --pre-step gate", () => {
     assert.equal(warns.length, 1, `a genuinely missing confidence sub-line must still WARN exactly once, got:\n${r.stdout}`);
   });
 
+  // Regression, reviewer pass-2 CONCERN #1 (plan-2026-09-11T141919-e5db2894): the
+  // arrow-reach-through fix (stripHygieneSkipLines) originally only patched
+  // checkStateTransitions/countExecuteReflect. checkExplorationConfidence also scans
+  // Transition History with an arrow regex and takes the LAST "EXPLORE → PLAN" match — a
+  // HYGIENE SKIP reason naming that pair verbatim, appearing AFTER the real transition,
+  // used to become the "last match", and the line right after IT (not the real confidence
+  // sub-line) was checked for "confidence:", producing a spurious WARN that also masked the
+  // genuinely-present confidence sub-line.
+  it("(x) regression pass-2 CONCERN #1: HYGIENE SKIP reason naming \"EXPLORE -> PLAN\" does not mask the real confidence sub-line", () => {
+    const cwd = getTempDir();
+    writePlan(cwd, {
+      state: "REFLECT",
+      iteration: 1,
+      transitionHistoryExtra: "- HYGIENE SKIP (iter 1): deferred until the EXPLORE -> PLAN rewrite lands",
+    });
+    const r = run(cwd);
+    const warns = r.stdout.split("\n").filter((l) => /\[exploration-confidence\]/.test(l));
+    assert.equal(warns.length, 0,
+      `a HYGIENE SKIP reason naming "EXPLORE -> PLAN" must not be read as the real transition ` +
+      `and must not mask its confidence sub-line, got:\n${r.stdout}`);
+  });
+
   // C5(c) — the safety pin. With the guidance comment present AND 7 real
   // EXECUTE → REFLECT transitions, the iteration hard cap must still ERROR.
   //
@@ -1514,6 +1536,28 @@ legacy section
     assert.ok(warns.length >= 1, `expected WARN [convergence] despite declared Iteration 1, got:\n${r.stdout}`);
     assert.ok(/missing Convergence Metrics section for iteration 2\+/.test(warns[0]),
       `expected the iteration-2+ Convergence Metrics message, got: ${warns[0]}`);
+  });
+
+  // Regression, reviewer pass-2 CONCERN #1 (plan-2026-09-11T141919-e5db2894): countRePlans
+  // also scans Transition History with an arrow-pair regex and was equally vulnerable — a
+  // HYGIENE SKIP reason naming "REFLECT -> PIVOT" then "PIVOT -> PLAN" verbatim used to be
+  // counted as a genuine re-plan, driving deriveConvergenceIteration from 1 to 2 and firing a
+  // spurious [convergence] WARN despite no real re-plan ever happening.
+  it("(m2) regression pass-2 CONCERN #1: HYGIENE SKIP reason naming a REFLECT -> PIVOT -> PLAN pair does not inflate the derived convergence iteration", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd, {
+      state: "REFLECT",
+      iteration: 1,
+      transitionHistoryExtra: "- HYGIENE SKIP (iter 1): waiting on the REFLECT -> PIVOT then PIVOT -> PLAN rework",
+    });
+    const r = run(cwd);
+    const warns = r.stdout.split("\n").filter((l) => /WARN\s+\[convergence\]/.test(l));
+    assert.equal(warns.length, 0,
+      `a HYGIENE SKIP reason naming "REFLECT -> PIVOT" and "PIVOT -> PLAN" must not be counted ` +
+      `as a genuine re-plan, got:\n${r.stdout}`);
+    const state = readFileSync(join(planDir, "state.md"), "utf8");
+    assert.equal(deriveConvergenceIteration(state), 1,
+      "the skip-line reason must not be counted by countRePlans (deriveConvergenceIteration must stay 1)");
   });
 
   // D-034 fixture A — the defect itself, taken from this repo's own live state.md at the
@@ -4439,5 +4483,53 @@ ${verdict}
       `expected the gate to still fire at CLOSE with no record, got:\n${rClose.stdout}`);
     assert.match(closeLines[0], /^\s*ERROR\s+\[hygiene-gate\]:/,
       `expected ERROR severity at CLOSE, got:\n${closeLines[0]}`);
+  });
+
+  // -------------------------------------------------------------------------
+  // Regression tests for the second completion-fix round (reviewer pass-2 CONCERN #2,
+  // findings/review-iter-1-pass2.md, decisions.md D-010): the declared-alone fix traded
+  // pass-1's false POSITIVE for a false NEGATIVE — an unparseable/missing declared
+  // `## Iteration:` field made the gate return silently forever instead of falling back to
+  // a derived count. The fix falls back to countRePlans (via deriveConvergenceIteration)
+  // specifically because it is immune to the completion-fix-round-trip inflation that broke
+  // the ORIGINAL max(declared, derived) approach (CRITICAL #3 / D-010).
+  // -------------------------------------------------------------------------
+
+  it("(o) regression pass-2 CONCERN #2: an unparseable declared Iteration field falls back to the derived (countRePlans) count instead of returning silently", () => {
+    const cwd = getTempDir();
+    const roundTrip = [
+      "- EXECUTE → REFLECT (iter-1 steps done)",
+      "- REFLECT → EXECUTE (completion fix; iteration does NOT increment)",
+      "- EXECUTE → REFLECT (pass 2)",
+    ].join("\n");
+    const { planDir } = writePlan(cwd, {
+      state: "REFLECT",
+      iteration: "N/A", // unparseable — the exact shape the fallback exists for
+      transitionHistoryExtra: roundTrip,
+    });
+    writeHygieneReport(planDir, "hygiene-iter-1.md", "CLEAN");
+    const r = run(cwd);
+    assert.equal(hygieneGateLines(r.stdout).length, 0,
+      `an unparseable declared Iteration field must fall back to the derived (countRePlans) ` +
+      `iteration and be satisfied by a valid record at that iteration, got:\n${r.stdout}`);
+  });
+
+  it("(p) negative control for (o): the same unparseable field with no hygiene record at all still fires the gate (not silenced)", () => {
+    const cwd = getTempDir();
+    const roundTrip = [
+      "- EXECUTE → REFLECT (iter-1 steps done)",
+      "- REFLECT → EXECUTE (completion fix; iteration does NOT increment)",
+      "- EXECUTE → REFLECT (pass 2)",
+    ].join("\n");
+    writePlan(cwd, {
+      state: "REFLECT",
+      iteration: "N/A",
+      transitionHistoryExtra: roundTrip,
+    });
+    const r = run(cwd);
+    const lines = hygieneGateLines(r.stdout);
+    assert.equal(lines.length, 1,
+      `an unparseable declared Iteration field must not silently disable the gate forever, got:\n${r.stdout}`);
+    assert.match(lines[0], /^\s*WARN\s+\[hygiene-gate\]:/, `expected WARN at REFLECT, got:\n${lines[0]}`);
   });
 });
