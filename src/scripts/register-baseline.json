@@ -12,8 +12,8 @@
     "markers": 38
   },
   "src/agents/ip-archivist.md": {
-    "ceiling": 10.92,
-    "markers": 22
+    "ceiling": 11.33,
+    "markers": 24
   },
   "src/agents/ip-boyscout.md": {
     "ceiling": 1.45,
@@ -28,7 +28,7 @@
     "markers": 1
   },
   "src/agents/ip-orchestrator.md": {
-    "ceiling": 10.1,
+    "ceiling": 9.93,
     "markers": 45
   },
   "src/agents/ip-plan-writer.md": {
