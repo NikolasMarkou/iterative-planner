@@ -222,6 +222,18 @@ function isPivotPhase(s) {
   return false;
 }
 
+// DECISION plan-2026-09-11T141919-e5db2894/D-003 — shared prefix pattern identifying ANY
+// "- HYGIENE SKIP (iter N): <reason>" line, regardless of N or what its free-text reason
+// contains. checkHygieneSweepGate's own skip-line regex (below, ~line 1989) narrows this to
+// one specific iteration for its existence check; THIS generic form exists so every OTHER
+// reader of Transition History (checkStateTransitions, countExecuteReflect) can recognize
+// "this is a HYGIENE SKIP line" and exclude it WHOLESALE — prefix-only matching previously
+// let a reason containing an arrow (e.g. "-> ") or the literal pair "EXECUTE → REFLECT" reach
+// through into arrow/pair parsing (reviewer CRITICAL #1/#2, plan-2026-09-11T141919-e5db2894).
+// Do not restrict what a skip-line reason may say — the fix is exclusion of the whole line,
+// not a content ban on operator-authored prose.
+const HYGIENE_SKIP_LINE_RE = /^-\s+HYGIENE SKIP \(iter \d+\):/;
+
 // DECISION plan_2026-07-14_79ee0f59/D-003 — state.md's Transition History is read
 // comment-blind: bootstrap's own template embeds an example transition inside an HTML
 // comment, and a raw scan ingests it as a real record. Route every reader through this
@@ -260,7 +272,9 @@ function checkStateTransitions(planDir, issues) {
     return;
   }
 
-  const lines = historyBlock.split("\n").filter((l) => l.startsWith("- "));
+  // HYGIENE SKIP lines are excluded WHOLESALE, not just guarded at the prefix — see
+  // HYGIENE_SKIP_LINE_RE above (reviewer CRITICAL #1).
+  const lines = historyBlock.split("\n").filter((l) => l.startsWith("- ") && !HYGIENE_SKIP_LINE_RE.test(l));
 
   for (const line of lines) {
     // Format: "- STATE1 → STATE2 (reason)" — arrow can be → or ->
@@ -483,9 +497,14 @@ function countExecuteReflect(block) {
   // Use normalizePhase semantics (en/em dash → hyphen). Count distinct
   // EXECUTE → REFLECT transitions.
   const norm = block.replace(/[–—‐]/g, "-");
+  // Exclude HYGIENE SKIP lines wholesale BEFORE the pair scan — their free-text reason is
+  // unconstrained and may itself contain the literal pair "EXECUTE → REFLECT", which would
+  // otherwise self-inflate the derived iteration count (reviewer CRITICAL #2,
+  // plan-2026-09-11T141919-e5db2894). See HYGIENE_SKIP_LINE_RE.
+  const filtered = norm.split("\n").filter((l) => !HYGIENE_SKIP_LINE_RE.test(l)).join("\n");
   const re = /EXECUTE\s*(?:→|->)\s*REFLECT/g;
   let count = 0;
-  while (re.exec(norm) !== null) count++;
+  while (re.exec(filtered) !== null) count++;
   return count;
 }
 
@@ -1947,13 +1966,20 @@ function checkHygieneSweepGate(planDir, issues) {
   const currentState = (extractField(state, /^# Current State:\s*(.+)$/m) || "").trim().toUpperCase();
   if (currentState !== "REFLECT" && currentState !== "CLOSE") return;
 
-  // Same max(declared, derived) pattern as runPreStepGate's iteration-cap check
-  // and checkIterationLimits — reuse, do not reimplement iteration derivation.
+  // DECISION plan-2026-09-11T141919-e5db2894/D-010: DECLARED iteration ALONE, NOT
+  // max(declared, derived) — deliberately different from runPreStepGate's iteration-cap
+  // check and checkIterationLimits. There, over-counting is the SAFE direction (forces an
+  // earlier hard stop). Here it is the UNSAFE direction: a same-iteration completion-fix
+  // round trip (REFLECT → EXECUTE → REFLECT) does not bump the declared field but IS counted
+  // by deriveIterationFromHistory, so max() would silently drive iter past the orchestrator's
+  // and ip-boyscout's real iteration and turn a correct, current-iteration hygiene report or
+  // skip line into a false CLOSE-blocking ERROR the archivist cannot clear (reviewer CRITICAL
+  // #3). The orchestrator and ip-boyscout both read/write the DECLARED field, never a derived
+  // one, so matching against it is what "for the current iteration" actually means here.
   const iterStr = extractField(state, /^## Iteration:\s*(.+)$/m);
   const declared = iterStr ? parseInt(iterStr, 10) : 0;
-  const derived = deriveIterationFromHistory(state);
-  const iter = Math.max(Number.isFinite(declared) ? declared : 0, derived);
-  if (!Number.isFinite(iter) || iter < 1) return; // unparseable — fail silent, not throw
+  const iter = Number.isFinite(declared) ? declared : 0;
+  if (iter < 1) return; // unparseable — fail silent, not throw
 
   // (a) findings/hygiene-iter-N(-passM)?.md with a ## Verdict heading.
   const HYGIENE_ITER_FILE_RE = new RegExp(`^hygiene-iter-${iter}(?:-pass\\d+)?\\.md$`);
@@ -1985,6 +2011,12 @@ function checkHygieneSweepGate(planDir, issues) {
   // REFLECT→REFLECT entry in VALID_TRANSITIONS: a larger, riskier change this
   // plan deliberately avoids. The arrow-free bullet is invisible to that
   // regex by construction. See decisions.md D-001/D-003.
+  // DECISION plan-2026-09-11T141919-e5db2894/D-003: "arrow-free" held only for the line's
+  // FIXED PREFIX, not its free-text reason — a reason itself containing "->"/"→" still
+  // reached checkStateTransitions/countExecuteReflect until HYGIENE_SKIP_LINE_RE (above)
+  // started excluding the WHOLE line from both readers, closing that gap (reviewer CRITICAL
+  // #1/#2). This regex below still only builds the ITERATION-SPECIFIC existence match; it
+  // does not itself need to change to fix that gap.
   const historyBlock = transitionHistoryBlock(state);
   const skipRe = new RegExp(`^-\\s+HYGIENE SKIP \\(iter ${iter}\\):\\s+\\S.*$`, "m");
   const hasSkip = historyBlock ? skipRe.test(historyBlock) : false;
