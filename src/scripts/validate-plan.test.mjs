@@ -4339,4 +4339,105 @@ ${verdict}
         `expected the gate to stay silent at ${state} with a record present, got:\n${rPresent.stdout}`);
     });
   }
+
+  // -------------------------------------------------------------------------
+  // Regression tests for step-1.1 (commit 3cc8c38, plan-2026-09-11T141919-e5db2894):
+  // reviewer CRITICAL #1-#3 (findings/review-iter-1.md, decisions.md D-010). These
+  // formalize the scratch fixtures step-1.1 used to verify its own fix, deferred to
+  // this completion-fix sub-step per state.md's Transition History note.
+  // -------------------------------------------------------------------------
+
+  it("(k) regression CRITICAL #1: HYGIENE SKIP reason containing a bare arrow produces NO [transition] issue", () => {
+    const cwd = getTempDir();
+    writePlan(cwd, {
+      state: "REFLECT",
+      iteration: 1,
+      // The exact reviewer-reproduction shape: a legitimate operator reason that happens
+      // to contain "->" as ordinary prose punctuation, not a state-transition arrow.
+      transitionHistoryExtra: "- HYGIENE SKIP (iter 1): prefer manual review -> skip automated sweep",
+    });
+    const r = run(cwd);
+    const transitionLines = r.stdout.split("\n").filter((l) => l.includes("[transition]"));
+    assert.equal(transitionLines.length, 0,
+      `a HYGIENE SKIP reason containing "->" must never trip [transition], got:\n${r.stdout}`);
+    // The skip line itself must still satisfy the hygiene gate — the fix must not have
+    // traded the false [transition] ERROR for a false [hygiene-gate] one.
+    assert.equal(hygieneGateLines(r.stdout).length, 0,
+      `the arrow-bearing skip line must still satisfy [hygiene-gate], got:\n${r.stdout}`);
+  });
+
+  it("(l) regression CRITICAL #2: HYGIENE SKIP reason naming \"EXECUTE → REFLECT\" does not inflate the derived iteration count", () => {
+    // Direct unit test of deriveIterationFromHistory (exported), isolating the exact
+    // reviewer-reproduction shape: a skip-line reason whose free text names a real
+    // transition pair verbatim. Before step-1.1, HYGIENE_SKIP_LINE_RE did not exist and
+    // countExecuteReflect's bare pair-scan regex matched this reason text too, double-
+    // counting a single genuine EXECUTE -> REFLECT transition as two.
+    const state =
+`# Current State: REFLECT
+## Iteration: 1
+## Transition History:
+- INIT → EXPLORE (task started)
+- EXPLORE → PLAN (enough context)
+- PLAN → EXECUTE (approved)
+- EXECUTE → REFLECT (steps done)
+- HYGIENE SKIP (iter 1): sweep deferred, see prior EXECUTE → REFLECT summary above
+`;
+    assert.equal(deriveIterationFromHistory(state), 1,
+      "a HYGIENE SKIP reason that names \"EXECUTE → REFLECT\" verbatim must not be counted " +
+      "as a second EXECUTE→REFLECT transition by countExecuteReflect");
+  });
+
+  it("(m) regression CRITICAL #3: a same-iteration completion-fix round trip does not break a correct hygiene-iter-N.md", () => {
+    // Shape: PLAN → EXECUTE (from writePlan's base history) → EXECUTE → REFLECT →
+    // REFLECT → EXECUTE (completion fix, declared iteration does NOT bump) →
+    // EXECUTE → REFLECT (pass 2). deriveIterationFromHistory would compute 2 here
+    // (two EXECUTE→REFLECT pairs); the declared field stays 1. Pre-D-010 max()
+    // logic would drive the gate's target iteration to 2, making a correct
+    // hygiene-iter-1.md report stop satisfying it.
+    const roundTrip = [
+      "- EXECUTE → REFLECT (iter-1 steps done)",
+      "- REFLECT → EXECUTE (completion fix; iteration does NOT increment)",
+      "- EXECUTE → REFLECT (pass 2)",
+    ].join("\n");
+
+    for (const state of ["REFLECT", "CLOSE"]) {
+      const cwd = getTempDir();
+      const { planDir } = writePlan(cwd, {
+        state,
+        iteration: 1,
+        transitionHistoryExtra: roundTrip,
+      });
+      writeHygieneReport(planDir, "hygiene-iter-1.md", "CLEAN");
+      const r = run(cwd);
+      assert.equal(hygieneGateLines(r.stdout).length, 0,
+        `expected zero [hygiene-gate] issues at ${state} after a same-iteration completion-fix ` +
+        `round trip with a correct hygiene-iter-1.md present, got:\n${r.stdout}`);
+    }
+  });
+
+  it("(n) negative control for (m): the same round trip WITHOUT a valid iter-1 record still fires [hygiene-gate]", () => {
+    const roundTrip = [
+      "- EXECUTE → REFLECT (iter-1 steps done)",
+      "- REFLECT → EXECUTE (completion fix; iteration does NOT increment)",
+      "- EXECUTE → REFLECT (pass 2)",
+    ].join("\n");
+
+    const cwdReflect = getTempDir();
+    writePlan(cwdReflect, { state: "REFLECT", iteration: 1, transitionHistoryExtra: roundTrip });
+    const rReflect = run(cwdReflect);
+    const reflectLines = hygieneGateLines(rReflect.stdout);
+    assert.equal(reflectLines.length, 1,
+      `expected the gate to still fire at REFLECT with no record, got:\n${rReflect.stdout}`);
+    assert.match(reflectLines[0], /^\s*WARN\s+\[hygiene-gate\]:/,
+      `expected WARN severity at REFLECT, got:\n${reflectLines[0]}`);
+
+    const cwdClose = getTempDir();
+    writePlan(cwdClose, { state: "CLOSE", iteration: 1, transitionHistoryExtra: roundTrip });
+    const rClose = run(cwdClose);
+    const closeLines = hygieneGateLines(rClose.stdout);
+    assert.equal(closeLines.length, 1,
+      `expected the gate to still fire at CLOSE with no record, got:\n${rClose.stdout}`);
+    assert.match(closeLines[0], /^\s*ERROR\s+\[hygiene-gate\]:/,
+      `expected ERROR severity at CLOSE, got:\n${closeLines[0]}`);
+  });
 });
