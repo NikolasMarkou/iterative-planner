@@ -8,15 +8,15 @@
     "markers": 55
   },
   "src/SKILL.md": {
-    "ceiling": 5.75,
-    "markers": 38
+    "ceiling": 5.71,
+    "markers": 40
   },
   "src/agents/ip-archivist.md": {
     "ceiling": 11.33,
     "markers": 24
   },
   "src/agents/ip-boyscout.md": {
-    "ceiling": 1.45,
+    "ceiling": 1.43,
     "markers": 3
   },
   "src/agents/ip-executor.md": {
@@ -28,7 +28,7 @@
     "markers": 1
   },
   "src/agents/ip-orchestrator.md": {
-    "ceiling": 10.14,
+    "ceiling": 10.01,
     "markers": 46
   },
   "src/agents/ip-plan-writer.md": {
@@ -64,7 +64,7 @@
     "markers": 11
   },
   "src/references/file-formats.md": {
-    "ceiling": 6.86,
+    "ceiling": 6.85,
     "markers": 82
   },
   "src/references/planning-rigor.md": {
