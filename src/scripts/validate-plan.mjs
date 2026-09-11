@@ -2286,7 +2286,12 @@ function checkChangelogFormat(planDir, issues) {
   const content = readFile(file);
   if (!content) return; // Optional file — older plans (and fresh dirs) may lack it.
 
-  const lines = content.split("\n");
+  // DECISION plan-2026-09-11T171519-39838f7a/D-001 — blank HTML comment spans
+  // (stripHtmlComments) BEFORE splitting into lines, rather than a per-line
+  // `<!--` prefix check, so a multi-line `<!-- ... -->` block's interior and
+  // closing lines are not misread as malformed data lines. Do not reintroduce
+  // a per-line comment-prefix check here — see decisions.md D-001.
+  const lines = stripHtmlComments(content).split("\n");
   let lineNo = 0;
   for (const raw of lines) {
     lineNo++;
@@ -2296,7 +2301,6 @@ function checkChangelogFormat(planDir, issues) {
     if (!line) continue;
     if (line.startsWith("#")) continue;        // header
     if (line.startsWith("*")) continue;        // italic header note
-    if (line.startsWith("<!--")) continue;     // comment
     if (CHANGELOG_COMPRESSED_INLINE_RE.test(line)) continue; // inline compression summary (bootstrap.mjs maybeCompressChangelog)
     // F3 — Data line: split on the FIRST 7 " | " separators; the 8th field
     // (reason) absorbs any trailing " | " inside it. Pre-fix, a legitimate
@@ -2340,17 +2344,19 @@ function checkChangelogDrefIntegrity(planDir, issues) {
 
   const known = new Set(parseDecisionsEntries(decisionsContent).entries.map((e) => e.idStr));
 
-  const lines = content.split("\n");
+  // DECISION plan-2026-09-11T171519-39838f7a/D-001 — same fix as
+  // checkChangelogFormat, applied in lockstep (see decisions.md D-001).
+  const lines = stripHtmlComments(content).split("\n");
   let lineNo = 0;
   for (const raw of lines) {
     lineNo++;
     const line = raw.trim();
     // Same skip conditions as checkChangelogFormat — header, italic note,
-    // comment, and inline-compressed lines are not data lines.
+    // and inline-compressed lines are not data lines. Comment spans are
+    // already blanked above via stripHtmlComments.
     if (!line) continue;
     if (line.startsWith("#")) continue;
     if (line.startsWith("*")) continue;
-    if (line.startsWith("<!--")) continue;
     if (CHANGELOG_COMPRESSED_INLINE_RE.test(line)) continue;
     const fields = splitChangelogFields(line);
     if (fields.length !== 8) continue; // Malformed lines are checkChangelogFormat's business.

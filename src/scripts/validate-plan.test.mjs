@@ -1723,6 +1723,27 @@ describe("validate-plan.mjs — M7: targeted check-function coverage", () => {
     assert.doesNotMatch(r.stdout, /\[changelog-malformed\]/, `clean line must not warn, got:\n${r.stdout}`);
   });
 
+  // iter-1/step-2: checkChangelogFormat/checkChangelogDrefIntegrity used to skip only a
+  // comment's OPENING line (`if (line.startsWith("<!--")) continue;`), misreading a
+  // multi-line `<!-- ... -->` block's interior/closing lines as malformed data lines.
+  // Repro from findings/scripts-logic-bugs.md finding 2, now asserted as a regression guard
+  // (D-001 — see decisions.md).
+  it("checkChangelogFormat/checkChangelogDrefIntegrity: multi-line HTML comment block does NOT warn", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    writeFileSync(join(planDir, "changelog.md"),
+`# Changelog
+*note*
+<!-- Schema example — DO NOT REMOVE.
+     Real entries follow this shape.
+     See references/file-formats.md for details. -->
+2026-05-30T10:00:00Z | iter-1/step-1 | abc1234 | f.js | EDIT(+1,-0) | radius:LOW(1) | - | a reason
+`);
+    const r = run(cwd);
+    assert.doesNotMatch(r.stdout, /\[changelog-malformed\]/, `multi-line comment block must not warn changelog-malformed, got:\n${r.stdout}`);
+    assert.doesNotMatch(r.stdout, /\[changelog-dref-orphan\]/, `multi-line comment block must not warn changelog-dref-orphan, got:\n${r.stdout}`);
+  });
+
   // iter-1/step-1: checkFindingsIndexLinks used to resolve the RAW href (including any
   // trailing #fragment) as a literal path, so a normal heading-anchored citation like
   // findings/auth-system.md#entry-points always missed on disk and false-positived
