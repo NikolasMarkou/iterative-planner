@@ -1933,6 +1933,67 @@ function checkFindingsTopicSections(planDir, issues) {
   }
 }
 
+// checkHygieneSweepGate — fires only during REFLECT/CLOSE. Requires EITHER a
+// hygiene-sweep report for the current iteration (findings/hygiene-iter-N(-passM)?.md
+// with a ## Verdict heading — content-blind, presence is the whole signal, per
+// scar-scan.mjs's "report, never gate" contract) OR an explicit arrow-free
+// "- HYGIENE SKIP (iter N): <reason>" bullet inside state.md's Transition History.
+// Severity mirrors checkVerdictBullets: WARN at REFLECT (advisory), ERROR at CLOSE
+// (blocking, same pattern [atlas-cap] already established).
+function checkHygieneSweepGate(planDir, issues) {
+  const state = readFile(join(planDir, "state.md"));
+  if (!state) return; // checkStateTransitions already reports unreadable state.md
+
+  const currentState = (extractField(state, /^# Current State:\s*(.+)$/m) || "").trim().toUpperCase();
+  if (currentState !== "REFLECT" && currentState !== "CLOSE") return;
+
+  // Same max(declared, derived) pattern as runPreStepGate's iteration-cap check
+  // and checkIterationLimits — reuse, do not reimplement iteration derivation.
+  const iterStr = extractField(state, /^## Iteration:\s*(.+)$/m);
+  const declared = iterStr ? parseInt(iterStr, 10) : 0;
+  const derived = deriveIterationFromHistory(state);
+  const iter = Math.max(Number.isFinite(declared) ? declared : 0, derived);
+  if (!Number.isFinite(iter) || iter < 1) return; // unparseable — fail silent, not throw
+
+  // (a) findings/hygiene-iter-N(-passM)?.md with a ## Verdict heading.
+  const HYGIENE_ITER_FILE_RE = new RegExp(`^hygiene-iter-${iter}(?:-pass\\d+)?\\.md$`);
+  const findingsDir = join(planDir, "findings");
+  let hasReport = false;
+  if (existsSync(findingsDir)) {
+    let files = [];
+    try {
+      files = readdirSync(findingsDir).filter((f) => f.endsWith(".md"));
+    } catch {
+      files = [];
+    }
+    for (const f of files) {
+      if (!HYGIENE_ITER_FILE_RE.test(f)) continue;
+      const text = readFile(join(findingsDir, f));
+      if (text && /^##\s+Verdict\b/m.test(text)) {
+        hasReport = true;
+        break;
+      }
+    }
+  }
+  if (hasReport) return;
+
+  // (b) arrow-free "- HYGIENE SKIP (iter N): <reason>" bullet in Transition History.
+  // Arrow-free by construction, so checkStateTransitions' FROM → TO regex
+  // (line ~267) never matches it — avoids adding a REFLECT→REFLECT entry to
+  // VALID_TRANSITIONS. (Anchor comment for this design decision added in a
+  // later plan step.)
+  const historyBlock = transitionHistoryBlock(state);
+  const skipRe = new RegExp(`^-\\s+HYGIENE SKIP \\(iter ${iter}\\):\\s+\\S.*$`, "m");
+  const hasSkip = historyBlock ? skipRe.test(historyBlock) : false;
+  if (hasSkip) return;
+
+  issues.push({
+    severity: currentState === "CLOSE" ? "ERROR" : "WARN",
+    check: "hygiene-gate",
+    message: `No hygiene-sweep record for iteration ${iter} at ${currentState}: missing findings/hygiene-iter-${iter}(-passM).md with a ## Verdict heading, and no "- HYGIENE SKIP (iter ${iter}): <reason>" line in state.md's Transition History`,
+  });
+}
+
 // 3.2c — state.md transition missing Exploration Confidence on EXPLORE → PLAN.
 //
 // Two corrections (D-003, defect #8):
@@ -2226,6 +2287,7 @@ function validate(planDirName) {
   checkReverseAnchors(planDir, planId, issues, cwd);
   checkVerificationEvidence(planDir, issues);
   checkFindingsTopicSections(planDir, issues);
+  checkHygieneSweepGate(planDir, issues);
   checkExplorationConfidence(planDir, issues);
   // v2.14.0 — plan-qualified anchors, plan-id preamble, gated Anchor-Refs.
   checkPlanIdPreamble(planDir, planId, issues);
@@ -2374,6 +2436,7 @@ Checks:
   - Complexity Budget population during EXECUTE+
   - Consolidated files existence
   - plans/SYSTEM.md line count (ERROR [atlas-cap] on >300 lines, INFO [atlas-absent] when missing)
+  - Hygiene-sweep record at REFLECT/CLOSE (WARN [hygiene-gate] at REFLECT, ERROR [hygiene-gate] at CLOSE, when neither findings/hygiene-iter-N(-passM).md's ## Verdict nor a "- HYGIENE SKIP (iter N): <reason>" line is found)
   - plans/LESSONS.md line count (ERROR [lessons-cap] on >200 lines, INFO [lessons-absent] when missing)
   - Compression-summary marker integrity in FINDINGS.md/DECISIONS.md (ERROR [compress-markers] on unbalanced/nested/duplicate)
   - INDEX.md rows with no surviving copy (WARN [index-orphan] when both plans/<id>/ and the consolidated section are gone)
