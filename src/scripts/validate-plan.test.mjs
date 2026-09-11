@@ -1723,6 +1723,45 @@ describe("validate-plan.mjs — M7: targeted check-function coverage", () => {
     assert.doesNotMatch(r.stdout, /\[changelog-malformed\]/, `clean line must not warn, got:\n${r.stdout}`);
   });
 
+  // iter-1/step-1: checkFindingsIndexLinks used to resolve the RAW href (including any
+  // trailing #fragment) as a literal path, so a normal heading-anchored citation like
+  // findings/auth-system.md#entry-points always missed on disk and false-positived
+  // [findings-index] even though the target file genuinely exists. Repro from
+  // findings/scripts-logic-bugs.md finding 1, now asserted as a regression guard.
+  it("checkFindingsIndexLinks: fragment-suffixed link to an existing file does NOT warn [findings-index]", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    writeFileSync(join(planDir, "findings.md"),
+`# Findings
+
+## Index
+- [Auth System](findings/auth-system.md#entry-points) — fixture
+
+## Key Constraints
+- fixture constraint
+`);
+    writeFileSync(join(planDir, "findings", "auth-system.md"),
+`# Findings: Auth System
+
+## Summary
+fixture summary
+
+## Key Findings
+- fixture finding
+
+## Constraints
+- fixture constraint
+
+## Code Patterns
+- fixture pattern
+
+## Risks
+- fixture risk
+`);
+    const r = run(cwd);
+    assert.doesNotMatch(r.stdout, /\[findings-index\]/, `fragment-suffixed link to an existing file must not warn, got:\n${r.stdout}`);
+  });
+
   // D-009: the Presentation Contract advisory was DELETED, not disabled. The
   // default writePlan fixture records PLAN → EXECUTE and names no contract
   // anywhere — the exact input that used to WARN. Guards against a well-meaning

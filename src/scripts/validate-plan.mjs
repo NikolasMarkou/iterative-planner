@@ -1422,8 +1422,13 @@ function checkFindingsIndexLinks(planDir, issues) {
     const href = m[1].trim();
     if (/^https?:\/\//.test(href)) continue;
     if (href.startsWith("#")) continue;
+    // Strip a trailing #fragment before resolving — a heading link like
+    // findings/auth-system.md#entry-points is a normal way to cite a
+    // specific section of a findings sub-file, not a broken path.
+    const withoutFragment = href.split("#")[0];
+    if (!withoutFragment) continue; // all-fragment href (defensive; already caught above)
     // Resolve relative to plan dir.
-    const target = join(planDir, href);
+    const target = join(planDir, withoutFragment);
     if (!existsSync(target)) {
       issues.push({
         severity: "ERROR",
