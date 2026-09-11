@@ -77,11 +77,11 @@ stateDiagram-v2
 | EXECUTE → REFLECT | Execution phase ends (all steps done, failure, surprise, or leash hit). |
 | REFLECT → CLOSE | All criteria verified PASS in `verification.md`, no regressions, no simplification blockers. **User confirms.** |
 | REFLECT → PIVOT | Failure or better approach found. |
-| REFLECT → EXPLORE | Need more context before pivoting. |
+| REFLECT → EXPLORE | Need more context. |
 | REFLECT → EXECUTE | Completion-fix remediation surfaced during REFLECT: small fixes to finish the SAME iteration's work (not a new approach → not PIVOT; not more context → not EXPLORE). Same iteration only — `iter` does not increment. Not a general re-loop. A fix that repairs plan step M is numbered as a sub-step of it, `iter-N/step-M.K` (K counts 1, 2, … over successive fixes to that same step), so the changelog `step` field always names a numbered step. The declared counter stays flat across these round trips, but the enforced iteration cap does not (see Iteration Limits, below). |
 | PIVOT → PLAN | New approach formulated. Decision logged. |
 
-> **Bootstrap shortcuts**: `bootstrap.mjs close` allows closing from any state (EXPLORE→CLOSE, PLAN→CLOSE, EXECUTE→CLOSE, PIVOT→CLOSE). These are administrative exits — the protocol CLOSE steps (summary.md, decision audit, LESSONS.md update) should be completed by the agent before running `close`.
+> **Bootstrap shortcuts**: `bootstrap.mjs close` allows closing from any state (EXPLORE→CLOSE, PLAN→CLOSE, EXECUTE→CLOSE, PIVOT→CLOSE). These are administrative exits — the protocol CLOSE steps (summary.md, decision audit, LESSONS.md update) should be completed by the agent before running `close`. These four edges are deliberately absent from the Mermaid diagram above — it shows only the primary protocol flow; read the diagram together with this callout, not as the complete transition set.
 
 Every transition → log in `state.md`. PIVOT transitions → also log in `decisions.md` (what failed, what learned, why new direction).
 At CLOSE → audit decision anchors (`references/decision-anchoring.md`). Merge per-plan findings/decisions to `plans/FINDINGS.md` and `plans/DECISIONS.md`. Update `plans/LESSONS.md` with significant lessons (rewrite to ≤200 lines). Compress consolidated files if >500 lines (see "Consolidated File Management").
@@ -181,7 +181,7 @@ R = read only | W = update (implicit read + write) | R+W = distinct read and wri
 | plans/LESSONS-archive.md | — | — | — | — | — | W (overflow archive) |
 | plans/SYSTEM.md | R | R | — | — | R | W(rewrite≤300) |
 | plans/INDEX.md | R? | — | — | — | — | W(append via bootstrap) |
-| plans/ANCHORS.md | R? | — | — | — | — | W(append) |
+| plans/ANCHORS.md | — | — | — | — | — | W(append) |
 | lessons_snapshot.md | — | — | — | — | — | W(auto via bootstrap) |
 
 `R?` = read on demand only, not as part of the eager cross-plan read set. See EXPLORE rules below for the triggers that warrant an INDEX.md read. `plans/FINDINGS.md` at PLAN is `R?` because the plan-writer reads per-plan `findings/*` files (already in PLAN dispatch), not the cross-plan consolidated `plans/FINDINGS.md`, unless explicitly needed for cross-plan context.
@@ -447,7 +447,7 @@ Each file has a clear owner. Only the owner writes. Others read. Co-ownership (m
 | File | Owner (Writes) | Readers |
 |------|----------------|---------|
 | `state.md` | Orchestrator | All agents |
-| `plan.md` | Plan-writer (full rewrite) + Orchestrator (Post-Step Gate: step checkbox, marker, complexity budget) | Executor, Verifier, Reviewer |
+| `plan.md` | Plan-writer (full rewrite) + Orchestrator (Post-Step Gate: step checkbox, marker, complexity budget) | Orchestrator, Executor, Verifier, Reviewer |
 | `decisions.md` | Orchestrator + Plan-writer (author entries) + Executor (back-fills `Anchor-Refs` on anchored entries, records DRY exceptions) + Archivist (CLOSE-time Anchor-Refs backfill remediation, ip-archivist.md Step 1) | All agents |
 | `findings.md` (index) | Orchestrator | Plan-writer, Reviewer |
 | `findings/{topic}.md` | Explorer (one per file; orchestrator may delete an empty stale copy before a re-spawn, and appends `[CORRECTED iter-N]` annotations at PIVOT) | Orchestrator, Plan-writer |
