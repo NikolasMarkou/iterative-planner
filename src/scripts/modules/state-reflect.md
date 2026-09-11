@@ -51,7 +51,7 @@ All seven reads are CORE. Do not evaluate until all are complete.
 | Condition | → Transition |
 |-----------|--------------|
 | All criteria verified PASS in `verification.md`, no regressions, no simplification blockers + **user confirms** | → CLOSE |
-| Completion-fix remediation surfaced during REFLECT: small fixes to finish the SAME iteration's work (not a new approach → not PIVOT; not more context → not EXPLORE) + **user confirms**. This is also the path the hygiene sweep's remediation takes: each `## Introduced` item a `changelog.md` line attributes to a numbered step becomes one sub-step here, and an unattributable item is reported and never minted. Bound it at two hygiene remediation rounds per iteration — each round re-enters REFLECT, which sweeps again, so a third sweep in the same iteration reports only. | → EXECUTE (same iteration; `iter` does not increment) |
+| Completion-fix remediation surfaced during REFLECT: small fixes to finish the SAME iteration's work (not a new approach → not PIVOT; not more context → not EXPLORE) + **user confirms**. This is also the path the hygiene sweep's remediation takes: each `## Introduced` item a `changelog.md` line attributes to a numbered step becomes one sub-step here, and an unattributable item is reported and never minted. Bound it at two hygiene remediation rounds per iteration — each round re-enters REFLECT, which sweeps again, so a third sweep in the same iteration reports only. (self-reported, not script-counted — see `agents/ip-orchestrator.md` § REFLECT State). | → EXECUTE (same iteration; `iter` does not increment) |
 | Failure understood, new approach clear | → PIVOT |
 | Unknowns need investigation, or findings contradicted | → EXPLORE (update findings first) |
 

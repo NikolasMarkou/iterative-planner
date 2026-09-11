@@ -103,7 +103,7 @@ Your `## Verdict` line is not decorative — the orchestrator reads it to decide
 
 - **`CLEAN`** — the scan ran and found nothing introduced. Inherited items may still be listed; they do not change this verdict.
 - **`REMEDIATE`** — the scan ran, at least one introduced item exists, and at least one of them is attributable to a numbered step. The orchestrator may mint those as `iter-N/step-M.K` completion fixes.
-- **`REPORT_ONLY`** — the scan ran and introduced items exist, but none is attributable to a numbered step, or your spawn prompt told you the per-iteration remediation rounds are already spent. Everything is reported; nothing is minted.
+- **`REPORT_ONLY`** — the scan ran and introduced items exist, but none is attributable to a numbered step, or your spawn prompt told you the per-iteration remediation rounds are already spent. (a self-reported number, not counted by any script — see `agents/ip-orchestrator.md` § REFLECT State). Everything is reported; nothing is minted.
 - **`SCAN_UNTRUSTWORTHY`** — the scanner exited 1. No partition is claimed. See Step 2.
 
 Set it deliberately, and set it from what you can evidence. `CLEAN` on an untrustworthy scan is the single worst output you can produce, and it is worse than producing nothing at all.
