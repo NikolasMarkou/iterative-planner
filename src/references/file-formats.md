@@ -48,6 +48,16 @@ Update on every state transition.
 
 **Change Manifest**: one line per step, formatted as `- Step N (commit-hash-or-"uncommitted"):` followed by each filename wrapped in backticks and comma-separated — e.g. `file1`, `file2`, `file3`. A step line carrying `uncommitted` (or no hash) has not yet landed; on failed step / PIVOT → revert those files. Backticking each filename is non-negotiable (see `code-hygiene.md` for why); capitalization/hyphenation of `Step N` vs `step-N` is a minor stylistic variant, not load-bearing. See `code-hygiene.md`.
 
+**Transition History**: append-only log of state transitions, one bullet each, in the `FROM → TO (reason)` shape shown above. It also carries one deliberately arrow-free exception — the hygiene-sweep skip line, written by the orchestrator at REFLECT the moment it legitimately decides not to spawn `ip-boyscout` this pass:
+
+```markdown
+## Transition History:
+- REFLECT → PIVOT (approach A can't handle concurrent sessions)
+- HYGIENE SKIP (iter 3): trigger condition not met, no boyscout run this pass
+```
+
+The line is deliberately arrow-free — no `→`/`->` — so `checkStateTransitions` never misreads it as a `FROM → TO` transition, and it never needs a `REFLECT→REFLECT` entry added to `VALID_TRANSITIONS`. See `[hygiene-gate]` in the Presentation Contracts section (PC-REFLECT item 4) for what checks this line, or its hygiene-report counterpart, satisfies.
+
 <!-- TEMPLATE:plan -->
 ## plan.md
 
@@ -1038,7 +1048,7 @@ Approve to enter EXECUTE, or request revisions.
   1. **What was completed** — copied from `progress.md` Completed section.
   2. **What remains** — copied from `progress.md` Remaining + In Progress sections (or "none").
   3. **Verification results summary** — PASS/FAIL counts plus the per-criterion table from `verification.md` Criteria Verification, rendered verbatim.
-  4. **Issues found** — regressions, scope drift, unverified areas, simplification blockers; **plus** any CRITICAL/WARNING items from `findings/review-iter-N[-passM].md` (when a review ran) folded in verbatim; **plus** any verifier **Concerns** (suspicious-but-PASS observations, per the Relay Contract in `ip-verifier.md`) folded in verbatim; **plus** the reviewer's `## Blind Spots` bullets (what wasn't tested and why it matters) folded in; **plus**, when a hygiene sweep ran, every entry under `## Introduced` in `findings/hygiene-iter-N[-passM].md` folded in verbatim, one line each, and that report's `## Inherited` section as ONE labelled line carrying the total and saying plainly that it is not this plan's regression — never the individual items, which can number in the dozens and would bury the introduced list. A sweep whose Verdict is `SCAN_UNTRUSTWORTHY` is reported as exactly that, in place of a count.
+  4. **Issues found** — regressions, scope drift, unverified areas, simplification blockers; **plus** any CRITICAL/WARNING items from `findings/review-iter-N[-passM].md` (when a review ran) folded in verbatim; **plus** any verifier **Concerns** (suspicious-but-PASS observations, per the Relay Contract in `ip-verifier.md`) folded in verbatim; **plus** the reviewer's `## Blind Spots` bullets (what wasn't tested and why it matters) folded in; **plus**, when a hygiene sweep ran, every entry under `## Introduced` in `findings/hygiene-iter-N[-passM].md` folded in verbatim, one line each, and that report's `## Inherited` section as ONE labelled line carrying the total and saying plainly that it is not this plan's regression — never the individual items, which can number in the dozens and would bury the introduced list. A sweep whose Verdict is `SCAN_UNTRUSTWORTHY` is reported as exactly that, in place of a count. `[hygiene-gate]` (`validate-plan.mjs`) verifies only that a record exists for the current iteration — a `findings/hygiene-iter-N[-passM].md` report carrying a `## Verdict` heading, or a `HYGIENE SKIP (iter N): <reason>` line in `state.md`'s Transition History — never what that record says: a bad Verdict never blocks CLOSE by itself, only the total absence of any record does.
   5. **Recommendation** — one of CLOSE / PIVOT / EXPLORE / EXECUTE (EXECUTE only for a same-iteration completion-fix remediation loop — small fixes to finish the current iteration's work; `iter` does not increment), with one-sentence justification, then explicit prompt for user confirmation. When a hygiene sweep returned `REMEDIATE`, the recommendation is EXECUTE, and each attributable entry from its `## Introduced` list is minted as a completion fix `iter-N/step-M.K`, where M is the step whose `changelog.md` line named that entry's file; an entry no changelog line attributes to a numbered step is reported in item 4 and never minted. At most two hygiene remediation rounds per iteration.
 - **Fidelity**: verbatim for items 1-3 (progress + verification table + reviewer + verifier concerns); digest for items 4-5 commentary, but the underlying lists must be enumerated (no rolling-up into prose).
 - **Minimum sections** (floor): all 5 items. The block is defined by its 5-item structure; collapsing to fewer items violates the contract.
