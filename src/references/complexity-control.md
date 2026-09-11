@@ -76,6 +76,16 @@ Same area fixed 3× across iterations ⇒
 4. → PIVOT: "fundamentally different approach for [file/module]."
 5. Consider: is this code even necessary?
 
+**Scope note**: this rule is advisory-only — no script counts strikes anywhere in
+`src/scripts/*.mjs`; it is checked by whichever agent reads `decisions.md` before
+writing a fix. Its literal condition is scoped "across iterations," but a
+completion-fix or leash-override retry loop (`SKILL.md` § Transitions, REFLECT →
+EXECUTE) can repeat several times within a single declared iteration without ever
+satisfying that literal wording — the same gap SKILL.md's Iteration Limits section
+documents for the mechanically-enforced cap. Apply the rule's intent (three failed
+attempts on the same area is a stop signal, whatever the declared iteration count
+says) even when the literal "across iterations" wording doesn't obviously fire.
+
 ## Forbidden Fix Patterns
 
 Catch yourself doing one → revert.
