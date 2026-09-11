@@ -4182,3 +4182,161 @@ describe("[anchor-orphan] message is tier-accurate (A6 / D-008)", () => {
       `the message must name the per-plan decisions.md that was read, got:\n${line}`);
   });
 });
+
+// ---------------------------------------------------------------------------
+// checkHygieneSweepGate ([hygiene-gate]) — plan-2026-09-11T141919-e5db2894/step-3
+//
+// Mirrors the fixture-building style of the "validate-plan.mjs --pre-step gate"
+// describe block above (writePlan + run(cwd), full-validator stdout scraping),
+// not a divergent style — this check has no --pre-step-style dedicated CLI mode
+// (D-001: severity escalation, not a new exit code), so it is only observable
+// through the full validator's normal issue list.
+// ---------------------------------------------------------------------------
+
+describe("checkHygieneSweepGate ([hygiene-gate])", () => {
+  const tempDirs = [];
+  function getTempDir() { const d = makeTempDir(); tempDirs.push(d); return d; }
+  afterEach(() => { while (tempDirs.length) removeTempDir(tempDirs.pop()); });
+
+  /** Count of stdout lines carrying the [hygiene-gate] tag. */
+  function hygieneGateLines(stdout) {
+    return stdout.split("\n").filter((l) => l.includes("[hygiene-gate]"));
+  }
+
+  function writeHygieneReport(planDir, name, verdict) {
+    writeFileSync(join(planDir, "findings", name),
+`# Hygiene Sweep
+
+## Inherited
+- (none)
+
+## Introduced
+- (none)
+
+## Verdict
+${verdict}
+`);
+  }
+
+  it("(a) REFLECT + no record -> exactly one WARN [hygiene-gate]", () => {
+    const cwd = getTempDir();
+    writePlan(cwd, { state: "REFLECT", iteration: 1 });
+    const r = run(cwd);
+    const lines = hygieneGateLines(r.stdout);
+    assert.equal(lines.length, 1, `expected exactly one [hygiene-gate] line, got:\n${r.stdout}`);
+    assert.match(lines[0], /^\s*WARN\s+\[hygiene-gate\]:/, `expected WARN severity, got:\n${lines[0]}`);
+  });
+
+  it("(b) CLOSE + no record -> exactly one ERROR [hygiene-gate]", () => {
+    const cwd = getTempDir();
+    writePlan(cwd, { state: "CLOSE", iteration: 1 });
+    const r = run(cwd);
+    const lines = hygieneGateLines(r.stdout);
+    assert.equal(lines.length, 1, `expected exactly one [hygiene-gate] line, got:\n${r.stdout}`);
+    assert.match(lines[0], /^\s*ERROR\s+\[hygiene-gate\]:/, `expected ERROR severity, got:\n${lines[0]}`);
+  });
+
+  for (const verdict of ["CLEAN", "REMEDIATE", "REPORT_ONLY", "SCAN_UNTRUSTWORTHY"]) {
+    it(`(c) fresh hygiene-iter-N.md with Verdict=${verdict} -> no [hygiene-gate] issue at REFLECT or CLOSE (content-blindness)`, () => {
+      for (const state of ["REFLECT", "CLOSE"]) {
+        const cwd = getTempDir();
+        const { planDir } = writePlan(cwd, { state, iteration: 1 });
+        writeHygieneReport(planDir, "hygiene-iter-1.md", verdict);
+        const r = run(cwd);
+        assert.equal(hygieneGateLines(r.stdout).length, 0,
+          `expected zero [hygiene-gate] issues at ${state} with Verdict=${verdict}, got:\n${r.stdout}`);
+      }
+    });
+  }
+
+  it("(d) hygiene-iter-N-pass2.md present -> satisfies the gate", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd, { state: "REFLECT", iteration: 1 });
+    writeHygieneReport(planDir, "hygiene-iter-1-pass2.md", "REMEDIATE");
+    const r = run(cwd);
+    assert.equal(hygieneGateLines(r.stdout).length, 0,
+      `expected zero [hygiene-gate] issues with a -pass2 report present, got:\n${r.stdout}`);
+  });
+
+  it("(e) well-formed skip line for iteration N -> satisfies, no report needed", () => {
+    const cwd = getTempDir();
+    writePlan(cwd, {
+      state: "REFLECT",
+      iteration: 1,
+      transitionHistoryExtra: "- HYGIENE SKIP (iter 1): trigger condition not met this pass",
+    });
+    const r = run(cwd);
+    assert.equal(hygieneGateLines(r.stdout).length, 0,
+      `expected zero [hygiene-gate] issues with a well-formed skip line, got:\n${r.stdout}`);
+  });
+
+  it("(f) skip line naming a DIFFERENT iteration -> still fires", () => {
+    const cwd = getTempDir();
+    writePlan(cwd, {
+      state: "REFLECT",
+      iteration: 2,
+      transitionHistoryExtra: "- HYGIENE SKIP (iter 1): stale skip from a prior iteration",
+    });
+    const r = run(cwd);
+    const lines = hygieneGateLines(r.stdout);
+    assert.equal(lines.length, 1, `expected the gate to still fire, got:\n${r.stdout}`);
+    assert.match(lines[0], /^\s*WARN\s+\[hygiene-gate\]:/, `expected WARN at REFLECT, got:\n${lines[0]}`);
+  });
+
+  it("(g) report file naming a DIFFERENT iteration -> still fires", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd, { state: "REFLECT", iteration: 2 });
+    writeHygieneReport(planDir, "hygiene-iter-1.md", "CLEAN");
+    const r = run(cwd);
+    const lines = hygieneGateLines(r.stdout);
+    assert.equal(lines.length, 1, `expected the gate to still fire for a stale-iteration report, got:\n${r.stdout}`);
+  });
+
+  const malformedSkipLines = [
+    ["wrong keyword", "- HYGENE SKIP (iter 1): typo'd keyword"],
+    ["missing iteration number", "- HYGIENE SKIP (iter): no number given"],
+    ["empty reason", "- HYGIENE SKIP (iter 1):"],
+  ];
+  for (const [label, line] of malformedSkipLines) {
+    it(`(h) malformed skip line (${label}) -> still fires`, () => {
+      const cwd = getTempDir();
+      writePlan(cwd, { state: "REFLECT", iteration: 1, transitionHistoryExtra: line });
+      const r = run(cwd);
+      assert.equal(hygieneGateLines(r.stdout).length, 1,
+        `expected the gate to still fire for a malformed skip line (${label}), got:\n${r.stdout}`);
+    });
+  }
+
+  it("(i) regression: the skip-line fixture produces NO [transition] ERROR (arrow-free, invisible to checkStateTransitions)", () => {
+    const cwd = getTempDir();
+    writePlan(cwd, {
+      state: "REFLECT",
+      iteration: 1,
+      transitionHistoryExtra: "- HYGIENE SKIP (iter 1): trigger condition not met this pass",
+    });
+    const r = run(cwd);
+    const transitionLines = r.stdout.split("\n").filter((l) => l.includes("[transition]"));
+    assert.equal(transitionLines.length, 0,
+      `the arrow-free skip line must never be read as a state transition, got:\n${r.stdout}`);
+  });
+
+  for (const state of ["EXECUTE", "PLAN", "EXPLORE"]) {
+    it(`(j) ${state} state -> gate silent regardless of record presence/absence`, () => {
+      // absent case
+      const cwdAbsent = getTempDir();
+      writePlan(cwdAbsent, { state, iteration: 1 });
+      const rAbsent = run(cwdAbsent);
+      assert.equal(hygieneGateLines(rAbsent.stdout).length, 0,
+        `expected the gate to stay silent at ${state} with no record, got:\n${rAbsent.stdout}`);
+
+      // present case (a report exists, which would satisfy the gate anyway, but the
+      // point is the gate does not even evaluate outside REFLECT/CLOSE)
+      const cwdPresent = getTempDir();
+      const { planDir } = writePlan(cwdPresent, { state, iteration: 1 });
+      writeHygieneReport(planDir, "hygiene-iter-1.md", "CLEAN");
+      const rPresent = run(cwdPresent);
+      assert.equal(hygieneGateLines(rPresent.stdout).length, 0,
+        `expected the gate to stay silent at ${state} with a record present, got:\n${rPresent.stdout}`);
+    });
+  }
+});
