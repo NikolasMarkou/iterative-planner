@@ -246,11 +246,24 @@ const HYGIENE_SKIP_LINE_RE = /^-\s+HYGIENE SKIP \(iter \d+\):/;
 // structural (one call site to get right), not a hand-maintained list of patched functions to
 // keep in sync. Do not re-add a per-function `.filter(... && !HYGIENE_SKIP_LINE_RE.test(l))`
 // inline — call this instead.
+//
+// DECISION plan-2026-09-11T141919-e5db2894/D-012 — dash-variant normalization for the
+// HYGIENE_SKIP_LINE_RE test happens HERE, INSIDE the filter predicate, BEFORE the regex
+// runs — never as a separate `.replace(/[–—‐]/g, "-")` pass applied to the block AFTER this
+// function returns. `HYGIENE_SKIP_LINE_RE` only accepts an ASCII `-` bullet; a skip line
+// authored with a visually-identical non-ASCII dash (en-dash –, em-dash —, hyphen U+2010)
+// as its bullet would otherwise fail the match, survive the filter, and leak its
+// arrow-containing reason text into the caller's pair scan — exactly the regression pass-3
+// review caught in commit 343d2a7 (dash-normalization had drifted to AFTER the strip step in
+// two of the four readers, restoring the leak the strip step exists to close). Only the
+// REGEX TEST is normalized; the line text returned to callers is left byte-identical, so a
+// caller's own downstream normalization (normalizePhase, or an explicit dash-replace) is
+// unaffected and remains idempotent if it re-runs the same substitution.
 function stripHygieneSkipLines(text) {
   if (text === null || text === undefined) return text;
   return text
     .split("\n")
-    .filter((l) => !HYGIENE_SKIP_LINE_RE.test(l))
+    .filter((l) => !HYGIENE_SKIP_LINE_RE.test(l.replace(/[–—‐]/g, "-")))
     .join("\n");
 }
 
@@ -2014,9 +2027,21 @@ function checkHygieneSweepGate(planDir, issues) {
   // (the --pre-step iteration cap) already trust it too — and is deliberately NOT
   // second-guessed here; doing so would mean this one check overriding a field every other
   // check trusts, which is a bigger design change out of scope for this fix.
+  //
+  // DECISION plan-2026-09-11T141919-e5db2894/D-013 (reviewer pass-3 CONCERN #3): a declared
+  // `## Iteration: 0` — bootstrap.mjs's own written default for a brand-new plan, per
+  // SKILL.md § Iteration Limits ("iter=0 = EXPLORE-only (pre-plan)") — parses successfully as
+  // a number, so treating "parseable" alone as "trust it" let `iter` become 0 and the `iter <
+  // 1` guard below return SILENTLY before the fallback ever ran, disabling the gate for any
+  // plan that reached REFLECT/CLOSE without the declared field ever being bumped. REFLECT/
+  // CLOSE at iteration 0 is already out-of-band for the state machine (PLAN → EXECUTE is what
+  // increments the counter), so a declared 0 here is exactly as untrustworthy as a missing or
+  // unparseable field, not a legitimate "iteration zero" to defend as a real state — treat it
+  // identically: fall back to deriveConvergenceIteration. `declared >= 1` is the guard; 0 and
+  // any negative value both route to the fallback.
   const iterStr = extractField(state, /^## Iteration:\s*(.+)$/m);
   const declared = iterStr ? parseInt(iterStr, 10) : NaN;
-  const iter = Number.isFinite(declared) ? declared : deriveConvergenceIteration(state);
+  const iter = Number.isFinite(declared) && declared >= 1 ? declared : deriveConvergenceIteration(state);
   if (iter < 1) return; // still unparseable/derivable to nothing — fail silent, not throw
 
   // (a) findings/hygiene-iter-N(-passM)?.md with a ## Verdict heading.
@@ -2055,9 +2080,20 @@ function checkHygieneSweepGate(planDir, issues) {
   // started excluding the WHOLE line from both readers, closing that gap (reviewer CRITICAL
   // #1/#2). This regex below still only builds the ITERATION-SPECIFIC existence match; it
   // does not itself need to change to fix that gap.
+  //
+  // DECISION plan-2026-09-11T141919-e5db2894/D-012 (reviewer pass-3 CONCERN #1, gate-side
+  // half): this existence check must recognize a skip line's bullet the same way
+  // stripHygieneSkipLines() does, or a legitimate skip line bulleted with a non-ASCII dash
+  // (en-dash –, em-dash —, hyphen U+2010) would be correctly excluded from the OTHER four
+  // Transition-History readers yet STILL fail this gate's own existence test — trading one
+  // false positive ([transition]/[convergence] leak) for another (a spurious [hygiene-gate]
+  // WARN/ERROR on a well-formed skip line). Normalize a LOCAL copy of historyBlock before
+  // both regex tests below; the unnormalized `historyBlock` binding itself is left untouched
+  // since nothing else in this function needs the raw text.
   const historyBlock = transitionHistoryBlock(state);
+  const normalizedHistoryBlock = historyBlock ? historyBlock.replace(/[–—‐]/g, "-") : historyBlock;
   const skipRe = new RegExp(`^-\\s+HYGIENE SKIP \\(iter ${iter}\\):\\s+\\S.*$`, "m");
-  const hasSkip = historyBlock ? skipRe.test(historyBlock) : false;
+  const hasSkip = normalizedHistoryBlock ? skipRe.test(normalizedHistoryBlock) : false;
   if (hasSkip) return;
 
   // Reviewer pass-2 NOTE #8: a skip line naming a DIFFERENT iteration (or otherwise
@@ -2065,7 +2101,9 @@ function checkHygieneSweepGate(planDir, issues) {
   // "you wrote nothing", which is misleading when a line is in fact present. Detect any
   // HYGIENE_SKIP_LINE_RE match (regardless of which iteration it names) and say so — this is
   // a message-string improvement only; the gate still fails closed exactly as before.
-  const anySkipMatch = historyBlock ? historyBlock.split("\n").find((l) => HYGIENE_SKIP_LINE_RE.test(l)) : null;
+  const anySkipMatch = normalizedHistoryBlock
+    ? normalizedHistoryBlock.split("\n").find((l) => HYGIENE_SKIP_LINE_RE.test(l))
+    : null;
   const otherIterMatch = anySkipMatch ? /HYGIENE SKIP \(iter (\d+)\)/.exec(anySkipMatch) : null;
   const otherIterNote = otherIterMatch && otherIterMatch[1] !== String(iter)
     ? ` (a HYGIENE SKIP line naming iteration ${otherIterMatch[1]} is present, but does not match iteration ${iter})`

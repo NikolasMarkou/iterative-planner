@@ -4532,4 +4532,112 @@ ${verdict}
       `an unparseable declared Iteration field must not silently disable the gate forever, got:\n${r.stdout}`);
     assert.match(lines[0], /^\s*WARN\s+\[hygiene-gate\]:/, `expected WARN at REFLECT, got:\n${lines[0]}`);
   });
+
+  // -------------------------------------------------------------------------
+  // Regression tests for the third completion-fix round (reviewer pass-3, findings/
+  // review-iter-1-pass3.md, decisions.md D-012/D-013).
+  // -------------------------------------------------------------------------
+
+  it("(q) regression pass-3 CONCERN #1: a HYGIENE SKIP line bulleted with a non-ASCII dash (U+2010) is still excluded wholesale, no [transition]/[hygiene-gate] leak", () => {
+    // U+2010 (HYPHEN) is visually identical to ASCII "-" but HYGIENE_SKIP_LINE_RE only
+    // matched the ASCII form; commit 343d2a7 reordered dash-normalization to AFTER the
+    // strip filter in two of the four readers, so this bulleted-with-U+2010 line survived
+    // the filter unstripped and its arrow-containing reason leaked into the pair scan.
+    const cwd = getTempDir();
+    writePlan(cwd, {
+      state: "REFLECT",
+      iteration: 1,
+      transitionHistoryExtra: "‐ HYGIENE SKIP (iter 1): no code changed since the EXECUTE → REFLECT round trip",
+    });
+    const r = run(cwd);
+    const transitionLines = r.stdout.split("\n").filter((l) => l.includes("[transition]"));
+    assert.equal(transitionLines.length, 0,
+      `a U+2010-bulleted HYGIENE SKIP line must never be read as a state transition, got:\n${r.stdout}`);
+    assert.equal(hygieneGateLines(r.stdout).length, 0,
+      `a U+2010-bulleted HYGIENE SKIP line must still satisfy [hygiene-gate], got:\n${r.stdout}`);
+  });
+
+  it("(q2) regression pass-3 CONCERN #1: direct unit test — a non-ASCII-dash-bulleted skip line naming \"EXECUTE → REFLECT\" does not inflate deriveIterationFromHistory", () => {
+    const state =
+`# Current State: REFLECT
+## Iteration: 1
+## Transition History:
+- INIT → EXPLORE (task started)
+- EXPLORE → PLAN (enough context)
+- PLAN → EXECUTE (approved)
+- EXECUTE → REFLECT (steps done)
+– HYGIENE SKIP (iter 1): sweep deferred, see prior EXECUTE → REFLECT summary above
+`;
+    // – is EN DASH, used here as the bullet character instead of ASCII "-".
+    assert.equal(deriveIterationFromHistory(state), 1,
+      "an en-dash-bulleted HYGIENE SKIP reason that names \"EXECUTE → REFLECT\" verbatim must " +
+      "not be counted as a second EXECUTE→REFLECT transition by countExecuteReflect");
+  });
+
+  it("(r) regression pass-3 CONCERN #3: declared `## Iteration: 0` (bootstrap's own default) falls back to the derived count instead of silently disabling the gate", () => {
+    const cwd = getTempDir();
+    const roundTrip = [
+      "- EXECUTE → REFLECT (iter-1 steps done)",
+      "- REFLECT → EXECUTE (completion fix; iteration does NOT increment)",
+      "- EXECUTE → REFLECT (pass 2)",
+    ].join("\n");
+    const { planDir } = writePlan(cwd, {
+      state: "REFLECT",
+      iteration: 0, // bootstrap.mjs's own written default for a brand-new plan
+      transitionHistoryExtra: roundTrip,
+    });
+    writeHygieneReport(planDir, "hygiene-iter-1.md", "CLEAN");
+    const r = run(cwd);
+    assert.equal(hygieneGateLines(r.stdout).length, 0,
+      `a declared "## Iteration: 0" must fall back to the derived (countRePlans) iteration and ` +
+      `be satisfied by a valid record at that iteration, not silently disable the gate, got:\n${r.stdout}`);
+  });
+
+  it("(s) negative control for (r): declared `## Iteration: 0` with no hygiene record at all still fires the gate (not silenced)", () => {
+    const cwd = getTempDir();
+    writePlan(cwd, { state: "REFLECT", iteration: 0 });
+    const r = run(cwd);
+    const lines = hygieneGateLines(r.stdout);
+    assert.equal(lines.length, 1,
+      `a declared "## Iteration: 0" must not silently disable the gate forever, got:\n${r.stdout}`);
+    assert.match(lines[0], /^\s*WARN\s+\[hygiene-gate\]:/, `expected WARN at REFLECT, got:\n${lines[0]}`);
+  });
+
+  it("(t) regression pass-3 CONCERN #4: the fallback derives the SPECIFIC value countRePlans/deriveConvergenceIteration compute, not just \"some\" fallback", () => {
+    // A genuine replan (REFLECT -> PIVOT -> PLAN) after the base history's PLAN -> EXECUTE
+    // makes deriveConvergenceIteration = 1 + countRePlans = 2. A declared field of "N/A"
+    // (unparseable) forces the fallback. A hygiene-iter-1.md report — the value a mutated
+    // `deriveConvergenceIteration` hardcoded to the constant 1 would wrongly accept — must
+    // NOT satisfy the gate; only hygiene-iter-2.md (the true derived value) may.
+    const roundTrip = [
+      "- EXECUTE → REFLECT (iter-1 steps done)",
+      "- REFLECT → PIVOT (new approach chosen)",
+      "- PIVOT → PLAN (replanned)",
+      "- PLAN → EXECUTE (re-approved)",
+      "- EXECUTE → REFLECT (iter-2 steps done)",
+    ].join("\n");
+
+    const cwdWrongIter = getTempDir();
+    const { planDir: planDirWrong } = writePlan(cwdWrongIter, {
+      state: "REFLECT",
+      iteration: "N/A",
+      transitionHistoryExtra: roundTrip,
+    });
+    writeHygieneReport(planDirWrong, "hygiene-iter-1.md", "CLEAN");
+    const rWrong = run(cwdWrongIter);
+    assert.equal(hygieneGateLines(rWrong.stdout).length, 1,
+      `expected the gate to still fire: hygiene-iter-1.md must NOT satisfy a true derived ` +
+      `iteration of 2, got:\n${rWrong.stdout}`);
+
+    const cwdRightIter = getTempDir();
+    const { planDir: planDirRight } = writePlan(cwdRightIter, {
+      state: "REFLECT",
+      iteration: "N/A",
+      transitionHistoryExtra: roundTrip,
+    });
+    writeHygieneReport(planDirRight, "hygiene-iter-2.md", "CLEAN");
+    const rRight = run(cwdRightIter);
+    assert.equal(hygieneGateLines(rRight.stdout).length, 0,
+      `expected hygiene-iter-2.md (the true derived iteration) to satisfy the gate, got:\n${rRight.stdout}`);
+  });
 });
