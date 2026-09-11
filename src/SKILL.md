@@ -78,7 +78,7 @@ stateDiagram-v2
 | REFLECT → CLOSE | All criteria verified PASS in `verification.md`, no regressions, no simplification blockers. **User confirms.** |
 | REFLECT → PIVOT | Failure or better approach found. |
 | REFLECT → EXPLORE | Need more context before pivoting. |
-| REFLECT → EXECUTE | Completion-fix remediation surfaced during REFLECT: small fixes to finish the SAME iteration's work (not a new approach → not PIVOT; not more context → not EXPLORE). Same iteration only — `iter` does not increment. Not a general re-loop. A fix that repairs plan step M is numbered as a sub-step of it, `iter-N/step-M.K` (K counts 1, 2, … over successive fixes to that same step), so the changelog `step` field always names a numbered step. |
+| REFLECT → EXECUTE | Completion-fix remediation surfaced during REFLECT: small fixes to finish the SAME iteration's work (not a new approach → not PIVOT; not more context → not EXPLORE). Same iteration only — `iter` does not increment. Not a general re-loop. A fix that repairs plan step M is numbered as a sub-step of it, `iter-N/step-M.K` (K counts 1, 2, … over successive fixes to that same step), so the changelog `step` field always names a numbered step. The declared counter stays flat across these round trips, but the enforced iteration cap does not (see Iteration Limits, below). |
 | PIVOT → PLAN | New approach formulated. Decision logged. |
 
 > **Bootstrap shortcuts**: `bootstrap.mjs close` allows closing from any state (EXPLORE→CLOSE, PLAN→CLOSE, EXECUTE→CLOSE, PIVOT→CLOSE). These are administrative exits — the protocol CLOSE steps (summary.md, decision audit, LESSONS.md update) should be completed by the agent before running `close`.
@@ -277,7 +277,7 @@ These guards operationalize three principles already wired into the protocol —
 
 **Revert-First** — when something breaks: (1) STOP (2) revert? (3) delete? (4) one-liner? (5) none → REFLECT.
 **10-Line Rule** — fix needs >10 new lines → it's not a fix → REFLECT.
-**3-Strike Rule** — same area breaks 3× → PIVOT with fundamentally different approach. Revert to checkpoint covering the struck area.
+**3-Strike Rule** — same area breaks 3× → PIVOT with fundamentally different approach. Revert to checkpoint covering the struck area. *(Advisory-only — no script counts strikes; same-iteration completion-fix/leash-override retries can blur the "across iterations" scoping — see `references/complexity-control.md` § 3-Strike Rule.)*
 **Complexity Budget** — tracked in plan.md: files added 0/3, abstractions 0/2, lines net negative or neutral target.
 **Forbidden**: wrapper cascades, config toggles, copy-paste, exception swallowing, type escapes, adapters, "temporary" workarounds.
 **Nuclear Option** — iteration 5 + bloat >2× scope → recommend full revert to `cp-000` (or later checkpoint if user agrees). Otherwise proceed with caution. See `references/complexity-control.md`.
@@ -295,6 +295,16 @@ When a step fails during EXECUTE:
 Attempt counter in `state.md`. Resets on: user direction | new step | PIVOT. **Reset mechanically** — run `bootstrap.mjs reset-attempts` (clears the `## Fix Attempts` section to placeholder) rather than hand-editing state.md; a stale counter carried across a PIVOT or new step otherwise HARD-blocks the pre-step gate on the next step (`GATE:FAIL [leash-cap]`).
 **Known reset gap**: the mechanical `reset-attempts` fires at three orchestrator sites — EXECUTE success, PIVOT dispatch, and REFLECT→EXECUTE re-entry. The path REFLECT→EXPLORE→PLAN→EXECUTE that starts a NEW iteration (no PIVOT, no completion-fix) passes through none of them, so a stale counter from a prior iteration's failed step can trip the leash-cap gate on the new iteration's first step. This is an accepted gap — clear it by running `bootstrap.mjs reset-attempts` when you start a new iteration after a leash hit.
 **No exceptions.** Unguided fix chains derail projects.
+
+**Disclosed exception — the leash-override "continue"**: the 2-attempt cap has exactly
+one sanctioned exception, and it requires the user's explicit approval every time. After
+a leash hit, PC-EXECUTE-LEASH item 5 asks the user to choose continue / pivot / rollback;
+a user-approved **continue** routes REFLECT → EXECUTE for a fresh attempt window on the
+same step (`agents/ip-orchestrator.md` § REFLECT State, dispatch step 6), and
+`bootstrap.mjs reset-attempts` clears the counter before re-entry so the new window is
+not itself pre-tripped. This is not a silent 3rd autonomous fix — "No exceptions" above
+governs *unapproved* continuation; a user-gated continue is the protocol's one designed
+escape hatch, not a violation of it.
 
 **Pre-step gate** (v2.18.0+): `node <skill-path>/scripts/validate-plan.mjs --pre-step` runs before each attempt to start an EXECUTE step — in the orchestrator before each ip-executor spawn, and, when no agent definitions are installed, in the single thread itself. Both paths get the imperative from the same place, `scripts/modules/state-execute.md` (what `emit-state --state execute` emits). Exit code 2 emits one of four `GATE:FAIL` slugs — `[no-plan]`, `[wrong-state]`, `[leash-cap]`, `[iteration-cap]`. `[leash-cap]` mechanically halts EXECUTE when 2 fix attempts are recorded — converting the leash from advisory to enforced. See `agents/ip-orchestrator.md` EXECUTE dispatch for the integration point and the full slug→action mapping.
 
@@ -341,6 +351,16 @@ are earned, not free.
 `iter` counter: increments on PLAN → EXECUTE. `iter=0` = EXPLORE-only (pre-plan).
 - `iter = 5`: mandatory decomposition analysis in `decisions.md` (2-3 independent sub-goals + deps). See `references/planning-rigor.md`.
 - `iter ≥ 6`: hard STOP. Present decomposition to user. Break into smaller tasks.
+- **Derived vs declared**: the enforced cap does not trust the declared `## Iteration:`
+  field alone. `checkIterationLimits` (`validate-plan.mjs`) computes
+  `iter = max(declared, derived)`, where `derived` counts every literal
+  `EXECUTE → REFLECT` line in `state.md`'s Transition History — including completion-fix
+  and leash-override round trips, which leave the declared field unchanged (see
+  Transitions table, REFLECT → EXECUTE row). This is deliberately safety-conservative
+  (over-counting is the safe direction for a hard cap), but it means several
+  same-iteration retries can consume iteration-cap headroom the declared field never
+  shows, and `[iteration-cap]` may HARD-fail at `--pre-step` while `## Iteration:` still
+  reads low.
 
 ## Recovery from Context Loss
 
@@ -408,6 +428,17 @@ A sub-agent can terminate WITHOUT reporting — killed by the user, harness inte
 | Reviewer | `agents/ip-reviewer.md` | Adversarial review (iteration ≥ 2 by default; earlier by orchestrator choice, e.g. an iteration-1 attack-before-release pass) | Read, Write, Grep, Glob, Bash | opus |
 | BoyScout | `agents/ip-boyscout.md` | Read-only hygiene sweep (REFLECT) | Read, Write, Bash, Grep, Glob | sonnet |
 | Archivist | `agents/ip-archivist.md` | CLOSE housekeeping | Read, Write, Edit, Grep, Glob, Bash | sonnet |
+
+**Known gap — unscoped Bash on read-only agents.** Explorer, Verifier, Reviewer, and
+BoyScout are documented as read-only / never-mutate (their own Rules sections say so;
+three of the four also carry `disallowedTools: Edit, Agent`, and Verifier has no
+`Write` tool at all), but none of the four has any *mechanical* restriction on what its
+full, unscoped `Bash` grant may invoke — the read-only property is prose-enforced only
+for the Bash surface. This is the same parenthetical-scoping mechanism this table's own
+Orchestrator row demonstrates for `Agent(...)`; whether Claude Code's subagent
+frontmatter supports the equivalent syntax for `Bash` was not confirmed as of this note,
+so no scoped-Bash syntax has been risked on these four production agent files.
+Disclosed, not fixed.
 
 ### File Ownership Model
 
