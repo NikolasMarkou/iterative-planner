@@ -81,9 +81,13 @@ The three headings `## Inherited`, `## Introduced` and `## Verdict` are required
 Scanner: exit 0. Categories: 5 ran, 0 degraded.
 
 ## Inherited
-Total: 75 — not this plan's regression, not remediated here.
-- [scanner] 64 orphaned decision anchors across 10 removed plan directories (category A) — standalone fix: `node <skill-path>/scripts/bootstrap.mjs retire <plan-id>`, once per removed plan
-- [scanner] 11 anchors written without a plan-id prefix (category A) — standalone fix: qualify each anchor with the plan id that owns it
+Total: 40 (illustrative numbers — not a live count; see `plans/SYSTEM.md` for the
+current backlog) — not this plan's regression, not remediated here.
+- [scanner] 33 orphaned decision anchors across 6 removed plan directories (category A)
+  — standalone fix: `node <skill-path>/scripts/bootstrap.mjs retire <plan-id>`, once per
+  removed plan
+- [scanner] 7 anchors written without a plan-id prefix (category A) — standalone fix:
+  qualify each anchor with the plan id that owns it
 
 ## Introduced
 1. [scanner] Leftover marker — evidence: `src/lib/parse.mjs:88` reads `// TODO: handle the empty case` — remediation: handle it or delete the marker — attributed to: iter-1/step-4
