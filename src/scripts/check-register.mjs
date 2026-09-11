@@ -53,6 +53,7 @@
 import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { DECISION_ID_NUM_PATTERN } from "./shared.mjs";
 
 // Anti-vacuity floor: the real scanned-doc count today (3 fixed docs +
 // src/agents/*.md + src/references/*.md) — 20 files: CLAUDE.md, README.md,
@@ -83,8 +84,11 @@ export function jargonMarkers(text) {
   const t = text || "";
   const bracketRe = /\[[a-z][a-z0-9]*(?:-[a-z0-9]+)+\]/g;
   const bracket = (t.match(bracketRe) || []).length;
-  const coded = (t.match(/\b(?:PC-[A-Z]+|D-\d{2,3}|[A-Z]-\d{3}|[UFWNS]\d)\b/g) || [])
-    .length;
+  const codedRe = new RegExp(
+    `\\b(?:PC-[A-Z]+|D-${DECISION_ID_NUM_PATTERN}|[A-Z]-${DECISION_ID_NUM_PATTERN}|[UFWNS]\\d)\\b`,
+    "g",
+  );
+  const coded = (t.match(codedRe) || []).length;
   // DECISION plan-2026-07-23T191907-b8d237ed/D-001 — strip bracket-tag spans BEFORE the compound
   // regex (replace with a space, not "", to keep token boundaries), so a tag's inner slug isn't
   // double-counted by both. Do not add a range-dedupe helper for this one overlap.

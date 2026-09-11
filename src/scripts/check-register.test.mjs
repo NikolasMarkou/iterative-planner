@@ -146,6 +146,17 @@ test("jargonMarkers counts brackets, coded refs, and 3+-segment compounds", () =
   assert.equal(m.total, 7);
 });
 
+test("jargonMarkers: coded-ref digit bound matches DECISION_ID_NUM_PATTERN (min 3 digits, unbounded) — a 4+-digit id counts, a 2-digit id does not", () => {
+  // Repro from findings/scripts-logic-bugs.md finding 3: D-1000 (4 digits) was
+  // previously NOT counted by the old D-\d{2,3} alternative (max 3 digits).
+  assert.equal(jargonMarkers("See D-1000 for details.").coded, 1);
+  // Incidental, correct narrowing: D-99 (2 digits) is not a legal decision id
+  // under this repo's own zero-padded-from-D-001 convention, and the old
+  // D-\d{2,3} alternative's minimum of 2 digits is gone now that the coded-ref
+  // regex is composed from DECISION_ID_NUM_PATTERN (minimum 3 digits).
+  assert.equal(jargonMarkers("See D-99.").coded, 0);
+});
+
 test("jargonMarkers: 2-token hyphenate is not a compound; [doc-parity-floor] counts as a bracket ONLY (its inner slug is not re-counted as a compound); audit-then-summary is a compound", () => {
   const m = jargonMarkers("read-only [doc-parity-floor] audit-then-summary");
   assert.equal(m.bracket, 1, "[doc-parity-floor] is one bracket tag");
