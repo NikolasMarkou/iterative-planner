@@ -77,7 +77,7 @@ Same area fixed 3× across iterations ⇒
 5. Consider: is this code even necessary?
 
 **Scope note**: this rule is advisory-only — no script counts strikes anywhere in
-`src/scripts/*.mjs`; it is checked by whichever agent reads `decisions.md` before
+`<skill-path>/scripts/*.mjs`; it is checked by whichever agent reads `decisions.md` before
 writing a fix. Its literal condition is scoped "across iterations," but a
 completion-fix or leash-override retry loop (`SKILL.md` § Transitions, REFLECT →
 EXECUTE) can repeat several times within a single declared iteration without ever
