@@ -2286,11 +2286,17 @@ function checkChangelogFormat(planDir, issues) {
   const content = readFile(file);
   if (!content) return; // Optional file — older plans (and fresh dirs) may lack it.
 
-  // DECISION plan-2026-09-11T171519-39838f7a/D-001 — blank HTML comment spans
+  // DECISION plan-2026-09-11T171519-39838f7a/D-009 — blank HTML comment spans
   // (stripHtmlComments) BEFORE splitting into lines, rather than a per-line
   // `<!--` prefix check, so a multi-line `<!-- ... -->` block's interior and
   // closing lines are not misread as malformed data lines. Do not reintroduce
-  // a per-line comment-prefix check here — see decisions.md D-001.
+  // a per-line comment-prefix check as the ONLY comment-detection mechanism —
+  // that would re-break the multi-line case this fix exists for. What IS
+  // added on top, without reverting this span-based skip, is a diagnostic:
+  // checkChangelogCommentAnomaly (below) WARNs when a span's opener follows
+  // other text on its own line, the shape a stray, unbackticked `<!--` inside
+  // a reason field produces (review-iter-1.md CRITICAL #1). See decisions.md
+  // D-009 (restates D-001).
   const lines = stripHtmlComments(content).split("\n");
   let lineNo = 0;
   for (const raw of lines) {
@@ -2344,8 +2350,9 @@ function checkChangelogDrefIntegrity(planDir, issues) {
 
   const known = new Set(parseDecisionsEntries(decisionsContent).entries.map((e) => e.idStr));
 
-  // DECISION plan-2026-09-11T171519-39838f7a/D-001 — same fix as
-  // checkChangelogFormat, applied in lockstep (see decisions.md D-001).
+  // DECISION plan-2026-09-11T171519-39838f7a/D-009 — same fix as
+  // checkChangelogFormat, applied in lockstep (see decisions.md D-009, which
+  // restates D-001).
   const lines = stripHtmlComments(content).split("\n");
   let lineNo = 0;
   for (const raw of lines) {
@@ -2368,6 +2375,49 @@ function checkChangelogDrefIntegrity(planDir, issues) {
         message: `changelog.md:${lineNo} dref ${dref} has no matching entry in decisions.md (no ## ${dref} heading found)`,
       });
     }
+  }
+}
+
+// Diagnostic half of the D-009 fix above (mirrors checkStateCommentAnomaly's own role
+// for state.md, ~line 607): the span-based stripHtmlComments skip is correct for a
+// deliberately-authored `<!-- ... -->` block, but a stray, unbackticked `<!--`
+// embedded inside a data line's own reason field can pair with a LATER, unrelated
+// `-->` and silently blank every line in between it — including a genuinely
+// malformed line that would otherwise have warned (review-iter-1.md CRITICAL #1).
+// This function does not change the stripping behavior of
+// checkChangelogFormat/checkChangelogDrefIntegrity (that stays span-based, matching
+// checkStateCommentAnomaly's own precedent of counting/reading raw rather than trying
+// to be "smarter" about the strip) — it only DIAGNOSES the specific shape most likely
+// to be an accident: a comment opener that is NOT the first thing on its own line,
+// closed on a LATER line. Every deliberately-authored multi-line comment in this
+// codebase opens its own line (see the schema examples in decisions.md, the
+// `<!-- SKELETON:<slug> -->` markers in file-formats.md) — an opener with real
+// content before it on the same line is exactly the shape an embedded, unbackticked
+// `<!--` inside a reason field produces. WARN only, never promoted to ERROR: same
+// advisory contract as checkChangelogFormat/checkChangelogDrefIntegrity (the
+// changelog must never block CLOSE). Not itself anchored as a separate decision —
+// it is the mechanical consequence of D-009's own choice to stay span-based rather
+// than reintroduce a per-line prefix check, not a new trade-off of its own.
+function checkChangelogCommentAnomaly(planDir, issues) {
+  const content = readFile(join(planDir, "changelog.md"));
+  if (!content) return; // Optional file — same convention as the two checks above.
+
+  for (const { start, end } of htmlCommentSpans(content)) {
+    const lineStart = content.lastIndexOf("\n", start - 1) + 1;
+    const openerLineEnd = content.indexOf("\n", start);
+    const spanIsMultiline = openerLineEnd !== -1 && openerLineEnd < end;
+    if (!spanIsMultiline) continue; // a same-line `text <!-- note -->` inline comment swallows nothing else.
+
+    const beforeOpener = content.slice(lineStart, start).trim();
+    if (!beforeOpener) continue; // opener starts its own line — looks deliberate, not accidental.
+
+    const openerLine = content.slice(0, start).split("\n").length;
+    const closerLine = content.slice(0, end).split("\n").length;
+    issues.push({
+      severity: "WARN",
+      check: "changelog-comment-anomaly",
+      message: `changelog.md:${openerLine}: an HTML comment opener \`<!--\` follows other text on the same line and pairs with a \`-->\` on line ${closerLine}, blanking every line in between to the advisory scanners above. If the \`<!--\` was meant as literal text (e.g. inside a reason field), wrap it in a backtick code span or remove it — any malformed line(s) between line ${openerLine} and ${closerLine} are silently skipped, not warned.`,
+    });
   }
 }
 
@@ -2435,6 +2485,9 @@ function validate(planDirName) {
   checkChangelogFormat(planDir, issues);
   // v2.51.0 — changelog dref join integrity (WARN-only; never blocks CLOSE).
   checkChangelogDrefIntegrity(planDir, issues);
+  // iter-1/step-2.1 — D-009 diagnostic: warns on the specific comment-span shape
+  // most likely to be an accident (see checkChangelogCommentAnomaly above).
+  checkChangelogCommentAnomaly(planDir, issues);
 
   // Report
   const errors = issues.filter((i) => i.severity === "ERROR");

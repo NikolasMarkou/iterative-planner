@@ -1744,6 +1744,55 @@ describe("validate-plan.mjs — M7: targeted check-function coverage", () => {
     assert.doesNotMatch(r.stdout, /\[changelog-dref-orphan\]/, `multi-line comment block must not warn changelog-dref-orphan, got:\n${r.stdout}`);
   });
 
+  // iter-1/step-2.1 (completion-fix, D-009) — review-iter-1.md CRITICAL #1: the span-based
+  // skip above is correct for a DELIBERATE multi-line comment, but an unbackticked `<!--`
+  // embedded inside a data line's own reason field pairs with a LATER, unrelated `-->` and
+  // silently blanks every line in between — including a genuinely malformed line that would
+  // otherwise have warned. Pre-fix, this exact fixture produced ONLY the (unrelated) malformed
+  // warning; it produced NOTHING for the swallowed malformed line. checkChangelogCommentAnomaly
+  // closes that hole with a WARN naming both the opener's and the closer's line.
+  it("checkChangelogFormat: an unbackticked `<!--` in a reason field pairing with a later `-->` → WARN [changelog-comment-anomaly] (malformed line between them is no longer silently swallowed)", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    writeFileSync(join(planDir, "changelog.md"),
+`# Changelog
+*note*
+2026-05-30T10:00:00Z | iter-1/step-1 | abc1234 | f.js | EDIT(+1,-0) | radius:LOW(1) | - | reason mentioning <!-- an open marker
+malformed line with no pipes at all
+2026-05-30T10:00:01Z | iter-1/step-2 | def4567 | g.js | EDIT(+1,-0) | radius:LOW(1) | - | closing -->
+2026-05-30T10:00:02Z | iter-1/step-3 | 1234567 | h.js | EDIT(+1,-0) | radius:LOW(1) | - | clean line
+`);
+    const r = run(cwd);
+    const hits = r.stdout.split("\n").filter((l) => /\[changelog-comment-anomaly\]/.test(l));
+    assert.equal(hits.length, 1, `expected exactly one changelog-comment-anomaly WARN, got:\n${r.stdout}`);
+    assert.match(hits[0], /^\s*WARN/, "must be WARN, never ERROR");
+    assert.match(hits[0], /changelog\.md:3/, `must name the opener's line (3), got: ${hits[0]}`);
+    assert.match(hits[0], /line 5/, `must name the closer's line (5), got: ${hits[0]}`);
+  });
+
+  // iter-1/step-2.1 (completion-fix) — review-iter-1.md NOTE #15: an unterminated `<!--`
+  // opener (no closer anywhere) yields NO span (htmlCommentSpans fails safe), so the raw
+  // line is left completely unchanged and falls through to the normal 8-field check, which
+  // now correctly WARNs [changelog-malformed] on it. This is a genuine, disclosed behavior
+  // change from pre-D-001 (which silently skipped any line starting with `<!--`, including
+  // an unterminated one) — asserted here explicitly so it is regression-guarded, not
+  // accidental.
+  it("checkChangelogFormat: an unterminated `<!--` opener (no closer at all) → WARN [changelog-malformed], not silently skipped", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    writeFileSync(join(planDir, "changelog.md"),
+`# Changelog
+*note*
+<!-- an unterminated comment opener line with no closer
+2026-05-30T10:00:00Z | iter-1/step-1 | abc1234 | f.js | EDIT(+1,-0) | radius:LOW(1) | - | clean line
+`);
+    const r = run(cwd);
+    assert.match(r.stdout, /\[changelog-malformed\]: changelog\.md:3/,
+      `unterminated opener line (3) must now warn changelog-malformed, got:\n${r.stdout}`);
+    assert.doesNotMatch(r.stdout, /\[changelog-comment-anomaly\]/,
+      `an unterminated opener produces no span, so the anomaly check has nothing to pair — must stay silent, got:\n${r.stdout}`);
+  });
+
   // iter-1/step-1: checkFindingsIndexLinks used to resolve the RAW href (including any
   // trailing #fragment) as a literal path, so a normal heading-anchored citation like
   // findings/auth-system.md#entry-points always missed on disk and false-positived
