@@ -1744,13 +1744,15 @@ describe("validate-plan.mjs — M7: targeted check-function coverage", () => {
     assert.doesNotMatch(r.stdout, /\[changelog-dref-orphan\]/, `multi-line comment block must not warn changelog-dref-orphan, got:\n${r.stdout}`);
   });
 
-  // iter-1/step-2.1 (completion-fix, D-009) — review-iter-1.md CRITICAL #1: the span-based
+  // iter-1/step-2.1 (completion-fix, D-011) — review-iter-1.md CRITICAL #1: the span-based
   // skip above is correct for a DELIBERATE multi-line comment, but an unbackticked `<!--`
   // embedded inside a data line's own reason field pairs with a LATER, unrelated `-->` and
   // silently blanks every line in between — including a genuinely malformed line that would
   // otherwise have warned. Pre-fix, this exact fixture produced ONLY the (unrelated) malformed
   // warning; it produced NOTHING for the swallowed malformed line. checkChangelogCommentAnomaly
-  // closes that hole with a WARN naming both the opener's and the closer's line.
+  // closes that hole with a WARN naming both the opener's and the closer's line. iter-1/step-2.3
+  // rewrote the message shape (both-ends check, not opener-only) — assertions below match the
+  // current wording rather than the narrower opener-only phrasing step 2.1 originally shipped.
   it("checkChangelogFormat: an unbackticked `<!--` in a reason field pairing with a later `-->` → WARN [changelog-comment-anomaly] (malformed line between them is no longer silently swallowed)", () => {
     const cwd = getTempDir();
     const { planDir } = writePlan(cwd);
@@ -1766,8 +1768,66 @@ malformed line with no pipes at all
     const hits = r.stdout.split("\n").filter((l) => /\[changelog-comment-anomaly\]/.test(l));
     assert.equal(hits.length, 1, `expected exactly one changelog-comment-anomaly WARN, got:\n${r.stdout}`);
     assert.match(hits[0], /^\s*WARN/, "must be WARN, never ERROR");
-    assert.match(hits[0], /changelog\.md:3/, `must name the opener's line (3), got: ${hits[0]}`);
-    assert.match(hits[0], /line 5/, `must name the closer's line (5), got: ${hits[0]}`);
+    assert.match(hits[0], /from line 3 to line 5/, `must name the opener's line (3) and closer's line (5), got: ${hits[0]}`);
+    assert.match(hits[0], /at its opener/, `the opener (line 3) has real text before it while the closer (line 5) is alone on its line — the offending end is the opener, got: ${hits[0]}`);
+  });
+
+  // iter-1/step-2.3 (completion-fix, D-011) — review-iter-1-pass2.md CRITICAL #1: the
+  // opener-only heuristic step 2.1 shipped UNDER-triggered on exactly this shape — an opener
+  // that sits ALONE on its own line (looks deliberate) but whose closer shares a line with
+  // real, well-formed data. Pre-fix (step 2.1's heuristic), this fixture produced ZERO
+  // changelog output of any kind: not `[changelog-comment-anomaly]` (opener-alone short-
+  // circuited the check before the closer was ever examined) and not `[changelog-malformed]`
+  // either (the malformed line sits inside the span, which stripHtmlComments still correctly
+  // blanks) — a fully silent swallow with no signal anywhere. Checking the closer as well as
+  // the opener closes this; assert BOTH that the WARN now fires AND that the malformed line
+  // is still otherwise invisible, which is what makes this the previously-missed silent
+  // swallow rather than an already-caught case.
+  it("checkChangelogFormat: opener ALONE on its own line but closer SHARES a line with real data → WARN [changelog-comment-anomaly] (previously a fully silent swallow, zero output)", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    writeFileSync(join(planDir, "changelog.md"),
+`# Changelog
+*note*
+<!-- looks deliberate, never closed on its own line
+malformed line with no pipes at all
+--> 2026-05-30T10:00:01Z | iter-1/step-4 | abc1234 | f.js | EDIT(+1,-0) | radius:LOW(1) | - | clean line
+2026-05-30T10:00:02Z | iter-1/step-5 | def4567 | g.js | EDIT(+1,-0) | radius:LOW(1) | - | another clean line
+`);
+    const r = run(cwd);
+    const hits = r.stdout.split("\n").filter((l) => /\[changelog-comment-anomaly\]/.test(l));
+    assert.equal(hits.length, 1, `expected exactly one changelog-comment-anomaly WARN (this is the regression — pre-fix this fixture produced ZERO output at all), got:\n${r.stdout}`);
+    assert.match(hits[0], /^\s*WARN/, "must be WARN, never ERROR");
+    assert.match(hits[0], /from line 3 to line 5/, `must name the opener's line (3) and closer's line (5), got: ${hits[0]}`);
+    assert.match(hits[0], /at its closer/, `the opener (line 3) is alone on its line while the closer (line 5) shares its line with real data — the offending end is the closer, got: ${hits[0]}`);
+    assert.doesNotMatch(r.stdout, /\[changelog-malformed\]: changelog\.md:4/,
+      `the malformed line (4) sits inside the comment span and is still blanked by stripHtmlComments — it produces no [changelog-malformed] warning of its own, confirming the anomaly WARN is the ONLY signal that anything is wrong here (pre-fix: zero signal at all)`);
+  });
+
+  // iter-1/step-2.3 (completion-fix, D-011) — review-iter-1-pass2.md NOTE #10: disclosed,
+  // accepted trade-off, not a bug. An inline-appended multi-line comment (prose immediately
+  // followed by `<!--` on the same line, closing on a later line) is a normal, arguably
+  // deliberate markdown idiom — but it is INDISTINGUISHABLE, by any syntax-only check, from a
+  // stray accidental `<!--` that happens to precede real prose on its line: both shapes have
+  // non-whitespace before the opener on its own line. This test documents and locks in the
+  // WARN as EXPECTED behavior — do not add a content-based heuristic to try to suppress it;
+  // see the anchor comment above checkChangelogCommentAnomaly for why that cannot work.
+  it("checkChangelogFormat: inline-appended multi-line comment (`*text* <!-- note...-->`) DOES warn [changelog-comment-anomaly] — accepted trade-off, not a bug to fix", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    writeFileSync(join(planDir, "changelog.md"),
+`# Changelog
+*note*
+*Some prose.* <!-- note
+spanning two lines -->
+2026-05-30T10:00:00Z | iter-1/step-1 | abc1234 | f.js | EDIT(+1,-0) | radius:LOW(1) | - | clean line
+`);
+    const r = run(cwd);
+    const hits = r.stdout.split("\n").filter((l) => /\[changelog-comment-anomaly\]/.test(l));
+    assert.equal(hits.length, 1, `a deliberate inline-appended comment is expected to WARN — this is the disclosed trade-off, not a regression to fix, got:\n${r.stdout}`);
+    assert.match(hits[0], /^\s*WARN/, "must be WARN, never ERROR — advisory only");
+    assert.match(hits[0], /from line 3 to line 4/, `must name the opener's line (3) and closer's line (4), got: ${hits[0]}`);
+    assert.match(hits[0], /at its opener/, `text precedes the opener on line 3 — got: ${hits[0]}`);
   });
 
   // iter-1/step-2.1 (completion-fix) — review-iter-1.md NOTE #15: an unterminated `<!--`

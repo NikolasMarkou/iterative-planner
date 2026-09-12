@@ -2293,10 +2293,12 @@ function checkChangelogFormat(planDir, issues) {
   // a per-line comment-prefix check as the ONLY comment-detection mechanism —
   // that would re-break the multi-line case this fix exists for. What IS
   // added on top, without reverting this span-based skip, is a diagnostic:
-  // checkChangelogCommentAnomaly (below) WARNs when a span's opener follows
-  // other text on its own line, the shape a stray, unbackticked `<!--` inside
-  // a reason field produces (review-iter-1.md CRITICAL #1). See decisions.md
-  // D-009 (restates D-001).
+  // checkChangelogCommentAnomaly (below) WARNs when a multi-line span's opener
+  // or closer does not fully occupy its own line, the shape a stray,
+  // unbackticked `<!--` (or an unbalanced closer) inside a reason field
+  // produces (review-iter-1.md CRITICAL #1; review-iter-1-pass2.md CRITICAL #1
+  // closed the opener-only gap). See decisions.md D-011 (restates D-009, which
+  // restates D-001).
   const lines = stripHtmlComments(content).split("\n");
   let lineNo = 0;
   for (const raw of lines) {
@@ -2378,7 +2380,7 @@ function checkChangelogDrefIntegrity(planDir, issues) {
   }
 }
 
-// Diagnostic half of the D-009 fix above (mirrors checkStateCommentAnomaly's own role
+// Diagnostic half of the D-011 fix above (mirrors checkStateCommentAnomaly's own role
 // for state.md, ~line 607): the span-based stripHtmlComments skip is correct for a
 // deliberately-authored `<!-- ... -->` block, but a stray, unbackticked `<!--`
 // embedded inside a data line's own reason field can pair with a LATER, unrelated
@@ -2387,37 +2389,55 @@ function checkChangelogDrefIntegrity(planDir, issues) {
 // This function does not change the stripping behavior of
 // checkChangelogFormat/checkChangelogDrefIntegrity (that stays span-based, matching
 // checkStateCommentAnomaly's own precedent of counting/reading raw rather than trying
-// to be "smarter" about the strip) — it only DIAGNOSES the specific shape most likely
-// to be an accident: a comment opener that is NOT the first thing on its own line,
-// closed on a LATER line. Every deliberately-authored multi-line comment in this
-// codebase opens its own line (see the schema examples in decisions.md, the
-// `<!-- SKELETON:<slug> -->` markers in file-formats.md) — an opener with real
-// content before it on the same line is exactly the shape an embedded, unbackticked
-// `<!--` inside a reason field produces. WARN only, never promoted to ERROR: same
-// advisory contract as checkChangelogFormat/checkChangelogDrefIntegrity (the
-// changelog must never block CLOSE). Not itself anchored as a separate decision —
-// it is the mechanical consequence of D-009's own choice to stay span-based rather
-// than reintroduce a per-line prefix check, not a new trade-off of its own.
+// to be "smarter" about the strip) — it DIAGNOSES a span whose opener OR closer does
+// not fully occupy its own line, whichever end is the offender. review-iter-1.md
+// CRITICAL #1's original fix checked only the opener, and review-iter-1-pass2.md
+// CRITICAL #1 found that heuristic wrong in both directions: it under-triggered on a
+// span whose opener sits alone on its own line (looks deliberate) but whose closer
+// shares a line with real content — that shape still silently swallowed a malformed
+// line between opener and closer, with zero warning — and it over-triggered on a
+// normal markdown idiom like an inline-appended comment. Checking BOTH ends closes
+// the under-trigger by construction: any span that fails to fully occupy its own
+// lines at either end is flagged, regardless of which end is the offender. Disclosed,
+// accepted trade-off (not a bug left to "fix" further): a totally ordinary,
+// deliberate idiom — `*Some header text.* <!-- maintainer note spanning\nmultiple
+// lines -->` — still WARNs, because no syntax-only, content-blind check can tell
+// "deliberate inline comment" apart from "accidental stray marker followed by
+// unrelated real content": both shapes have non-whitespace before the opener on its
+// own line. A content-based heuristic (e.g. "does the text after the closer look
+// like changelog data") cannot resolve the ambiguity either — a genuinely malformed
+// swallowed line can have zero pipes, so "looks like data" is not a reliable signal
+// of anything. WARN only, never promoted to ERROR: same advisory contract as
+// checkChangelogFormat/checkChangelogDrefIntegrity (the changelog must never block
+// CLOSE). Not itself anchored as a separate decision — it is the mechanical
+// consequence of D-011's own choice to stay span-based rather than reintroduce a
+// per-line prefix check, not a new trade-off of its own.
 function checkChangelogCommentAnomaly(planDir, issues) {
   const content = readFile(join(planDir, "changelog.md"));
   if (!content) return; // Optional file — same convention as the two checks above.
 
   for (const { start, end } of htmlCommentSpans(content)) {
+    const spanText = content.slice(start, end);
+    if (!spanText.includes("\n")) continue; // same-line comment — always safe, never swallows across lines.
+
     const lineStart = content.lastIndexOf("\n", start - 1) + 1;
-    const openerLineEnd = content.indexOf("\n", start);
-    const spanIsMultiline = openerLineEnd !== -1 && openerLineEnd < end;
-    if (!spanIsMultiline) continue; // a same-line `text <!-- note -->` inline comment swallows nothing else.
+    const beforeOpener = content.slice(lineStart, start);
+    const openerAlone = /^\s*$/.test(beforeOpener);
 
-    const beforeOpener = content.slice(lineStart, start).trim();
-    if (!beforeOpener) continue; // opener starts its own line — looks deliberate, not accidental.
+    const nextNewline = content.indexOf("\n", end);
+    const lineEnd = nextNewline === -1 ? content.length : nextNewline;
+    const afterCloser = content.slice(end, lineEnd);
+    const closerAlone = /^\s*$/.test(afterCloser);
 
-    const openerLine = content.slice(0, start).split("\n").length;
-    const closerLine = content.slice(0, end).split("\n").length;
-    issues.push({
-      severity: "WARN",
-      check: "changelog-comment-anomaly",
-      message: `changelog.md:${openerLine}: an HTML comment opener \`<!--\` follows other text on the same line and pairs with a \`-->\` on line ${closerLine}, blanking every line in between to the advisory scanners above. If the \`<!--\` was meant as literal text (e.g. inside a reason field), wrap it in a backtick code span or remove it — any malformed line(s) between line ${openerLine} and ${closerLine} are silently skipped, not warned.`,
-    });
+    if (!openerAlone || !closerAlone) {
+      const openerLine = content.slice(0, start).split("\n").length;
+      const closerLine = content.slice(0, end).split("\n").length;
+      issues.push({
+        severity: "WARN",
+        check: "changelog-comment-anomaly",
+        message: `changelog.md: an HTML comment span from line ${openerLine} to line ${closerLine} does not fully occupy its own lines at ${!openerAlone ? "its opener" : "its closer"} — this may be a deliberate inline-appended comment (harmless), or a stray marker that pairs with an unrelated later marker and silently blanks real content in between. If this is a normal multi-line comment, moving the opener/closer onto their own lines silences this warning; if a malformed line seems to be missing from validation output, check whether it fell inside this span.`,
+      });
+    }
   }
 }
 
@@ -2485,8 +2505,8 @@ function validate(planDirName) {
   checkChangelogFormat(planDir, issues);
   // v2.51.0 — changelog dref join integrity (WARN-only; never blocks CLOSE).
   checkChangelogDrefIntegrity(planDir, issues);
-  // iter-1/step-2.1 — D-009 diagnostic: warns on the specific comment-span shape
-  // most likely to be an accident (see checkChangelogCommentAnomaly above).
+  // iter-1/step-2.3 — D-011 diagnostic: warns when a multi-line comment span's
+  // opener or closer does not fully occupy its own line (see checkChangelogCommentAnomaly above).
   checkChangelogCommentAnomaly(planDir, issues);
 
   // Report
