@@ -2286,7 +2286,7 @@ function checkChangelogFormat(planDir, issues) {
   const content = readFile(file);
   if (!content) return; // Optional file — older plans (and fresh dirs) may lack it.
 
-  // DECISION plan-2026-09-11T171519-39838f7a/D-009 — blank HTML comment spans
+  // DECISION plan-2026-09-11T171519-39838f7a/D-011 — blank HTML comment spans
   // (stripHtmlComments) BEFORE splitting into lines, rather than a per-line
   // `<!--` prefix check, so a multi-line `<!-- ... -->` block's interior and
   // closing lines are not misread as malformed data lines. Do not reintroduce
@@ -2350,9 +2350,9 @@ function checkChangelogDrefIntegrity(planDir, issues) {
 
   const known = new Set(parseDecisionsEntries(decisionsContent).entries.map((e) => e.idStr));
 
-  // DECISION plan-2026-09-11T171519-39838f7a/D-009 — same fix as
-  // checkChangelogFormat, applied in lockstep (see decisions.md D-009, which
-  // restates D-001).
+  // DECISION plan-2026-09-11T171519-39838f7a/D-011 — same fix as
+  // checkChangelogFormat, applied in lockstep (see decisions.md D-011, which
+  // restates D-009, which restates D-001).
   const lines = stripHtmlComments(content).split("\n");
   let lineNo = 0;
   for (const raw of lines) {
