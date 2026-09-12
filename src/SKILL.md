@@ -431,14 +431,14 @@ A sub-agent can terminate WITHOUT reporting — killed by the user, harness inte
 
 **Known gap — unscoped Bash on read-only agents.** Explorer, Verifier, Reviewer, and
 BoyScout are documented as read-only / never-mutate (their own Rules sections say so;
-three of the four also carry `disallowedTools: Edit, Agent`, and Verifier has no
+all four also carry `disallowedTools: Edit, Agent`, and Verifier has no
 `Write` tool at all), but none of the four has any *mechanical* restriction on what its
 full, unscoped `Bash` grant may invoke — the read-only property is prose-enforced only
-for the Bash surface. This is the same parenthetical-scoping mechanism this table's own
-Orchestrator row demonstrates for `Agent(...)`; whether Claude Code's subagent
-frontmatter supports the equivalent syntax for `Bash` was not confirmed as of this note,
-so no scoped-Bash syntax has been risked on these four production agent files.
-Disclosed, not fixed.
+for the Bash surface. This is the same parenthetical-scoping mechanism
+`agents/ip-orchestrator.md`'s own YAML frontmatter demonstrates for `Agent(...)`;
+whether Claude Code's subagent frontmatter supports the equivalent syntax for `Bash`
+was not confirmed as of this note, so no scoped-Bash syntax has been risked on these
+four production agent files. Disclosed, not fixed.
 
 ### File Ownership Model
 
