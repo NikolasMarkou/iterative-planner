@@ -8,7 +8,7 @@
     "markers": 55
   },
   "src/SKILL.md": {
-    "ceiling": 5.71,
+    "ceiling": 5.68,
     "markers": 40
   },
   "src/agents/ip-archivist.md": {
@@ -28,7 +28,7 @@
     "markers": 1
   },
   "src/agents/ip-orchestrator.md": {
-    "ceiling": 10.01,
+    "ceiling": 9.96,
     "markers": 46
   },
   "src/agents/ip-plan-writer.md": {
