@@ -60,6 +60,8 @@ iterative-planner/
     │   ├── emit-state.test.mjs       # Test suite (node:test)
     │   ├── emit-template.mjs         # Per-template slicer; emits one plan-file template sliced from references/file-formats.md via --name <slug> (used by agents/modules to fetch a single template instead of the full file-formats.md file; Node.js 18+)
     │   ├── emit-template.test.mjs    # Test suite (node:test)
+    │   ├── dashboard.mjs             # Read-only HTML view of plans/ for people (live with --watch); optional token usage read from Claude Code's session logs. Writes only to its output folder (OS temp dir by default), never into the repo; pages load nothing from the network. Not a gate: in both channels' lint+test lists, deliberately NOT in validate (Node.js 18+)
+    │   ├── dashboard.test.mjs        # Test suite (node:test)
     │   ├── modules/                  # Verbatim per-state rule bodies, emitted on demand by emit-state.mjs
     │   │   ├── state-explore.md      # EXPLORE per-state rules
     │   │   ├── state-plan.md         # PLAN per-state rules
@@ -100,6 +102,14 @@ node <skill-path>/scripts/bootstrap.mjs reset-attempts       # Clear active plan
 ```
 
 `new` creates plan directory (`plan-YYYY-MM-DDTHHMMSS-XXXXXXXX`, UTC, colon-free; the legacy `plan_YYYY-MM-DD_XXXXXXXX` shape is still accepted on every read path but never generated again) with all files + writes `plans/.current_plan` pointer. Creates `plans/FINDINGS.md`, `plans/DECISIONS.md`, `plans/LESSONS.md`, `plans/SYSTEM.md` (system atlas, max 300 lines, rewritten by ip-archivist at CLOSE), and `plans/INDEX.md` if they don't exist. Idempotent-safe: refuses if active plan exists.
+
+### Dashboard
+
+```bash
+node <skill-path>/scripts/dashboard.mjs [--watch] [--open] [--out <file.html>] [--no-usage]
+```
+
+A viewer for people, not part of the protocol: no agent reads or runs it, and nothing in `SKILL.md` refers to it. It is deliberately separate from `bootstrap.mjs`, the one script whose failure stops plans being created, so a viewer bug cannot reach plan creation. Its token usage reads Claude Code's session logs, a format Claude Code does not publish; when the logs are missing or change shape, the page shows no usage instead of failing.
 
 ### Activation Triggers
 

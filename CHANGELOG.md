@@ -4,6 +4,25 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.66.0] - 2026-10-05
+
+**A read-only dashboard for people: `src/scripts/dashboard.mjs` turns `plans/` into a small local website, so you can see what a running plan is doing, browse everything earlier plans did, and see how many tokens each plan, step and agent used.** It is a viewer, not part of the protocol: no agent reads or runs it, `SKILL.md` does not mention it, and it never writes into the repo.
+
+### Added
+
+- **`dashboard.mjs`.** One page per plan: the phase rail (how often each phase was entered, the current one marked), steps with their commits and completion fixes, decisions, the transition timeline, verification checks, recent commits and ledger edits, hand-off flags, and every markdown file in the plan directory rendered as its own page. An "All plans" page lists every plan newest first, including closed plans whose directory was removed (built from their `plans/INDEX.md` row and their sections in `FINDINGS.md` / `DECISIONS.md`), plus the cross-plan ledgers. The live plan is the one `plans/.current_plan` names (validated with the shared plan-id grammar, as bootstrap does), else the most recent activity. Plans in other git worktrees of the repo are included.
+- **`--watch`.** Open pages poll a small manifest and reload only when their own content changed: at once for a change to the plan, at most every 2 minutes for a usage-only change, keeping the scroll position. The watcher slows from every 10 s to once a minute while nothing changes.
+- **Token usage and models, read from Claude Code's session logs** (`$CLAUDE_CONFIG_DIR/projects` or `~/.claude/projects`). Per plan: total, cache reads vs fresh input vs output, per agent, per executor step, per hour, and every sub-agent run. Only sessions that ran this skill count; they are split across plans by time window, and usage outside every window, or from sessions that never ran the planner, is reported separately. Streamed replies (logged once per content block under one message id) and fork logs (which repeat the parent's launching message) are each counted once. `--no-usage` turns this off; missing or changed logs show as no data, not an error.
+- **`dashboard.test.mjs`, 29 tests.** The fixture logs carry every shape above, including a half-written last line, and the expected totals are written out by hand. Further tests pin that the repo tree is byte- and mtime-identical after a run, that no page loads a remote asset, that raw HTML and `javascript:` links in plan files render as text, that the pointer beats a more recently modified plan, and that an unchanged second run rewrites nothing.
+
+### Notes
+
+- Cost: each tick reads every plan directory under `plans/` in the repo and its worktrees, O(plan dirs), and only the bytes appended to the session logs since the last tick (the read position is cached on disk). It runs only when someone runs the dashboard; no validator or gate calls it. git runs once per tick for the live plan; commit history is re-read only when that worktree's HEAD moves (5 minutes for closed plans). Unchanged documents are not re-rendered and unchanged output is not rewritten.
+- Not wired into `bootstrap.mjs`: bootstrap is the script whose failure stops plans being created, and a viewer should not share its failure modes. It is a standalone script in both channels' lint and test lists, deliberately not in `validate`.
+- The log format is Claude Code's and is not a published interface. On a real three-plan repo, an independent recount of the logs (a different parser and de-duplication key) matched the dashboard on every token category and model call, and each sub-agent run's final call agreed with Claude Code's own per-agent token count to within 0.75%.
+- No PowerShell runs in the development environment here, so the `build.ps1` lint and test list edits are verified by reading them and by the lockstep tests, not by running them.
+- Test count: 1015 (was 986 — net +29, all in the new suite; live run).
+
 ## [2.65.0] - 2026-09-12
 
 **A deep self-review of the codebase — scripts, agents, references, and SKILL.md itself — turned up three real script-logic bugs and a dozen places where shipped prose claimed more enforcement than the shipped mechanism actually provides.** All three bugs are fixed and regression-tested. Two rounds of adversarial review, run against the fixes before this entry could be written, found the first cut of one of them had a silent false-negative hole of its own; that hole is now closed rather than shipped alongside the rest.

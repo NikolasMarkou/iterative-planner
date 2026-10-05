@@ -1,8 +1,8 @@
 # Iterative Planner
 
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Skill](https://img.shields.io/badge/Skill-v2.65.0-green.svg)](CHANGELOG.md)
-[![Tests](https://img.shields.io/badge/tests-986%20passing-brightgreen.svg)](src/scripts/bootstrap.test.mjs)
+[![Skill](https://img.shields.io/badge/Skill-v2.66.0-green.svg)](CHANGELOG.md)
+[![Tests](https://img.shields.io/badge/tests-1015%20passing-brightgreen.svg)](src/scripts/bootstrap.test.mjs)
 [![Sponsored by Electi](https://img.shields.io/badge/Sponsored%20by-Electi-red.svg)](https://www.electiconsulting.com)
 
 **A [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skill that stops an agent from losing the plot halfway through a hard task.**
@@ -41,7 +41,7 @@ This is one skill file plus a handful of scripts — no server, no extra service
 - [Why This Works](#why-this-works)
 
 **Reference**
-[How It Works](#how-it-works) · [The Plan Directory](#the-plan-directory) · [Bootstrapping](#bootstrapping) · [Sub-Agent Architecture](#sub-agent-architecture) · [Presentation Contracts](#presentation-contracts) · [Validator](#validator) · [Git Integration](#git-integration) · [FAQ](#faq)
+[How It Works](#how-it-works) · [The Plan Directory](#the-plan-directory) · [Bootstrapping](#bootstrapping) · [Sub-Agent Architecture](#sub-agent-architecture) · [Presentation Contracts](#presentation-contracts) · [Validator](#validator) · [Dashboard](#dashboard) · [Git Integration](#git-integration) · [FAQ](#faq)
 
 **Project**
 [Contributing](#contributing) · [Project Structure](#project-structure) · [Sponsored by](#sponsored-by) · [License](#license)
@@ -447,6 +447,31 @@ The validator cannot inspect chat content — it surfaces metadata signals only.
 
 ---
 
+## Dashboard
+
+`src/scripts/dashboard.mjs` turns the plans directory into a small website you open in a browser: one page per plan with its phase, steps and their commits, decisions, timeline, checks, recent edits, and every file in the plan directory. It only reads. It never writes into the repo, and its pages load nothing from the network.
+
+```bash
+node <skill-path>/scripts/dashboard.mjs            # write it once and print where it is
+node <skill-path>/scripts/dashboard.mjs --watch    # keep it current while a plan runs
+node <skill-path>/scripts/dashboard.mjs --open     # also open it in the browser
+```
+
+With `--watch`, open pages update themselves when their content changes, and the script slows to one check a minute while nothing does. Plans in other git worktrees of the same repo are included. A closed plan whose directory was removed still gets a page, built from its row in `plans/INDEX.md` and its sections in the consolidated files. The output goes to a folder for the repo in the system temp directory unless `--out` names another place.
+
+<details>
+<summary><strong>Token usage, and how it is counted</strong></summary>
+
+Token usage and the models used come from Claude Code's own session logs, under `$CLAUDE_CONFIG_DIR/projects` or `~/.claude/projects`. Each plan shows its total, the split between cache reads, fresh input and output, usage per agent and per step, and every sub agent run with its model and duration.
+
+Only sessions that ran this skill are counted, and they are assigned to plans by time: a plan owns the time from its start to its close, and a sub agent run goes to the plan that was open when it started. Usage between plans, and usage from sessions that never ran the planner, is shown on its own and never added to a plan. A streamed reply is logged several times under one message id, and a forked sub agent's log repeats the message that started it; both are counted once, and the tests pin the arithmetic with hand-computed totals.
+
+The log format belongs to Claude Code and is not a published interface. If it is missing or changes, the usage section says it found nothing; `--no-usage` turns it off entirely.
+
+</details>
+
+---
+
 ## Git Integration
 
 Commits are the agent's undo history, and the protocol is deliberate about when they happen.
@@ -519,10 +544,11 @@ node --test src/scripts/bootstrap.test.mjs \
             src/scripts/check-agent-wiring.test.mjs \
             src/scripts/check-template-parity.test.mjs \
             src/scripts/check-register.test.mjs \
-            src/scripts/scar-scan.test.mjs
-# 986 tests across 15 suites: bootstrap 288, validate-plan 234, shared 97,
+            src/scripts/scar-scan.test.mjs \
+            src/scripts/dashboard.test.mjs
+# 1015 tests across 16 suites: bootstrap 288, validate-plan 234, shared 97,
 #                  check-agent-wiring 61, schema 53, scar-scan 50, blast-radius 41,
-#                  check-template-parity 41, check-register 32, check-doc-parity 24,
+#                  check-template-parity 41, check-register 32, dashboard 29, check-doc-parity 24,
 #                  check-test-count 17, emit-state 15, check-readme-parity 14,
 #                  emit-template 11, check-changelog-parity 8
 ```
@@ -638,6 +664,8 @@ iterative-planner/
     │   ├── emit-state.test.mjs     # emit-state test suite (node:test)
     │   ├── emit-template.mjs       # per-template slicer; emits one plan-file template from references/file-formats.md via --name <slug>
     │   ├── emit-template.test.mjs  # emit-template test suite (node:test)
+    │   ├── dashboard.mjs           # read-only HTML view of plans/ for people, live with --watch; optional token usage from Claude Code's logs
+    │   ├── dashboard.test.mjs      # dashboard test suite (node:test)
     │   ├── shared.mjs              # shared helpers (field extraction, changelog field split, compression markers, id grammars)
     │   ├── shared.test.mjs         # shared test suite (node:test)
     │   └── modules/                # verbatim per-state rule bodies (EXPLORE/PLAN/EXECUTE/REFLECT/PIVOT), emitted on demand
