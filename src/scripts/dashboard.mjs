@@ -574,7 +574,8 @@ export function defaultOut(repo) {
 // cannot be only dots or spaces: "." and ".." make the site folder the current folder or its parent, and
 // Windows strips trailing dots and spaces, so there "...", ". " and the like can do the same. A site
 // folder that already exists must be one a dashboard run wrote (it holds assets/live.js, the last file a
-// run writes), or --out docs.html would replace a project's own docs/index.html.
+// run writes), or --out docs.html would replace a project's own docs/index.html. A broken symlink there
+// is refused too, since the first write through it would fail with ENOENT.
 // Takes the raw value; returns an error message naming it, or null. Never throws, never writes.
 // DECISION plan-2026-10-06T182322-ea385857/D-003: reject a bad --out, never normalise it (no appended
 // .html, no folder-means-folder/dashboard.html): a guess surprises, and a rejection can be relaxed later.
@@ -586,9 +587,10 @@ export function validateOut(raw) {
   const entry = path.resolve(raw); // as createDashboard resolves it: "a/../docs.html" is docs.html even if a/ is missing
   try { if (fs.statSync(entry).isDirectory()) return `${want}, which is an existing folder)`; } catch { /* a missing path is fine */ }
   const site = entry.replace(/\.html?$/i, "");
-  let st = null; try { st = fs.statSync(site); } catch { /* no site folder yet */ }
+  let st = null; try { st = fs.statSync(site); } catch { /* no site folder yet, or a broken symlink */ }
+  if (!st) { try { fs.lstatSync(site); return `${want}, whose site folder "${site}" is a broken symlink)`; } catch { /* nothing there */ } }
   if (st && !st.isDirectory()) return `${want}, whose site folder "${site}" is an existing file)`;
-  if (st && !fs.existsSync(path.join(site, "assets", "live.js"))) return `${want}, whose site folder "${site}" already exists and was not written by the dashboard; remove it or pick another name)`;
+  if (st && !fs.existsSync(path.join(site, "assets", "live.js"))) return `${want}, whose site folder "${site}" already exists and holds no finished dashboard run (no assets/live.js); if an interrupted run left it, remove it, otherwise pick another name)`;
   return null;
 }
 export function defaultProjectsDir() {

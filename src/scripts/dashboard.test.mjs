@@ -694,7 +694,11 @@ test("parseArgs: --out is rejected unless it names a .html or .htm file", () => 
     mkdirSync(join(root, "o", "assets"), { recursive: true });
     writeFileSync(join(root, "o", "assets", "live.js"), "");
     assert.match(parseArgs(["--out", join(root, "f.html")]).error, /whose site folder "[^"]+[\\/]f" is an existing file\)$/);
-    assert.match(parseArgs(["--out", join(root, "docs.HTM")]).error, /whose site folder "[^"]+[\\/]docs" already exists and was not written by the dashboard; remove it or pick another name\)$/);
+    assert.match(parseArgs(["--out", join(root, "docs.HTM")]).error, /whose site folder "[^"]+[\\/]docs" already exists and holds no finished dashboard run \(no assets\/live\.js\); if an interrupted run left it, remove it, otherwise pick another name\)$/);
+    if (process.platform !== "win32") { // creating a symlink may need privileges on Windows
+      symlinkSync(join(root, "gone"), join(root, "dangling"));
+      assert.match(parseArgs(["--out", join(root, "dangling.html")]).error, /whose site folder "[^"]+[\\/]dangling" is a broken symlink\)$/);
+    }
     for (const v of ["X.HTML", "x.htm", "out/Dash.Html", "a..html", "a .html", join(root, "missing", "page.html"), join(root, "o.html")]) assert.equal(parseArgs(["--out", v]).error, null, `--out ${v} should be accepted`);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
@@ -729,18 +733,22 @@ test("CLI: --out ..html exits 2 and writes nothing in the current folder", () =>
   } finally { fx.cleanup(); }
 });
 
-test("CLI: an --out whose site folder exists and was not written by the dashboard exits 2 and leaves it alone", () => {
+test("CLI: an --out whose site folder exists without a finished dashboard run exits 2 and leaves it alone", () => {
   const fx = makeFixture();
   try {
     const docs = join(fx.root, "docs"), out = join(fx.root, "docs.html");
-    mkdirSync(docs);
+    mkdirSync(join(docs, "assets"), { recursive: true });
     writeFileSync(join(docs, "index.html"), "MINE");
+    // docs/assets/ is common, so it must not pass for the dashboard's own marker, assets/live.js.
+    writeFileSync(join(docs, "assets", "style.css"), "MINE TOO");
     const r = runOut(fx, out);
     assert.equal(r.status, 2, r.stderr);
-    assert.ok(r.stderr.startsWith(`dashboard: --out must be a .html or .htm file path, such as out/dashboard.html (got "${out}", whose site folder "${docs}" already exists and was not written by the dashboard; remove it or pick another name)\n`), r.stderr);
+    assert.ok(r.stderr.startsWith(`dashboard: --out must be a .html or .htm file path, such as out/dashboard.html (got "${out}", whose site folder "${docs}" already exists and holds no finished dashboard run (no assets/live.js); if an interrupted run left it, remove it, otherwise pick another name)\n`), r.stderr);
     assert.throws(() => dashFor(fx, { out, projectsDir: null }), (e) => e.code === "EDASHBOARD" && e.message.includes(`"${docs}"`));
     assert.equal(readFileSync(join(docs, "index.html"), "utf8"), "MINE");
-    assert.deepEqual(readdirSync(docs), ["index.html"]);
+    assert.equal(readFileSync(join(docs, "assets", "style.css"), "utf8"), "MINE TOO");
+    assert.deepEqual(readdirSync(docs).sort(), ["assets", "index.html"]);
+    assert.deepEqual(readdirSync(join(docs, "assets")), ["style.css"]);
     assert.equal(existsSync(out), false);
     // A folder a previous run wrote is the dashboard's own, so the same --out runs again.
     const again = join(fx.root, "o", "dash.html");
