@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Skill](https://img.shields.io/badge/Skill-v2.66.0-green.svg)](CHANGELOG.md)
-[![Tests](https://img.shields.io/badge/tests-1030%20passing-brightgreen.svg)](src/scripts/bootstrap.test.mjs)
+[![Tests](https://img.shields.io/badge/tests-1031%20passing-brightgreen.svg)](src/scripts/bootstrap.test.mjs)
 [![Sponsored by Electi](https://img.shields.io/badge/Sponsored%20by-Electi-red.svg)](https://www.electiconsulting.com)
 
 **A [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skill that stops an agent from losing the plot halfway through a hard task.**
@@ -449,7 +449,7 @@ The validator cannot inspect chat content — it surfaces metadata signals only.
 
 ## Dashboard
 
-`src/scripts/dashboard.mjs` turns the plans directory into a small website you open in a browser: one page per plan with its phase, steps and their commits, decisions, timeline, checks, recent edits, and every file in the plan directory. It only reads. It never writes into the repo, and its pages load nothing from the network.
+`src/scripts/dashboard.mjs` turns the plans directory into a small website you open in a browser: one page per plan with its phase, steps and their commits, decisions, timeline, checks, recent edits, and every file in the plan directory. It only reads. It writes into the repo only if you point `--out` there, and it will not write into an existing site folder (`--out docs.html` uses `docs/`) that an earlier dashboard run did not make. Its pages load nothing from the network.
 
 ```bash
 node <skill-path>/scripts/dashboard.mjs            # write it once and print where it is
@@ -546,8 +546,8 @@ node --test src/scripts/bootstrap.test.mjs \
             src/scripts/check-register.test.mjs \
             src/scripts/scar-scan.test.mjs \
             src/scripts/dashboard.test.mjs
-# 1030 tests across 16 suites: bootstrap 288, validate-plan 234, shared 97,
-#                  check-agent-wiring 61, schema 53, scar-scan 50, dashboard 44,
+# 1031 tests across 16 suites: bootstrap 288, validate-plan 234, shared 97,
+#                  check-agent-wiring 61, schema 53, scar-scan 50, dashboard 45,
 #                  blast-radius 41, check-template-parity 41, check-register 32, check-doc-parity 24,
 #                  check-test-count 17, emit-state 15, check-readme-parity 14,
 #                  emit-template 11, check-changelog-parity 8

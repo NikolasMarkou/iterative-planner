@@ -18,7 +18,8 @@
 //   node <skill-path>/scripts/dashboard.mjs --open          also open it in the default browser
 //   Options: --out <file.html>  --plan <plan-id>  --no-usage  --interval <seconds>  --help
 //   (--out must name a .html or .htm file; anything else is rejected before a write. An explicit
-//   --out is used as given, with no privacy check.)
+//   --out is used as given, with no privacy check. Its site folder, the name without the suffix, must
+//   be new or one an earlier dashboard run wrote.)
 //
 // WHAT IT NEVER DOES: write anything under the repo (output goes to a private per-user folder in the
 // OS temp dir, refused if other users can reach it, unless --out says otherwise), make a network
@@ -1750,7 +1751,8 @@ Writes a read-only HTML view of plans/ (this repo and its git worktrees) and pri
   --interval <s>     watch interval in seconds (default 10)
   --open             open the dashboard in the default browser
   --out <file.html>  where to write it, a .html or .htm file (default: a private per-user folder in the OS temp dir)
-                     an explicit --out is used as given, with no privacy check
+                     an explicit --out is used as given, with no privacy check; it also writes a
+                     folder <name>/ beside it, which must be new or an earlier dashboard's
   --plan <plan-id>   treat this plan as the live one (default: plans/.current_plan, else the most recent)
   --no-usage         skip token usage (read from Claude Code's session logs under $CLAUDE_CONFIG_DIR or ~/.claude)`;
 
