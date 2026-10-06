@@ -60,7 +60,7 @@ iterative-planner/
     │   ├── emit-state.test.mjs       # Test suite (node:test)
     │   ├── emit-template.mjs         # Per-template slicer; emits one plan-file template sliced from references/file-formats.md via --name <slug> (used by agents/modules to fetch a single template instead of the full file-formats.md file; Node.js 18+)
     │   ├── emit-template.test.mjs    # Test suite (node:test)
-    │   ├── dashboard.mjs             # Read-only HTML view of plans/ for people (live with --watch); optional token usage read from Claude Code's session logs. Writes only to its output folder (OS temp dir by default), never into the repo; pages load nothing from the network. Not a gate: in both channels' lint+test lists, deliberately NOT in validate (Node.js 18+)
+    │   ├── dashboard.mjs             # Read-only HTML view of plans/ for people (live with --watch); optional token usage read from Claude Code's session logs. Writes only to its output folder (a private per-user folder in the OS temp dir by default), never into the repo; pages load nothing from the network. Not a gate: in both channels' lint+test lists, deliberately NOT in validate (Node.js 18+)
     │   ├── dashboard.test.mjs        # Test suite (node:test)
     │   ├── modules/                  # Verbatim per-state rule bodies, emitted on demand by emit-state.mjs
     │   │   ├── state-explore.md      # EXPLORE per-state rules

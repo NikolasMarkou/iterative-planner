@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Skill](https://img.shields.io/badge/Skill-v2.66.0-green.svg)](CHANGELOG.md)
-[![Tests](https://img.shields.io/badge/tests-1015%20passing-brightgreen.svg)](src/scripts/bootstrap.test.mjs)
+[![Tests](https://img.shields.io/badge/tests-1026%20passing-brightgreen.svg)](src/scripts/bootstrap.test.mjs)
 [![Sponsored by Electi](https://img.shields.io/badge/Sponsored%20by-Electi-red.svg)](https://www.electiconsulting.com)
 
 **A [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skill that stops an agent from losing the plot halfway through a hard task.**
@@ -457,7 +457,7 @@ node <skill-path>/scripts/dashboard.mjs --watch    # keep it current while a pla
 node <skill-path>/scripts/dashboard.mjs --open     # also open it in the browser
 ```
 
-With `--watch`, open pages update themselves when their content changes, and the script slows to one check a minute while nothing does. Plans in other git worktrees of the same repo are included. A closed plan whose directory was removed still gets a page, built from its row in `plans/INDEX.md` and its sections in the consolidated files. The output goes to a folder for the repo in the system temp directory unless `--out` names another place.
+With `--watch`, open pages update themselves when their content changes, and the script slows to one check a minute while nothing does. Plans in other git worktrees of the same repo are included. A closed plan whose directory was removed still gets a page, built from its row in `plans/INDEX.md` and its sections in the consolidated files. Unless `--out` names a `.html` file elsewhere, the output goes to a private folder for the repo in the system temp directory, and the script refuses to use that folder if another user can reach it.
 
 <details>
 <summary><strong>Token usage, and how it is counted</strong></summary>
@@ -546,9 +546,9 @@ node --test src/scripts/bootstrap.test.mjs \
             src/scripts/check-register.test.mjs \
             src/scripts/scar-scan.test.mjs \
             src/scripts/dashboard.test.mjs
-# 1015 tests across 16 suites: bootstrap 288, validate-plan 234, shared 97,
+# 1026 tests across 16 suites: bootstrap 288, validate-plan 234, shared 97,
 #                  check-agent-wiring 61, schema 53, scar-scan 50, blast-radius 41,
-#                  check-template-parity 41, check-register 32, dashboard 29, check-doc-parity 24,
+#                  check-template-parity 41, dashboard 40, check-register 32, check-doc-parity 24,
 #                  check-test-count 17, emit-state 15, check-readme-parity 14,
 #                  emit-template 11, check-changelog-parity 8
 ```
