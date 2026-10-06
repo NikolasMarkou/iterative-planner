@@ -449,7 +449,7 @@ The validator cannot inspect chat content — it surfaces metadata signals only.
 
 ## Dashboard
 
-`src/scripts/dashboard.mjs` turns the plans directory into a small website you open in a browser: one page per plan with its phase, steps and their commits, decisions, timeline, checks, recent edits, and every file in the plan directory. It only reads. It writes into the repo only if you point `--out` there, and it will not write into an existing site folder (`--out docs.html` uses `docs/`) that an earlier dashboard run did not make. Its pages load nothing from the network.
+`src/scripts/dashboard.mjs` turns the plans directory into a small website you open in a browser: one page per plan with its phase, steps and their commits, decisions, timeline, checks, recent edits, and every file in the plan directory. It only reads. It writes into the repo only if you point `--out` there, and it will not write into an existing site folder (`--out docs.html` uses `docs/`) unless that folder holds a finished dashboard run (its `assets/live.js`). Its pages load nothing from the network.
 
 ```bash
 node <skill-path>/scripts/dashboard.mjs            # write it once and print where it is
@@ -457,7 +457,7 @@ node <skill-path>/scripts/dashboard.mjs --watch    # keep it current while a pla
 node <skill-path>/scripts/dashboard.mjs --open     # also open it in the browser
 ```
 
-With `--watch`, open pages update themselves when their content changes, and the script slows to one check a minute while nothing does. Plans in other git worktrees of the same repo are included. A closed plan whose directory was removed still gets a page, built from its row in `plans/INDEX.md` and its sections in the consolidated files. Unless `--out` names a `.html` file elsewhere, the output goes to a private folder for the repo in the system temp directory, and the script refuses to use that folder if another user can reach it.
+With `--watch`, open pages update themselves when their content changes, and the script slows to one check a minute while nothing does. Plans in other git worktrees of the same repo are included. A closed plan whose directory was removed still gets a page, built from its row in `plans/INDEX.md` and its sections in the consolidated files. Unless `--out` names a `.html` or `.htm` file elsewhere, the output goes to a private folder for the repo in the system temp directory, and the script refuses to use that folder if another user can reach it.
 
 <details>
 <summary><strong>Token usage, and how it is counted</strong></summary>
