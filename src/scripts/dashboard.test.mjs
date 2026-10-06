@@ -175,6 +175,8 @@ test("parseArgs: flags, values, and errors", () => {
   assert.deepEqual(
     (({ watch, open, usage, interval, out, plan }) => ({ watch, open, usage, interval, out, plan }))(parseArgs(["--watch", "--open", "--no-usage", "--interval", "30", "--out", "x.html", "--plan", A])),
     { watch: true, open: true, usage: false, interval: 30, out: "x.html", plan: A });
+  assert.equal(parseArgs([]).usage, true, "token usage is on by default");
+  assert.equal(parseArgs(["--watch"]).usage, true);
   assert.match(parseArgs(["--out"]).error, /needs a value/);
   assert.match(parseArgs(["--interval", "0"]).error, /--interval/);
 });
