@@ -550,6 +550,25 @@ test("a default folder that other users can reach (0755) is refused with one lin
   } finally { fx.cleanup(); }
 });
 
+test("a loosened default folder is refused before anything in it is read: a FIFO there cannot hang the run", POSIX, (t) => {
+  const fx = makeFixture();
+  try {
+    const root = privateRoot(fx);
+    assert.equal(runDefault(fx).status, 0);
+    const page = join(root, basename(dirname(defaultOut(fx.repo))), "dashboard", "index.html");
+    rmSync(page);
+    const mk = spawnSync("mkfifo", [page]);
+    if (mk.error || mk.status !== 0) { t.skip("mkfifo is not available"); return; }
+    chmodSync(root, 0o755);
+    const tmp = join(fx.root, "tmp");
+    const r = spawnSync(process.execPath, [SCRIPT, "--no-usage"], { cwd: fx.repo, encoding: "utf8", timeout: 10000, env: { ...process.env, TMPDIR: tmp, TEMP: tmp, TMP: tmp } });
+    assert.equal(r.error, undefined, `the run hung on the FIFO and was killed (${r.error?.code}, ${r.signal})`);
+    assert.equal(r.status, 1, r.stdout);
+    assert.match(r.stderr, refusal(root));
+    assert.doesNotMatch(r.stderr, /^\s+at /m, "no stack trace");
+  } finally { fx.cleanup(); }
+});
+
 test("a default folder that is a symlink is refused, even to a folder we own, and its target stays empty", POSIX, () => {
   const fx = makeFixture();
   try {

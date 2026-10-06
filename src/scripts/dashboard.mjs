@@ -698,22 +698,26 @@ export function createDashboard(opts = {}) {
 
   // ---- writing: unchanged output is neither re-read nor rewritten; unchanged documents are not re-rendered
   const VERSIONS = {}, LAST = new Map(), RENDERED = new Map();
-  // The only writer. Under the private root it re-checks the root before every write (a temp cleaner can
-  // delete it during --watch and someone else re-create it). Every write, --out included, goes to a
-  // per-process temp name opened exclusively, so a symlink planted there is never followed.
+  // Throws EDASHBOARD unless the private root is a folder owned by this user and closed to others. It runs at
+  // the top of generate(), before anything under the root is read (a FIFO planted there would hang the read),
+  // and again before every write (a temp cleaner can delete the root during --watch and someone else re-create it).
+  const checkRoot = () => {
+    if (!privateRoot) return;
+    try { fs.mkdirSync(privateRoot, { mode: 0o700 }); } catch (e) { if (e.code !== "EEXIST") throw e; }
+    const st = fs.lstatSync(privateRoot), uid = typeof process.getuid === "function" ? process.getuid() : null;
+    // DECISION plan-2026-10-06T182322-ea385857/D-002: refuse a loose or foreign folder, never chmod it.
+    // chmod follows symlinks, and a folder that was ever open to others may already hold planted entries.
+    const why = st.isSymbolicLink() ? "it is a symlink"
+      : !st.isDirectory() ? "it is not a folder"
+      : uid !== null && st.uid !== uid ? `it belongs to another user (uid ${st.uid})`
+      : uid !== null && (st.mode & 0o077) !== 0 ? `other users have access to it (mode ${(st.mode & 0o777).toString(8)})`
+      : "";
+    if (why) throw Object.assign(new Error(`refusing to use ${privateRoot}: ${why}. Remove it, or pass --out <file.html> to write somewhere else`), { code: "EDASHBOARD" });
+  };
+  // The only writer. Every write, --out included, goes to a per-process temp name opened exclusively, so a
+  // symlink planted there is never followed.
   const writeAtomic = (file, text) => {
-    if (privateRoot) {
-      try { fs.mkdirSync(privateRoot, { mode: 0o700 }); } catch (e) { if (e.code !== "EEXIST") throw e; }
-      const st = fs.lstatSync(privateRoot), uid = typeof process.getuid === "function" ? process.getuid() : null;
-      // DECISION plan-2026-10-06T182322-ea385857/D-002: refuse a loose or foreign folder, never chmod it.
-      // chmod follows symlinks, and a folder that was ever open to others may already hold planted entries.
-      const why = st.isSymbolicLink() ? "it is a symlink"
-        : !st.isDirectory() ? "it is not a folder"
-        : uid !== null && st.uid !== uid ? `it belongs to another user (uid ${st.uid})`
-        : uid !== null && (st.mode & 0o077) !== 0 ? `other users have access to it (mode ${(st.mode & 0o777).toString(8)})`
-        : "";
-      if (why) throw Object.assign(new Error(`refusing to use ${privateRoot}: ${why}. Remove it, or pass --out <file.html> to write somewhere else`), { code: "EDASHBOARD" });
-    }
+    checkRoot();
     fs.mkdirSync(path.dirname(file), privateRoot ? { recursive: true, mode: 0o700 } : { recursive: true });
     const tmp = `${file}.${process.pid}.tmp`, wopts = privateRoot ? { flag: "wx", mode: 0o600 } : { flag: "wx" };
     try { fs.writeFileSync(tmp, text, wopts); } catch (e) {
@@ -764,6 +768,7 @@ export function createDashboard(opts = {}) {
   }
 
   function generate() {
+    checkRoot();
     const rootList = roots();
     const { live, archived, ledgers, pointers } = discover(rootList);
     const pinned = opts.pinned && live.find((p) => p.name === opts.pinned);
