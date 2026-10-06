@@ -581,3 +581,71 @@ test("with --out, a symlink planted at the temp name is not followed", POSIX, ()
     assert.deepEqual(left, []);
   } finally { fx.cleanup(); }
 });
+
+// ---------- --out must name a .html or .htm file ----------
+// The site folder is the entry path minus its suffix, so any other --out made the two the same path
+// and the run died with EISDIR. One rule (validateOut) guards the CLI and createDashboard.
+function runOut(fx, out) {
+  const tmp = join(fx.root, "tmp");
+  mkdirSync(tmp, { recursive: true });
+  return spawnSync(process.execPath, [SCRIPT, "--no-usage", "--out", out], { cwd: fx.repo, encoding: "utf8", env: { ...process.env, TMPDIR: tmp, TEMP: tmp, TMP: tmp } });
+}
+
+test("parseArgs: --out is rejected unless it names a .html or .htm file", () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "dash-out-")));
+  try {
+    const folder = join(root, "d.html");
+    mkdirSync(folder);
+    for (const v of ["dash", "dash/", "dash\\", "x.txt", ".html", "out/.htm", folder]) {
+      const { error } = parseArgs(["--out", v]);
+      assert.ok(error, `--out ${v} should be rejected`);
+      assert.ok(error.includes(v), `the error names the value: ${error}`);
+      assert.match(error, /\.html or \.htm file path/);
+    }
+    assert.match(parseArgs(["--out", folder]).error, /existing folder/);
+    for (const v of ["X.HTML", "x.htm", "out/Dash.Html", join(root, "missing", "page.html")]) assert.equal(parseArgs(["--out", v]).error, null, `--out ${v} should be accepted`);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("CLI: an --out that is not a .html file exits 2 with the reason and writes nothing", () => {
+  const fx = makeFixture();
+  try {
+    mkdirSync(join(fx.root, "tmp"));
+    const before = readdirSync(fx.root).sort(), target = join(fx.root, "dash");
+    const r = runOut(fx, target);
+    assert.equal(r.status, 2, r.stderr);
+    assert.ok(r.stderr.startsWith(`dashboard: --out must be a .html or .htm file path`), r.stderr);
+    assert.ok(r.stderr.includes(`"${target}"`), r.stderr);
+    assert.match(r.stderr, /\nUsage: /);
+    assert.equal(r.stdout, "");
+    assert.equal(existsSync(target), false);
+    assert.deepEqual(readdirSync(fx.root).sort(), before);
+    assert.deepEqual(readdirSync(join(fx.root, "tmp")), []);
+  } finally { fx.cleanup(); }
+});
+
+test("createDashboard: a bad out throws EDASHBOARD before creating anything", () => {
+  const fx = makeFixture();
+  try {
+    const out = join(fx.root, "out", "dash");
+    assert.throws(() => dashFor(fx, { out, projectsDir: null }), (e) => e.code === "EDASHBOARD" && e.message.includes(`"${out}"`));
+    assert.equal(existsSync(join(fx.root, "out")), false);
+  } finally { fx.cleanup(); }
+});
+
+test("--out X.HTML writes the site folder X, and x.htm writes x", () => {
+  const fx = makeFixture();
+  try {
+    const out = join(fx.root, "out", "X.HTML");
+    const r = runOut(fx, out);
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(r.stdout.split("\n")[0], `Dashboard: ${out}`);
+    assert.ok(statSync(out).isFile());
+    assert.ok(existsSync(join(fx.root, "out", "X", "index.html")));
+    const dash = dashFor(fx, { out: join(fx.root, "out", "x.htm"), projectsDir: null });
+    dash.generate();
+    assert.equal(dash.site, join(fx.root, "out", "x"));
+    assert.ok(statSync(join(fx.root, "out", "x.htm")).isFile());
+    assert.ok(existsSync(join(fx.root, "out", "x", "index.html")));
+  } finally { fx.cleanup(); }
+});

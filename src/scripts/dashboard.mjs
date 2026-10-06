@@ -17,10 +17,12 @@
 //   node <skill-path>/scripts/dashboard.mjs --watch         keep it current; open pages update themselves
 //   node <skill-path>/scripts/dashboard.mjs --open          also open it in the default browser
 //   Options: --out <file.html>  --plan <plan-id>  --no-usage  --interval <seconds>  --help
+//   (--out must name a .html or .htm file; anything else is rejected before a write)
 //
 // WHAT IT NEVER DOES: write anything under the repo (output goes to a private per-user folder in the
-// OS temp dir, refused if other users can reach it, unless --out says otherwise), make a network request (system fonts; no remote assets), or run when imported
-// (the CLI is behind the isEntryPoint guard, so the test suite imports the pure functions).
+// OS temp dir, refused if other users can reach it, unless --out says otherwise), make a network
+// request (system fonts; no remote assets), or run when imported (the CLI is behind the isEntryPoint
+// guard, so the test suite imports the pure functions).
 //
 // TOKEN USAGE comes from Claude Code's own session logs, <config>/projects/<repo-slug>/*.jsonl and
 // <session>/subagents/agent-*.jsonl, where <config> is $CLAUDE_CONFIG_DIR or ~/.claude. Every
@@ -564,20 +566,35 @@ export function defaultOut(repo) {
   const owner = typeof process.getuid === "function" ? `-${process.getuid()}` : "";
   return path.join(os.tmpdir(), `iterative-planner-dashboard${owner}`, `${path.basename(repo)}-${sha(repo).slice(0, 8)}`, "dashboard.html");
 }
+// The one rule for --out, used by parseArgs (exit 2) and createDashboard (throws). The site folder is
+// the entry path minus its suffix, so --out must name a .html or .htm file (any case) with a name
+// before the suffix; anything else made the entry and the site folder the same path (EISDIR).
+// Takes the raw value; returns an error message naming it, or null. Never throws, never writes.
+// DECISION plan-2026-10-06T182322-ea385857/D-003: reject a bad --out, never normalise it (no appended
+// .html, no folder-means-folder/dashboard.html): a guess surprises, and a rejection can be relaxed later.
+export function validateOut(raw) {
+  const want = `--out must be a .html or .htm file path, such as out/dashboard.html (got "${raw}"`;
+  if (/[\\/]$/.test(raw)) return `${want}, which ends in a folder separator)`;
+  if (!/[^\\/]\.html?$/i.test(raw)) return `${want})`;
+  try { if (fs.statSync(raw).isDirectory()) return `${want}, which is an existing folder)`; } catch { /* a missing path is fine */ }
+  return null;
+}
 export function defaultProjectsDir() {
   return path.join(process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), ".claude"), "projects");
 }
 
 /**
- * Create a dashboard writer. Options: repo (default cwd), out (entry .html), projectsDir (null disables usage),
+ * Create a dashboard writer. Options: repo (default cwd), out (entry .html or .htm), projectsDir (null disables usage),
  * pinned (plan id to treat as live), now (clock, for tests), worktrees (default true).
  * Returns { generate(): boolean changed, flush(), entry, site }.
  */
 export function createDashboard(opts = {}) {
+  const bad = opts.out ? validateOut(opts.out) : null;
+  if (bad) throw Object.assign(new Error(bad), { code: "EDASHBOARD" });
   const repo = path.resolve(opts.repo || process.cwd());
   const entry = path.resolve(opts.out || defaultOut(repo));
   const base = path.dirname(entry);
-  const site = entry.replace(/\.html$/, "");
+  const site = entry.replace(/\.html?$/i, "");
   // With no --out, the folder defaultOut names (two levels above the entry) must stay private to this user.
   const privateRoot = opts.out ? null : path.dirname(path.dirname(entry));
   const now = opts.now || Date.now;
@@ -1716,7 +1733,7 @@ Writes a read-only HTML view of plans/ (this repo and its git worktrees) and pri
   --watch            keep regenerating; open pages update themselves (backs off to 60 s while idle)
   --interval <s>     watch interval in seconds (default 10)
   --open             open the dashboard in the default browser
-  --out <file.html>  where to write it (default: a private per-user folder in the OS temp dir)
+  --out <file.html>  where to write it, a .html or .htm file (default: a private per-user folder in the OS temp dir)
   --plan <plan-id>   treat this plan as the live one (default: plans/.current_plan, else the most recent)
   --no-usage         skip token usage (read from Claude Code's session logs under $CLAUDE_CONFIG_DIR or ~/.claude)`;
 
@@ -1728,7 +1745,7 @@ export function parseArgs(argv) {
     else if (a === "--open") o.open = true;
     else if (a === "--no-usage") o.usage = false;
     else if (a === "--help" || a === "-h") o.help = true;
-    else if (a === "--out") o.out = val();
+    else if (a === "--out") { o.out = val(); if (o.out !== null) o.error ||= validateOut(o.out); }
     else if (a === "--plan") o.plan = val();
     else if (a === "--interval") { const n = Number(val()); if (!(n >= 1)) o.error ||= "--interval needs a number of seconds (>= 1)"; else o.interval = n; }
     else o.error ||= `unknown option: ${a}`;
