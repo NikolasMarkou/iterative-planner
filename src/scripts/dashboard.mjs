@@ -569,7 +569,8 @@ export function defaultOut(repo) {
 // The one rule for --out, used by parseArgs (exit 2) and createDashboard (throws). The site folder is
 // the entry path minus its suffix, so --out must name a .html or .htm file (any case) with a name
 // before the suffix; anything else made the entry and the site folder the same path (EISDIR). That name
-// cannot be "." or "..", which would make the site folder the current folder or its parent.
+// cannot be only dots or spaces: "." and ".." make the site folder the current folder or its parent, and
+// Windows strips trailing dots and spaces, so there "...", ". " and the like can do the same.
 // Takes the raw value; returns an error message naming it, or null. Never throws, never writes.
 // DECISION plan-2026-10-06T182322-ea385857/D-003: reject a bad --out, never normalise it (no appended
 // .html, no folder-means-folder/dashboard.html): a guess surprises, and a rejection can be relaxed later.
@@ -577,7 +578,7 @@ export function validateOut(raw) {
   const want = `--out must be a .html or .htm file path, such as out/dashboard.html (got "${raw}"`;
   if (/[\\/]$/.test(raw)) return `${want}, which ends in a folder separator)`;
   if (!/[^\\/]\.html?$/i.test(raw)) return `${want})`;
-  if (/(^|[\\/])\.{1,2}\.html?$/i.test(raw)) return `${want}, whose name before the suffix is "." or "..")`;
+  if (/(^|[\\/])[. ]+\.html?$/i.test(raw)) return `${want}, whose name before the suffix is only dots or spaces)`;
   try { if (fs.statSync(raw).isDirectory()) return `${want}, which is an existing folder)`; } catch { /* a missing path is fine */ }
   return null;
 }

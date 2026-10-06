@@ -676,15 +676,16 @@ test("parseArgs: --out is rejected unless it names a .html or .htm file", () => 
   try {
     const folder = join(root, "d.html");
     mkdirSync(folder);
-    // A name of "." or ".." before the suffix makes the site folder the current folder or its parent.
-    for (const v of ["dash", "dash/", "dash\\", "x.txt", ".html", "out/.htm", "..html", "...html", "x/...htm", "x\\..html", folder]) {
+    // A name before the suffix made only of dots or spaces makes the site folder the current folder or its
+    // parent: directly for "." and "..", and on Windows (which strips trailing dots and spaces) for the rest.
+    for (const v of ["dash", "dash/", "dash\\", "x.txt", ".html", "out/.htm", "..html", "...html", "x/...htm", "x\\..html", "....html", ". .html", " ..html", "x/ . .htm", " .html", folder]) {
       const { error } = parseArgs(["--out", v]);
       assert.ok(error, `--out ${v} should be rejected`);
       assert.ok(error.includes(v), `the error names the value: ${error}`);
       assert.match(error, /\.html or \.htm file path/);
     }
     assert.match(parseArgs(["--out", folder]).error, /existing folder/);
-    for (const v of ["X.HTML", "x.htm", "out/Dash.Html", "....html", "a..html", join(root, "missing", "page.html")]) assert.equal(parseArgs(["--out", v]).error, null, `--out ${v} should be accepted`);
+    for (const v of ["X.HTML", "x.htm", "out/Dash.Html", "a..html", "a .html", join(root, "missing", "page.html")]) assert.equal(parseArgs(["--out", v]).error, null, `--out ${v} should be accepted`);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -712,7 +713,7 @@ test("CLI: --out ..html exits 2 and writes nothing in the current folder", () =>
     const before = readdirSync(fx.repo).sort();
     const r = runOut(fx, "..html");
     assert.equal(r.status, 2, r.stderr);
-    assert.match(r.stderr, /"\.\.html", whose name before the suffix is "\." or "\.\."\)/);
+    assert.match(r.stderr, /"\.\.html", whose name before the suffix is only dots or spaces\)/);
     assert.deepEqual(readdirSync(fx.repo).sort(), before);
     assert.deepEqual(readdirSync(join(fx.root, "tmp")), []);
   } finally { fx.cleanup(); }
