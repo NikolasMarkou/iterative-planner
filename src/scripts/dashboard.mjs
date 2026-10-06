@@ -1788,10 +1788,9 @@ if (isEntryPoint) {
   if (o.help) { console.log(USAGE); process.exit(0); }
   if (o.error) { console.error(`dashboard: ${o.error}\n\n${USAGE}`); process.exit(2); }
   const dash = createDashboard({ repo: process.cwd(), out: o.out, pinned: o.plan, projectsDir: o.usage ? undefined : null, watch: o.watch });
-  try { dash.generate(); dash.flush(); } catch (e) {
-    console.error(e.code === "EDASHBOARD" ? `dashboard: ${e.message}` : e.stack || e.message);
-    process.exit(1);
-  }
+  // A refusal (EDASHBOARD) is one line; anything else keeps its stack.
+  const fail = (e) => { console.error(e.code === "EDASHBOARD" ? `dashboard: ${e.message}` : e.stack || e.message); process.exit(1); };
+  try { dash.generate(); dash.flush(); } catch (e) { fail(e); }
   console.log(`Dashboard: ${dash.entry}`);
   if (o.open) openInBrowser(dash.entry);
   if (o.watch) {
@@ -1799,11 +1798,12 @@ if (isEntryPoint) {
     let wait = o.interval;
     const tick = () => {
       let changed = true;
-      try { changed = dash.generate(); } catch (e) { console.error(e.stack || e.message); }
+      // A refused folder stays refused, so stop; any other error may pass (a file mid-save), so keep watching.
+      try { changed = dash.generate(); } catch (e) { if (e.code === "EDASHBOARD") fail(e); console.error(e.stack || e.message); }
       wait = changed ? o.interval : Math.min(Math.round(wait * 1.5), 60);
       setTimeout(tick, wait * 1000);
     };
     setTimeout(tick, o.interval * 1000);
-    for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => { dash.flush(); process.exit(0); });
+    for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => { try { dash.flush(); } catch (e) { fail(e); } process.exit(0); });
   }
 }

@@ -18,7 +18,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
   appendFileSync,
   chmodSync,
@@ -567,6 +567,66 @@ test("a loosened default folder is refused before anything in it is read: a FIFO
     assert.match(r.stderr, refusal(root));
     assert.doesNotMatch(r.stderr, /^\s+at /m, "no stack trace");
   } finally { fx.cleanup(); }
+});
+
+// --watch runs async, so these poll for each condition instead of sleeping, and always kill the child.
+const until = async (cond, what, ms = 15000) => {
+  for (const end = Date.now() + ms; !cond();) {
+    if (Date.now() > end) throw new Error(`timed out after ${ms} ms waiting for ${typeof what === "function" ? what() : what}`);
+    await new Promise((r) => setTimeout(r, 25));
+  }
+};
+function startWatch(fx, args, env = {}) {
+  const tmp = join(fx.root, "tmp");
+  mkdirSync(tmp, { recursive: true });
+  const child = spawn(process.execPath, [SCRIPT, "--watch", ...args], { cwd: fx.repo, env: { ...process.env, TMPDIR: tmp, TEMP: tmp, TMP: tmp, ...env } });
+  const run = { child, stdout: "", stderr: "", code: undefined };
+  child.stdout.on("data", (d) => { run.stdout += d; });
+  child.stderr.on("data", (d) => { run.stderr += d; });
+  child.on("close", (code) => { run.code = code; });
+  return run;
+}
+const stopWatch = (run) => { if (run.child.exitCode === null && run.child.signalCode === null) run.child.kill("SIGKILL"); };
+
+test("--watch: a folder loosened mid-watch stops the run with one line and exit 1, not a stack every tick", POSIX, async () => {
+  const fx = makeFixture();
+  const run = startWatch(fx, ["--interval", "1", "--no-usage"]);
+  try {
+    await until(() => run.stdout.includes("Dashboard: ") || run.code !== undefined, "the first run");
+    assert.equal(run.code, undefined, run.stderr);
+    const root = privateRoot(fx);
+    chmodSync(root, 0o755);
+    appendFileSync(join(fx.plans, B, "progress.md"), "- [ ] touched\n");
+    await until(() => run.code !== undefined, () => `exit; stderr so far:\n${run.stderr.slice(0, 1500)}`);
+    assert.equal(run.code, 1, run.stderr);
+    assert.match(run.stderr, refusal(root));
+    assert.doesNotMatch(run.stderr, /^\s+at /m, "no stack trace");
+  } finally { stopWatch(run); fx.cleanup(); }
+});
+
+// The signal handler flushes the usage cache, which is written at most once a minute under --watch. So a
+// tick must first read a new log line (cache dirty, not yet saved); then the folder is loosened and the run
+// interrupted, well before the next tick is due.
+test("--watch: Ctrl-C with unsaved usage and a loosened folder prints one line and exits 1, no crash dump", POSIX, async () => {
+  const fx = makeFixture();
+  const run = startWatch(fx, ["--interval", "2"], { CLAUDE_CONFIG_DIR: dirname(fx.projects) });
+  try {
+    await until(() => run.stdout.includes("Dashboard: ") || run.code !== undefined, "the first run");
+    assert.equal(run.code, undefined, run.stderr);
+    const site = join(privateRoot(fx), basename(dirname(defaultOut(fx.repo))), "dashboard", "assets");
+    appendFileSync(join(fx.projects, projectSlug(fx.repo), "s1.jsonl"), `${asst("sig1", "2026-01-11T10:30:00Z", [1, 1, 1, 1], "claude-haiku-sigtest")}\n`);
+    const mtime = (f) => { try { return statSync(join(site, f)).mtimeMs; } catch { return -1; } };
+    // data.json carries the new model once a tick has read the line; live.js is that tick's last write.
+    await until(() => run.code !== undefined || (readFileSync(join(site, "data.json"), "utf8").includes("claude-haiku-sigtest") && mtime("live.js") >= mtime("data.json")), "a tick to read the new log line");
+    assert.equal(run.code, undefined, run.stderr);
+    const root = privateRoot(fx);
+    chmodSync(root, 0o755);
+    run.child.kill("SIGINT");
+    await until(() => run.code !== undefined, "exit after SIGINT");
+    assert.equal(run.code, 1, run.stderr);
+    assert.match(run.stderr, refusal(root));
+    assert.doesNotMatch(run.stderr, /^\s+at /m, "no stack trace");
+  } finally { stopWatch(run); fx.cleanup(); }
 });
 
 test("a default folder that is a symlink is refused, even to a folder we own, and its target stays empty", POSIX, () => {
