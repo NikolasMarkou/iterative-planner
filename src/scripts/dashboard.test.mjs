@@ -687,7 +687,15 @@ test("parseArgs: --out is rejected unless it names a .html or .htm file", () => 
       assert.match(error, /\.html or \.htm file path/);
     }
     assert.match(parseArgs(["--out", folder]).error, /existing folder/);
-    for (const v of ["X.HTML", "x.htm", "out/Dash.Html", "a..html", "a .html", join(root, "missing", "page.html")]) assert.equal(parseArgs(["--out", v]).error, null, `--out ${v} should be accepted`);
+    // The site folder (the value minus its suffix) must be new, or one a dashboard run wrote (it holds
+    // assets/live.js); a file there is refused too, since every write into it would fail.
+    writeFileSync(join(root, "f"), "FILE");
+    mkdirSync(join(root, "docs"));
+    mkdirSync(join(root, "o", "assets"), { recursive: true });
+    writeFileSync(join(root, "o", "assets", "live.js"), "");
+    assert.match(parseArgs(["--out", join(root, "f.html")]).error, /whose site folder "[^"]+[\\/]f" is an existing file\)$/);
+    assert.match(parseArgs(["--out", join(root, "docs.HTM")]).error, /whose site folder "[^"]+[\\/]docs" already exists and was not written by the dashboard; remove it or pick another name\)$/);
+    for (const v of ["X.HTML", "x.htm", "out/Dash.Html", "a..html", "a .html", join(root, "missing", "page.html"), join(root, "o.html")]) assert.equal(parseArgs(["--out", v]).error, null, `--out ${v} should be accepted`);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -717,6 +725,29 @@ test("CLI: --out ..html exits 2 and writes nothing in the current folder", () =>
     assert.equal(r.status, 2, r.stderr);
     assert.match(r.stderr, /"\.\.html", whose name before the suffix is only dots or spaces\)/);
     assert.deepEqual(readdirSync(fx.repo).sort(), before);
+    assert.deepEqual(readdirSync(join(fx.root, "tmp")), []);
+  } finally { fx.cleanup(); }
+});
+
+test("CLI: an --out whose site folder exists and was not written by the dashboard exits 2 and leaves it alone", () => {
+  const fx = makeFixture();
+  try {
+    const docs = join(fx.root, "docs"), out = join(fx.root, "docs.html");
+    mkdirSync(docs);
+    writeFileSync(join(docs, "index.html"), "MINE");
+    const r = runOut(fx, out);
+    assert.equal(r.status, 2, r.stderr);
+    assert.ok(r.stderr.startsWith(`dashboard: --out must be a .html or .htm file path, such as out/dashboard.html (got "${out}", whose site folder "${docs}" already exists and was not written by the dashboard; remove it or pick another name)\n`), r.stderr);
+    assert.throws(() => dashFor(fx, { out, projectsDir: null }), (e) => e.code === "EDASHBOARD" && e.message.includes(`"${docs}"`));
+    assert.equal(readFileSync(join(docs, "index.html"), "utf8"), "MINE");
+    assert.deepEqual(readdirSync(docs), ["index.html"]);
+    assert.equal(existsSync(out), false);
+    // A folder a previous run wrote is the dashboard's own, so the same --out runs again.
+    const again = join(fx.root, "o", "dash.html");
+    assert.equal(runOut(fx, again).status, 0);
+    const r2 = runOut(fx, again);
+    assert.equal(r2.status, 0, r2.stderr);
+    assert.equal(r2.stdout.split("\n")[0], `Dashboard: ${again}`);
     assert.deepEqual(readdirSync(join(fx.root, "tmp")), []);
   } finally { fx.cleanup(); }
 });

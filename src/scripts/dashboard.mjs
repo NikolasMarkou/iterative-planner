@@ -571,7 +571,9 @@ export function defaultOut(repo) {
 // the entry path minus its suffix, so --out must name a .html or .htm file (any case) with a name
 // before the suffix; anything else made the entry and the site folder the same path (EISDIR). That name
 // cannot be only dots or spaces: "." and ".." make the site folder the current folder or its parent, and
-// Windows strips trailing dots and spaces, so there "...", ". " and the like can do the same.
+// Windows strips trailing dots and spaces, so there "...", ". " and the like can do the same. A site
+// folder that already exists must be one a dashboard run wrote (it holds assets/live.js, the last file a
+// run writes), or --out docs.html would replace a project's own docs/index.html.
 // Takes the raw value; returns an error message naming it, or null. Never throws, never writes.
 // DECISION plan-2026-10-06T182322-ea385857/D-003: reject a bad --out, never normalise it (no appended
 // .html, no folder-means-folder/dashboard.html): a guess surprises, and a rejection can be relaxed later.
@@ -581,6 +583,10 @@ export function validateOut(raw) {
   if (!/[^\\/]\.html?$/i.test(raw)) return `${want})`;
   if (/(^|[\\/])[. ]+\.html?$/i.test(raw)) return `${want}, whose name before the suffix is only dots or spaces)`;
   try { if (fs.statSync(raw).isDirectory()) return `${want}, which is an existing folder)`; } catch { /* a missing path is fine */ }
+  const site = path.resolve(raw).replace(/\.html?$/i, ""); // as createDashboard derives it: "a/../docs.html" is docs
+  let st = null; try { st = fs.statSync(site); } catch { /* no site folder yet */ }
+  if (st && !st.isDirectory()) return `${want}, whose site folder "${site}" is an existing file)`;
+  if (st && !fs.existsSync(path.join(site, "assets", "live.js"))) return `${want}, whose site folder "${site}" already exists and was not written by the dashboard; remove it or pick another name)`;
   return null;
 }
 export function defaultProjectsDir() {
