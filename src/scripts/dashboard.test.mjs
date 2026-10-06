@@ -676,17 +676,17 @@ function runOut(fx, out) {
 test("parseArgs: --out is rejected unless it names a .html or .htm file", () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "dash-out-")));
   try {
-    const folder = join(root, "d.html");
+    const folder = join(root, "d.html"), viaMissing = `${root}/nope/../d.html`; // nope/ does not exist
     mkdirSync(folder);
     // A name before the suffix made only of dots or spaces makes the site folder the current folder or its
     // parent: directly for "." and "..", and on Windows (which strips trailing dots and spaces) for the rest.
-    for (const v of ["dash", "dash/", "dash\\", "x.txt", ".html", "out/.htm", "..html", "...html", "x/...htm", "x\\..html", "....html", ". .html", " ..html", "x/ . .htm", " .html", folder]) {
+    for (const v of ["dash", "dash/", "dash\\", "x.txt", ".html", "out/.htm", "..html", "...html", "x/...htm", "x\\..html", "....html", ". .html", " ..html", "x/ . .htm", " .html", folder, viaMissing]) {
       const { error } = parseArgs(["--out", v]);
       assert.ok(error, `--out ${v} should be rejected`);
       assert.ok(error.includes(v), `the error names the value: ${error}`);
       assert.match(error, /\.html or \.htm file path/);
     }
-    assert.match(parseArgs(["--out", folder]).error, /existing folder/);
+    for (const v of [folder, viaMissing]) assert.match(parseArgs(["--out", v]).error, /, which is an existing folder\)$/);
     // The site folder (the value minus its suffix) must be new, or one a dashboard run wrote (it holds
     // assets/live.js); a file there is refused too, since every write into it would fail.
     writeFileSync(join(root, "f"), "FILE");

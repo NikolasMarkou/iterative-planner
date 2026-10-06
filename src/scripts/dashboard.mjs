@@ -582,8 +582,9 @@ export function validateOut(raw) {
   if (/[\\/]$/.test(raw)) return `${want}, which ends in a folder separator)`;
   if (!/[^\\/]\.html?$/i.test(raw)) return `${want})`;
   if (/(^|[\\/])[. ]+\.html?$/i.test(raw)) return `${want}, whose name before the suffix is only dots or spaces)`;
-  try { if (fs.statSync(raw).isDirectory()) return `${want}, which is an existing folder)`; } catch { /* a missing path is fine */ }
-  const site = path.resolve(raw).replace(/\.html?$/i, ""); // as createDashboard derives it: "a/../docs.html" is docs
+  const entry = path.resolve(raw); // as createDashboard resolves it: "a/../docs.html" is docs.html even if a/ is missing
+  try { if (fs.statSync(entry).isDirectory()) return `${want}, which is an existing folder)`; } catch { /* a missing path is fine */ }
+  const site = entry.replace(/\.html?$/i, "");
   let st = null; try { st = fs.statSync(site); } catch { /* no site folder yet */ }
   if (st && !st.isDirectory()) return `${want}, whose site folder "${site}" is an existing file)`;
   if (st && !fs.existsSync(path.join(site, "assets", "live.js"))) return `${want}, whose site folder "${site}" already exists and was not written by the dashboard; remove it or pick another name)`;
