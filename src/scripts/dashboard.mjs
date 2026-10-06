@@ -1753,9 +1753,21 @@ export function parseArgs(argv) {
   return o;
 }
 
+// The opener for a platform, as [command, args], with the file as exactly one argument and no shell.
+// Exported so the Windows branch can be tested on a host that is not Windows.
+// DECISION plan-2026-10-06T182322-ea385857/D-004: on Windows use explorer.exe, never `cmd /c start`:
+// cmd re-parses & ^ | % in the path (a folder named a&b splits the command); explorer takes it as one argument.
+export function openCommand(platform, file) {
+  if (platform === "win32") return ["explorer.exe", [file]];
+  if (platform === "darwin") return ["open", [file]];
+  return ["xdg-open", [file]];
+}
+
 function openInBrowser(file) {
-  const [cmd, args] = process.platform === "darwin" ? ["open", [file]] : process.platform === "win32" ? ["cmd", ["/c", "start", "", file]] : ["xdg-open", [file]];
-  try { spawn(cmd, args, { detached: true, stdio: "ignore" }).unref(); } catch { /* the path is printed either way */ }
+  const [cmd, args] = openCommand(process.platform, file);
+  // A missing opener is reported as an async "error" event, not a throw; with no listener it would crash
+  // the run after the page was written. The path is printed either way.
+  try { spawn(cmd, args, { detached: true, stdio: "ignore" }).on("error", () => {}).unref(); } catch { /* the path is printed either way */ }
 }
 
 const isEntryPoint = (() => {

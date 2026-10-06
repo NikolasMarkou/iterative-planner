@@ -46,6 +46,7 @@ import {
   ingestLine,
   mdToHtml,
   modelName,
+  openCommand,
   parseArgs,
   parseChangelog,
   parseDecisions,
@@ -647,5 +648,34 @@ test("--out X.HTML writes the site folder X, and x.htm writes x", () => {
     assert.equal(dash.site, join(fx.root, "out", "x"));
     assert.ok(statSync(join(fx.root, "out", "x.htm")).isFile());
     assert.ok(existsSync(join(fx.root, "out", "x", "index.html")));
+  } finally { fx.cleanup(); }
+});
+
+// ---------- --open ----------
+// Windows used to go through `cmd /c start`, which re-parses & and % in an unquoted path; explorer.exe
+// takes it as one argument. No Windows host runs this suite, so this pure builder is the only check.
+test("openCommand: the path is one argument on every platform, and nothing goes through cmd", () => {
+  const posix = "/tmp/a b&c%d/dashboard.html", win = "C:\\a&b\\x%y%\\dashboard.html";
+  const cases = [["win32", win, "explorer.exe"], ["win32", posix, "explorer.exe"], ["darwin", posix, "open"], ["linux", posix, "xdg-open"], ["freebsd", posix, "xdg-open"], ["linux", win, "xdg-open"]];
+  for (const [platform, file, cmd] of cases) {
+    const got = openCommand(platform, file);
+    assert.deepEqual(got, [cmd, [file]], `${platform} ${file}`);
+    assert.equal(got[1].length, 1);
+    assert.equal(got[1][0], file);
+    assert.doesNotMatch(got[0], /cmd/i);
+  }
+});
+
+// A missing opener (no xdg-open on a headless box) is reported by spawn as an async "error" event,
+// which try/catch cannot see; with no listener it crashed the run after the page was written.
+test("CLI: --open with no opener on PATH still exits 0 and prints the path", POSIX, () => {
+  const fx = makeFixture();
+  try {
+    const tmp = join(fx.root, "tmp"), empty = join(fx.root, "empty-path"), out = join(fx.root, "o", "dashboard.html");
+    mkdirSync(tmp); mkdirSync(empty);
+    const r = spawnSync(process.execPath, [SCRIPT, "--open", "--no-usage", "--out", out], { cwd: fx.repo, encoding: "utf8", env: { ...process.env, PATH: empty, TMPDIR: tmp, TEMP: tmp, TMP: tmp } });
+    assert.equal(r.status, 0, r.stderr);
+    assert.ok(r.stdout.includes(`Dashboard: ${out}`), r.stdout);
+    assert.ok(statSync(out).isFile());
   } finally { fx.cleanup(); }
 });
