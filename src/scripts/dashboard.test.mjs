@@ -21,7 +21,9 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {
   appendFileSync,
+  chmodSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -29,11 +31,12 @@ import {
   realpathSync,
   rmSync,
   statSync,
+  symlinkSync,
   utimesSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, relative } from "node:path";
+import { basename, dirname, join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   attribute,
@@ -492,4 +495,89 @@ test("a repo with no plans gets a page that says so instead of failing", () => {
     createDashboard({ repo: join(root, "repo"), out, projectsDir: null, worktrees: false, now: NOW }).generate();
     assert.match(readFileSync(out, "utf8"), /No plan directories/);
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+// ---------- the default output folder and every write ----------
+// With no --out the output goes to a folder in the OS temp dir, which other users can reach. These
+// runs point TMPDIR/TEMP/TMP at a folder inside the fixture, so the real temp dir is never touched.
+const POSIX = { skip: process.platform === "win32" };
+const privateRoot = (fx) => join(fx.root, "tmp", `iterative-planner-dashboard-${process.getuid()}`);
+function runDefault(fx) {
+  const tmp = join(fx.root, "tmp");
+  mkdirSync(tmp, { recursive: true });
+  return spawnSync(process.execPath, [SCRIPT, "--no-usage"], { cwd: fx.repo, encoding: "utf8", env: { ...process.env, TMPDIR: tmp, TEMP: tmp, TMP: tmp } });
+}
+const refusal = (root) => new RegExp(`^dashboard: refusing to use ${root.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}: [^\n]+\\. Remove it, or pass --out <file\\.html> to write somewhere else\n$`);
+
+test("defaultOut: the temp folder name carries the user id", POSIX, () => {
+  const root = dirname(dirname(defaultOut("/some/repo")));
+  assert.equal(basename(root), `iterative-planner-dashboard-${process.getuid()}`);
+  assert.equal(dirname(root), tmpdir());
+});
+
+test("a default run writes only owner-only folders (0700) and files (0600) and leaves no temp files", POSIX, () => {
+  const fx = makeFixture();
+  try {
+    const r = runDefault(fx), root = privateRoot(fx);
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(r.stdout.split("\n")[0], `Dashboard: ${join(root, basename(dirname(defaultOut(fx.repo))), "dashboard.html")}`);
+    const seen = { dirs: 0, files: 0 };
+    const walk = (p) => {
+      const st = lstatSync(p);
+      if (st.isDirectory()) { seen.dirs++; assert.equal(st.mode & 0o777, 0o700, `${p} is a folder at mode ${(st.mode & 0o777).toString(8)}`); for (const e of readdirSync(p)) walk(join(p, e)); }
+      else { seen.files++; assert.ok(st.isFile(), `${p} is not a regular file`); assert.equal(st.mode & 0o777, 0o600, `${p} is a file at mode ${(st.mode & 0o777).toString(8)}`); assert.doesNotMatch(p, /\.tmp$/); }
+    };
+    walk(root);
+    assert.ok(seen.dirs >= 4 && seen.files >= 6, `walked ${seen.dirs} folders and ${seen.files} files`);
+    assert.ok(existsSync(join(root, basename(dirname(defaultOut(fx.repo))), "dashboard", "assets", "site.css")));
+  } finally { fx.cleanup(); }
+});
+
+test("a default folder that other users can reach (0755) is refused with one line and nothing written", POSIX, () => {
+  const fx = makeFixture();
+  try {
+    const root = privateRoot(fx);
+    mkdirSync(root, { recursive: true });
+    chmodSync(root, 0o755);
+    const r = runDefault(fx);
+    assert.equal(r.status, 1, r.stdout);
+    assert.match(r.stderr, refusal(root));
+    assert.match(r.stderr, /\(mode 755\)/);
+    assert.doesNotMatch(r.stderr, /^\s+at /m, "no stack trace");
+    assert.deepEqual(readdirSync(root), []);
+    assert.equal(statSync(root).mode & 0o777, 0o755, "refused, not chmod-ed");
+  } finally { fx.cleanup(); }
+});
+
+test("a default folder that is a symlink is refused, even to a folder we own, and its target stays empty", POSIX, () => {
+  const fx = makeFixture();
+  try {
+    const root = privateRoot(fx), target = join(fx.root, "elsewhere");
+    mkdirSync(target, { mode: 0o700 });
+    mkdirSync(dirname(root), { recursive: true });
+    symlinkSync(target, root);
+    const r = runDefault(fx);
+    assert.equal(r.status, 1, r.stdout);
+    assert.match(r.stderr, refusal(root));
+    assert.match(r.stderr, /: it is a symlink\./);
+    assert.deepEqual(readdirSync(target), []);
+  } finally { fx.cleanup(); }
+});
+
+test("with --out, a symlink planted at the temp name is not followed", POSIX, () => {
+  const fx = makeFixture();
+  try {
+    const sentinel = join(fx.root, "sentinel.txt");
+    writeFileSync(sentinel, "SENTINEL");
+    mkdirSync(dirname(fx.out), { recursive: true });
+    symlinkSync(sentinel, `${fx.out}.${process.pid}.tmp`);
+    dashFor(fx, { projectsDir: null }).generate();
+    assert.equal(readFileSync(sentinel, "utf8"), "SENTINEL");
+    assert.match(readFileSync(fx.out, "utf8"), /<html/i);
+    assert.ok(lstatSync(fx.out).isFile(), "the page itself is a regular file");
+    const left = [];
+    const walk = (d) => { for (const e of readdirSync(d, { withFileTypes: true })) { const p = join(d, e.name); if (e.isDirectory()) walk(p); else if (/\.tmp$/.test(e.name)) left.push(p); } };
+    walk(dirname(fx.out));
+    assert.deepEqual(left, []);
+  } finally { fx.cleanup(); }
 });

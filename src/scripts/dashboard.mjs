@@ -18,8 +18,8 @@
 //   node <skill-path>/scripts/dashboard.mjs --open          also open it in the default browser
 //   Options: --out <file.html>  --plan <plan-id>  --no-usage  --interval <seconds>  --help
 //
-// WHAT IT NEVER DOES: write anything under the repo (output goes to the OS temp dir unless --out
-// says otherwise), make a network request (system fonts; no remote assets), or run when imported
+// WHAT IT NEVER DOES: write anything under the repo (output goes to a private per-user folder in the
+// OS temp dir, refused if other users can reach it, unless --out says otherwise), make a network request (system fonts; no remote assets), or run when imported
 // (the CLI is behind the isEntryPoint guard, so the test suite imports the pure functions).
 //
 // TOKEN USAGE comes from Claude Code's own session logs, <config>/projects/<repo-slug>/*.jsonl and
@@ -42,7 +42,8 @@
 // the position is cached). git runs once per tick for the live plan; commit history is re-read only
 // when that worktree's HEAD moves. Documents whose source did not change are not re-rendered, and
 // output that did not change is not rewritten. With --watch the interval backs off to 60 s while
-// nothing changes.
+// nothing changes. Under the default output folder each write costs one extra mkdir and lstat, to
+// re-check that the folder is still private.
 
 import fs from "node:fs";
 import os from "node:os";
@@ -557,8 +558,11 @@ const PHASE_VERB = { EXPLORE: "Exploring", PLAN: "Planning", EXECUTE: "Executing
 const cap = (p) => (p ? p[0] + p.slice(1).toLowerCase() : "");
 const LIVE_WINDOW = 30 * 60 * 1000;
 
+// The temp folder name carries the user id where there is one (POSIX), so each user gets their own;
+// Windows has none, and its %TEMP% is already per-user.
 export function defaultOut(repo) {
-  return path.join(os.tmpdir(), "iterative-planner-dashboard", `${path.basename(repo)}-${sha(repo).slice(0, 8)}`, "dashboard.html");
+  const owner = typeof process.getuid === "function" ? `-${process.getuid()}` : "";
+  return path.join(os.tmpdir(), `iterative-planner-dashboard${owner}`, `${path.basename(repo)}-${sha(repo).slice(0, 8)}`, "dashboard.html");
 }
 export function defaultProjectsDir() {
   return path.join(process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), ".claude"), "projects");
@@ -574,6 +578,8 @@ export function createDashboard(opts = {}) {
   const entry = path.resolve(opts.out || defaultOut(repo));
   const base = path.dirname(entry);
   const site = entry.replace(/\.html$/, "");
+  // With no --out, the folder defaultOut names (two levels above the entry) must stay private to this user.
+  const privateRoot = opts.out ? null : path.dirname(path.dirname(entry));
   const now = opts.now || Date.now;
   const projectsDir = opts.projectsDir === undefined ? defaultProjectsDir() : opts.projectsDir;
   const watch = !!opts.watch;
@@ -675,7 +681,31 @@ export function createDashboard(opts = {}) {
 
   // ---- writing: unchanged output is neither re-read nor rewritten; unchanged documents are not re-rendered
   const VERSIONS = {}, LAST = new Map(), RENDERED = new Map();
-  const writeAtomic = (file, text) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(`${file}.tmp`, text); fs.renameSync(`${file}.tmp`, file); };
+  // The only writer. Under the private root it re-checks the root before every write (a temp cleaner can
+  // delete it during --watch and someone else re-create it). Every write, --out included, goes to a
+  // per-process temp name opened exclusively, so a symlink planted there is never followed.
+  const writeAtomic = (file, text) => {
+    if (privateRoot) {
+      try { fs.mkdirSync(privateRoot, { mode: 0o700 }); } catch (e) { if (e.code !== "EEXIST") throw e; }
+      const st = fs.lstatSync(privateRoot), uid = typeof process.getuid === "function" ? process.getuid() : null;
+      // DECISION plan-2026-10-06T182322-ea385857/D-002: refuse a loose or foreign folder, never chmod it.
+      // chmod follows symlinks, and a folder that was ever open to others may already hold planted entries.
+      const why = st.isSymbolicLink() ? "it is a symlink"
+        : !st.isDirectory() ? "it is not a folder"
+        : uid !== null && st.uid !== uid ? `it belongs to another user (uid ${st.uid})`
+        : uid !== null && (st.mode & 0o077) !== 0 ? `other users have access to it (mode ${(st.mode & 0o777).toString(8)})`
+        : "";
+      if (why) throw Object.assign(new Error(`refusing to use ${privateRoot}: ${why}. Remove it, or pass --out <file.html> to write somewhere else`), { code: "EDASHBOARD" });
+    }
+    fs.mkdirSync(path.dirname(file), privateRoot ? { recursive: true, mode: 0o700 } : { recursive: true });
+    const tmp = `${file}.${process.pid}.tmp`, wopts = privateRoot ? { flag: "wx", mode: 0o600 } : { flag: "wx" };
+    try { fs.writeFileSync(tmp, text, wopts); } catch (e) {
+      if (e.code !== "EEXIST") throw e;
+      fs.unlinkSync(tmp); // left by a crashed run whose pid was reused, or planted: never written through
+      fs.writeFileSync(tmp, text, wopts);
+    }
+    try { fs.renameSync(tmp, file); } catch (e) { try { fs.unlinkSync(tmp); } catch { /* already gone */ } throw e; }
+  };
   function put(file, html) {
     // Usage figures move on every model call; they sit in <!--v--> fences so pages can reload for them at a slower pace.
     const hash = sha(html), shash = sha(html.replace(/<!--v-->[\s\S]*?<!--\/v-->/g, ""));
@@ -1686,7 +1716,7 @@ Writes a read-only HTML view of plans/ (this repo and its git worktrees) and pri
   --watch            keep regenerating; open pages update themselves (backs off to 60 s while idle)
   --interval <s>     watch interval in seconds (default 10)
   --open             open the dashboard in the default browser
-  --out <file.html>  where to write it (default: a per-repo folder in the OS temp dir)
+  --out <file.html>  where to write it (default: a private per-user folder in the OS temp dir)
   --plan <plan-id>   treat this plan as the live one (default: plans/.current_plan, else the most recent)
   --no-usage         skip token usage (read from Claude Code's session logs under $CLAUDE_CONFIG_DIR or ~/.claude)`;
 
@@ -1724,8 +1754,10 @@ if (isEntryPoint) {
   if (o.help) { console.log(USAGE); process.exit(0); }
   if (o.error) { console.error(`dashboard: ${o.error}\n\n${USAGE}`); process.exit(2); }
   const dash = createDashboard({ repo: process.cwd(), out: o.out, pinned: o.plan, projectsDir: o.usage ? undefined : null, watch: o.watch });
-  dash.generate();
-  dash.flush();
+  try { dash.generate(); dash.flush(); } catch (e) {
+    console.error(e.code === "EDASHBOARD" ? `dashboard: ${e.message}` : e.stack || e.message);
+    process.exit(1);
+  }
   console.log(`Dashboard: ${dash.entry}`);
   if (o.open) openInBrowser(dash.entry);
   if (o.watch) {
