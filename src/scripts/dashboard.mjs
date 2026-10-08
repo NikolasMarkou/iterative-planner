@@ -275,8 +275,119 @@ export function parsePlan(text) {
 }
 
 export function parseProgress(text) {
-  const items = (h) => section(text, h).split("\n").filter((l) => /^- /.test(l)).map((l) => l.replace(/^- (\[[ xX]\] )?/, ""));
-  return { inProgress: items("In Progress"), blocked: items("Blocked"), flags: items("Hand-off flags") };
+  const raw = (h) => section(text, h).split("\n").filter((l) => /^- /.test(l) && !/\(none/i.test(l));
+  const items = (h) => raw(h).map((l) => l.replace(/^- (\[[ xX]\] )?/, "").trim()).filter(Boolean);
+  const remaining = raw("Remaining").map((l) => ({ done: /^- \[[xX]\]/.test(l), text: l.replace(/^- (\[[ xX]\] )?/, "").trim() })).filter((i) => i.text);
+  return { inProgress: items("In Progress"), remaining, blocked: items("Blocked"), flags: items("Hand-off flags") };
+}
+
+/** Verdict line from findings/review-*.md or findings/hygiene-*.md. */
+export function parseVerdict(src) {
+  const block = (src.match(/^##\s*Verdict\s*\n+([\s\S]*?)(?=\n##\s|\n*$)/im) || [])[1] || "";
+  const lines = block.split("\n").map((l) => l.trim()).filter(Boolean);
+  if (!lines.length) return { label: "", tone: "na" };
+  const joined = lines.join(" ");
+  const token = (lines[0].match(/^(READY(?:_TO_CLOSE)?|NEEDS_WORK|REMEDIATE|CLEAN|PASS|OK)\b/i)
+    || joined.match(/\b(READY(?:_TO_CLOSE)?|NEEDS_WORK|REMEDIATE)\b/i) || [])[1];
+  if (token) {
+    const u = token.toUpperCase().replace(/\s+/g, "_");
+    const tone = /READY|CLEAN|PASS|^OK$/.test(u) ? "ok" : /NEEDS_WORK|REMEDIATE/.test(u) ? "bad" : "na";
+    return { label: u.replace(/_/g, " "), tone };
+  }
+  const tone = /\bready\b/i.test(joined) && !/needs[_\s-]?work|remediate/i.test(joined) ? "ok"
+    : /needs[_\s-]?work|remediate|\bcritical\b/i.test(joined) ? "bad" : "na";
+  return { label: clip(lines[0].replace(/\*\*/g, ""), 52), tone };
+}
+
+function remainingStillOpen(text, stepList) {
+  const m = String(text).match(/^Steps?\s+(\d+)(?:\s*[–-]\s*(\d+))?/i);
+  if (!m || !stepList?.length) return true;
+  const a = +m[1], b = +(m[2] || m[1]);
+  const hit = stepList.filter((s) => {
+    const n = parseInt(s.key, 10);
+    return Number.isFinite(n) && n >= a && n <= b && !String(s.key).includes(".");
+  });
+  return !(hit.length && hit.every((s) => s.done));
+}
+
+function passKey(name) {
+  return String(name || "").replace(/^(review|hygiene)-/i, "");
+}
+
+export function pairReviews(reviews) {
+  const map = new Map();
+  for (const r of reviews) {
+    const id = passKey(r.name);
+    const g = map.get(id) || { id, review: null, hygiene: null, ms: 0 };
+    if (r.kind === "Hygiene") g.hygiene = r;
+    else g.review = r;
+    g.ms = Math.max(g.ms, r.ms);
+    map.set(id, g);
+  }
+  return [...map.values()].sort((a, b) => b.ms - a.ms);
+}
+
+export function hygieneSkipOf(state) {
+  return (state.hist || []).find((h) => /HYGIENE SKIP/i.test(h.text)) || null;
+}
+
+const ownerish = (s) => !!(s && (s.irreversible || /owner(?:-run|-paced)?|IRREVERSIBLE/i.test(s.title || "")));
+
+/** What the protocol is waiting on. Empty in CLOSE. Future owner-run remaining is not "waiting" while EXECUTE still has agent work. */
+export function attention(m) {
+  const { state, progress, verification, stepList, reviews = [] } = m;
+  if (state.phase === "CLOSE") return [];
+  const pending = (stepList || []).filter((s) => !s.done);
+  const agentPending = pending.filter((s) => !ownerish(s));
+  const out = [];
+  const seen = new Set();
+  const add = (who, title, detail) => {
+    const k = `${who}|${title}|${clip(String(detail || ""), 80)}`;
+    if (seen.has(k)) return;
+    seen.add(k);
+    out.push({ who, title, detail: String(detail || "").trim() });
+  };
+  if (state.phase === "PLAN") {
+    add("you", "Approve the plan", "Execute starts only after you say so.");
+    for (const b of progress.blocked || []) add("blocked", "Blocked", b);
+    return out;
+  }
+  const reviewBad = reviews.find((r) => r.kind === "Review" && r.tone === "bad");
+  const nextIsAgent = pending[0] && !ownerish(pending[0]);
+  if (state.phase === "REFLECT") {
+    if (reviewBad && nextIsAgent) add("agents", "Review needs work", [reviewBad.label, reviewBad.name].filter(Boolean).join(" · "));
+    else if (!pending.some(ownerish)) add("you", "Confirm Close", "Reflect is in. Protocol waits for you before CLOSE.");
+  }
+  const skipFutureRemaining = state.phase === "EXECUTE" && agentPending.length;
+  const addedSteps = new Set();
+  for (const s of pending) {
+    if (!ownerish(s)) continue;
+    if (skipFutureRemaining) continue;
+    add("you", `Step ${s.key}`, s.title);
+    addedSteps.add(s.key);
+  }
+  if (!skipFutureRemaining) {
+    for (const r of (progress.remaining || []).filter((x) => !x.done && remainingStillOpen(x.text, stepList))) {
+      const sm = r.text.match(/^Steps?\s+(\d+)/i);
+      if (sm && addedSteps.has(sm[1])) continue;
+      if (/owner|IRREVERSIBLE|hand-?off/i.test(r.text)) add("you", "Owner remaining", r.text);
+    }
+  }
+  for (const b of progress.blocked || []) add("blocked", "Blocked", b);
+  for (const f of progress.flags || []) add("you", "Hand-off", f);
+  const pendingChecks = verification.filter((v) => /PENDING/i.test(v.result));
+  const failChecks = verification.filter((v) => /FAIL/i.test(v.result));
+  if (failChecks.length) add("agents", "Checks failed", `${failChecks.length} FAIL`);
+  if (["REFLECT", "CLOSE"].includes(state.phase) && verification.length && pendingChecks.length === verification.length) {
+    add("agents", "Checks still the PLAN template", `${pendingChecks.length} rows still PENDING`);
+  }
+  const skip = hygieneSkipOf(state);
+  if (state.phase === "REFLECT" && skip && !reviews.some((r) => r.kind === "Hygiene")) {
+    add("note", "Hygiene sweep skipped", skip.text.replace(/^-?\s*HYGIENE SKIP[^:]*:\s*/i, ""));
+  }
+  const hyBad = reviews.find((r) => r.kind === "Hygiene" && r.tone === "bad");
+  if (hyBad) add("agents", "Hygiene wants a fix", hyBad.label);
+  return out;
 }
 
 const DECISION_HEAD_RE = new RegExp(`^#{2,3} (D-${DECISION_ID_NUM_PATTERN}) \\| (.+?) \\| (.+)$`, "m");
@@ -321,12 +432,14 @@ export function parseSummary(text) {
 
 /** "Phase 2 — Regroup (web)" → { kicker: "Phase 2", title: "Regroup", note: "web" }. Labels without that shape pass through. */
 export const splitLabel = (label) => {
-  const m = label.match(/^(Phase \d+[A-Za-z]?)\s*[—–:-]\s*(.+)$/);
-  let title = m ? m[2] : label, note = "";
+  const raw = String(label || "").replace(/^Plan v[\d.]+:\s*/i, "");
+  const m = raw.match(/^(Phase \d+[A-Za-z]?)\s*[—–:-]\s*(.+)$/);
+  let title = m ? m[2] : raw, note = "";
   const n = title.match(/^(.*?)\s*\(([^()]+)\)\s*$/);
   if (n && n[1].length > 8) { title = n[1]; note = n[2]; }
   return { kicker: m ? m[1] : "", title, note };
 };
+export const phaseCode = (label) => (splitLabel(label).kicker.match(/(\d+[A-Za-z]?)$/) || [])[1] || "";
 
 // ---------- token usage ----------
 const ROLE = { orchestrator: "Orchestrator", "ip-executor": "Executor", "ip-explorer": "Explorer", "ip-reviewer": "Reviewer", "ip-verifier": "Verifier", "ip-boyscout": "Hygiene sweep", "ip-archivist": "Archivist", "ip-plan-writer": "Plan writer", fork: "Fork" };
@@ -697,8 +810,15 @@ export function createDashboard(opts = {}) {
       if (!s) steps.set(k, { key: k, title: c.why, source: "fix", done: true, commit: /^[0-9a-f]{7}/.test(c.commit) ? c.commit : "" });
       else if (s.source === "fix") s.done = true;
     }
+    const reviews = files.filter((x) => {
+      const rel = x.rel.split(path.sep).join("/");
+      return /^findings\/(review|hygiene)-/.test(rel) && rel.endsWith(".md");
+    }).map((x) => {
+      const name = path.basename(x.rel, ".md");
+      return { rel: x.rel, name, kind: /^hygiene-/i.test(name) ? "Hygiene" : "Review", ms: x.ms, ...parseVerdict(read(x.path)) };
+    }).sort((a, b) => b.ms - a.ms);
     return {
-      pick, live, state, plan, summary, files, g, decisions, changelog,
+      pick, live, state, plan, summary, files, g, decisions, changelog, reviews,
       label: summary.title || plan.title.replace(/^Plan v\d+:\s*/, "") || pick.name,
       started: planStart(pick.name),
       latestMs: Math.max(latestFile, g.dirty[0]?.ms || 0, g.planCommits[0]?.ms || 0),
@@ -803,6 +923,17 @@ export function createDashboard(opts = {}) {
 
     ctx.sitemap = {
       activeName: active?.name || "",
+      pointer: [...pointers][0] || "",
+      open: models.filter((m) => m.state.phase !== "CLOSE").sort((a, b) => b.latestMs - a.latestMs).map((m) => {
+        const L = splitLabel(m.label);
+        return { name: m.pick.name, phase: m.state.phase, out: OUT.plan(m.pick.name), short: L.kicker || clip(L.title, 32), kicker: L.kicker, code: phaseCode(m.label) };
+      }),
+      owed: models.filter((m) => m.state.phase !== "CLOSE").map((m) => {
+        const w = attention(m).find((x) => x.who === "you");
+        if (!w) return null;
+        const L = splitLabel(m.label);
+        return { name: m.pick.name, short: L.kicker || phaseCode(m.label) || clip(L.title, 24), title: w.title, out: OUT.plan(m.pick.name) };
+      }).filter(Boolean),
       ledgers: LEDGER_ORDER.map((f) => ledgers.find((l) => l.file === f)).filter(Boolean),
       plans: [
         ...models.map((m) => { const L = splitLabel(m.label); return { name: m.pick.name, ms: m.started, out: OUT.plan(m.pick.name), short: `${L.kicker ? L.kicker + " — " : ""}${clip(L.title, 44)}` }; }),
@@ -896,9 +1027,26 @@ function topbar(ctx, here, current) {
   </div></header>`;
 }
 
-function shell(ctx, { title, here, current, body, live = false }) {
+function openBar(ctx, here, current) {
+  const open = [...(ctx.sitemap.open || [])].sort((a, b) => {
+    const n = (p) => { const m = String(p.code || "").match(/(\d+)([A-Za-z])?/); return m ? +m[1] * 100 + (m[2] ? m[2].toLowerCase().charCodeAt(0) - 96 : 0) : 9999; };
+    return n(a) - n(b);
+  });
+  const ptr = ctx.sitemap.pointer;
+  if (!open.length && !ptr) return "";
+  const chips = open.map((p) => {
+    const on = p.name === current;
+    const proto = p.name === ptr;
+    const tip = [p.kicker || p.short, PHASE_LABEL[p.phase] || p.phase, proto ? "protocol pointer (.current_plan)" : ""].filter(Boolean).join(" · ");
+    return `<a class="open-chip ph-${esc(String(p.phase).toLowerCase())}${on ? " on" : ""}${proto ? " proto" : ""}" href="${esc(ctx.href(here, p.out))}" title="${esc(tip)}"><b>${esc(p.code || p.short)}</b><em>${esc(PHASE_LABEL[p.phase] || p.phase)}</em>${proto ? '<span class="open-ptr">ptr</span>' : ""}</a>`;
+  }).join("");
+  return `<div class="openbar"><div class="wrap openbar-in"><span class="openbar-k">Open</span><div class="open-chips">${chips}</div></div></div>`;
+}
+
+function shell(ctx, { title, here, current, body, live = false, dock = "" }) {
   const a = (n) => esc(ctx.href(here, ctx.OUT.asset(n)));
   const baseHref = ctx.href(here, path.join(ctx.base, "x")).replace(/x$/, "");
+  const hasOpen = (ctx.sitemap.open || []).length > 0;
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -907,9 +1055,11 @@ function shell(ctx, { title, here, current, body, live = false }) {
 <script>try{var t=localStorage.getItem('pd-theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}</script>
 <link rel="stylesheet" href="${a("site.css")}">
 </head>
-<body data-key="${esc(ctx.href(path.join(ctx.base, "x"), here))}" data-hash="__PD_HASH__" data-shash="__PD_SHASH__" data-base="${esc(baseHref)}" data-livejs="${a("live.js")}" data-live="${live ? 1 : 0}">
+<body data-key="${esc(ctx.href(path.join(ctx.base, "x"), here))}" data-hash="__PD_HASH__" data-shash="__PD_SHASH__" data-base="${esc(baseHref)}" data-livejs="${a("live.js")}" data-live="${live ? 1 : 0}"${hasOpen ? ' class="has-open"' : ""}>
 <a class="skip" href="#main">Skip to content</a>
 ${topbar(ctx, here, current)}
+${openBar(ctx, here, current)}
+${dock}
 ${body}
 <div class="tip" id="tip" role="tooltip" hidden></div>
 <div class="palette" id="palette" hidden><div class="pal-box" role="dialog" aria-label="Search">
@@ -921,9 +1071,16 @@ ${body}
 </body></html>`;
 }
 
-function phaseRail(state, live) {
+function phaseRail(state, live, compact = false) {
   const order = ["EXPLORE", "PLAN", "EXECUTE", "REFLECT", ...(state.visits.PIVOT ? ["PIVOT"] : []), "CLOSE"];
   const curIdx = order.indexOf(state.phase);
+  if (compact) {
+    return `<ol class="dock-rail" aria-hidden="true">${order.map((p, i) => {
+      const n = state.visits[p] || (p === "EXPLORE" && curIdx >= 0 ? 1 : 0);
+      const cls = p === state.phase ? "cur" : n || i < curIdx ? "done" : "todo";
+      return `<li class="${cls}"><i></i></li>`;
+    }).join("")}</ol>`;
+  }
   return `<ol class="rail${live ? " is-live" : ""}" aria-label="Phases">${order.map((p, i) => {
     const n = state.visits[p] || (p === "EXPLORE" && curIdx >= 0 ? 1 : 0);
     const cls = p === state.phase ? "cur" : n || i < curIdx ? "done" : "todo";
@@ -983,7 +1140,7 @@ function usageBlock(ctx, a, { scope = "plan" } = {}) {
 
 function renderPlan(ctx, m, here) {
   const { OUT, href } = ctx;
-  const { pick, state, plan, progress, decisions, changelog, verification, g, files, stepList, summary, usage } = m;
+  const { pick, state, plan, progress, decisions, changelog, verification, g, files, stepList, summary, usage, reviews = [] } = m;
   const docHref = (rel) => esc(href(here, OUT.doc(pick.name, rel)));
   const docUrl = (rel) => href(here, OUT.doc(pick.name, rel));
   const done = stepList.filter((s) => s.done).length;
@@ -995,12 +1152,30 @@ function renderPlan(ctx, m, here) {
   const verb = state.phase === "CLOSE" && m.live ? "Closing" : PHASE_VERB[state.phase] || cap(state.phase);
   const executing = state.phase === "EXECUTE" && pending.length;
   const nextStep = executing ? (pending.find((s) => s.current) || pending[0]) : null;
-  const head = nextStep ? { verb: `${verb} step ${nextStep.key}`, detail: nextStep.title } : { verb, detail: state.lastDetail || state.step };
+  const waits = attention(m);
+  const reviewBad = reviews.find((r) => r.kind === "Review" && r.tone === "bad");
+  const nextIsAgent = pending[0] && !ownerish(pending[0]);
+  const head = state.phase === "PLAN"
+    ? { verb: "Waiting for you", detail: "Approve this plan to start Execute." }
+    : pending[0] && ownerish(pending[0]) ? { verb: "Waiting for you", detail: pending[0].title }
+    : state.phase === "REFLECT" && reviewBad && nextIsAgent
+      ? { verb: "Review needs work", detail: reviewBad.label }
+      : state.phase === "REFLECT"
+        ? { verb: "Waiting for you", detail: "Confirm Close, or send it back for fixes." }
+      : nextStep ? { verb: `${verb} step ${nextStep.key}`, detail: nextStep.title }
+      : { verb, detail: state.lastDetail || state.step };
   const passCount = verification.filter((v) => /PASS/i.test(v.result)).length;
+  const pendingCount = verification.filter((v) => /PENDING/i.test(v.result)).length;
+  const failCount = verification.filter((v) => /FAIL/i.test(v.result)).length;
+  const checksTemplate = verification.length > 0 && pendingCount === verification.length;
   const tokens = total(usage);
   const models = Object.entries(usage.byModel).sort((x, y) => y[1].tok - x[1].tok).map(([k]) => modelName(k));
   const end = m.closed || m.latestMs;
   const showNow = m.live || !summary.bottomLine;
+  const youN = waits.filter((w) => w.who === "you").length;
+  const skip = hygieneSkipOf(state);
+  const pairs = pairReviews(reviews);
+  const latestReview = reviews[0];
 
   const header = `
   <section class="hero wrap" id="overview">
@@ -1020,15 +1195,25 @@ function renderPlan(ctx, m, here) {
   </section>`;
 
   const tabs = `<nav class="tabs" aria-label="Sections"><div class="wrap tabs-in">
-    <a href="#now">${showNow ? "Now" : "Outcome"}</a><a href="#steps">Steps</a><a href="#usage">Usage</a><a href="#decisions">Decisions</a><a href="#timeline">Timeline</a><a href="#documents">Documents</a>${verification.length ? '<a href="#checks">Checks</a>' : ""}<a href="#activity">Activity</a>
+    ${waits.length || (pick.name === ctx.sitemap.activeName && (ctx.sitemap.owed || []).some((o) => o.name !== pick.name)) ? `<a href="#waiting">${youN ? "Waiting on you" : "Needs attention"}</a>` : ""}<a href="#now">${showNow ? "Now" : "Outcome"}</a><a href="#steps">Steps</a><a href="#usage">Usage</a><a href="#decisions">Decisions</a><a href="#timeline">Timeline</a>${reviews.length || skip ? '<a href="#reviews">Review + hygiene</a>' : ""}<a href="#documents">Documents</a>${verification.length ? '<a href="#checks">Checks</a>' : ""}<a href="#activity">Activity</a>
   </div></nav>`;
 
   const signals = [
+    latestReview && `<li><span class="sg-k">Latest ${latestReview.kind.toLowerCase()}</span><div><a href="${docHref(latestReview.rel)}">${esc(latestReview.name)}</a>${latestReview.label ? ` <span class="tag rv-${latestReview.tone}"><i></i>${esc(latestReview.label)}</span>` : ""} <span class="muted">${t(latestReview.ms)}</span></div></li>`,
     latestDecision && `<li><span class="sg-k">Latest decision</span><div><a href="${docHref("decisions.md")}#${esc(latestDecision.id)}" class="mono">${esc(latestDecision.id)}</a> <span class="muted">${esc(latestDecision.phase)}</span><p>${inline(clip(flat(latestDecision.decision), 260))}</p></div></li>`,
     lastCommit && `<li><span class="sg-k">Last commit</span><div><code>${esc(lastCommit.hash)}</code> <span class="muted">step ${esc(lastCommit.step)} · ${t(lastCommit.ms)}</span><p>${inline(lastCommit.title)}</p></div></li>`,
     lastEdit && `<li><span class="sg-k">Last edit</span><div><code>${esc(lastEdit.file)}</code> <span class="muted">${esc(lastEdit.step.replace(/^iter-\d+\//, ""))} · ${t(Date.parse(lastEdit.utc))}</span><p>${inline(clip(lastEdit.why, 200))}</p></div></li>`,
   ].filter(Boolean).join("");
   const upNext = pending.filter((s) => s !== nextStep).slice(0, 2);
+  const whoLabel = { you: "You", agents: "Agents", blocked: "Blocked", note: "Note" };
+  const others = (pick.name === ctx.sitemap.activeName ? (ctx.sitemap.owed || []).filter((o) => o.name !== pick.name) : []);
+  const waitSec = (waits.length || others.length) ? `
+  <section class="wait" id="waiting">
+    ${waits.length ? `<div class="sh"><h2>${youN ? "Waiting on you" : "Needs attention"}</h2>${youN ? `<span class="sh-x">${youN} need you</span>` : ""}</div>
+    <ul class="wait-list">${waits.map((w) => `<li class="who-${esc(w.who)}"><span class="wait-who">${esc(whoLabel[w.who] || w.who)}</span><div><b>${esc(w.title)}</b>${w.detail ? `<p>${inline(clip(w.detail, 240))}</p>` : ""}</div></li>`).join("")}</ul>` : ""}
+    ${others.length ? `<div class="sh across-h"><h2>Other open plans</h2><span class="sh-x">${others.length} still need you</span></div>
+    <ul class="wait-list">${others.map((o) => `<li class="who-you"><span class="wait-who">${esc(o.short)}</span><div><b><a href="${esc(href(here, o.out))}">${esc(o.title)}</a></b></div></li>`).join("")}</ul>` : ""}
+  </section>` : "";
   const now = showNow ? `
   <section class="now${m.live ? " is-live" : ""}">
     <div class="sh" id="now"><h2>${m.live ? '<span class="pulse"></span>Right now' : "Where it stopped"}</h2></div>
@@ -1061,7 +1246,7 @@ function renderPlan(ctx, m, here) {
       const u = usage.bySteps[s.key];
       const tags = [
         s.risk && `<span class="tag risk-${esc(s.risk.toLowerCase())}"><i></i>${esc(s.risk.toLowerCase())} risk</span>`,
-        s.irreversible && '<span class="tag">irreversible</span>',
+        s.irreversible && `<span class="tag">${s.done ? "irreversible" : "waiting on you"}</span>`,
         s.source === "fix" && `<span class="tag">completion fix${s.from ? ` · <a href="${docHref("decisions.md")}#${esc(s.from)}">${esc(s.from)}</a>` : ""}</span>`,
       ].filter(Boolean).join("");
       return `<li class="${s.done ? "done" : "todo"}${s.source === "fix" ? " fix" : ""}${s.key === nextKey ? " next" : ""}">
@@ -1111,11 +1296,32 @@ function renderPlan(ctx, m, here) {
       <ul class="docs">${list.map((f) => `<li><a href="${docHref(f.rel)}">${I.file}<span>${esc(f.rel.replace(/^(findings|checkpoints)[\\/]/, "").replace(/\.md$/, ""))}</span><em>${Math.max(1, Math.round(f.size / 1024))} KB · ${t(f.ms)}</em></a></li>`).join("")}</ul>`).join("")}
   </section>`;
 
+  const vTag = (r) => r?.label ? `<span class="tag rv-${r.tone}"><i></i>${esc(r.label)}</span>` : '<span class="muted">no verdict</span>';
+  const reviewsSec = (reviews.length || skip) ? `
+  <section>
+    ${sectionHead("reviews", "Review + hygiene", pairs.length ? `${pairs.length} pass${pairs.length > 1 ? "es" : ""}` : "")}
+    <ul class="rv pair">${pairs.map((g) => `
+      <li>
+        <span class="rv-k">${esc(g.id)}</span>
+        <div class="pair-cols">
+          <div><span class="muted">Review</span>${g.review ? `<a href="${docHref(g.review.rel)}">${esc(g.review.name)}</a>${vTag(g.review)}${t(g.review.ms)}` : '<span class="muted">none this pass</span>'}</div>
+          <div><span class="muted">Hygiene</span>${g.hygiene ? `<a href="${docHref(g.hygiene.rel)}">${esc(g.hygiene.name)}</a>${vTag(g.hygiene)}${t(g.hygiene.ms)}` : '<span class="muted">no sweep</span>'}</div>
+        </div>
+      </li>`).join("")}
+      ${skip && !reviews.some((r) => r.kind === "Hygiene") ? `<li><span class="rv-k">Hygiene</span><div class="pair-cols"><div><span class="muted">This reflect</span><span class="tag rv-na"><i></i>Skipped</span><p class="muted">${inline(clip(skip.text.replace(/^-?\s*HYGIENE SKIP[^:]*:\s*/i, ""), 220))}</p></div></div></li>` : ""}
+    </ul>
+  </section>` : "";
+
+  const checkExtra = checksTemplate
+    ? (["REFLECT", "CLOSE"].includes(state.phase) ? `${pendingCount} still PENDING — PLAN template`
+      : state.phase === "PLAN" ? "PLAN template"
+      : `${pendingCount} pending`)
+    : `${passCount} of ${verification.length} pass${failCount ? ` · ${failCount} fail` : ""}${pendingCount ? ` · ${pendingCount} pending` : ""}`;
   const checks = verification.length ? `
   <section>
-    ${sectionHead("checks", "Checks", `${passCount} of ${verification.length} pass`, moreLink(docUrl("verification.md"), "verification.md"))}
-    <ul class="checks">${verification.map((v) => { const ok = /PASS/i.test(v.result), bad = /FAIL/i.test(v.result); return `<li${tip(v.evidence)}><span class="res ${ok ? "ok" : bad ? "bad" : "na"}">${ok ? I.check : bad ? I.cross : ""}<b>${esc(ok ? "Pass" : bad ? "Fail" : v.result || "—")}</b></span><span>${inline(clip(v.criterion, 130))}</span></li>`; }).join("")}</ul>
-    <p class="foot">verification.md written ${t(mtime(path.join(pick.dir, "verification.md")))}${m.live ? " — it may predate the latest fixes" : ""}.</p>
+    ${sectionHead("checks", "Checks", checkExtra, moreLink(docUrl("verification.md"), "verification.md"))}
+    <ul class="checks">${verification.map((v) => { const ok = /PASS/i.test(v.result), bad = /FAIL/i.test(v.result), pend = /PENDING/i.test(v.result); return `<li${tip(v.evidence)}><span class="res ${ok ? "ok" : bad ? "bad" : pend ? "pend" : "na"}">${ok ? I.check : bad ? I.cross : ""}<b>${esc(ok ? "Pass" : bad ? "Fail" : pend ? "Pending" : v.result || "—")}</b></span><span>${inline(clip(v.criterion, 130))}</span></li>`; }).join("")}</ul>
+    <p class="foot">${checksTemplate && ["REFLECT", "CLOSE"].includes(state.phase) ? "These rows are still the PLAN template. The verifier has not filled them in. " : ""}verification.md written ${t(mtime(path.join(pick.dir, "verification.md")))}${m.live && !checksTemplate ? " — it may predate the latest fixes" : ""}.</p>
   </section>` : "";
 
   const activity = `
@@ -1130,10 +1336,27 @@ function renderPlan(ctx, m, here) {
   ${header}
   ${tabs}
   <main id="main" class="wrap layout">
-    <div class="main-col">${m.live ? now + outcome : outcome + now}${goal}${steps}${usageSec}${decs}${timeline}</div>
-    <aside class="side-col">${docs}${checks}${activity}</aside>
+    <div class="main-col">${waitSec}${m.live ? now + outcome : outcome + now}${goal}${steps}${usageSec}${decs}${timeline}</div>
+    <aside class="side-col">${reviewsSec}${docs}${checks}${activity}</aside>
   </main>`;
-  return shell(ctx, { title: `${m.live ? "● " : ""}${L.kicker || clip(L.title, 32)} · Planner`, here, current: pick.name, body, live: m.live });
+  const code = phaseCode(m.label) || (L.kicker.match(/(\d+[A-Za-z]?)$/) || [])[1] || "·";
+  const dock = `<div class="dock" id="dock">
+    <div class="wrap dock-in">
+      <a class="dock-id" href="#overview"><b>${esc(code)}</b><span>${inline(clip(L.title, 48))}</span></a>
+      ${phasePill(state.phase, m.live)}
+      ${phaseRail(state, m.live, true)}
+      <dl class="dock-k">
+        <div><dt>Steps</dt><dd>${done}/${stepList.length}</dd></div>
+        <div><dt>Decisions</dt><dd>${decisions.length}</dd></div>
+        <div><dt>Commits</dt><dd>${g.planCommits.length}</dd></div>
+        <div class="hide-sm"><dt>Checks</dt><dd>${verification.length ? `${passCount}/${verification.length}` : "—"}</dd></div>
+        <div class="hide-sm"><dt>Tokens</dt><dd>${vol(tokens ? fmtN(tokens) : "—")}</dd></div>
+        <div><dt>${m.closed ? "Duration" : "Elapsed"}</dt><dd>${fmtDur(end - m.started)}</dd></div>
+      </dl>
+      <button class="icon-btn dock-search" type="button" data-open-search aria-label="Search">${I.search}</button>
+    </div>
+  </div>`;
+  return shell(ctx, { title: `${m.live ? "● " : ""}${L.kicker || clip(L.title, 32)} · Planner`, here, current: pick.name, body, live: m.live, dock });
 }
 
 function renderDoc(ctx, { here, current, title, crumbs, src, ms, source, back }) {
@@ -1247,9 +1470,9 @@ const CSS = String.raw`
   --shadow:0 1px 0 rgba(11,11,11,.04),0 12px 32px -18px rgba(11,11,11,.18);
   --ping:rgba(12,163,12,.5);
   --sans:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
-  --serif:"Iowan Old Style","Palatino Linotype",Palatino,Cambria,Georgia,serif;
+  --serif:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
   --mono:ui-monospace,"Cascadia Mono",Consolas,SFMono-Regular,Menlo,"Liberation Mono",monospace;
-  --gut:16px;--bar-h:56px;
+  --gut:16px;--bar-h:56px;--open-h:0px;--dock-h:0px;
 }
 @media (prefers-color-scheme:dark){:root:where(:not([data-theme="light"])){
   color-scheme:dark;
@@ -1267,7 +1490,7 @@ const CSS = String.raw`
 }
 @media (min-width:760px){:root{--gut:32px}}
 *,*::before,*::after{box-sizing:border-box}
-html{-webkit-text-size-adjust:100%;scroll-padding-top:calc(var(--bar-h) + 64px)}
+html{-webkit-text-size-adjust:100%;scroll-padding-top:calc(var(--bar-h) + var(--open-h) + var(--dock-h) + 64px)}
 body{margin:0;background:var(--page);color:var(--ink);font:400 15px/1.6 var(--sans);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;min-height:100vh;overflow-x:hidden}
 body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;background:radial-gradient(1100px 520px at 12% -12%,var(--surface),transparent 70%)}
 a{color:inherit;text-decoration-color:var(--line-2);text-underline-offset:3px}
@@ -1296,6 +1519,53 @@ svg{width:1em;height:1em;flex:none}
 @media (max-width:759px){.switch select{font-size:16px}}
 .switch select:hover{border-color:var(--line-2)}
 .switch svg{position:absolute;right:12px;pointer-events:none;color:var(--ink-3)}
+body.has-open{--open-h:48px}
+.openbar{position:sticky;top:var(--bar-h);z-index:19;background:#161614;color:#f4f3ee;border-bottom:1px solid rgba(255,255,255,.08)}
+.openbar-in{display:flex;align-items:center;gap:12px 16px;min-height:48px;padding-top:6px;padding-bottom:6px}
+.openbar-k{flex:none;font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#8e8c84}
+.open-chips{display:flex;flex-wrap:wrap;gap:4px;min-width:0;flex:1;overflow-x:auto;overscroll-behavior-x:contain;-ms-overflow-style:auto;scrollbar-width:thin;scrollbar-color:#5c5b56 transparent}
+.open-chips::-webkit-scrollbar{height:8px}
+.open-chips::-webkit-scrollbar-track{background:transparent}
+.open-chips::-webkit-scrollbar-thumb{background:#5c5b56;border-radius:4px}
+.open-chip{flex:none;display:inline-flex;align-items:baseline;gap:6px;text-decoration:none;color:#d4d2c9;background:transparent;border:0;border-radius:8px;padding:7px 10px 7px 12px;box-shadow:inset 3px 0 0 #6e6d67}
+.open-chip.ph-execute{box-shadow:inset 3px 0 0 #3987e5}
+.open-chip.ph-reflect{box-shadow:inset 3px 0 0 #ec835a}
+.open-chip.ph-plan{box-shadow:inset 3px 0 0 #fab219}
+.open-chip.ph-explore{box-shadow:inset 3px 0 0 #1baf7a}
+.open-chip b{font:600 15px/1 var(--sans);letter-spacing:-.03em;font-variant-numeric:tabular-nums;color:#f4f3ee}
+.open-chip em{font:500 11px/1 var(--sans);font-style:normal;letter-spacing:.04em;text-transform:uppercase;color:#9a988f}
+.open-chip.on,.open-chip:hover{background:#f4f3ee;color:#111}
+.open-chip.on b,.open-chip:hover b{color:#111}
+.open-chip.on em,.open-chip:hover em{color:#52514e}
+.open-ptr{font:700 9px/1 var(--sans);letter-spacing:.08em;text-transform:uppercase;color:#c9a227;margin-left:2px}
+.open-chip.on .open-ptr,.open-chip:hover .open-ptr{color:#8a5a00}
+.dock{position:sticky;top:calc(var(--bar-h) + var(--open-h));z-index:18;max-height:0;opacity:0;overflow:hidden;pointer-events:none;background:color-mix(in srgb,var(--page) 90%,transparent);backdrop-filter:saturate(1.3) blur(14px);-webkit-backdrop-filter:saturate(1.3) blur(14px);border-bottom:1px solid transparent;transition:max-height .22s ease,opacity .18s ease,border-color .18s}
+body.is-compact .dock{max-height:56px;opacity:1;pointer-events:auto;border-bottom-color:var(--line)}
+body.is-compact{--dock-h:48px;--bar-h:0px;--open-h:36px}
+body.is-compact .bar{max-height:0;overflow:hidden;border:0;pointer-events:none;visibility:hidden}
+body.is-compact .openbar{top:0}
+body.is-compact .dock{top:var(--open-h)}
+body.is-compact .openbar-in{min-height:36px;padding-top:4px;padding-bottom:4px}
+body.is-compact .open-chip{padding:5px 8px 5px 10px}
+body.is-compact .open-chip b{font-size:13px}
+body.is-compact .open-chip em{display:none}
+body.is-compact .dock-search{display:flex}
+.dock-in{display:flex;align-items:center;gap:10px 14px;height:52px;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:thin;scrollbar-color:#c4c2b8 transparent}
+.dock-in::-webkit-scrollbar{height:8px}
+.dock-in::-webkit-scrollbar-thumb{background:#c4c2b8;border-radius:4px}
+.dock-id{display:flex;align-items:baseline;gap:8px;text-decoration:none;min-width:0;flex:1 1 160px}
+.dock-id b{font:600 16px/1 var(--sans);letter-spacing:-.03em;font-variant-numeric:tabular-nums;flex:none}
+.dock-id span{font:500 14px/1.2 var(--sans);letter-spacing:-.02em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.dock .pill{flex:none}
+.dock-rail{list-style:none;display:flex;align-items:center;gap:5px;margin:0;padding:0;flex:none}
+.dock-rail li i{display:block;width:8px;height:8px;border-radius:50%;background:var(--line-2)}
+.dock-rail li.done i{background:var(--ink)}
+.dock-rail li.cur i{box-shadow:0 0 0 3px color-mix(in srgb,var(--ink) 18%,transparent);background:var(--ink)}
+.dock-k{display:flex;gap:12px 16px;margin:0 0 0 auto;flex:none}
+.dock-k>div{display:flex;flex-direction:column;gap:1px}
+.dock-k dt{font-size:9.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
+.dock-k dd{margin:0;font:600 13px/1.1 var(--sans);font-variant-numeric:tabular-nums}
+.dock-search{display:none;flex:none;margin-left:4px}
 .bar-r{margin-left:auto;display:flex;align-items:center;gap:4px;flex:none}
 .bar-link{text-decoration:none;font-weight:500;font-size:14px;padding:8px 12px;border-radius:999px;color:var(--ink-2)}
 .bar-link:hover,.bar-link.cur{color:var(--ink);background:var(--hover)}
@@ -1350,7 +1620,7 @@ h1{font:400 clamp(34px,6.4vw,60px)/1.05 var(--serif);letter-spacing:-.022em;marg
 .mini{display:flex;gap:2px;margin-top:10px}
 .mini i{flex:1;height:4px;border-radius:2px;background:var(--line-2)}
 .mini i.on{background:var(--ink)}
-.tabs{position:sticky;top:var(--bar-h);z-index:15;background:color-mix(in srgb,var(--page) 88%,transparent);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid var(--line);margin-top:28px}
+.tabs{position:sticky;top:calc(var(--bar-h) + var(--open-h) + var(--dock-h));z-index:15;background:color-mix(in srgb,var(--page) 88%,transparent);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid var(--line);margin-top:28px}
 .tabs-in{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none;height:50px;align-items:center}
 .tabs-in::-webkit-scrollbar{display:none}
 .tabs a{flex:none;text-decoration:none;font-size:14px;font-weight:500;color:var(--ink-3);padding:7px 12px;border-radius:999px;transition:color .15s,background .15s}
@@ -1516,7 +1786,28 @@ details[open]>summary>svg{transform:rotate(180deg)}
 .res{display:inline-flex;align-items:center;gap:5px;font-size:12px;height:22px}
 .res b{font-weight:500;color:var(--ink-2)}
 .res svg{width:15px;height:15px}
-.res.ok svg{color:var(--good-ink)}.res.bad svg{color:var(--critical)}
+.res.ok svg{color:var(--good-ink)}.res.bad svg{color:var(--critical)}.res.pend b{color:var(--ink-3)}
+.wait{padding:22px 20px;background:color-mix(in srgb,var(--warning) 16%,var(--surface));border:1px solid color-mix(in srgb,var(--warning) 40%,var(--line));border-radius:20px;margin:0 0 22px}
+.wait .sh{border:0;padding:0;margin:0 0 14px}
+.wait .sh h2{font:600 12px/1 var(--sans);letter-spacing:.09em;text-transform:uppercase;color:var(--ink-2)}
+.wait-list{list-style:none;margin:0;padding:0;display:grid;gap:0}
+.wait-list li{display:grid;grid-template-columns:72px minmax(0,1fr);gap:12px;align-items:start;padding:12px 0 0;margin-top:12px;border-top:1px solid color-mix(in srgb,var(--ink) 8%,transparent)}
+.wait-list li:first-child{border:0;padding-top:0;margin-top:0}
+.wait-who{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);padding-top:4px}
+.wait-list b{font-size:15px;font-weight:600}
+.wait-list p{margin:3px 0 0;font-size:13.5px;color:var(--ink-2)}
+.wait-list a{text-decoration:none}
+.wait-list a:hover{text-decoration:underline}
+.wait .across-h{margin-top:18px;padding-top:16px;border-top:1px solid color-mix(in srgb,var(--ink) 10%,transparent)}
+.rv.pair{list-style:none;margin:0;padding:0}
+.rv.pair>li{padding:12px 0;border-bottom:1px solid var(--line)}
+.rv-k{font-size:11.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
+.tag.rv-ok i{background:var(--good)}.tag.rv-bad i{background:var(--critical)}.tag.rv-na i{background:var(--ink-3)}
+.pair-cols{display:grid;gap:12px;margin-top:6px}
+@media (min-width:640px){.pair-cols{grid-template-columns:1fr 1fr;gap:18px}}
+.pair-cols .muted{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;margin-bottom:4px}
+.pair-cols a{display:inline;margin-right:8px}
+.pair-cols p{margin:6px 0 0;font-size:13px;color:var(--ink-2)}
 .feed{list-style:none;margin:0 0 8px;padding:0}
 .feed li{display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px 10px;padding:10px 0;border-bottom:1px solid var(--line);font-size:13.5px}
 .feed li>time{grid-column:2;color:var(--ink-3);font-size:12px}
@@ -1622,7 +1913,7 @@ details[open]>summary>svg{transform:rotate(180deg)}
 .intro .pcard{animation-delay:calc(.1s + var(--i,0) * .07s)}
 .intro .docgrid{animation-delay:.08s}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
-@media print{.bar,.tabs,.palette,.tip{display:none}.now,.doc,.pcard{box-shadow:none}}
+@media print{.bar,.openbar,.dock,.tabs,.palette,.tip{display:none}.now,.doc,.pcard{box-shadow:none}}
 `;
 
 // The page script: relative times, theme, remembered <details>, live updates, tooltips, scroll-spy, search.
@@ -1711,6 +2002,12 @@ const JS = String.raw`
   }
   spy([].slice.call(document.querySelectorAll('.tabs a')), '-130px 0px -60% 0px', function (a) { var bar = a.parentNode; bar.scrollTo({ left: a.offsetLeft - bar.clientWidth / 2 + a.clientWidth / 2, behavior: 'smooth' }); });
   spy([].slice.call(document.querySelectorAll('.toc a')), '-90px 0px -75% 0px');
+  var overview = document.getElementById('overview');
+  if (overview && 'IntersectionObserver' in window) {
+    new IntersectionObserver(function (es) {
+      document.body.classList.toggle('is-compact', es[0] && !es[0].isIntersecting);
+    }, { threshold: 0 }).observe(overview);
+  }
 
   // Search: opened from the search button; Esc closes, arrows + Enter pick a result.
   var pal = document.getElementById('palette'), q = document.getElementById('pal-q'), list = document.getElementById('pal-list'), sel = 0, results = [];

@@ -1,8 +1,8 @@
 # Iterative Planner
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Skill](https://img.shields.io/badge/Skill-v2.66.0-green.svg)](CHANGELOG.md)
-[![Tests](https://img.shields.io/badge/tests-1031%20passing-brightgreen.svg)](src/scripts/bootstrap.test.mjs)
+[![Skill](https://img.shields.io/badge/Skill-v2.67.0-green.svg)](CHANGELOG.md)
+[![Tests](https://img.shields.io/badge/tests-1035%20passing-brightgreen.svg)](src/scripts/bootstrap.test.mjs)
 [![Sponsored by Electi](https://img.shields.io/badge/Sponsored%20by-Electi-red.svg)](https://www.electiconsulting.com)
 
 **A [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skill that stops an agent from losing the plot halfway through a hard task.**
@@ -462,7 +462,7 @@ node <skill-path>/scripts/dashboard.mjs --no-usage            # skip token usage
 
 **What you get**
 
-- **A live page for the running plan.** `dashboard.html` shows the plan `plans/.current_plan` names (else the one with the most recent activity): a phase rail showing how often each phase was entered and where you are now, the steps with their commits and completion fixes, decisions, the transition timeline, verification checks, recent commits and edits, and hand-off flags.
+- **A live page for the running plan.** `dashboard.html` shows the plan `plans/.current_plan` names (else the one with the most recent activity): a phase rail showing how often each phase was entered and where you are now, the steps with their commits and completion fixes, decisions, the transition timeline, verification checks, recent commits and edits, and hand-off flags. When more than one plan is still open, a chip strip names them and marks the pointer; the page says when the protocol is waiting on you, and pairs each review with its hygiene sweep.
 - **One page per plan, and every file in it.** Each plan has its own page, and every markdown file in the plan directory (`plan.md`, `findings/`, `checkpoints/`, and the rest) is rendered as a page of its own.
 - **An All plans page.** Every plan, newest first, including closed plans whose directory was removed: they are built from their row in `plans/INDEX.md` and their sections in the consolidated files. Plans in other git worktrees of the same repo are included.
 - **The cross-plan ledgers.** `SYSTEM.md`, `LESSONS.md`, `FINDINGS.md`, `DECISIONS.md`, `ANCHORS.md` and `INDEX.md` are rendered as pages too.
@@ -560,8 +560,8 @@ node --test src/scripts/bootstrap.test.mjs \
             src/scripts/check-register.test.mjs \
             src/scripts/scar-scan.test.mjs \
             src/scripts/dashboard.test.mjs
-# 1031 tests across 16 suites: bootstrap 288, validate-plan 234, shared 97,
-#                  check-agent-wiring 61, schema 53, scar-scan 50, dashboard 45,
+# 1035 tests across 16 suites: bootstrap 288, validate-plan 234, shared 97,
+#                  check-agent-wiring 61, schema 53, scar-scan 50, dashboard 49,
 #                  blast-radius 41, check-template-parity 41, check-register 32, check-doc-parity 24,
 #                  check-test-count 17, emit-state 15, check-readme-parity 14,
 #                  emit-template 11, check-changelog-parity 8

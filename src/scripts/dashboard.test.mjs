@@ -47,12 +47,15 @@ import {
   mdToHtml,
   modelName,
   openCommand,
+  attention,
   parseArgs,
   parseChangelog,
   parseDecisions,
   parsePlan,
   parseState,
+  parseVerdict,
   parseVerification,
+  phaseCode,
   projectSlug,
   readPointer,
   scanFile,
@@ -230,6 +233,47 @@ test("parseVerification: one row per criterion with its result and evidence", ()
 test("splitLabel: a 'Phase N —' label splits into kicker, title and note; others pass through", () => {
   assert.deepEqual(splitLabel("Phase 2 — Regroup + quick wins (check-lists)"), { kicker: "Phase 2", title: "Regroup + quick wins", note: "check-lists" });
   assert.deepEqual(splitLabel("Fix the login bug"), { kicker: "", title: "Fix the login bug", note: "" });
+  assert.equal(splitLabel("Plan v1: Phase 5 — Confirm Close").kicker, "Phase 5");
+  assert.equal(phaseCode("Phase 2 — Wiring"), "2");
+});
+
+test("parseVerdict: token and prose verdicts, and missing Verdict is empty", () => {
+  assert.deepEqual(parseVerdict("# Review\n\n## Verdict\nNEEDS_WORK\n\n## Findings\nx\n"), { label: "NEEDS WORK", tone: "bad" });
+  assert.deepEqual(parseVerdict("## Verdict\nREADY_TO_CLOSE\n"), { label: "READY TO CLOSE", tone: "ok" });
+  assert.equal(parseVerdict("# Review\nno verdict heading\n").tone, "na");
+});
+
+test("attention: PLAN and Confirm Close wait on you; EXECUTE with agent work does not wait on a later owner-run remaining", () => {
+  assert.equal(attention({ state: { phase: "CLOSE", hist: [] }, progress: { remaining: [], blocked: [], flags: [] }, verification: [], stepList: [], reviews: [] }).length, 0);
+  const plan = attention({
+    state: { phase: "PLAN", hist: [] },
+    progress: { remaining: [], blocked: [], flags: [] },
+    verification: [],
+    stepList: [{ key: "1", done: false, title: "Draft", irreversible: false }],
+    reviews: [],
+  });
+  assert.equal(plan[0].who, "you");
+  assert.match(plan[0].title, /Approve/);
+  const exec = attention({
+    state: { phase: "EXECUTE", hist: [] },
+    progress: { remaining: [{ done: false, text: "Steps 16–19 — owner-run cutover" }], blocked: [], flags: [] },
+    verification: [],
+    stepList: [
+      { key: "1", done: false, title: "Wire the API", irreversible: false },
+      { key: "16", done: false, title: "owner-run cutover", irreversible: false },
+    ],
+    reviews: [],
+  });
+  assert.equal(exec.some((x) => x.who === "you"), false, "a later owner-run remaining is not waiting while agents still have work");
+  const reflect = attention({
+    state: { phase: "REFLECT", hist: [] },
+    progress: { remaining: [], blocked: [], flags: [] },
+    verification: [{ result: "PENDING" }, { result: "PENDING" }],
+    stepList: [{ key: "1", done: true, title: "done", irreversible: false }],
+    reviews: [{ kind: "Review", tone: "ok", label: "READY TO CLOSE", name: "review-iter-1" }],
+  });
+  assert.ok(reflect.some((x) => x.title === "Confirm Close"));
+  assert.ok(reflect.some((x) => x.title === "Checks still the PLAN template"));
 });
 
 test("readPointer: trusts only an existing plan id, never a path", () => {
@@ -413,6 +457,42 @@ test("generate: the pointer picks the live plan even when another plan changed m
     const data = readData(fx);
     assert.equal(data.plans.find((p) => p.live)?.name, B);
     assert.match(readFileSync(fx.out, "utf8"), /Wiring/);
+  } finally { fx.cleanup(); }
+});
+
+test("generate: open chips name every unclosed plan and mark the pointer", () => {
+  const fx = makeFixture();
+  try {
+    dashFor(fx).generate();
+    const html = readFileSync(fx.out, "utf8");
+    assert.match(html, /class="openbar"/);
+    assert.match(html, /<span class="open-ptr">ptr<\/span>/);
+    assert.match(html, />2<\/b><em>Execute<\/em>/);
+    assert.equal([...html.matchAll(/class="open-chip /g)].length, 1, "the closed plan is not a chip");
+    assert.ok(!/<(link|script)[^>]+(href|src)="(https?:)?\/\//.test(html));
+  } finally { fx.cleanup(); }
+});
+
+test("generate: review+hygiene pairs and PLAN-template checks show on a REFLECT plan", () => {
+  const fx = makeFixture();
+  try {
+    writeFileSync(join(fx.plans, B, "state.md"), [
+      "# Current State: REFLECT", "## Iteration: 1", "## Current Plan Step: N/A",
+      "## Last Transition: EXECUTE → REFLECT (2026-01-11T10:00:00Z)",
+      "## Transition History:", "- INIT → EXPLORE (task started)", "- PLAN → EXECUTE (2026-01-11T09:00:00Z)",
+      "- EXECUTE → REFLECT (2026-01-11T10:00:00Z)", "",
+    ].join("\n"));
+    mkdirSync(join(fx.plans, B, "findings"), { recursive: true });
+    writeFileSync(join(fx.plans, B, "findings", "review-iter-1.md"), "# Review\n\n## Verdict\nREADY_TO_CLOSE\n");
+    writeFileSync(join(fx.plans, B, "findings", "hygiene-iter-1.md"), "# Hygiene\n\n## Verdict\nCLEAN\n");
+    writeFileSync(join(fx.plans, B, "verification.md"), "# Verification\n\n## Criteria Verification\n| # | Criterion (from plan.md) | Method | Command/Action | Result | Evidence |\n|---|---|---|---|---|---|\n| 1 | Tests pass | Automated | `npm test` | PENDING | |\n| 2 | Lint clean | Automated | `npm run lint` | PENDING | |\n");
+    dashFor(fx).generate();
+    const html = readFileSync(fx.out, "utf8");
+    assert.match(html, /Review \+ hygiene/);
+    assert.match(html, /READY TO CLOSE/);
+    assert.match(html, /PLAN template/);
+    assert.match(html, /Confirm Close/);
+    assert.match(html, /Waiting for you/);
   } finally { fx.cleanup(); }
 });
 

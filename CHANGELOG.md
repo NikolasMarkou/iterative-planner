@@ -4,6 +4,21 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.67.0] - 2026-10-08
+
+**The plan dashboard now shows which plans are still open, what the protocol is waiting on you for, and a compact sticky header once you scroll past the hero.** Follow-up to 2.66.0. Still a viewer: no agent reads it, `SKILL.md` does not mention it, pages load nothing from the network, and `plans/.current_plan` is still the live plan.
+
+### Changed
+
+- **Open plans.** A chip strip names every unclosed plan (phase on the chip, `ptr` on the one `.current_plan` names). Closed plans stay off it. Chips wrap, with a thin scrollbar when they overflow, so the bar stays usable on Windows.
+- **Waiting on you.** PLAN asks you to approve; REFLECT asks Confirm Close unless a review still needs work and the next step is agent work. A later owner-run remaining is not treated as waiting while EXECUTE still has agent work.
+- **Review + hygiene.** `findings/review-*` and `hygiene-*` are paired per pass with their Verdict. Checks that are still all PENDING in REFLECT or CLOSE are labelled as the PLAN template, not as failed work.
+- **Compact header.** Scrolling past the hero hides the top bar and pins a short dock (phase, steps, elapsed). Headings use the same system font stack as the rest of the page.
+
+### Notes
+
+- Test count: 1035 (was 1031 — net +4, all in `dashboard.test.mjs`; live run).
+
 ## [2.66.0] - 2026-10-05
 
 **A read-only dashboard for people: `src/scripts/dashboard.mjs` turns `plans/` into a small local website, so you can see what a running plan is doing, browse everything earlier plans did, and see how many tokens each plan, step and agent used.** It is a viewer, not part of the protocol: no agent reads or runs it, `SKILL.md` does not mention it, and it writes into the repo only where an explicit `--out` points.
