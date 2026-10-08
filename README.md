@@ -1,6 +1,6 @@
 # Iterative Planner
 
-[![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Skill](https://img.shields.io/badge/Skill-v2.66.0-green.svg)](CHANGELOG.md)
 [![Tests](https://img.shields.io/badge/tests-1031%20passing-brightgreen.svg)](src/scripts/bootstrap.test.mjs)
 [![Sponsored by Electi](https://img.shields.io/badge/Sponsored%20by-Electi-red.svg)](https://www.electiconsulting.com)
@@ -449,20 +449,34 @@ The validator cannot inspect chat content — it surfaces metadata signals only.
 
 ## Dashboard
 
-`src/scripts/dashboard.mjs` turns the plans directory into a small website you open in a browser: one page per plan with its phase, steps and their commits, decisions, timeline, checks, recent edits, and every file in the plan directory. It only reads. It writes into the repo only if you point `--out` there, and it will not write into an existing site folder (`--out docs.html` uses `docs/`) unless that folder holds a finished dashboard run (its `assets/live.js`). Its pages load nothing from the network.
+`src/scripts/dashboard.mjs` turns the plans directory into a small website you open in a browser. It is a viewer for people: no agent reads or runs it. It only reads, it writes into the repo only if you point `--out` there, and its pages load nothing from the network.
 
 ```bash
-node <skill-path>/scripts/dashboard.mjs            # write it once and print where it is
-node <skill-path>/scripts/dashboard.mjs --watch    # keep it current while a plan runs
-node <skill-path>/scripts/dashboard.mjs --open     # also open it in the browser
+node <skill-path>/scripts/dashboard.mjs                        # write it once and print where it is
+node <skill-path>/scripts/dashboard.mjs --watch               # keep it current while a plan runs
+node <skill-path>/scripts/dashboard.mjs --open                # also open it in the browser
+node <skill-path>/scripts/dashboard.mjs --out site/plans.html # write to a place you choose
+node <skill-path>/scripts/dashboard.mjs --plan <plan-id>      # treat this plan as the live one
+node <skill-path>/scripts/dashboard.mjs --no-usage            # skip token usage
 ```
 
-With `--watch`, open pages update themselves when their content changes, and the script slows to one check a minute while nothing does. Plans in other git worktrees of the same repo are included. A closed plan whose directory was removed still gets a page, built from its row in `plans/INDEX.md` and its sections in the consolidated files. Unless `--out` names a `.html` or `.htm` file elsewhere, the output goes to a private folder for the repo in the system temp directory, and the script refuses to use that folder if another user can reach it.
+**What you get**
+
+- **A live page for the running plan.** `dashboard.html` shows the plan `plans/.current_plan` names (else the one with the most recent activity): a phase rail showing how often each phase was entered and where you are now, the steps with their commits and completion fixes, decisions, the transition timeline, verification checks, recent commits and edits, and hand-off flags.
+- **One page per plan, and every file in it.** Each plan has its own page, and every markdown file in the plan directory (`plan.md`, `findings/`, `checkpoints/`, and the rest) is rendered as a page of its own.
+- **An All plans page.** Every plan, newest first, including closed plans whose directory was removed: they are built from their row in `plans/INDEX.md` and their sections in the consolidated files. Plans in other git worktrees of the same repo are included.
+- **The cross-plan ledgers.** `SYSTEM.md`, `LESSONS.md`, `FINDINGS.md`, `DECISIONS.md`, `ANCHORS.md` and `INDEX.md` are rendered as pages too.
+- **Search.** One search box over plans, documents, ledgers and individual decisions. Arrow keys and Enter pick a result, Esc closes it.
+- **Light, dark or automatic theme**, your choice remembered in the browser.
+- **Live updates with `--watch`.** Open pages poll a small manifest and reload only when their own content changed, keeping your scroll position. The script checks every 10 seconds (`--interval` changes this) and slows to once a minute while nothing changes.
+- **Token usage per plan** (see below).
+
+Unless `--out` names a `.html` or `.htm` file elsewhere, the output goes to a private folder for the repo in the system temp directory, and the script refuses to use that folder if another user can reach it. An explicit `--out` is used as given. It also writes a site folder beside the file (`--out docs.html` uses `docs/`), and it will not write into an existing folder unless that folder holds a finished dashboard run (its `assets/live.js`).
 
 <details>
 <summary><strong>Token usage, and how it is counted</strong></summary>
 
-Token usage and the models used come from Claude Code's own session logs, under `$CLAUDE_CONFIG_DIR/projects` or `~/.claude/projects`. Each plan shows its total, the split between cache reads, fresh input and output, usage per agent and per step, and every sub agent run with its model and duration.
+Token usage and the models used come from Claude Code's own session logs, under `$CLAUDE_CONFIG_DIR/projects` or `~/.claude/projects`. Each plan shows its total, the split between cache reads, fresh input and output, usage over time, usage per agent and per executor step, and every sub agent run with its model and duration.
 
 Only sessions that ran this skill are counted, and they are assigned to plans by time: a plan owns the time from its start to its close, and a sub agent run goes to the plan that was open when it started. Usage between plans, and usage from sessions that never ran the planner, is shown on its own and never added to a plan. A streamed reply is logged several times under one message id, and a forked sub agent's log repeats the message that started it; both are counted once, and the tests pin the arithmetic with hand-computed totals.
 
@@ -619,7 +633,7 @@ iterative-planner/
 ├── README.md                       # this file
 ├── CLAUDE.md                       # AI assistant guidance for contributors
 ├── CHANGELOG.md                    # version history
-├── LICENSE                         # GNU GPLv3
+├── LICENSE                         # Apache License 2.0
 ├── VERSION                         # single source of truth for version number
 ├── Makefile                        # Unix/Linux/macOS build
 ├── build.ps1                       # Windows PowerShell build
@@ -695,4 +709,4 @@ This project is sponsored by **[Electi Consulting](https://www.electiconsulting.
 
 ## License
 
-[GNU General Public License v3.0](LICENSE)
+[Apache License 2.0](LICENSE)

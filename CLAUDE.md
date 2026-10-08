@@ -13,7 +13,7 @@ Use cases: multi-file tasks, migrations, refactoring, failed tasks, debugging, a
 ```
 iterative-planner/
 ├── README.md                         # User documentation
-├── LICENSE                           # GNU GPLv3
+├── LICENSE                           # Apache License 2.0
 ├── VERSION                           # Single source of truth for version number
 ├── CHANGELOG.md                      # Version history
 ├── CLAUDE.md                         # This file
