@@ -13,6 +13,11 @@
 //   dashboard/ledger/<FILE>.html    plans/SYSTEM.md, LESSONS.md, FINDINGS.md, DECISIONS.md, ANCHORS.md, INDEX.md
 //   dashboard/assets/*              shared css/js, search index, live manifest, data.json, usage cache
 //
+// OPEN PLANS AND WAITING ON YOU: a chip strip under the top bar names every plan that is not closed (the
+// plan .current_plan names is marked), and the page says when the protocol is waiting on you: PLAN for
+// your approval, an owner-run step that is next in EXECUTE or REFLECT, or Confirm Close in REFLECT.
+// waitingOnYou() is the one rule behind the attention list, the headline and the step tags.
+//
 //   node <skill-path>/scripts/dashboard.mjs                 write once and print the path
 //   node <skill-path>/scripts/dashboard.mjs --watch         keep it current; open pages update themselves
 //   node <skill-path>/scripts/dashboard.mjs --open          also open it in the default browser

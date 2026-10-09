@@ -4,20 +4,40 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [2.67.0] - 2026-10-08
+## [2.67.0] - 2026-10-09
 
 **The plan dashboard now shows which plans are still open, what the protocol is waiting on you for, and a compact sticky header once you scroll past the hero.** Follow-up to 2.66.0. Still a viewer: no agent reads it, `SKILL.md` does not mention it, pages load nothing from the network, and `plans/.current_plan` is still the live plan.
 
 ### Changed
 
-- **Open plans.** A chip strip names every unclosed plan (phase on the chip, `ptr` on the one `.current_plan` names). Closed plans stay off it. Chips wrap, with a thin scrollbar when they overflow, so the bar stays usable on Windows.
-- **Waiting on you.** PLAN asks you to approve; REFLECT asks Confirm Close unless a review still needs work and the next step is agent work. A later owner-run remaining is not treated as waiting while EXECUTE still has agent work.
+- **Open plans.** A chip strip names every unclosed plan, one chip each (phase on the chip, `ptr` on the one `.current_plan` names). Closed plans stay off it, and a pointer that names no open plan does not make the bar appear. The chips sit on one row that scrolls sideways when they overflow, with a thin scrollbar, so the bar keeps one fixed height and the header, tabs and contents list below it can offset by exactly that height.
+- **Waiting on you.** Only PLAN, EXECUTE and REFLECT can wait. PLAN asks you to approve. In EXECUTE and REFLECT you owe the first unfinished steps, as long as each is owner-run; the first agent step ends that run. A step is owner-run when it is marked irreversible or its title has the whole word "owner" (or IRREVERSIBLE). REFLECT asks Confirm Close when no unfinished step is owner-run, unless the newest review still needs work and steps remain. While EXECUTE still has agent work, later owner-run lines under Remaining are not listed. One rule serves the attention list, the headline and the step tags.
 - **Review + hygiene.** `findings/review-*` and `hygiene-*` are paired per pass with their Verdict. Checks that are still all PENDING in REFLECT or CLOSE are labelled as the PLAN template, not as failed work.
 - **Compact header.** Scrolling past the hero hides the top bar and pins a short dock (phase, steps, elapsed). Headings use the same system font stack as the rest of the page.
 
+### Added
+
+- **Other open plans.** On the live plan's page, a box lists the other open plans that are waiting on you.
+- **Latest review row.** The summary shows the newest review or hygiene file with its verdict.
+- **Step tag.** An unfinished step you owe now reads "waiting on you" instead of "irreversible".
+- **Plan label cleanup.** A leading "Plan vN:" is stripped from plan labels, so chips and headings show the goal.
+- **Checks state.** Checks that are all PENDING show a pending count, and in REFLECT or CLOSE say they are still the PLAN template.
+
+### Fixed
+
+Review of the pull request found these before release. They are fixed here, in the entry that adds the feature.
+
+- **One rule for "waiting on you".** The attention list, the headline and the step tags each had their own version of the rule and could disagree about whether a step was owed to you. They now share one function.
+- **Only the newest review pass and the newest hygiene pass count.** A review that said NEEDS_WORK followed by a pass that said READY_TO_CLOSE kept raising "Review needs work", and the same held for hygiene. Passes with equal modification times are now ordered by file name, so the result no longer depends on directory listing order.
+- **The whole verdict vocabulary is read.** NEEDS_INVESTIGATION and SCAN_UNTRUSTWORTHY were shown as neutral; they now count as needing work. "Not ready to close" no longer reads as ready, the unfilled template line (`READY_TO_CLOSE / NEEDS_WORK`) is neutral, and a verdict word on a later line of the Verdict section is found.
+- **The open bar and the sticky offsets agree.** The bar no longer renders for a pointer alone when no plan is open, and the page class that makes room for it is set from the same test as the bar itself. Wrapped chips used to grow the bar past the height the header, tabs and contents list assumed, sliding them under it.
+- **The "(none" filter is anchored.** A Progress item such as "Handle (none) values in the parser" was dropped because "(none" appeared anywhere in the line. Only a placeholder item that starts with "(none" is skipped now.
+
 ### Notes
 
-- Test count: 1035 (was 1031 — net +4, all in `dashboard.test.mjs`; live run).
+- Test count: 1062 (was 1031; net +31, all in `dashboard.test.mjs`, which went from 45 to 76; live run).
+- Sticky and scrollbar behaviour was checked by reading the stylesheet and by string assertions on it, not in a browser. The scroll-spy margin in the contents list is still a fixed offset and was not changed.
+- Cost: no walk over `plans/` was added; the open strip and the waiting rule use the plan models the dashboard already reads.
 
 ## [2.66.0] - 2026-10-05
 
