@@ -324,12 +324,36 @@ export function pairReviews(reviews) {
     g.ms = Math.max(g.ms, r.ms);
     map.set(id, g);
   }
-  return [...map.values()].sort((a, b) => b.ms - a.ms);
+  return [...map.values()].sort((a, b) => newestFirst({ ms: a.ms, name: a.id }, { ms: b.ms, name: b.id }));
 }
 
 export function hygieneSkipOf(state) {
   return (state.hist || []).find((h) => /HYGIENE SKIP/i.test(h.text)) || null;
 }
+
+/**
+ * Newest first. Later mtime wins; equal mtimes fall back to the file name, compared with numbers as numbers, so
+ * review-iter-2 beats review-iter-1-pass2 beats review-iter-1 and pass10 beats pass2. Same input, same order.
+ */
+export function newestFirst(a, b) {
+  return (b.ms - a.ms) || String(b.name).localeCompare(String(a.name), undefined, { numeric: true });
+}
+
+/**
+ * The newest entry of one kind ("Review" or "Hygiene") in `reviews`, or null. Does not depend on the input order.
+ * Only this pass is the current verdict: an older pass that needed work was answered by the pass after it.
+ */
+export function latestOfKind(reviews, kind) {
+  let best = null;
+  for (const r of reviews) if (r.kind === kind && (!best || newestFirst(r, best) < 0)) best = r;
+  return best;
+}
+
+/** The newest pass of `kind`, only when it still has a problem; otherwise null. */
+const newestBad = (reviews, kind) => {
+  const r = latestOfKind(reviews, kind);
+  return r && r.tone === "bad" ? r : null;
+};
 
 const OWNER_STEP_RE = /\bowner\b|IRREVERSIBLE/i;
 const OWNER_REMAINING_RE = /\bowner\b|IRREVERSIBLE|\bhand-?off\b/i;
@@ -353,7 +377,7 @@ export function waitingOnYou(m) {
     steps.push(s);
   }
   if (steps.length) return { kind: "owner-step", steps, detail: steps[0].title };
-  const reviewBad = reviews.find((r) => r.kind === "Review" && r.tone === "bad");
+  const reviewBad = newestBad(reviews, "Review");
   if (state.phase === "REFLECT" && !pending.some(ownerish) && !(reviewBad && pending.length)) {
     return { kind: "confirm-close", steps: [], detail: "Reflect is in. Protocol waits for you before CLOSE." };
   }
@@ -380,7 +404,7 @@ export function attention(m) {
     for (const b of progress.blocked || []) add("blocked", "Blocked", b);
     return out;
   }
-  const reviewBad = reviews.find((r) => r.kind === "Review" && r.tone === "bad");
+  const reviewBad = newestBad(reviews, "Review");
   const nextIsAgent = pending[0] && !ownerish(pending[0]);
   if (state.phase === "REFLECT" && reviewBad && nextIsAgent) add("agents", "Review needs work", [reviewBad.label, reviewBad.name].filter(Boolean).join(" · "));
   if (wait?.kind === "confirm-close") add("you", "Confirm Close", wait.detail);
@@ -410,7 +434,7 @@ export function attention(m) {
   if (state.phase === "REFLECT" && skip && !reviews.some((r) => r.kind === "Hygiene")) {
     add("note", "Hygiene sweep skipped", skip.text.replace(/^-?\s*HYGIENE SKIP[^:]*:\s*/i, ""));
   }
-  const hyBad = reviews.find((r) => r.kind === "Hygiene" && r.tone === "bad");
+  const hyBad = newestBad(reviews, "Hygiene");
   if (hyBad) add("agents", "Hygiene wants a fix", hyBad.label);
   return out;
 }
@@ -841,7 +865,7 @@ export function createDashboard(opts = {}) {
     }).map((x) => {
       const name = path.basename(x.rel, ".md");
       return { rel: x.rel, name, kind: /^hygiene-/i.test(name) ? "Hygiene" : "Review", ms: x.ms, ...parseVerdict(read(x.path)) };
-    }).sort((a, b) => b.ms - a.ms);
+    }).sort(newestFirst);
     return {
       pick, live, state, plan, summary, files, g, decisions, changelog, reviews,
       label: summary.title || plan.title.replace(/^Plan v\d+:\s*/, "") || pick.name,
@@ -1179,7 +1203,7 @@ function renderPlan(ctx, m, here) {
   const nextStep = executing ? (pending.find((s) => s.current) || pending[0]) : null;
   const waits = attention(m);
   const wait = waitingOnYou(m);
-  const reviewBad = reviews.find((r) => r.kind === "Review" && r.tone === "bad");
+  const reviewBad = newestBad(reviews, "Review");
   const nextIsAgent = pending[0] && !ownerish(pending[0]);
   const head = wait?.kind === "approve" ? { verb: "Waiting for you", detail: "Approve this plan to start Execute." }
     : wait?.kind === "owner-step" ? { verb: "Waiting for you", detail: wait.detail }

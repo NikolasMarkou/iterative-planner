@@ -44,9 +44,12 @@ import {
   defaultOut,
   fmtN,
   ingestLine,
+  latestOfKind,
   mdToHtml,
   modelName,
+  newestFirst,
   openCommand,
+  pairReviews,
   attention,
   parseArgs,
   parseChangelog,
@@ -421,6 +424,129 @@ test("generate: steps that merely contain 'owner' inside another word do not wai
     setPlan(fx, B, "EXECUTE", "1. [ ] Owner-run deploy [RISK: low]\n2. [ ] Add ownership tests [RISK: low]");
     dashFor(fx).generate();
     assert.match(planPage(fx, B), /<p class="now-h"><span>Waiting for you<\/span> — Owner-run deploy/);
+  } finally { fx.cleanup(); }
+});
+
+// A review or hygiene record as build() hands it over; `ms` is the file mtime, `name` the file name without .md.
+const rv = (name, tone, ms, label = tone === "bad" ? "NEEDS WORK" : "READY TO CLOSE") => ({ kind: /^hygiene/.test(name) ? "Hygiene" : "Review", name, tone, label, ms });
+const youTitles = (phase, steps, reviews) => attention(wm(phase, steps, { reviews })).map((x) => x.title);
+
+test("latestOfKind: the newest pass of each kind, whatever order the records arrive in", () => {
+  const a = rv("review-iter-1", "bad", 1000), b = rv("review-iter-1-pass2", "ok", 2000), h = rv("hygiene-iter-1", "bad", 3000);
+  for (const list of [[a, b, h], [h, b, a], [b, h, a]]) {
+    assert.equal(latestOfKind(list, "Review"), b, "a later mtime wins over an older bad pass");
+    assert.equal(latestOfKind(list, "Hygiene"), h, "the other kind is not mixed in, even when it is newer");
+  }
+  assert.equal(latestOfKind([], "Review"), null);
+  assert.equal(latestOfKind([h], "Review"), null);
+});
+
+test("newestFirst: equal mtimes fall back to the file name, higher iteration and higher pass first, numbers as numbers", () => {
+  const names = ["review-iter-1", "review-iter-1-pass2", "review-iter-1-pass10", "review-iter-2", "review-iter-9", "review-iter-10"];
+  const want = ["review-iter-10", "review-iter-9", "review-iter-2", "review-iter-1-pass10", "review-iter-1-pass2", "review-iter-1"];
+  const ordered = (list) => list.map((name) => ({ name, ms: 500 })).sort(newestFirst).map((r) => r.name);
+  assert.deepEqual(ordered(names), want);
+  assert.deepEqual(ordered([...names].reverse()), want, "the result does not depend on the input order");
+  assert.deepEqual([{ name: "review-iter-9", ms: 2 }, { name: "review-iter-1", ms: 3 }].sort(newestFirst).map((r) => r.name), ["review-iter-1", "review-iter-9"], "mtime beats the name");
+  for (const list of [[rv("review-iter-1", "bad", 500), rv("review-iter-1-pass2", "ok", 500)], [rv("review-iter-1-pass2", "ok", 500), rv("review-iter-1", "bad", 500)]]) {
+    assert.equal(latestOfKind(list, "Review").name, "review-iter-1-pass2", "on equal mtimes the later pass is the newest");
+  }
+});
+
+test("attention: a review that needed work is answered by a later good pass; only the newest pass of each kind counts", () => {
+  const todo = [stp(1, "Fix it")];
+  const stale = [rv("review-iter-1", "bad", 1000), rv("review-iter-1-pass2", "ok", 2000)];
+  for (const reviews of [stale, [...stale].reverse()]) {
+    assert.equal(youTitles("REFLECT", todo, reviews).includes("Review needs work"), false, "no nag after a READY pass");
+    assert.equal(waitingOnYou(wm("REFLECT", todo, { reviews }))?.kind, "confirm-close", "the newest pass is good, so nothing blocks Confirm Close");
+  }
+  assert.ok(youTitles("REFLECT", todo, [rv("review-iter-1", "ok", 1000), rv("review-iter-1-pass2", "bad", 2000)]).includes("Review needs work"), "a newest pass that needs work still nags");
+  assert.equal(waitingOnYou(wm("REFLECT", todo, { reviews: [rv("review-iter-1", "ok", 1000), rv("review-iter-1-pass2", "bad", 2000)] })), null, "and it keeps the turn with the agents");
+  const staleHy = [rv("hygiene-iter-1", "bad", 1000, "REMEDIATE"), rv("hygiene-iter-1-pass2", "ok", 2000, "CLEAN")];
+  for (const reviews of [staleHy, [...staleHy].reverse()]) {
+    assert.equal(youTitles("EXECUTE", todo, reviews).includes("Hygiene wants a fix"), false, "no nag after a CLEAN pass");
+  }
+  assert.ok(youTitles("EXECUTE", todo, [rv("hygiene-iter-1", "ok", 1000, "CLEAN"), rv("hygiene-iter-1-pass2", "bad", 2000, "REMEDIATE")]).includes("Hygiene wants a fix"));
+  assert.ok(youTitles("EXECUTE", todo, [rv("hygiene-iter-1", "bad", 1000, "REMEDIATE"), rv("review-iter-1", "ok", 3000)]).includes("Hygiene wants a fix"), "a newer review does not clear hygiene");
+  const tie = [rv("review-iter-1", "bad", 500), rv("review-iter-1-pass2", "ok", 500)];
+  for (const reviews of [tie, [...tie].reverse()]) {
+    assert.equal(youTitles("REFLECT", todo, reviews).includes("Review needs work"), false, "equal mtimes: the later pass by name decides");
+  }
+  const tieBad = [rv("review-iter-1", "ok", 500), rv("review-iter-1-pass2", "bad", 500)];
+  for (const reviews of [tieBad, [...tieBad].reverse()]) {
+    assert.ok(youTitles("REFLECT", todo, reviews).includes("Review needs work"), "equal mtimes: a bad later pass still nags");
+  }
+});
+
+test("generate: a stale NEEDS_WORK or REMEDIATE no longer nags once a later pass is READY or CLEAN; a newest bad pass still does", () => {
+  const fx = makeFixture();
+  try {
+    setPlan(fx, B, "REFLECT", "1. [ ] Wire the API [RISK: low]");
+    const dir = join(fx.plans, B, "findings");
+    const put = (name, verdict, sec) => {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, `${name}.md`), `# Findings\n\n## Verdict\n${verdict}\n`);
+      utimesSync(join(dir, `${name}.md`), sec, sec);
+    };
+    put("review-iter-1", "NEEDS_WORK", 1000);
+    put("review-iter-1-pass2", "READY_TO_CLOSE", 4000);
+    put("hygiene-iter-1", "REMEDIATE", 1000);
+    put("hygiene-iter-1-pass2", "CLEAN", 2000);
+    dashFor(fx).generate();
+    const page = planPage(fx, B);
+    assert.doesNotMatch(page, /Review needs work/);
+    assert.doesNotMatch(page, /Hygiene wants a fix/);
+    assert.match(page, /<span class="sg-k">Latest review<\/span><div><a [^>]*>review-iter-1-pass2<\/a> <span class="tag rv-ok"><i><\/i>READY TO CLOSE<\/span>/, "the Latest review row says ready");
+    put("review-iter-1-pass3", "NEEDS_WORK", 5000);
+    put("hygiene-iter-1-pass3", "REMEDIATE", 6000);
+    dashFor(fx).generate();
+    const bad = planPage(fx, B);
+    assert.match(bad, /<p class="now-h"><span>Review needs work<\/span>/, "the newest pass needs work, so the hero says so");
+    assert.match(bad, /<b>Review needs work<\/b>/);
+    assert.match(bad, /<b>Hygiene wants a fix<\/b>/);
+  } finally { fx.cleanup(); }
+});
+
+test("generate: with equal mtimes the later pass is the Latest review and decides the nag", () => {
+  const fx = makeFixture();
+  try {
+    setPlan(fx, B, "REFLECT", "1. [ ] Wire the API [RISK: low]");
+    const dir = join(fx.plans, B, "findings");
+    mkdirSync(dir, { recursive: true });
+    // Many files at one mtime: the directory listing hands them over in whatever order the file system likes,
+    // so only an explicit tie-break puts pass12 first. The newest pass is the one that is READY.
+    const names = ["review-iter-1", ...Array.from({ length: 12 }, (_, i) => `review-iter-1-pass${i + 2}`)];
+    for (const name of names) {
+      writeFileSync(join(dir, `${name}.md`), `# Review\n\n## Verdict\n${name === "review-iter-1-pass13" ? "READY_TO_CLOSE" : "NEEDS_WORK"}\n`);
+      utimesSync(join(dir, `${name}.md`), 3000, 3000);
+    }
+    dashFor(fx).generate();
+    const page = planPage(fx, B);
+    assert.match(page, /<span class="sg-k">Latest review<\/span><div><a [^>]*>review-iter-1-pass13<\/a>/);
+    assert.doesNotMatch(page, /Review needs work/);
+  } finally { fx.cleanup(); }
+});
+
+test("pairReviews: a review and a hygiene pass of the same iteration share one row, passes stay apart, newest row first", () => {
+  const list = [rv("review-iter-1", "bad", 1000), rv("hygiene-iter-1", "ok", 1500, "CLEAN"), rv("review-iter-1-pass2", "ok", 4000), rv("hygiene-iter-2", "ok", 3000, "CLEAN")];
+  const rows = pairReviews(list);
+  assert.deepEqual(rows.map((g) => g.id), ["iter-1-pass2", "iter-2", "iter-1"]);
+  assert.deepEqual(rows.map((g) => [g.review?.name ?? null, g.hygiene?.name ?? null]), [["review-iter-1-pass2", null], [null, "hygiene-iter-2"], ["review-iter-1", "hygiene-iter-1"]]);
+  assert.equal(rows[2].ms, 1500, "a row is as new as the newest record in it");
+  assert.deepEqual(pairReviews([rv("review-iter-1", "ok", 500), rv("review-iter-2", "ok", 500)]).map((g) => g.id), ["iter-2", "iter-1"], "equal mtimes order rows by name");
+  const fx = makeFixture();
+  try {
+    setPlan(fx, B, "REFLECT", "1. [ ] Wire the API [RISK: low]");
+    const dir = join(fx.plans, B, "findings");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "review-iter-1.md"), "# Review\n\n## Verdict\nREADY_TO_CLOSE\n");
+    writeFileSync(join(dir, "hygiene-iter-1.md"), "# Hygiene\n\n## Verdict\nCLEAN\n");
+    dashFor(fx).generate();
+    const rows = [...planPage(fx, B).matchAll(/<li>\s*<span class="rv-k">([^<]*)<\/span>\s*<div class="pair-cols">([\s\S]*?)<\/div>\s*<\/div>\s*<\/li>/g)];
+    assert.equal(rows.length, 1, "one row for the iteration, not one per file");
+    assert.equal(rows[0][1], "iter-1");
+    assert.match(rows[0][2], /review-iter-1<\/a>/);
+    assert.match(rows[0][2], /hygiene-iter-1<\/a>/);
   } finally { fx.cleanup(); }
 });
 
