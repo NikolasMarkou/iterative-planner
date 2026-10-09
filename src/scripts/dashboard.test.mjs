@@ -407,8 +407,41 @@ test("waitingOnYou: only PLAN, EXECUTE and REFLECT wait, and the owner owes the 
   assert.equal(waitingOnYou(wm("REFLECT", [stp(1, "Fix it")])).kind, "confirm-close", "only agent steps left and no review problem");
   const bad = [{ kind: "Review", tone: "bad", label: "NEEDS WORK", name: "review-iter-1" }];
   assert.equal(waitingOnYou(wm("REFLECT", [stp(1, "Fix it")], { reviews: bad })), null, "a review that needs work with an agent step next is the agents' turn");
-  assert.equal(waitingOnYou(wm("REFLECT", [], { reviews: bad })).kind, "confirm-close", "nothing left for the agents to fix");
+  assert.equal(waitingOnYou(wm("REFLECT", [], { reviews: bad })), null, "even with no step left, Confirm Close is not offered over a review that needs work");
   assert.equal(waitingOnYou(wm("REFLECT", [stp(1, "Run it", { irreversible: true })], { reviews: bad })).kind, "owner-step");
+});
+
+test("attention: a newest review that needs work is listed in REFLECT and EXECUTE whatever step is next, and never beside Confirm Close", () => {
+  const bad = [rv("review-iter-1", "bad", 1000)];
+  const titles = (phase, steps, reviews = bad) => attention(wm(phase, steps, { reviews })).map((x) => x.title);
+  // Owner step next: the owner is still the one asked, and the review problem is listed next to it.
+  for (const owner of [stp(1, "Run it", { irreversible: true }), stp(1, "Owner-run deploy")]) {
+    const steps = [owner, stp(2, "Wire the API")];
+    const t = titles("REFLECT", steps);
+    assert.ok(t.includes("Review needs work"), `owner step ${owner.title}: the review is listed`);
+    assert.ok(t.includes("Step 1"), "and the owner step is still named as waiting on you");
+    assert.equal(t.includes("Confirm Close"), false);
+    assert.equal(waitingOnYou(wm("REFLECT", steps, { reviews: bad })).kind, "owner-step", "who is waiting is unchanged");
+  }
+  // Nothing pending, or only agent steps: the review is listed and Confirm Close is not.
+  for (const steps of [[], [stp(1, "Wire the API", { done: true })], [stp(1, "Wire the API")]]) {
+    const t = titles("REFLECT", steps);
+    assert.ok(t.includes("Review needs work"), `${steps.length} step(s): the review is listed`);
+    assert.equal(t.includes("Confirm Close"), false);
+    assert.equal(waitingOnYou(wm("REFLECT", steps, { reviews: bad })), null);
+  }
+  // A later good pass clears both effects.
+  const cleared = [rv("review-iter-1", "bad", 1000), rv("review-iter-1-pass2", "ok", 2000)];
+  const t = titles("REFLECT", [], cleared);
+  assert.equal(t.includes("Review needs work"), false);
+  assert.ok(t.includes("Confirm Close"));
+  // EXECUTE lists it too, for an agent step or an owner step next; Confirm Close belongs to REFLECT only.
+  assert.ok(titles("EXECUTE", [stp(1, "Wire the API")]).includes("Review needs work"));
+  assert.ok(titles("EXECUTE", [stp(1, "Run it", { irreversible: true })]).includes("Review needs work"));
+  assert.equal(titles("EXECUTE", []).includes("Confirm Close"), false);
+  // Phases that never wait do not carry it.
+  for (const phase of ["CLOSE", "EXPLORE", "PIVOT"]) assert.equal(titles(phase, [stp(1, "Wire the API")]).includes("Review needs work"), false, phase);
+  assert.equal(titles("PLAN", [stp(1, "Draft")]).includes("Review needs work"), false, "PLAN asks for approval only");
 });
 
 test("waitingOnYou: the owner words match whole words only, so CODEOWNERS and ownership are agent work", () => {
@@ -744,6 +777,43 @@ test("generate: a stale NEEDS_WORK or REMEDIATE no longer nags once a later pass
     assert.match(bad, /<p class="now-h"><span>Review needs work<\/span>/, "the newest pass needs work, so the hero says so");
     assert.match(bad, /<b>Review needs work<\/b>/);
     assert.match(bad, /<b>Hygiene wants a fix<\/b>/);
+  } finally { fx.cleanup(); }
+});
+
+test("generate: a newest review that needs work shows in the attention list and the hero, and the step tag follows who is owed", () => {
+  const fx = makeFixture();
+  try {
+    const put = (name, verdict, sec) => {
+      const dir = join(fx.plans, B, "findings");
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, `${name}.md`), `# Review\n\n## Verdict\n${verdict}\n`);
+      utimesSync(join(dir, `${name}.md`), sec, sec);
+    };
+    const page = (steps) => { setPlan(fx, B, "REFLECT", steps); dashFor(fx).generate(); return planPage(fx, B); };
+    put("review-iter-1", "NEEDS_WORK", 1000);
+    // Owner-run by title only: still owed, so it reads "waiting on you", and the review is listed beside it.
+    const owner = page("1. [ ] Owner-run deploy [RISK: low]\n2. [ ] Wire the API [RISK: low]");
+    assert.match(owner, /<p class="now-h"><span>Waiting for you<\/span> — Owner-run deploy/);
+    assert.match(owner, /<b>Review needs work<\/b>/);
+    assert.doesNotMatch(owner, /<b>Confirm Close<\/b>/);
+    assert.equal(owner.split(TAG_WAIT).length - 1, 1, "the owner-run step is tagged although it is not [IRREVERSIBLE]");
+    assert.equal(owner.includes(TAG_IRR), false);
+    // Nothing pending: the review problem replaces Confirm Close in the hero and the list.
+    const done = page("1. [x] Wire the API [RISK: low]");
+    assert.match(done, /<p class="now-h"><span>Review needs work<\/span>/);
+    assert.match(done, /<b>Review needs work<\/b>/);
+    assert.doesNotMatch(done, /Waiting for you/);
+    assert.doesNotMatch(done, /<b>Confirm Close<\/b>/);
+    // An [IRREVERSIBLE] step that is not owed yet keeps the plain tag; an owner-run title behind an agent step has none.
+    const later = page("1. [ ] Wire the API [RISK: low]\n2. [ ] [IRREVERSIBLE] Push [RISK: high]\n3. [ ] Owner-run deploy [RISK: low]");
+    assert.equal(later.includes(TAG_WAIT), false);
+    assert.equal(later.split(TAG_IRR).length - 1, 1);
+    assert.match(later, /<b>Review needs work<\/b>/);
+    // A later good pass puts Confirm Close back.
+    put("review-iter-1-pass2", "READY_TO_CLOSE", 2000);
+    const ready = page("1. [x] Wire the API [RISK: low]");
+    assert.match(ready, /<b>Confirm Close<\/b>/);
+    assert.doesNotMatch(ready, /Review needs work/);
   } finally { fx.cleanup(); }
 });
 

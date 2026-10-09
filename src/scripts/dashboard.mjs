@@ -15,7 +15,8 @@
 //
 // OPEN PLANS AND WAITING ON YOU: a chip strip under the top bar names every plan that is not closed (the
 // plan .current_plan names is marked), and the page says when the protocol is waiting on you: PLAN for
-// your approval, an owner-run step that is next in EXECUTE or REFLECT, or Confirm Close in REFLECT.
+// your approval, an owner-run step that is next in EXECUTE or REFLECT, or Confirm Close in REFLECT when the
+// newest review is not asking for work.
 // waitingOnYou() is the one rule behind the attention list, the headline and the step tags.
 //
 //   node <skill-path>/scripts/dashboard.mjs                 write once and print the path
@@ -403,7 +404,8 @@ const ownerish = (s) => !!(s && (s.irreversible || OWNER_STEP_RE.test(s.title ||
  * The one answer to "is the protocol waiting on the owner?", shared by attention(), the hero line and the step tags.
  * Returns null, or { kind: "approve" | "owner-step" | "confirm-close", steps, detail }.
  * Only PLAN, EXECUTE and REFLECT can wait. In EXECUTE and REFLECT the owner owes the LEADING run of owner-run pending
- * steps: the first agent step ends it, because from there the agents go first.
+ * steps: the first agent step ends it, because from there the agents go first. Confirm Close is never offered over a
+ * newest review that needs work: the owner confirms a close only when nothing is open against it.
  */
 export function waitingOnYou(m) {
   const { state, stepList, reviews = [] } = m;
@@ -416,8 +418,7 @@ export function waitingOnYou(m) {
     steps.push(s);
   }
   if (steps.length) return { kind: "owner-step", steps, detail: steps[0].title };
-  const reviewBad = newestBad(reviews, "Review");
-  if (state.phase === "REFLECT" && !pending.some(ownerish) && !(reviewBad && pending.length)) {
+  if (state.phase === "REFLECT" && !pending.some(ownerish) && !newestBad(reviews, "Review")) {
     return { kind: "confirm-close", steps: [], detail: "Reflect is in. Protocol waits for you before CLOSE." };
   }
   return null;
@@ -444,8 +445,7 @@ export function attention(m) {
     return out;
   }
   const reviewBad = newestBad(reviews, "Review");
-  const nextIsAgent = pending[0] && !ownerish(pending[0]);
-  if (state.phase === "REFLECT" && reviewBad && nextIsAgent) add("agents", "Review needs work", [reviewBad.label, reviewBad.name].filter(Boolean).join(" · "));
+  if ((state.phase === "REFLECT" || state.phase === "EXECUTE") && reviewBad) add("agents", "Review needs work", [reviewBad.label, reviewBad.name].filter(Boolean).join(" · "));
   if (wait?.kind === "confirm-close") add("you", "Confirm Close", wait.detail);
   const addedSteps = new Set();
   for (const s of wait?.steps || []) {
@@ -1244,10 +1244,9 @@ function renderPlan(ctx, m, here) {
   const waits = attention(m);
   const wait = waitingOnYou(m);
   const reviewBad = newestBad(reviews, "Review");
-  const nextIsAgent = pending[0] && !ownerish(pending[0]);
   const head = wait?.kind === "approve" ? { verb: "Waiting for you", detail: "Approve this plan to start Execute." }
     : wait?.kind === "owner-step" ? { verb: "Waiting for you", detail: wait.detail }
-    : state.phase === "REFLECT" && reviewBad && nextIsAgent ? { verb: "Review needs work", detail: reviewBad.label }
+    : state.phase === "REFLECT" && reviewBad ? { verb: "Review needs work", detail: reviewBad.label }
     : wait?.kind === "confirm-close" ? { verb: "Waiting for you", detail: "Confirm Close, or send it back for fixes." }
     : nextStep ? { verb: `${verb} step ${nextStep.key}`, detail: nextStep.title }
     : { verb, detail: state.lastDetail || state.step };
@@ -1332,9 +1331,10 @@ function renderPlan(ctx, m, here) {
     ${sectionHead("steps", "Steps", `${done} of ${stepList.length} done`, moreLink(docUrl("plan.md"), "plan.md"))}
     <ol class="steps">${stepList.map((s) => {
       const u = usage.bySteps[s.key];
+      const owed = waitKeys.has(s.key) && !s.done;
       const tags = [
         s.risk && `<span class="tag risk-${esc(s.risk.toLowerCase())}"><i></i>${esc(s.risk.toLowerCase())} risk</span>`,
-        s.irreversible && `<span class="tag">${waitKeys.has(s.key) && !s.done ? "waiting on you" : "irreversible"}</span>`,
+        (owed || s.irreversible) && `<span class="tag">${owed ? "waiting on you" : "irreversible"}</span>`,
         s.source === "fix" && `<span class="tag">completion fix${s.from ? ` · <a href="${docHref("decisions.md")}#${esc(s.from)}">${esc(s.from)}</a>` : ""}</span>`,
       ].filter(Boolean).join("");
       return `<li class="${s.done ? "done" : "todo"}${s.source === "fix" ? " fix" : ""}${s.key === nextKey ? " next" : ""}">
