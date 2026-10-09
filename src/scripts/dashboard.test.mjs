@@ -55,6 +55,7 @@ import {
   parseChangelog,
   parseDecisions,
   parsePlan,
+  parseProgress,
   parseState,
   parseVerdict,
   parseVerification,
@@ -424,7 +425,7 @@ const D = "plan-2026-01-12T080000-dddddddd"; // a second open plan, for the cros
 function setPlan(fx, id, phase, steps, extra = {}) {
   const w = (p, text) => { mkdirSync(dirname(p), { recursive: true }); writeFileSync(p, text); };
   w(join(fx.plans, id, "state.md"), `# Current State: ${phase}\n## Iteration: 1\n## Current Plan Step: iter-1/step-1\n## Last Transition: PLAN → EXECUTE (2026-01-12T09:00:00Z)\n## Transition History:\n- INIT → EXPLORE (task started)\n- PLAN → EXECUTE (2026-01-12T09:00:00Z)\n`);
-  w(join(fx.plans, id, "plan.md"), `# Plan v1: Phase 9 — Cutover\n\n## Goal\n1. Cut over.\n\n## Steps\n${steps}\n`);
+  w(join(fx.plans, id, "plan.md"), `# Plan v1: ${extra.title ?? "Phase 9 — Cutover"}\n\n## Goal\n1. Cut over.\n\n## Steps\n${steps}\n`);
   if (extra.progress) w(join(fx.plans, id, "progress.md"), extra.progress);
 }
 const planPage = (fx, id) => readFileSync(join(dirname(fx.out), "dashboard", "p", `${id}.html`), "utf8");
@@ -507,6 +508,140 @@ test("generate: steps that merely contain 'owner' inside another word do not wai
 // A review or hygiene record as build() hands it over; `ms` is the file mtime, `name` the file name without .md.
 const rv = (name, tone, ms, label = tone === "bad" ? "NEEDS WORK" : "READY TO CLOSE") => ({ kind: /^hygiene/.test(name) ? "Hygiene" : "Review", name, tone, label, ms });
 const youTitles = (phase, steps, reviews) => attention(wm(phase, steps, { reviews })).map((x) => x.title);
+
+test("parseProgress: an item that IS the placeholder is dropped; '(none' inside real text survives", () => {
+  const p = parseProgress([
+    "# Progress", "", "## In Progress", "- (none yet)", "- Handle (none) values in the parser", "",
+    "## Remaining", "- [ ] (none)", "- [ ] (None yet)", "- [ ] Steps 3-4 owner-run cutover", "- [x] Step 2 done", "",
+    "## Blocked", "- (none — nothing is blocked)", "- Waiting for a key (none issued yet)", "",
+    "## Hand-off flags", "- (none yet)", "- Ship it", "",
+  ].join("\n"));
+  assert.deepEqual(p.inProgress, ["Handle (none) values in the parser"], "a real item that mentions (none) is kept");
+  assert.deepEqual(p.remaining.map((r) => [r.done, r.text]), [[false, "Steps 3-4 owner-run cutover"], [true, "Step 2 done"]], "unticked and ticked placeholders are gone, real lines keep their tick");
+  assert.deepEqual(p.blocked, ["Waiting for a key (none issued yet)"]);
+  assert.deepEqual(p.flags, ["Ship it"]);
+});
+
+test("attention: a Remaining 'Steps 3-4' owner line stops counting once those steps are ticked", () => {
+  const rem = (text) => ({ progress: { remaining: [{ done: false, text }], blocked: [], flags: [] } });
+  const owner = (steps, text) => attention(wm("REFLECT", steps, rem(text))).filter((x) => x.title === "Owner remaining").length;
+  const open = [stp(3, "Cut over"), stp(4, "Verify cutover")];
+  const ticked = [stp(3, "Cut over", { done: true }), stp(4, "Verify cutover", { done: true })];
+  assert.equal(owner(open, "Steps 3-4 owner-run cutover"), 1, "steps still open: the owner line counts");
+  assert.equal(owner(ticked, "Steps 3-4 owner-run cutover"), 0, "every step in the range ticked: it no longer counts");
+  assert.equal(owner(ticked, "Steps 3–4 owner-run cutover"), 0, "an en dash is a range too");
+  assert.equal(owner([stp(3, "Cut over", { done: true }), stp(4, "Verify cutover")], "Steps 3-4 owner-run cutover"), 1, "one open step in the range keeps it");
+  assert.equal(owner([stp(3, "Cut over", { done: true })], "Step 3 owner-run cutover"), 0, "a single step reads the same way");
+  assert.equal(owner([stp(3, "Cut over", { done: true }), stp(5, "Later work")], "Step 3 owner-run cutover"), 0, "a single step does not look at the steps after it");
+  assert.equal(owner([stp(3, "Cut over", { done: true }), stp("3.1", "Fix 3")], "Step 3 owner-run cutover"), 0, "a sub-step key does not reopen its parent");
+  assert.equal(owner(ticked, "Owner-run cutover after the window"), 1, "a line with no step number always counts");
+  assert.equal(owner([], "Steps 3-4 owner-run cutover"), 1, "no step list to check against: it counts");
+});
+
+const histWith = (...lines) => lines.map((text) => ({ text, sub: [] }));
+
+test("attention: a skipped hygiene sweep is a note, only in REFLECT and only while no hygiene pass exists", () => {
+  const hist = histWith("EXECUTE → REFLECT (2026-01-11T10:00:00Z)", "HYGIENE SKIP (docs only): no code changed");
+  const notes = (phase, reviews = []) => attention(wm(phase, [stp(1, "Done", { done: true })], { state: { phase, hist }, reviews })).filter((x) => x.title === "Hygiene sweep skipped");
+  const [n] = notes("REFLECT");
+  assert.equal(n.who, "note");
+  assert.equal(n.detail, "no code changed", "the HYGIENE SKIP prefix is stripped, the reason is kept");
+  assert.equal(notes("REFLECT", [rv("hygiene-iter-1", "ok", 1000, "CLEAN")]).length, 0, "a sweep that did run replaces the note");
+  assert.equal(notes("REFLECT", [rv("review-iter-1", "ok", 1000)]).length, 1, "a review is not a hygiene pass");
+  assert.equal(notes("EXECUTE").length, 0);
+  assert.equal(notes("CLOSE").length, 0);
+  assert.equal(attention(wm("REFLECT", [stp(1, "Done", { done: true })])).some((x) => x.title === "Hygiene sweep skipped"), false, "no HYGIENE SKIP line, no note");
+});
+
+// A REFLECT plan page with the given Transition History lines and verification rows (result, evidence).
+function reflectPage(fx, { hist = [], rows = [], findings = {} } = {}) {
+  writeFileSync(join(fx.plans, B, "state.md"), [
+    "# Current State: REFLECT", "## Iteration: 1", "## Current Plan Step: N/A",
+    "## Last Transition: EXECUTE → REFLECT (2026-01-11T10:00:00Z)",
+    "## Transition History:", "- INIT → EXPLORE (task started)", "- PLAN → EXECUTE (2026-01-11T09:00:00Z)",
+    "- EXECUTE → REFLECT (2026-01-11T10:00:00Z)", ...hist.map((h) => `- ${h}`), "",
+  ].join("\n"));
+  for (const [name, text] of Object.entries(findings)) { mkdirSync(join(fx.plans, B, "findings"), { recursive: true }); writeFileSync(join(fx.plans, B, "findings", name), text); }
+  if (rows.length) {
+    writeFileSync(join(fx.plans, B, "verification.md"), `# Verification\n\n## Criteria Verification\n| # | Criterion (from plan.md) | Method | Command/Action | Result | Evidence |\n|---|---|---|---|---|---|\n${rows.map((r, i) => `| ${i + 1} | Criterion ${i + 1} | Automated | \`npm test\` | ${r} | ${r === "PASS" ? "ok" : ""} |`).join("\n")}\n`);
+  }
+  dashFor(fx).generate();
+  return planPage(fx, B);
+}
+
+test("generate: a skipped hygiene sweep shows as a note and as a Skipped row, and a real hygiene pass replaces both", () => {
+  const fx = makeFixture();
+  try {
+    const hist = ["HYGIENE SKIP (docs only): no code changed"];
+    const skipped = reflectPage(fx, { hist });
+    assert.match(skipped, /<li class="who-note"><span class="wait-who">Note<\/span><div><b>Hygiene sweep skipped<\/b><p>no code changed<\/p>/, "the attention note");
+    assert.match(skipped, /<span class="rv-k">Hygiene<\/span><div class="pair-cols"><div><span class="muted">This reflect<\/span><span class="tag rv-na"><i><\/i>Skipped<\/span><p class="muted">no code changed<\/p>/, "the Skipped row in Review + hygiene");
+    const swept = reflectPage(fx, { hist, findings: { "hygiene-iter-1.md": "# Hygiene\n\n## Verdict\nCLEAN\n" } });
+    assert.ok(!/Hygiene sweep skipped/.test(swept));
+    assert.ok(!/This reflect/.test(swept));
+  } finally { fx.cleanup(); }
+});
+
+test("generate: all-PENDING checks in REFLECT say so in the Checks heading and footer, not only in the attention list", () => {
+  const fx = makeFixture();
+  try {
+    const page = reflectPage(fx, { rows: ["PENDING", "PENDING"] });
+    // The attention list says "Checks still the PLAN template" / "2 rows still PENDING"; these two strings exist only in the Checks section.
+    assert.match(page, /2 still PENDING — PLAN template/, "the Checks heading");
+    assert.match(page, /These rows are still the PLAN template\. The verifier has not filled them in\. verification\.md written/, "the Checks footer");
+    assert.ok(!/it may predate the latest fixes/.test(page), "the template footer replaces the stale-file hint");
+    const mixed = reflectPage(fx, { rows: ["PASS", "PENDING"] });
+    assert.match(mixed, /1 of 2 pass · 1 pending/, "partly filled rows get the plain count");
+    assert.ok(!/still PENDING — PLAN template/.test(mixed));
+    assert.ok(!/These rows are still the PLAN template/.test(mixed));
+    assert.ok(!/Checks still the PLAN template/.test(mixed), "and the attention row goes too");
+  } finally { fx.cleanup(); }
+});
+
+test("generate: all-PENDING checks outside REFLECT are labelled by phase and carry no 'verifier has not filled' footer", () => {
+  const fx = makeFixture();
+  try {
+    const rows = "| 1 | Criterion 1 | Automated | `npm test` | PENDING | |\n| 2 | Criterion 2 | Automated | `npm test` | PENDING | |\n";
+    writeFileSync(join(fx.plans, B, "verification.md"), `# Verification\n\n## Criteria Verification\n| # | Criterion (from plan.md) | Method | Command/Action | Result | Evidence |\n|---|---|---|---|---|---|\n${rows}`);
+    for (const [phase, label] of [["EXECUTE", /<span class="sh-x">2 pending<\/span>/], ["PLAN", /<span class="sh-x">PLAN template<\/span>/]]) {
+      setPlan(fx, B, phase, "1. [ ] Wire the API [RISK: low]");
+      dashFor(fx).generate();
+      const page = planPage(fx, B);
+      assert.match(page, label, phase);
+      assert.ok(!/These rows are still the PLAN template/.test(page), phase);
+    }
+  } finally { fx.cleanup(); }
+});
+
+// Mark every file of a plan with one mtime, so "latest activity" is exactly what a test says it is.
+function touchPlan(fx, id, ms) {
+  const walk = (d) => { for (const e of readdirSync(d, { withFileTypes: true })) { const p = join(d, e.name); if (e.isDirectory()) walk(p); else utimesSync(p, ms / 1000, ms / 1000); } };
+  walk(join(fx.plans, id));
+}
+const chipOrder = (html) => [...html.matchAll(/<a class="open-chip [^"]*"[^>]*><b>([^<]*)<\/b>/g)].map((m) => m[1]);
+const E = "plan-2026-01-13T080000-eeeeeeee", F = "plan-2026-01-14T080000-ffffffff", G = "plan-2026-01-15T080000-99999999";
+
+test("generate: open chips sort by phase code, numbers as numbers and a letter after its number; plans without a code come last", () => {
+  const fx = makeFixture();
+  try {
+    const step = "1. [ ] Wire the API [RISK: low]";
+    setPlan(fx, B, "EXECUTE", step, { title: "Phase 2 — Wiring" });
+    setPlan(fx, D, "EXECUTE", step, { title: "Phase 10 — Late" });
+    setPlan(fx, E, "EXECUTE", step, { title: "Phase 2b — Follow-up" });
+    setPlan(fx, F, "EXECUTE", step, { title: "Alpha cleanup" });
+    setPlan(fx, G, "EXECUTE", step, { title: "Beta cleanup" });
+    // Latest activity, newest first: D, F, G, E, B. That is the order the chips arrive in, so only the sort can fix it.
+    [[D, 5], [F, 4], [G, 3], [E, 2], [B, 1]].forEach(([id, day]) => touchPlan(fx, id, Date.parse(`2026-01-0${day}T00:00:00Z`)));
+    dashFor(fx).generate();
+    const first = chipOrder(readFileSync(fx.out, "utf8"));
+    assert.deepEqual(first.slice(0, 3), ["2", "2b", "10"], "2 before 2b before 10, not by activity and not as text");
+    assert.deepEqual([...first.slice(3)].sort(), ["Alpha cleanup", "Beta cleanup"], "the two plans without a code share the tail");
+    // Ties are deterministic: the same plans in the same state give the same order on every page and every run.
+    dashFor(fx).generate();
+    assert.deepEqual(chipOrder(readFileSync(fx.out, "utf8")), first);
+    assert.deepEqual(chipOrder(planPage(fx, E)), first, "every page shows the same order");
+  } finally { fx.cleanup(); }
+});
 
 test("latestOfKind: the newest pass of each kind, whatever order the records arrive in", () => {
   const a = rv("review-iter-1", "bad", 1000), b = rv("review-iter-1-pass2", "ok", 2000), h = rv("hygiene-iter-1", "bad", 3000);

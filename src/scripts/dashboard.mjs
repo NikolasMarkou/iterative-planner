@@ -274,8 +274,10 @@ export function parsePlan(text) {
   return { title, goal, steps };
 }
 
+// The template's empty-section line ("- (none yet)", "- [ ] (none)") is the whole item; "(none" inside real text is not.
+const PLACEHOLDER_ITEM = /^- (?:\[[ xX]\] )?\(none\b/i;
 export function parseProgress(text) {
-  const raw = (h) => section(text, h).split("\n").filter((l) => /^- /.test(l) && !/\(none/i.test(l));
+  const raw = (h) => section(text, h).split("\n").filter((l) => /^- /.test(l) && !PLACEHOLDER_ITEM.test(l));
   const items = (h) => raw(h).map((l) => l.replace(/^- (\[[ xX]\] )?/, "").trim()).filter(Boolean);
   const remaining = raw("Remaining").map((l) => ({ done: /^- \[[xX]\]/.test(l), text: l.replace(/^- (\[[ xX]\] )?/, "").trim() })).filter((i) => i.text);
   return { inProgress: items("In Progress"), remaining, blocked: items("Blocked"), flags: items("Hand-off flags") };
