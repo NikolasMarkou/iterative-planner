@@ -285,6 +285,23 @@ test("parseVerdict: every verdict word the agents write gets its tone, and free 
     ["Blockers remain.\nOverall: NEEDS_WORK", bad("NEEDS WORK")],
     ["Overall: SCAN_UNTRUSTWORTHY", bad("SCAN UNTRUSTWORTHY")],
     ["READY_TO_CLOSE / NEEDS_WORK / NEEDS_INVESTIGATION\nNEEDS_INVESTIGATION", bad("NEEDS INVESTIGATION")],
+    // a negation before the underscore or hyphen form is still "not ready"
+    ["Not READY_TO_CLOSE: two criticals", bad("Not READY_TO_CLOSE: two criticals")],
+    ["not ready_to_close", bad("not ready_to_close")],
+    ["not ready-to-close", bad("not ready-to-close")],
+    // a common word leads only when nothing but a separator or the end follows; a strong word later in the line wins
+    ["Pass 2: NEEDS_WORK", bad("NEEDS WORK")],
+    ["OK, so overall NEEDS_WORK", bad("NEEDS WORK")],
+    ["Clean-up still needed. REMEDIATE", bad("REMEDIATE")],
+    ["Ready? No. NEEDS_WORK", bad("NEEDS WORK")],
+    ["Ready? No.", na("Ready? No.")],
+    ["PASS: every check green", ok("PASS")], ["CLEAN - nothing found", ok("CLEAN")], ["OK (two notes)", ok("OK")], ["**READY**", ok("READY")],
+    // a real verdict that quotes some of the choices is kept; only the line made of choices alone is the template
+    ["NEEDS_WORK (was READY_TO_CLOSE / NEEDS_WORK last pass)", bad("NEEDS WORK")],
+    ["`READY_TO_CLOSE` / `NEEDS_WORK`", na("")],
+    // hyphens read like underscores
+    ["NEEDS-WORK", bad("NEEDS WORK")], ["NEEDS-INVESTIGATION", bad("NEEDS INVESTIGATION")], ["READY-TO-CLOSE", ok("READY TO CLOSE")],
+    ["scan-untrustworthy", bad("SCAN UNTRUSTWORTHY")],
     // free text and unknown words stay neutral; critical alone is bad
     ["Looks fine, all checks pass.", na("Looks fine, all checks pass.")],
     ["MAYBE", na("MAYBE")],
@@ -300,6 +317,17 @@ test("parseVerdict: every verdict word the agents write gets its tone, and free 
   const file = "# Review iter 1\n\n## Concerns\n- READY_TO_CLOSE is premature\n\n## Blind Spots\n- none\n\n## Verdict\nNeeds a second look.\nNEEDS_INVESTIGATION\n\n## Appendix\nREADY_TO_CLOSE\n";
   assert.deepEqual(parseVerdict(file), bad("NEEDS INVESTIGATION"));
   assert.deepEqual(parseVerdict("# Review\n\n## Concerns\nNEEDS_WORK\n"), na(""), "no Verdict heading, no verdict");
+  // Heading shapes: the verdict on the heading line, a deeper heading, and the block ends at a heading of the same or a higher level.
+  assert.deepEqual(parseVerdict("# Review\n\n## Verdict: NEEDS_WORK\n\n## Notes\nREADY_TO_CLOSE\n"), bad("NEEDS WORK"));
+  assert.deepEqual(parseVerdict("# Review\n\n## Verdict: READY_TO_CLOSE / NEEDS_WORK\nNEEDS_INVESTIGATION\n"), bad("NEEDS INVESTIGATION"));
+  assert.deepEqual(parseVerdict("# Review\n\n### Verdict\nNEEDS_WORK\n"), bad("NEEDS WORK"));
+  assert.deepEqual(parseVerdict("# Review\n\n#### Verdict\nNo opinion yet.\n\n#### Notes\nNEEDS_WORK\n"), na("No opinion yet."));
+  assert.deepEqual(parseVerdict("# Review\n\n### Verdict\nNo opinion yet.\n\n## Notes\nNEEDS_WORK\n"), na("No opinion yet."), "a higher-level heading ends a ### block");
+  assert.deepEqual(parseVerdict("# Review\n\n## Verdicts\nNEEDS_WORK\n"), na(""), "only the Verdict heading counts");
+  // A fenced example inside the block is not the verdict, whatever it contains.
+  assert.deepEqual(parseVerdict(verdict("Example of a finished review:\n```\nREADY_TO_CLOSE\n```\nNEEDS_WORK")), bad("NEEDS WORK"));
+  assert.deepEqual(parseVerdict(verdict("```md\n## Verdict\nREADY_TO_CLOSE\n```\nNEEDS_INVESTIGATION")), bad("NEEDS INVESTIGATION"));
+  assert.deepEqual(parseVerdict(verdict("```\nREADY_TO_CLOSE\n```")), na(""), "a block holding only a fence has no verdict");
 });
 
 test("generate: NEEDS_INVESTIGATION and SCAN_UNTRUSTWORTHY show as bad and a template line shows as neutral", () => {
