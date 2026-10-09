@@ -65,6 +65,7 @@ import {
   timeSeries,
   total,
   transcriptFiles,
+  waitingOnYou,
 } from "./dashboard.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -274,6 +275,153 @@ test("attention: PLAN and Confirm Close wait on you; EXECUTE with agent work doe
   });
   assert.ok(reflect.some((x) => x.title === "Confirm Close"));
   assert.ok(reflect.some((x) => x.title === "Checks still the PLAN template"));
+});
+
+// A step as parsePlan would hand it over; `n` is the step key.
+const stp = (n, title, extra = {}) => ({ key: String(n), done: false, title, irreversible: false, ...extra });
+const wm = (phase, stepList, extra = {}) => ({ state: { phase, hist: [] }, progress: { remaining: [], blocked: [], flags: [] }, verification: [], stepList, reviews: [], ...extra });
+
+test("waitingOnYou: only PLAN, EXECUTE and REFLECT wait, and the owner owes the LEADING run of owner-run steps", () => {
+  const ownerFirst = [stp(1, "Run the migration", { irreversible: true }), stp(2, "Prod cutover", { irreversible: true }), stp(3, "Wire the API"), stp(4, "Owner-run deploy")];
+  const w = waitingOnYou(wm("EXECUTE", ownerFirst));
+  assert.equal(w.kind, "owner-step");
+  assert.deepEqual(w.steps.map((x) => x.key), ["1", "2"], "the run stops at the first agent step; step 4 is behind it");
+  assert.equal(w.detail, "Run the migration");
+  assert.equal(waitingOnYou(wm("EXECUTE", [stp(1, "Wire the API"), stp(2, "Run the migration", { irreversible: true })])), null, "an owner step behind an agent step is not waiting yet");
+  assert.equal(waitingOnYou(wm("REFLECT", [stp(1, "Wire the API"), stp(2, "Run the migration", { irreversible: true })])), null, "agent first, owner later: nobody is asking the owner yet");
+  assert.equal(waitingOnYou(wm("EXECUTE", [stp(1, "Wire the API")])), null);
+  for (const phase of ["CLOSE", "EXPLORE", "PIVOT"]) {
+    assert.equal(waitingOnYou(wm(phase, ownerFirst)), null, `${phase} never waits on the owner`);
+  }
+  assert.equal(waitingOnYou(wm("PLAN", [])).kind, "approve");
+  assert.equal(waitingOnYou(wm("REFLECT", [stp(1, "done", { done: true })])).kind, "confirm-close");
+  assert.equal(waitingOnYou(wm("REFLECT", [stp(1, "Fix it")])).kind, "confirm-close", "only agent steps left and no review problem");
+  const bad = [{ kind: "Review", tone: "bad", label: "NEEDS WORK", name: "review-iter-1" }];
+  assert.equal(waitingOnYou(wm("REFLECT", [stp(1, "Fix it")], { reviews: bad })), null, "a review that needs work with an agent step next is the agents' turn");
+  assert.equal(waitingOnYou(wm("REFLECT", [], { reviews: bad })).kind, "confirm-close", "nothing left for the agents to fix");
+  assert.equal(waitingOnYou(wm("REFLECT", [stp(1, "Run it", { irreversible: true })], { reviews: bad })).kind, "owner-step");
+});
+
+test("waitingOnYou: the owner words match whole words only, so CODEOWNERS and ownership are agent work", () => {
+  assert.equal(waitingOnYou(wm("EXECUTE", [stp(1, "Update CODEOWNERS file")])), null);
+  assert.equal(waitingOnYou(wm("EXECUTE", [stp(1, "Add ownership tests")])), null);
+  assert.equal(waitingOnYou(wm("EXECUTE", [stp(1, "Owner-run deploy")])).kind, "owner-step");
+  assert.equal(waitingOnYou(wm("EXECUTE", [stp(1, "Deploy (owner-paced)")])).kind, "owner-step");
+  assert.equal(waitingOnYou(wm("EXECUTE", [stp(1, "Drop the table [IRREVERSIBLE]")])).kind, "owner-step");
+  const rem = (text) => attention(wm("EXECUTE", [], { progress: { remaining: [{ done: false, text }], blocked: [], flags: [] } })).filter((x) => x.who === "you");
+  assert.equal(rem("Update CODEOWNERS file").length, 0, "a Remaining line is matched by whole words too");
+  assert.equal(rem("Add ownership tests").length, 0);
+  assert.equal(rem("Update the handoffs doc").length, 0, "hand-off must stand alone as a word");
+  assert.deepEqual(rem("Owner-run cutover").map((x) => x.title), ["Owner remaining"]);
+  assert.deepEqual(rem("Hand-off to ops").map((x) => x.title), ["Owner remaining"]);
+  assert.deepEqual(rem("Handoff to ops").map((x) => x.title), ["Owner remaining"]);
+});
+
+test("attention: an owner step that comes FIRST waits on you even with agent steps after it", () => {
+  const ownerFirst = attention(wm("EXECUTE", [stp(1, "Run the migration", { irreversible: true }), stp(2, "Wire the API")]));
+  assert.deepEqual(ownerFirst.filter((x) => x.who === "you").map((x) => [x.title, x.detail]), [["Step 1", "Run the migration"]]);
+  const later = attention(wm("EXECUTE", [stp(1, "Wire the API"), stp(2, "Run the migration", { irreversible: true })]));
+  assert.equal(later.some((x) => x.who === "you"), false);
+  const two = attention(wm("EXECUTE", [stp(1, "Run the migration", { irreversible: true }), stp(2, "Prod cutover", { irreversible: true }), stp(3, "Wire the API")]));
+  assert.deepEqual(two.filter((x) => x.who === "you").map((x) => x.title), ["Step 1", "Step 2"]);
+  const dup = attention(wm("EXECUTE", [stp(1, "Run the migration", { irreversible: true })], { progress: { remaining: [{ done: false, text: "Step 1 — owner-run migration" }], blocked: [], flags: [] } }));
+  assert.deepEqual(dup.filter((x) => x.who === "you").map((x) => x.title), ["Step 1"], "a Remaining line for a step already listed is not listed twice");
+});
+
+test("attention: nothing says 'you' in CLOSE, EXPLORE or PIVOT, hand-off flags included; EXECUTE and REFLECT still show them", () => {
+  const flags = { remaining: [{ done: false, text: "Owner-run cutover" }], blocked: [], flags: ["Ship it"] };
+  for (const phase of ["CLOSE", "EXPLORE", "PIVOT"]) {
+    const a = attention(wm(phase, [stp(1, "Prod cutover", { irreversible: true })], { progress: flags }));
+    assert.equal(a.some((x) => x.who === "you"), false, `${phase} has no 'you' item`);
+  }
+  for (const phase of ["EXECUTE", "REFLECT"]) {
+    const a = attention(wm(phase, [], { progress: flags }));
+    assert.deepEqual(a.filter((x) => x.who === "you").map((x) => x.title).sort(), phase === "REFLECT" ? ["Confirm Close", "Hand-off", "Owner remaining"] : ["Hand-off", "Owner remaining"], phase);
+  }
+});
+
+const D = "plan-2026-01-12T080000-dddddddd"; // a second open plan, for the cross-plan box
+function setPlan(fx, id, phase, steps, extra = {}) {
+  const w = (p, text) => { mkdirSync(dirname(p), { recursive: true }); writeFileSync(p, text); };
+  w(join(fx.plans, id, "state.md"), `# Current State: ${phase}\n## Iteration: 1\n## Current Plan Step: iter-1/step-1\n## Last Transition: PLAN → EXECUTE (2026-01-12T09:00:00Z)\n## Transition History:\n- INIT → EXPLORE (task started)\n- PLAN → EXECUTE (2026-01-12T09:00:00Z)\n`);
+  w(join(fx.plans, id, "plan.md"), `# Plan v1: Phase 9 — Cutover\n\n## Goal\n1. Cut over.\n\n## Steps\n${steps}\n`);
+  if (extra.progress) w(join(fx.plans, id, "progress.md"), extra.progress);
+}
+const planPage = (fx, id) => readFileSync(join(dirname(fx.out), "dashboard", "p", `${id}.html`), "utf8");
+const OWNER_FIRST = "1. [ ] [IRREVERSIBLE] Run the migration [RISK: high]\n2. [ ] Wire the API [RISK: low]\n3. [ ] [IRREVERSIBLE] Prod cutover [RISK: high]";
+const TAG_WAIT = '<span class="tag">waiting on you</span>', TAG_IRR = '<span class="tag">irreversible</span>';
+
+test("generate: an owner-first plan is waiting on you in the hero, the section, the tab link, the step tag and the other plan's box", () => {
+  const fx = makeFixture();
+  try {
+    setPlan(fx, B, "EXECUTE", OWNER_FIRST);
+    setPlan(fx, D, "EXECUTE", OWNER_FIRST);
+    dashFor(fx).generate();
+    const page = planPage(fx, D);
+    assert.match(page, /<p class="now-h"><span>Waiting for you<\/span> — Run the migration/);
+    assert.match(page, /<section class="wait" id="waiting">/);
+    assert.match(page, /<a href="#waiting">Waiting on you<\/a>/);
+    assert.match(page, /<b>Step 1<\/b>/);
+    assert.equal(page.split(TAG_WAIT).length - 1, 1, "only step 1 is tagged 'waiting on you'");
+    assert.equal(page.split(TAG_IRR).length - 1, 1, "step 3 sits behind an agent step and keeps the plain tag");
+    const live = planPage(fx, B);
+    assert.match(live, /Other open plans/, "the live plan's page lists the other plan that needs you");
+    assert.match(live, /1 still need you/);
+    assert.match(live, /<a href="#waiting">/);
+  } finally { fx.cleanup(); }
+});
+
+test("generate: an owner step behind an agent step is not waiting: plain 'irreversible' tag, no hero claim, no section", () => {
+  const fx = makeFixture();
+  try {
+    setPlan(fx, B, "EXECUTE", "1. [ ] Wire the API [RISK: low]\n2. [ ] [IRREVERSIBLE] Run the migration [RISK: high]");
+    dashFor(fx).generate();
+    const page = planPage(fx, B);
+    assert.equal(page.includes(TAG_WAIT), false);
+    assert.equal(page.split(TAG_IRR).length - 1, 1);
+    assert.doesNotMatch(page, /Waiting for you/);
+    assert.doesNotMatch(page, /id="waiting"/);
+  } finally { fx.cleanup(); }
+});
+
+test("generate: CLOSE, EXPLORE and PIVOT plans with an unticked [IRREVERSIBLE] step claim nothing and are not owed", () => {
+  for (const phase of ["CLOSE", "EXPLORE", "PIVOT"]) {
+    const fx = makeFixture();
+    try {
+      setPlan(fx, D, phase, "1. [ ] [IRREVERSIBLE] Prod cutover [RISK: high]", { progress: "# Progress\n\n## Hand-off flags\n- Ship it\n" });
+      dashFor(fx).generate();
+      const page = planPage(fx, D);
+      assert.doesNotMatch(page, /Waiting for you/, phase);
+      assert.equal(page.includes(TAG_WAIT), false, phase);
+      assert.doesNotMatch(page, /id="waiting"/, phase);
+      assert.doesNotMatch(planPage(fx, B), /Other open plans/, `${phase}: the live plan's box does not list it`);
+    } finally { fx.cleanup(); }
+  }
+});
+
+test("generate: a PLAN-phase plan asks for approval in the hero and the section", () => {
+  const fx = makeFixture();
+  try {
+    setPlan(fx, B, "PLAN", "1. [ ] Wire the API [RISK: low]");
+    dashFor(fx).generate();
+    const page = planPage(fx, B);
+    assert.match(page, /<p class="now-h"><span>Waiting for you<\/span> — Approve this plan to start Execute\./);
+    assert.match(page, /<b>Approve the plan<\/b>/);
+  } finally { fx.cleanup(); }
+});
+
+test("generate: steps that merely contain 'owner' inside another word do not wait on you", () => {
+  const fx = makeFixture();
+  try {
+    setPlan(fx, B, "EXECUTE", "1. [ ] Update CODEOWNERS file [RISK: low]\n2. [ ] Add ownership tests [RISK: low]");
+    dashFor(fx).generate();
+    const page = planPage(fx, B);
+    assert.doesNotMatch(page, /Waiting for you/);
+    assert.doesNotMatch(page, /id="waiting"/);
+    setPlan(fx, B, "EXECUTE", "1. [ ] Owner-run deploy [RISK: low]\n2. [ ] Add ownership tests [RISK: low]");
+    dashFor(fx).generate();
+    assert.match(planPage(fx, B), /<p class="now-h"><span>Waiting for you<\/span> — Owner-run deploy/);
+  } finally { fx.cleanup(); }
 });
 
 test("readPointer: trusts only an existing plan id, never a path", () => {

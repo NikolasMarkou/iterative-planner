@@ -331,7 +331,34 @@ export function hygieneSkipOf(state) {
   return (state.hist || []).find((h) => /HYGIENE SKIP/i.test(h.text)) || null;
 }
 
-const ownerish = (s) => !!(s && (s.irreversible || /owner(?:-run|-paced)?|IRREVERSIBLE/i.test(s.title || "")));
+const OWNER_STEP_RE = /\bowner\b|IRREVERSIBLE/i;
+const OWNER_REMAINING_RE = /\bowner\b|IRREVERSIBLE|\bhand-?off\b/i;
+const WAIT_PHASES = ["PLAN", "EXECUTE", "REFLECT"];
+const ownerish = (s) => !!(s && (s.irreversible || OWNER_STEP_RE.test(s.title || "")));
+
+/**
+ * The one answer to "is the protocol waiting on the owner?", shared by attention(), the hero line and the step tags.
+ * Returns null, or { kind: "approve" | "owner-step" | "confirm-close", steps, detail }.
+ * Only PLAN, EXECUTE and REFLECT can wait. In EXECUTE and REFLECT the owner owes the LEADING run of owner-run pending
+ * steps: the first agent step ends it, because from there the agents go first.
+ */
+export function waitingOnYou(m) {
+  const { state, stepList, reviews = [] } = m;
+  if (!WAIT_PHASES.includes(state.phase)) return null;
+  if (state.phase === "PLAN") return { kind: "approve", steps: [], detail: "Execute starts only after you say so." };
+  const pending = (stepList || []).filter((s) => !s.done);
+  const steps = [];
+  for (const s of pending) {
+    if (!ownerish(s)) break;
+    steps.push(s);
+  }
+  if (steps.length) return { kind: "owner-step", steps, detail: steps[0].title };
+  const reviewBad = reviews.find((r) => r.kind === "Review" && r.tone === "bad");
+  if (state.phase === "REFLECT" && !pending.some(ownerish) && !(reviewBad && pending.length)) {
+    return { kind: "confirm-close", steps: [], detail: "Reflect is in. Protocol waits for you before CLOSE." };
+  }
+  return null;
+}
 
 /** What the protocol is waiting on. Empty in CLOSE. Future owner-run remaining is not "waiting" while EXECUTE still has agent work. */
 export function attention(m) {
@@ -347,38 +374,36 @@ export function attention(m) {
     seen.add(k);
     out.push({ who, title, detail: String(detail || "").trim() });
   };
+  const wait = waitingOnYou(m);
   if (state.phase === "PLAN") {
-    add("you", "Approve the plan", "Execute starts only after you say so.");
+    add("you", "Approve the plan", wait.detail);
     for (const b of progress.blocked || []) add("blocked", "Blocked", b);
     return out;
   }
   const reviewBad = reviews.find((r) => r.kind === "Review" && r.tone === "bad");
   const nextIsAgent = pending[0] && !ownerish(pending[0]);
-  if (state.phase === "REFLECT") {
-    if (reviewBad && nextIsAgent) add("agents", "Review needs work", [reviewBad.label, reviewBad.name].filter(Boolean).join(" · "));
-    else if (!pending.some(ownerish)) add("you", "Confirm Close", "Reflect is in. Protocol waits for you before CLOSE.");
-  }
-  const skipFutureRemaining = state.phase === "EXECUTE" && agentPending.length;
+  if (state.phase === "REFLECT" && reviewBad && nextIsAgent) add("agents", "Review needs work", [reviewBad.label, reviewBad.name].filter(Boolean).join(" · "));
+  if (wait?.kind === "confirm-close") add("you", "Confirm Close", wait.detail);
   const addedSteps = new Set();
-  for (const s of pending) {
-    if (!ownerish(s)) continue;
-    if (skipFutureRemaining) continue;
+  for (const s of wait?.steps || []) {
     add("you", `Step ${s.key}`, s.title);
     addedSteps.add(s.key);
   }
-  if (!skipFutureRemaining) {
+  const phaseCanWait = WAIT_PHASES.includes(state.phase);
+  const skipFutureRemaining = state.phase === "EXECUTE" && agentPending.length;
+  if (phaseCanWait && !skipFutureRemaining) {
     for (const r of (progress.remaining || []).filter((x) => !x.done && remainingStillOpen(x.text, stepList))) {
       const sm = r.text.match(/^Steps?\s+(\d+)/i);
       if (sm && addedSteps.has(sm[1])) continue;
-      if (/owner|IRREVERSIBLE|hand-?off/i.test(r.text)) add("you", "Owner remaining", r.text);
+      if (OWNER_REMAINING_RE.test(r.text)) add("you", "Owner remaining", r.text);
     }
   }
   for (const b of progress.blocked || []) add("blocked", "Blocked", b);
-  for (const f of progress.flags || []) add("you", "Hand-off", f);
+  if (phaseCanWait) for (const f of progress.flags || []) add("you", "Hand-off", f);
   const pendingChecks = verification.filter((v) => /PENDING/i.test(v.result));
   const failChecks = verification.filter((v) => /FAIL/i.test(v.result));
   if (failChecks.length) add("agents", "Checks failed", `${failChecks.length} FAIL`);
-  if (["REFLECT", "CLOSE"].includes(state.phase) && verification.length && pendingChecks.length === verification.length) {
+  if (state.phase === "REFLECT" && verification.length && pendingChecks.length === verification.length) {
     add("agents", "Checks still the PLAN template", `${pendingChecks.length} rows still PENDING`);
   }
   const skip = hygieneSkipOf(state);
@@ -1153,17 +1178,16 @@ function renderPlan(ctx, m, here) {
   const executing = state.phase === "EXECUTE" && pending.length;
   const nextStep = executing ? (pending.find((s) => s.current) || pending[0]) : null;
   const waits = attention(m);
+  const wait = waitingOnYou(m);
   const reviewBad = reviews.find((r) => r.kind === "Review" && r.tone === "bad");
   const nextIsAgent = pending[0] && !ownerish(pending[0]);
-  const head = state.phase === "PLAN"
-    ? { verb: "Waiting for you", detail: "Approve this plan to start Execute." }
-    : pending[0] && ownerish(pending[0]) ? { verb: "Waiting for you", detail: pending[0].title }
-    : state.phase === "REFLECT" && reviewBad && nextIsAgent
-      ? { verb: "Review needs work", detail: reviewBad.label }
-      : state.phase === "REFLECT"
-        ? { verb: "Waiting for you", detail: "Confirm Close, or send it back for fixes." }
-      : nextStep ? { verb: `${verb} step ${nextStep.key}`, detail: nextStep.title }
-      : { verb, detail: state.lastDetail || state.step };
+  const head = wait?.kind === "approve" ? { verb: "Waiting for you", detail: "Approve this plan to start Execute." }
+    : wait?.kind === "owner-step" ? { verb: "Waiting for you", detail: wait.detail }
+    : state.phase === "REFLECT" && reviewBad && nextIsAgent ? { verb: "Review needs work", detail: reviewBad.label }
+    : wait?.kind === "confirm-close" ? { verb: "Waiting for you", detail: "Confirm Close, or send it back for fixes." }
+    : nextStep ? { verb: `${verb} step ${nextStep.key}`, detail: nextStep.title }
+    : { verb, detail: state.lastDetail || state.step };
+  const waitKeys = new Set((wait?.steps || []).map((s) => s.key));
   const passCount = verification.filter((v) => /PASS/i.test(v.result)).length;
   const pendingCount = verification.filter((v) => /PENDING/i.test(v.result)).length;
   const failCount = verification.filter((v) => /FAIL/i.test(v.result)).length;
@@ -1246,7 +1270,7 @@ function renderPlan(ctx, m, here) {
       const u = usage.bySteps[s.key];
       const tags = [
         s.risk && `<span class="tag risk-${esc(s.risk.toLowerCase())}"><i></i>${esc(s.risk.toLowerCase())} risk</span>`,
-        s.irreversible && `<span class="tag">${s.done ? "irreversible" : "waiting on you"}</span>`,
+        s.irreversible && `<span class="tag">${waitKeys.has(s.key) && !s.done ? "waiting on you" : "irreversible"}</span>`,
         s.source === "fix" && `<span class="tag">completion fix${s.from ? ` · <a href="${docHref("decisions.md")}#${esc(s.from)}">${esc(s.from)}</a>` : ""}</span>`,
       ].filter(Boolean).join("");
       return `<li class="${s.done ? "done" : "todo"}${s.source === "fix" ? " fix" : ""}${s.key === nextKey ? " next" : ""}">
