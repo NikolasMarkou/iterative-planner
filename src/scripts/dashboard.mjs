@@ -1107,7 +1107,7 @@ function openBar(ctx, here, current) {
     return n(a) - n(b);
   });
   const ptr = ctx.sitemap.pointer;
-  if (!open.length && !ptr) return "";
+  if (!open.length) return "";
   const chips = open.map((p) => {
     const on = p.name === current;
     const proto = p.name === ptr;
@@ -1120,7 +1120,8 @@ function openBar(ctx, here, current) {
 function shell(ctx, { title, here, current, body, live = false, dock = "" }) {
   const a = (n) => esc(ctx.href(here, ctx.OUT.asset(n)));
   const baseHref = ctx.href(here, path.join(ctx.base, "x")).replace(/x$/, "");
-  const hasOpen = (ctx.sitemap.open || []).length > 0;
+  const bar = openBar(ctx, here, current);
+  const hasOpen = bar !== "";
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -1132,7 +1133,7 @@ function shell(ctx, { title, here, current, body, live = false, dock = "" }) {
 <body data-key="${esc(ctx.href(path.join(ctx.base, "x"), here))}" data-hash="__PD_HASH__" data-shash="__PD_SHASH__" data-base="${esc(baseHref)}" data-livejs="${a("live.js")}" data-live="${live ? 1 : 0}"${hasOpen ? ' class="has-open"' : ""}>
 <a class="skip" href="#main">Skip to content</a>
 ${topbar(ctx, here, current)}
-${openBar(ctx, here, current)}
+${bar}
 ${dock}
 ${body}
 <div class="tip" id="tip" role="tooltip" hidden></div>
@@ -1593,10 +1594,11 @@ svg{width:1em;height:1em;flex:none}
 .switch select:hover{border-color:var(--line-2)}
 .switch svg{position:absolute;right:12px;pointer-events:none;color:var(--ink-3)}
 body.has-open{--open-h:48px}
-.openbar{position:sticky;top:var(--bar-h);z-index:19;background:#161614;color:#f4f3ee;border-bottom:1px solid rgba(255,255,255,.08)}
-.openbar-in{display:flex;align-items:center;gap:12px 16px;min-height:48px;padding-top:6px;padding-bottom:6px}
+.openbar{position:sticky;top:var(--bar-h);height:var(--open-h);z-index:19;background:#161614;color:#f4f3ee;border-bottom:1px solid rgba(255,255,255,.08)}
+.openbar-in{display:flex;align-items:center;gap:12px 16px;height:100%}
 .openbar-k{flex:none;font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#8e8c84}
-.open-chips{display:flex;flex-wrap:wrap;gap:4px;min-width:0;flex:1;overflow-x:auto;overscroll-behavior-x:contain;-ms-overflow-style:auto;scrollbar-width:thin;scrollbar-color:#5c5b56 transparent}
+/* One row on purpose: the bar height is the --open-h constant that .dock, .tabs and .toc offset by, so wrapped chips would grow it past that constant and slide those under it. The row scrolls sideways instead. */
+.open-chips{display:flex;flex-wrap:nowrap;gap:4px;min-width:0;flex:1;overflow-x:auto;overscroll-behavior-x:contain;-ms-overflow-style:auto;scrollbar-width:thin;scrollbar-color:#5c5b56 transparent}
 .open-chips::-webkit-scrollbar{height:8px}
 .open-chips::-webkit-scrollbar-track{background:transparent}
 .open-chips::-webkit-scrollbar-thumb{background:#5c5b56;border-radius:4px}
@@ -1614,16 +1616,17 @@ body.has-open{--open-h:48px}
 .open-chip.on .open-ptr,.open-chip:hover .open-ptr{color:#8a5a00}
 .dock{position:sticky;top:calc(var(--bar-h) + var(--open-h));z-index:18;max-height:0;opacity:0;overflow:hidden;pointer-events:none;background:color-mix(in srgb,var(--page) 90%,transparent);backdrop-filter:saturate(1.3) blur(14px);-webkit-backdrop-filter:saturate(1.3) blur(14px);border-bottom:1px solid transparent;transition:max-height .22s ease,opacity .18s ease,border-color .18s}
 body.is-compact .dock{max-height:56px;opacity:1;pointer-events:auto;border-bottom-color:var(--line)}
-body.is-compact{--dock-h:48px;--bar-h:0px;--open-h:36px}
+body.is-compact{--dock-h:48px;--bar-h:0px}
+body.is-compact.has-open{--open-h:36px}
 body.is-compact .bar{max-height:0;overflow:hidden;border:0;pointer-events:none;visibility:hidden}
 body.is-compact .openbar{top:0}
 body.is-compact .dock{top:var(--open-h)}
-body.is-compact .openbar-in{min-height:36px;padding-top:4px;padding-bottom:4px}
 body.is-compact .open-chip{padding:5px 8px 5px 10px}
 body.is-compact .open-chip b{font-size:13px}
 body.is-compact .open-chip em{display:none}
 body.is-compact .dock-search{display:flex}
-.dock-in{display:flex;align-items:center;gap:10px 14px;height:52px;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:thin;scrollbar-color:#c4c2b8 transparent}
+/* 47px plus the 1px bottom border of .dock is the 48px of --dock-h, which .tabs offsets by. */
+.dock-in{display:flex;align-items:center;gap:10px 14px;height:47px;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:thin;scrollbar-color:#c4c2b8 transparent}
 .dock-in::-webkit-scrollbar{height:8px}
 .dock-in::-webkit-scrollbar-thumb{background:#c4c2b8;border-radius:4px}
 .dock-id{display:flex;align-items:baseline;gap:8px;text-decoration:none;min-width:0;flex:1 1 160px}
@@ -1924,7 +1927,7 @@ details[open]>summary>svg{transform:rotate(180deg)}
 .docgrid{display:grid;grid-template-columns:minmax(0,1fr);gap:20px;margin-top:22px}
 @media (min-width:1080px){.docgrid{grid-template-columns:220px minmax(0,1fr);gap:32px}.docgrid.no-toc{grid-template-columns:minmax(0,1fr)}}
 .toc{font-size:13.5px;min-width:0}
-@media (min-width:1080px){.toc{position:sticky;top:calc(var(--bar-h) + 24px);max-height:calc(100vh - var(--bar-h) - 48px);overflow:auto;scrollbar-width:thin}}
+@media (min-width:1080px){.toc{position:sticky;top:calc(var(--bar-h) + var(--open-h) + 24px);max-height:calc(100vh - var(--bar-h) - var(--open-h) - 48px);overflow:auto;scrollbar-width:thin}}
 .toc summary{display:flex;align-items:center;justify-content:space-between;font-size:11.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3);padding:12px 0}
 .toc ul{list-style:none;margin:0;padding:0;border-left:1px solid var(--line)}
 .toc li a{display:block;text-decoration:none;color:var(--ink-3);padding:4px 0 4px 14px;margin-left:-1px;border-left:1px solid transparent;line-height:1.4}

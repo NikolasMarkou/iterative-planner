@@ -824,6 +824,61 @@ test("generate: open chips name every unclosed plan and mark the pointer", () =>
   } finally { fx.cleanup(); }
 });
 
+test("generate: an open plan gives every page the bar and the has-open class together", () => {
+  const fx = makeFixture();
+  try {
+    dashFor(fx).generate();
+    for (const html of [readFileSync(fx.out, "utf8"), planPage(fx, B)]) {
+      assert.equal([...html.matchAll(/class="openbar"/g)].length, 1);
+      assert.match(html, /<body [^>]*class="has-open"/);
+    }
+  } finally { fx.cleanup(); }
+});
+
+test("generate: a pointer with no open plan (CLOSE phase) renders no open bar and no has-open class", () => {
+  const fx = makeFixture();
+  try {
+    setPlan(fx, B, "CLOSE", "1. [x] Wire the API [RISK: low]");
+    assert.equal(readFileSync(join(fx.plans, ".current_plan"), "utf8").trim(), B, "the pointer is still there");
+    dashFor(fx).generate();
+    for (const html of [readFileSync(fx.out, "utf8"), planPage(fx, B), planPage(fx, A)]) {
+      assert.ok(!/class="openbar"/.test(html), "no empty Open bar");
+      assert.ok(!/has-open/.test(html), "so --open-h stays 0");
+    }
+  } finally { fx.cleanup(); }
+});
+
+test("site.css: the open bar is one row whose height is --open-h, and everything that sticks below it offsets by --open-h", () => {
+  const fx = makeFixture();
+  try {
+    dashFor(fx).generate();
+    const css = readFileSync(join(dirname(fx.out), "dashboard", "assets", "site.css"), "utf8");
+    const rule = (sel) => { const m = css.match(new RegExp(`(?:^|[}\\n])${sel.replace(/[.]/g, "\\.")}\\{([^}]*)\\}`)); assert.ok(m, `rule ${sel}`); return m[1]; };
+    // One row, so the scrollbar the CHANGELOG promises exists and the bar cannot outgrow --open-h.
+    assert.match(rule(".open-chips"), /flex-wrap:nowrap/);
+    assert.ok(!/flex-wrap:\s*wrap\b/.test(rule(".open-chips")), "wrapped chips would grow the bar past --open-h");
+    assert.match(rule(".open-chips"), /overflow-x:auto/);
+    assert.match(rule(".openbar"), /(^|;)height:var\(--open-h\)/);
+    assert.match(rule(".openbar-in"), /(^|;)height:100%/);
+    assert.ok(!/min-height/.test(rule(".openbar-in")), "a min-height lets the bar grow past --open-h");
+    // The compact value applies only when the bar exists; otherwise the dock would leave a 36px gap.
+    assert.match(css, /body\.is-compact\.has-open\{--open-h:36px\}/);
+    assert.ok(!/body\.is-compact\{[^}]*--open-h/.test(css), "compact alone must not set --open-h");
+    // Sticky offsets that sit under the bar.
+    const toc = css.match(/\.toc\{position:sticky;top:([^;]+);max-height:([^;]+);/);
+    assert.ok(toc, "the sticky .toc rule");
+    assert.match(toc[1], /var\(--open-h\)/);
+    assert.match(toc[2], /var\(--open-h\)/);
+    assert.match(rule(".dock"), /top:calc\(var\(--bar-h\) \+ var\(--open-h\)\)/);
+    assert.match(rule(".tabs"), /top:calc\(var\(--bar-h\) \+ var\(--open-h\) \+ var\(--dock-h\)\)/);
+    // L6: the dock is its inner height plus its 1px bottom border, and that must equal --dock-h.
+    const inner = +rule(".dock-in").match(/(?:^|;)height:(\d+)px/)[1];
+    const dockH = +css.match(/body\.is-compact\{[^}]*--dock-h:(\d+)px/)[1];
+    assert.match(rule(".dock"), /border-bottom:1px solid/);
+    assert.equal(inner + 1, dockH);
+  } finally { fx.cleanup(); }
+});
+
 test("generate: review+hygiene pairs and PLAN-template checks show on a REFLECT plan", () => {
   const fx = makeFixture();
   try {
