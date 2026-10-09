@@ -482,6 +482,20 @@ test("attention: nothing says 'you' in CLOSE, EXPLORE or PIVOT, hand-off flags i
   }
 });
 
+test("attention: a closed plan lists nothing at all, even with blocked work, a failed check and a bad hygiene pass", () => {
+  // None of these items is guarded by a phase test of its own, so only the early return for CLOSE keeps them out.
+  const extra = {
+    progress: { remaining: [], blocked: ["Waiting on the vendor"], flags: [] },
+    verification: [{ n: "1", criterion: "Lint clean", result: "FAIL", evidence: "exit 1" }],
+    reviews: [rv("hygiene-iter-1", "bad", 1000)],
+  };
+  const steps = [stp(1, "Wire the API", { done: true }), stp(2, "Prod cutover", { irreversible: true })];
+  assert.deepEqual(attention(wm("CLOSE", steps, extra)), []);
+  // The same plan one phase earlier does list them, so the empty answer above is the phase and not the fixture.
+  const titles = attention(wm("REFLECT", steps, extra)).map((x) => x.title);
+  for (const t of ["Blocked", "Checks failed", "Hygiene wants a fix"]) assert.ok(titles.includes(t), `REFLECT lists ${t}`);
+});
+
 const D = "plan-2026-01-12T080000-dddddddd"; // a second open plan, for the cross-plan box
 function setPlan(fx, id, phase, steps, extra = {}) {
   const w = (p, text) => { mkdirSync(dirname(p), { recursive: true }); writeFileSync(p, text); };
@@ -671,6 +685,19 @@ test("generate: all-PENDING checks outside REFLECT are labelled by phase and car
       assert.match(page, label, phase);
       assert.ok(!/These rows are still the PLAN template/.test(page), phase);
     }
+  } finally { fx.cleanup(); }
+});
+
+test("generate: each Checks row is labelled Pass, Fail or Pending, whatever the case of the result; any other result shows as written", () => {
+  const fx = makeFixture();
+  try {
+    const results = ["PASS", "FAIL", "PENDING", "pending", "SKIPPED", ""];
+    const rows = results.map((r, i) => `| ${i + 1} | Criterion ${i + 1} | Automated | \`npm test\` | ${r} | |`).join("\n");
+    writeFileSync(join(fx.plans, B, "verification.md"), `# Verification\n\n## Criteria Verification\n| # | Criterion (from plan.md) | Method | Command/Action | Result | Evidence |\n|---|---|---|---|---|---|\n${rows}\n`);
+    dashFor(fx).generate();
+    const list = planPage(fx, B).match(/<ul class="checks">[\s\S]*?<\/ul>/)[0];
+    const got = [...list.matchAll(/<span class="res (\w+)">(?:(?!<\/span>)[\s\S])*?<b>([^<]*)<\/b><\/span>/g)].map((m) => `${m[1]}:${m[2]}`);
+    assert.deepEqual(got, ["ok:Pass", "bad:Fail", "pend:Pending", "pend:Pending", "na:SKIPPED", "na:—"]);
   } finally { fx.cleanup(); }
 });
 
@@ -1078,6 +1105,74 @@ test("generate: a pointer with no open plan (CLOSE phase) renders no open bar an
       assert.ok(!/class="openbar"/.test(html), "no empty Open bar");
       assert.ok(!/has-open/.test(html), "so --open-h stays 0");
     }
+  } finally { fx.cleanup(); }
+});
+
+// Class list of every open chip, keyed by the plan code printed in it.
+const chipClasses = (html) => Object.fromEntries([...html.matchAll(/<a class="(open-chip [^"]*)"[^>]*><b>([^<]*)<\/b>/g)].map((m) => [m[2], m[1].split(/\s+/)]));
+
+test("generate: the chip of the plan being viewed is highlighted, no other chip is, and the pointer mark is a separate thing", () => {
+  const fx = makeFixture();
+  try {
+    const step = "1. [ ] Wire the API [RISK: low]";
+    setPlan(fx, B, "EXECUTE", step, { title: "Phase 2 — Wiring" });
+    setPlan(fx, D, "EXECUTE", step, { title: "Phase 9 — Cutover" });
+    dashFor(fx).generate();
+    const onB = chipClasses(planPage(fx, B)), onD = chipClasses(planPage(fx, D));
+    assert.deepEqual(Object.keys(onB).sort(), ["2", "9"], "both open plans are chips");
+    assert.ok(onB["2"].includes("on") && !onB["9"].includes("on"), "viewing B highlights B only");
+    assert.ok(onD["9"].includes("on") && !onD["2"].includes("on"), "viewing D highlights D only");
+    // B is the protocol pointer on every page, wherever the viewer is.
+    assert.ok(onB["2"].includes("proto") && onD["2"].includes("proto"));
+    assert.ok(!onB["9"].includes("proto") && !onD["9"].includes("proto"));
+    // A page that shows no plan (All plans) highlights nothing, and still marks the pointer.
+    const all = chipClasses(readFileSync(join(dirname(fx.out), "dashboard", "index.html"), "utf8"));
+    assert.deepEqual(Object.keys(all).sort(), ["2", "9"]);
+    assert.deepEqual(Object.values(all).filter((c) => c.includes("on")), []);
+    assert.ok(all["2"].includes("proto"));
+  } finally { fx.cleanup(); }
+});
+
+const htmlFiles = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? htmlFiles(join(dir, e.name)) : /\.html$/.test(e.name) ? [join(dir, e.name)] : []);
+
+test("generate: the compact dock is on every plan page, once, and on no other page", () => {
+  const fx = makeFixture();
+  try {
+    dashFor(fx).generate();
+    const site = join(dirname(fx.out), "dashboard");
+    // Plan pages: the front page (it shows the live plan) and site/p/<plan>.html. Documents live deeper, under site/p/<plan>/.
+    const pages = [fx.out, ...htmlFiles(site)];
+    const plan = pages.filter((f) => f === fx.out || dirname(f) === join(site, "p"));
+    assert.ok(plan.length >= 3, "the fixture has plan pages");
+    assert.ok(pages.length > plan.length, "and pages that are not plan pages");
+    for (const f of pages) {
+      const html = readFileSync(f, "utf8");
+      const docks = [...html.matchAll(/class="dock"/g)].length;
+      assert.equal(docks, plan.includes(f) ? 1 : 0, f);
+      assert.equal([...html.matchAll(/id="dock"/g)].length, docks, f);
+    }
+    // What the dock holds: the plan code linking back to the overview, and the counters.
+    const html = planPage(fx, B);
+    assert.match(html, /<a class="dock-id" href="#overview"><b>2<\/b>/);
+    for (const k of ["Steps", "Decisions", "Commits", "Checks", "Tokens", "Elapsed"]) assert.match(html, new RegExp(`<dt>${k}</dt>`), k);
+  } finally { fx.cleanup(); }
+});
+
+test("site.js: scrolling past the plan overview toggles the class that site.css reveals the dock with", () => {
+  const fx = makeFixture();
+  try {
+    dashFor(fx).generate();
+    const assets = join(dirname(fx.out), "dashboard", "assets");
+    const js = readFileSync(join(assets, "site.js"), "utf8"), css = readFileSync(join(assets, "site.css"), "utf8");
+    // No browser here, so this reads the wiring as text: one observer on the overview, compact exactly while it is out of view.
+    const m = js.match(/var overview = document\.getElementById\('(\w+)'\);\s*if \(overview && 'IntersectionObserver' in window\) \{\s*new IntersectionObserver\(function \(es\) \{\s*document\.body\.classList\.toggle\('([\w-]+)', es\[0\] && !es\[0\]\.isIntersecting\);\s*\}, \{ threshold: 0 \}\)\.observe\(overview\);/);
+    assert.ok(m, "the IntersectionObserver that toggles the compact class on the overview");
+    const [, target, cls] = m;
+    assert.equal(cls, "is-compact");
+    // The element it watches is on the plan page exactly once, and the class it toggles is the one the stylesheet reacts to.
+    assert.equal([...planPage(fx, B).matchAll(new RegExp(`id="${target}"`, "g"))].length, 1);
+    assert.match(css, new RegExp(`body\\.${cls} \\.dock\\{[^}]*opacity:1`));
+    assert.match(css, new RegExp(`body\\.${cls} \\.bar\\{[^}]*visibility:hidden`));
   } finally { fx.cleanup(); }
 });
 
