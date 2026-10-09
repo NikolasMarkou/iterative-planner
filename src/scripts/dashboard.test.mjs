@@ -289,6 +289,17 @@ test("parseVerdict: every verdict word the agents write gets its tone, and free 
     ["Not READY_TO_CLOSE: two criticals", bad("Not READY_TO_CLOSE: two criticals")],
     ["not ready_to_close", bad("not ready_to_close")],
     ["not ready-to-close", bad("not ready-to-close")],
+    // READY_TO_CLOSE counts only as the verdict word leading the line; inside a sentence it is never read as a pass
+    ["Would be READY_TO_CLOSE except for the critical concern.", bad("Would be READY_TO_CLOSE except for the critical con\u2026")],
+    ["Isn't ready to close yet.", na("Isn't ready to close yet.")],
+    ["Not quite ready to close: two criticals", na("Not quite ready to close: two criticals")],
+    ["Almost READY_TO_CLOSE, but one CRITICAL remains", bad("Almost READY_TO_CLOSE, but one CRITICAL remains")],
+    ["Cannot be READY_TO_CLOSE until the critical is fixed", bad("Cannot be READY_TO_CLOSE until the critical is fixed")],
+    ["Ready to close? No, NEEDS_WORK", bad("NEEDS WORK")],
+    ["Ready to close? No.", na("Ready to close? No.")],
+    ["READY_TO_CLOSE - but two criticals remain", ok("READY TO CLOSE")],
+    ["READY_TO_CLOSE with conditions", ok("READY TO CLOSE")],
+    ["Overall NEEDS_WORK here", bad("NEEDS WORK")],
     // a common word leads only when nothing but a separator or the end follows; a strong word later in the line wins
     ["Pass 2: NEEDS_WORK", bad("NEEDS WORK")],
     ["OK, so overall NEEDS_WORK", bad("NEEDS WORK")],
@@ -328,6 +339,14 @@ test("parseVerdict: every verdict word the agents write gets its tone, and free 
   assert.deepEqual(parseVerdict(verdict("Example of a finished review:\n```\nREADY_TO_CLOSE\n```\nNEEDS_WORK")), bad("NEEDS WORK"));
   assert.deepEqual(parseVerdict(verdict("```md\n## Verdict\nREADY_TO_CLOSE\n```\nNEEDS_INVESTIGATION")), bad("NEEDS INVESTIGATION"));
   assert.deepEqual(parseVerdict(verdict("```\nREADY_TO_CLOSE\n```")), na(""), "a block holding only a fence has no verdict");
+  assert.deepEqual(parseVerdict(verdict("~~~\nREADY_TO_CLOSE\n~~~\nNEEDS_WORK")), bad("NEEDS WORK"), "tilde fences are fences too");
+  // A fenced example EARLIER in the file, even one holding a Verdict heading, cannot take the verdict from the real heading.
+  for (const f of ["```", "~~~"]) {
+    const quoted = `# Review\n\n## Concerns\nThe template reads:\n${f}md\n## Verdict\nREADY_TO_CLOSE / NEEDS_WORK\n${f}\n\n## Verdict\nNEEDS_WORK\n`;
+    assert.deepEqual(parseVerdict(quoted), bad("NEEDS WORK"), `${f} template quoted above the real heading`);
+    const finished = `# Review\n\n## Concerns\n${f}\n## Verdict\nREADY_TO_CLOSE\n${f}\n\n## Verdict\nNEEDS_WORK\n`;
+    assert.deepEqual(parseVerdict(finished), bad("NEEDS WORK"), `${f} finished example quoted above the real heading`);
+  }
 });
 
 test("generate: NEEDS_INVESTIGATION and SCAN_UNTRUSTWORTHY show as bad and a template line shows as neutral", () => {

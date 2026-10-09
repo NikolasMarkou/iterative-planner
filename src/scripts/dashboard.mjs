@@ -302,19 +302,21 @@ const verdictWords = (words) => words.map((w) => w.replace(/_/g, "[_ -]")).join(
 const WEAK_WORDS = ["READY", "CLEAN", "PASS", "OK"];
 const STRONG = verdictWords(Object.keys(VERDICT_TONES).filter((w) => !WEAK_WORDS.includes(w)));
 const VERDICT_WORDS = verdictWords(Object.keys(VERDICT_TONES));
-// A strong word leads the line as the verdict. A common word (READY, CLEAN, PASS, OK) does so only when the line ends
-// there or a colon, bracket or spaced dash follows: "Pass 2: NEEDS_WORK" and "Clean-up still needed" are prose.
-const VERDICT_LEAD = new RegExp(`^(?:(${STRONG})\\b|(${verdictWords(WEAK_WORDS)})(?=[\\s*\`_.!]*$|\\s*[:(]|\\s+[-\u2013\u2014](?:\\s|$)))`, "i");
-// Inside a sentence only the strong words count.
-const VERDICT_INLINE = new RegExp(`\\b(${STRONG})\\b`, "i");
+// A strong word leads the line as the verdict, unless a question mark follows ("Ready to close? No"). A common word
+// (READY, CLEAN, PASS, OK) does so only when the line ends there or a colon, bracket or spaced dash follows:
+// "Pass 2: NEEDS_WORK" and "Clean-up still needed" are prose.
+const VERDICT_LEAD = new RegExp(`^(?:(${STRONG})\\b(?!\\s*\\?)|(${verdictWords(WEAK_WORDS)})(?=[\\s*\`_.!]*$|\\s*[:(]|\\s+[-\u2013\u2014](?:\\s|$)))`, "i");
+// Inside a sentence only a word that is not a pass counts: "Would be READY_TO_CLOSE except..." is not a verdict.
+const VERDICT_INLINE = new RegExp(`\\b(${verdictWords(Object.keys(VERDICT_TONES).filter((w) => VERDICT_TONES[w] !== "ok"))})\\b`, "i");
 // The unfilled template line is nothing but the choices ("READY_TO_CLOSE / NEEDS_WORK / ..."); a real verdict that quotes some is kept.
 const VERDICT_CHOICES = new RegExp(`^(?:${VERDICT_WORDS})(?:\\s*/\\s*(?:${VERDICT_WORDS}))+$`, "i");
-const FENCE = /^[ \t]*```[\s\S]*?^[ \t]*```[ \t]*$/gm;
+const FENCE = /^[ \t]*(```|~~~)[\s\S]*?^[ \t]*\1[ \t]*$/gm;
 
-/** Verdict from findings/review-*.md or findings/hygiene-*.md: the whole `## Verdict` block is read (a `###` heading, a verdict on the heading line, and fenced examples are handled). */
+/** Verdict from findings/review-*.md or findings/hygiene-*.md: the whole `## Verdict` block is read (a `###` heading, a verdict on the heading line, and fenced examples, ``` or ~~~, anywhere in the file are handled). */
 export function parseVerdict(src) {
+  src = src.replace(FENCE, "");
   const at = /^(#{2,4})[ \t]*Verdict[ \t]*(?::[ \t]*(.*?))?[ \t]*$/im.exec(src);
-  const below = at ? src.slice(at.index + at[0].length).replace(FENCE, "").split(new RegExp(`^#{1,${at[1].length}}\\s`, "m"))[0] : "";
+  const below = at ? src.slice(at.index + at[0].length).split(new RegExp(`^#{1,${at[1].length}}\\s`, "m"))[0] : "";
   const strip = (l) => l.replace(/^[\s>-]+|[*`]/g, "").trim();
   const lines = `${at?.[2] || ""}\n${below}`.split("\n").map((l) => l.trim()).filter((l) => l && !VERDICT_CHOICES.test(strip(l)));
   if (!lines.length) return { label: "", tone: "na" };
