@@ -15,8 +15,8 @@
 //
 // OPEN PLANS AND WAITING ON YOU: a chip strip under the top bar names every plan that is not closed (the
 // plan .current_plan names is marked), and the page says when the protocol is waiting on you: PLAN for
-// your approval, an owner-run step that is next in EXECUTE or REFLECT, or Confirm Close in REFLECT when the
-// newest review is not asking for work.
+// your approval, an owner-run step that is next in EXECUTE or REFLECT, Confirm Close in REFLECT when the
+// newest review is not asking for work, or your decision in REFLECT when it is and no agent step is left.
 // waitingOnYou() is the one rule behind the attention list, the headline and the step tags.
 //
 //   node <skill-path>/scripts/dashboard.mjs                 write once and print the path
@@ -404,10 +404,11 @@ const ownerish = (s) => !!(s && (s.irreversible || OWNER_STEP_RE.test(s.title ||
 
 /**
  * The one answer to "is the protocol waiting on the owner?", shared by attention(), the hero line and the step tags.
- * Returns null, or { kind: "approve" | "owner-step" | "confirm-close", steps, detail }.
+ * Returns null, or { kind: "approve" | "owner-step" | "confirm-close" | "decide-review", steps, detail }.
  * Only PLAN, EXECUTE and REFLECT can wait. In EXECUTE and REFLECT the owner owes the LEADING run of owner-run pending
  * steps: the first agent step ends it, because from there the agents go first. Confirm Close is never offered over a
- * newest review that needs work: the owner confirms a close only when nothing is open against it.
+ * newest review that needs work. When nothing is left for the agents either, REFLECT still ends with the owner's
+ * choice, so that plan is waiting on a decision: fix it, or close anyway. Hygiene and failed checks do not change this.
  */
 export function waitingOnYou(m) {
   const { state, stepList, reviews = [] } = m;
@@ -420,8 +421,9 @@ export function waitingOnYou(m) {
     steps.push(s);
   }
   if (steps.length) return { kind: "owner-step", steps, detail: steps[0].title };
-  if (state.phase === "REFLECT" && !pending.some(ownerish) && !newestBad(reviews, "Review")) {
-    return { kind: "confirm-close", steps: [], detail: "Reflect is in. Protocol waits for you before CLOSE." };
+  if (state.phase === "REFLECT" && !pending.some(ownerish)) {
+    if (!newestBad(reviews, "Review")) return { kind: "confirm-close", steps: [], detail: "Reflect is in. Protocol waits for you before CLOSE." };
+    if (!pending.length) return { kind: "decide-review", steps: [], detail: "Fix it, or confirm close anyway." };
   }
   return null;
 }
@@ -447,7 +449,8 @@ export function attention(m) {
     return out;
   }
   const reviewBad = newestBad(reviews, "Review");
-  if ((state.phase === "REFLECT" || state.phase === "EXECUTE") && reviewBad) add("agents", "Review needs work", [reviewBad.label, reviewBad.name].filter(Boolean).join(" · "));
+  if (wait?.kind === "decide-review") add("you", "Decide: the review needs work", wait.detail);
+  else if ((state.phase === "REFLECT" || state.phase === "EXECUTE") && reviewBad) add("agents", "Review needs work", [reviewBad.label, reviewBad.name].filter(Boolean).join(" · "));
   if (wait?.kind === "confirm-close") add("you", "Confirm Close", wait.detail);
   const addedSteps = new Set();
   for (const s of wait?.steps || []) {
@@ -1248,6 +1251,7 @@ function renderPlan(ctx, m, here) {
   const reviewBad = newestBad(reviews, "Review");
   const head = wait?.kind === "approve" ? { verb: "Waiting for you", detail: "Approve this plan to start Execute." }
     : wait?.kind === "owner-step" ? { verb: "Waiting for you", detail: wait.detail }
+    : wait?.kind === "decide-review" ? { verb: "Review needs work", detail: `Waiting on you. ${wait.detail}` }
     : state.phase === "REFLECT" && reviewBad ? { verb: "Review needs work", detail: reviewBad.label }
     : wait?.kind === "confirm-close" ? { verb: "Waiting for you", detail: "Confirm Close, or send it back for fixes." }
     : nextStep ? { verb: `${verb} step ${nextStep.key}`, detail: nextStep.title }

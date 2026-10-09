@@ -426,7 +426,11 @@ test("waitingOnYou: only PLAN, EXECUTE and REFLECT wait, and the owner owes the 
   assert.equal(waitingOnYou(wm("REFLECT", [stp(1, "Fix it")])).kind, "confirm-close", "only agent steps left and no review problem");
   const bad = [{ kind: "Review", tone: "bad", label: "NEEDS WORK", name: "review-iter-1" }];
   assert.equal(waitingOnYou(wm("REFLECT", [stp(1, "Fix it")], { reviews: bad })), null, "a review that needs work with an agent step next is the agents' turn");
-  assert.equal(waitingOnYou(wm("REFLECT", [], { reviews: bad })), null, "even with no step left, Confirm Close is not offered over a review that needs work");
+  const decide = waitingOnYou(wm("REFLECT", [], { reviews: bad }));
+  assert.equal(decide.kind, "decide-review", "no step left for anyone and a review that needs work: the owner decides, Confirm Close is not offered");
+  assert.equal(waitingOnYou(wm("REFLECT", [stp(1, "done", { done: true })], { reviews: bad })).kind, "decide-review");
+  assert.equal(waitingOnYou(wm("EXECUTE", [], { reviews: bad })), null, "only REFLECT ends with the owner's decision");
+  assert.equal(waitingOnYou(wm("REFLECT", [stp(1, "Fix it"), stp(2, "Run it", { irreversible: true })], { reviews: bad })), null, "an agent step first: still the agents' turn");
   assert.equal(waitingOnYou(wm("REFLECT", [stp(1, "Run it", { irreversible: true })], { reviews: bad })).kind, "owner-step");
 });
 
@@ -442,13 +446,24 @@ test("attention: a newest review that needs work is listed in REFLECT and EXECUT
     assert.equal(t.includes("Confirm Close"), false);
     assert.equal(waitingOnYou(wm("REFLECT", steps, { reviews: bad })).kind, "owner-step", "who is waiting is unchanged");
   }
-  // Nothing pending, or only agent steps: the review is listed and Confirm Close is not.
-  for (const steps of [[], [stp(1, "Wire the API", { done: true })], [stp(1, "Wire the API")]]) {
-    const t = titles("REFLECT", steps);
-    assert.ok(t.includes("Review needs work"), `${steps.length} step(s): the review is listed`);
-    assert.equal(t.includes("Confirm Close"), false);
-    assert.equal(waitingOnYou(wm("REFLECT", steps, { reviews: bad })), null);
+  // An agent step pending: the review is listed for the agents, nobody is asked, and Confirm Close is not offered.
+  const agentTurn = attention(wm("REFLECT", [stp(1, "Wire the API")], { reviews: bad }));
+  assert.deepEqual(agentTurn.map((x) => `${x.who}:${x.title}`), ["agents:Review needs work"]);
+  assert.equal(waitingOnYou(wm("REFLECT", [stp(1, "Wire the API")], { reviews: bad })), null);
+  // Nothing pending: the protocol waits for the owner to decide, and "Review needs work" is not also filed under Agents.
+  for (const steps of [[], [stp(1, "Wire the API", { done: true })]]) {
+    const items = attention(wm("REFLECT", steps, { reviews: bad }));
+    assert.deepEqual(items.map((x) => `${x.who}:${x.title}`), ["you:Decide: the review needs work"], `${steps.length} step(s)`);
+    assert.match(items[0].detail, /confirm close anyway/);
   }
+  // A bad hygiene pass or a failed check is not a review problem: Confirm Close is still offered and nothing is to decide.
+  const hy = [rv("hygiene-iter-1", "bad", 1000, "REMEDIATE")];
+  assert.equal(waitingOnYou(wm("REFLECT", [], { reviews: hy })).kind, "confirm-close");
+  assert.ok(titles("REFLECT", [], hy).includes("Confirm Close"));
+  assert.equal(titles("REFLECT", [], hy).some((x) => /^Decide/.test(x)), false);
+  const failed = attention(wm("REFLECT", [], { verification: [{ criterion: "c", result: "FAIL" }] })).map((x) => x.title);
+  assert.ok(failed.includes("Confirm Close") && !failed.some((x) => /^Decide/.test(x)));
+  assert.equal(waitingOnYou(wm("REFLECT", [], { verification: [{ criterion: "c", result: "FAIL" }] })).kind, "confirm-close");
   // A later good pass clears both effects.
   const cleared = [rv("review-iter-1", "bad", 1000), rv("review-iter-1-pass2", "ok", 2000)];
   const t = titles("REFLECT", [], cleared);
@@ -826,6 +841,33 @@ test("generate: a stale NEEDS_WORK or REMEDIATE no longer nags once a later pass
   } finally { fx.cleanup(); }
 });
 
+test("generate: a REFLECT plan with nothing left to do and a bad newest review is owed in the other plan's box; a bad hygiene pass is not a decision", () => {
+  const fx = makeFixture();
+  try {
+    const put = (name, verdict, sec) => {
+      const dir = join(fx.plans, D, "findings");
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, `${name}.md`), `# Review\n\n## Verdict\n${verdict}\n`);
+      utimesSync(join(dir, `${name}.md`), sec, sec);
+    };
+    const boxed = (steps) => { setPlan(fx, D, "REFLECT", steps); dashFor(fx).generate(); return planPage(fx, B); };
+    put("review-iter-1", "NEEDS_WORK", 1000);
+    const live = boxed("1. [x] Wire the API [RISK: low]");
+    assert.match(live, /Other open plans/, "the decision is owed, so the live plan's page lists this one");
+    assert.match(live, /Decide: the review needs work/);
+    assert.match(live, /1 still need you/);
+    assert.doesNotMatch(boxed("1. [ ] Wire the API [RISK: low]"), /Other open plans/, "an agent step pending: not owed");
+    put("review-iter-1-pass2", "READY_TO_CLOSE", 2000);
+    assert.match(boxed("1. [x] Wire the API [RISK: low]"), /Confirm Close/, "a later good pass: back to Confirm Close, still owed");
+    put("review-iter-1-pass3", "READY_TO_CLOSE", 3000);
+    put("hygiene-iter-1", "REMEDIATE", 4000);
+    const hy = boxed("1. [x] Wire the API [RISK: low]");
+    assert.match(hy, /Confirm Close/);
+    assert.doesNotMatch(hy, /Decide: the review needs work/);
+    assert.match(planPage(fx, D), /<b>Confirm Close<\/b>/);
+  } finally { fx.cleanup(); }
+});
+
 test("generate: a newest review that needs work shows in the attention list and the hero, and the step tag follows who is owed", () => {
   const fx = makeFixture();
   try {
@@ -844,12 +886,17 @@ test("generate: a newest review that needs work shows in the attention list and 
     assert.doesNotMatch(owner, /<b>Confirm Close<\/b>/);
     assert.equal(owner.split(TAG_WAIT).length - 1, 1, "the owner-run step is tagged although it is not [IRREVERSIBLE]");
     assert.equal(owner.includes(TAG_IRR), false);
-    // Nothing pending: the review problem replaces Confirm Close in the hero and the list.
+    // Nothing pending: the owner decides, so the hero, the list and the tab link say so instead of Confirm Close.
     const done = page("1. [x] Wire the API [RISK: low]");
-    assert.match(done, /<p class="now-h"><span>Review needs work<\/span>/);
-    assert.match(done, /<b>Review needs work<\/b>/);
-    assert.doesNotMatch(done, /Waiting for you/);
+    assert.match(done, /<p class="now-h"><span>Review needs work<\/span> — Waiting on you\. Fix it, or confirm close anyway\./);
+    assert.match(done, /<b>Decide: the review needs work<\/b>/);
+    assert.match(done, /<a href="#waiting">Waiting on you<\/a>/);
+    assert.doesNotMatch(done, /<b>Review needs work<\/b>/, "it is not also filed under the agents");
     assert.doesNotMatch(done, /<b>Confirm Close<\/b>/);
+    // An agent step still pending after the bad review: the agents' turn, nobody is waiting on the owner.
+    const agents = page("1. [ ] Wire the API [RISK: low]");
+    assert.match(agents, /<b>Review needs work<\/b>/);
+    assert.doesNotMatch(agents, /Decide: the review needs work|Waiting on you|<b>Confirm Close<\/b>/);
     // An [IRREVERSIBLE] step that is not owed yet keeps the plain tag; an owner-run title behind an agent step has none.
     const later = page("1. [ ] Wire the API [RISK: low]\n2. [ ] [IRREVERSIBLE] Push [RISK: high]\n3. [ ] Owner-run deploy [RISK: low]");
     assert.equal(later.includes(TAG_WAIT), false);
