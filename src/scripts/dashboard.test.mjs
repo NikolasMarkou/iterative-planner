@@ -247,6 +247,83 @@ test("parseVerdict: token and prose verdicts, and missing Verdict is empty", () 
   assert.equal(parseVerdict("# Review\nno verdict heading\n").tone, "na");
 });
 
+test("parseVerdict: every verdict word the agents write gets its tone, and free text is never read as a pass", () => {
+  const ok = (label) => ({ label, tone: "ok" }), bad = (label) => ({ label, tone: "bad" }), na = (label) => ({ label, tone: "na" });
+  const verdict = (body, after = "") => `# Findings\n\n## Verdict\n${body}\n${after}`;
+  const rows = [
+    // ip-reviewer.md
+    ["READY_TO_CLOSE", ok("READY TO CLOSE")],
+    ["NEEDS_WORK", bad("NEEDS WORK")],
+    ["NEEDS_INVESTIGATION", bad("NEEDS INVESTIGATION")],
+    // ip-boyscout.md
+    ["CLEAN", ok("CLEAN")],
+    ["REMEDIATE", bad("REMEDIATE")],
+    ["REPORT_ONLY", na("REPORT_ONLY")],
+    ["REPORT_ONLY - 76 inherited items exist and none is critical", na("REPORT_ONLY - 76 inherited items exist and none is\u2026")],
+    ["SCAN_UNTRUSTWORTHY", bad("SCAN UNTRUSTWORTHY")],
+    // the other words the table accepts
+    ["READY", ok("READY")], ["PASS", ok("PASS")], ["OK", ok("OK")],
+    // spelling: spaces for underscores, case, decoration, trailing reason
+    ["NEEDS WORK", bad("NEEDS WORK")], ["READY TO CLOSE", ok("READY TO CLOSE")], ["needs_investigation", bad("NEEDS INVESTIGATION")],
+    ["scan untrustworthy", bad("SCAN UNTRUSTWORTHY")],
+    ["**CLEAN**", ok("CLEAN")], ["`NEEDS_WORK`", bad("NEEDS WORK")], ["> REMEDIATE", bad("REMEDIATE")],
+    ["NEEDS_WORK: two criticals remain", bad("NEEDS WORK")],
+    ["Overall: NEEDS_INVESTIGATION", bad("NEEDS INVESTIGATION")],
+    // "not ready" contains READY and must not read as a pass
+    ["Not ready to close: 2 criticals", bad("Not ready to close: 2 criticals")],
+    ["Work is not yet ready", bad("Work is not yet ready")],
+    ["unready", bad("unready")],
+    // the unfilled template lists the choices and is no verdict
+    ["READY_TO_CLOSE / NEEDS_WORK / NEEDS_INVESTIGATION", na("")],
+    ["CLEAN / REMEDIATE / REPORT_ONLY / SCAN_UNTRUSTWORTHY", na("")],
+    ["READY_TO_CLOSE/NEEDS_WORK", na("")],
+    // the whole block is read, not only its first line
+    ["Blockers remain.\nNEEDS_WORK", bad("NEEDS WORK")],
+    ["The scan ran.\n\nCLEAN", ok("CLEAN")],
+    ["Two items.\nSCAN_UNTRUSTWORTHY", bad("SCAN UNTRUSTWORTHY")],
+    ["Blockers remain.\nOverall: NEEDS_WORK", bad("NEEDS WORK")],
+    ["Overall: SCAN_UNTRUSTWORTHY", bad("SCAN UNTRUSTWORTHY")],
+    ["READY_TO_CLOSE / NEEDS_WORK / NEEDS_INVESTIGATION\nNEEDS_INVESTIGATION", bad("NEEDS INVESTIGATION")],
+    // free text and unknown words stay neutral; critical alone is bad
+    ["Looks fine, all checks pass.", na("Looks fine, all checks pass.")],
+    ["MAYBE", na("MAYBE")],
+    ["Two critical items found", bad("Two critical items found")],
+    ["", na("")],
+  ];
+  for (const [body, want] of rows) assert.deepEqual(parseVerdict(verdict(body)), want, JSON.stringify(body));
+  // The block ends at the next heading: a later section's words are not the verdict.
+  assert.deepEqual(parseVerdict(verdict("NEEDS_INVESTIGATION", "\n## Notes\nREADY_TO_CLOSE\n")), bad("NEEDS INVESTIGATION"));
+  assert.deepEqual(parseVerdict(verdict("No opinion yet.", "\n## Notes\nNEEDS_WORK\nREMEDIATE\n")), na("No opinion yet."));
+  assert.deepEqual(parseVerdict(verdict("", "\n## Notes\nNEEDS_WORK\n")), na(""), "an empty Verdict block does not borrow the next section");
+  // A real file shape: sections before and after, the Verdict not on the first line of the file.
+  const file = "# Review iter 1\n\n## Concerns\n- READY_TO_CLOSE is premature\n\n## Blind Spots\n- none\n\n## Verdict\nNeeds a second look.\nNEEDS_INVESTIGATION\n\n## Appendix\nREADY_TO_CLOSE\n";
+  assert.deepEqual(parseVerdict(file), bad("NEEDS INVESTIGATION"));
+  assert.deepEqual(parseVerdict("# Review\n\n## Concerns\nNEEDS_WORK\n"), na(""), "no Verdict heading, no verdict");
+});
+
+test("generate: NEEDS_INVESTIGATION and SCAN_UNTRUSTWORTHY show as bad and a template line shows as neutral", () => {
+  const fx = makeFixture();
+  try {
+    setPlan(fx, B, "REFLECT", "1. [ ] Wire the API [RISK: low]");
+    const dir = join(fx.plans, B, "findings");
+    mkdirSync(dir, { recursive: true });
+    const put = (name, verdict, sec) => { writeFileSync(join(dir, `${name}.md`), `# Findings\n\n## Verdict\n${verdict}\n`); utimesSync(join(dir, `${name}.md`), sec, sec); };
+    put("review-iter-1", "NEEDS_INVESTIGATION", 1000);
+    put("hygiene-iter-1", "SCAN_UNTRUSTWORTHY", 2000);
+    dashFor(fx).generate();
+    const bad = planPage(fx, B);
+    assert.match(bad, /<span class="tag rv-bad"><i><\/i>NEEDS INVESTIGATION<\/span>/);
+    assert.match(bad, /<span class="tag rv-bad"><i><\/i>SCAN UNTRUSTWORTHY<\/span>/);
+    assert.match(bad, /<b>Review needs work<\/b>/);
+    assert.match(bad, /<b>Hygiene wants a fix<\/b>/);
+    put("review-iter-1-pass2", "READY_TO_CLOSE / NEEDS_WORK / NEEDS_INVESTIGATION", 3000);
+    dashFor(fx).generate();
+    const tpl = planPage(fx, B);
+    assert.doesNotMatch(tpl, /tag rv-ok/, "the unfilled template line is not a green verdict");
+    assert.doesNotMatch(tpl, /Review needs work/, "and a neutral newest pass does not nag");
+  } finally { fx.cleanup(); }
+});
+
 test("attention: PLAN and Confirm Close wait on you; EXECUTE with agent work does not wait on a later owner-run remaining", () => {
   assert.equal(attention({ state: { phase: "CLOSE", hist: [] }, progress: { remaining: [], blocked: [], flags: [] }, verification: [], stepList: [], reviews: [] }).length, 0);
   const plan = attention({

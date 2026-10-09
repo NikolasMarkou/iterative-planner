@@ -281,22 +281,47 @@ export function parseProgress(text) {
   return { inProgress: items("In Progress"), remaining, blocked: items("Blocked"), flags: items("Hand-off flags") };
 }
 
-/** Verdict line from findings/review-*.md or findings/hygiene-*.md. */
+// Every verdict word the agents write (ip-reviewer.md: READY_TO_CLOSE / NEEDS_WORK / NEEDS_INVESTIGATION;
+// ip-boyscout.md: CLEAN / REMEDIATE / REPORT_ONLY / SCAN_UNTRUSTWORTHY) and the tone the dashboard shows for it.
+// A word that is missing here reads as neutral grey, never green.
+const VERDICT_TONES = {
+  READY_TO_CLOSE: "ok", READY: "ok", CLEAN: "ok", PASS: "ok", OK: "ok",
+  NEEDS_WORK: "bad", NEEDS_INVESTIGATION: "bad", REMEDIATE: "bad", SCAN_UNTRUSTWORTHY: "bad",
+  REPORT_ONLY: "na",
+};
+// READY_TO_CLOSE stays ahead of READY: the alternation takes the first word that fits.
+const VERDICT_WORDS = Object.keys(VERDICT_TONES).map((w) => w.replace(/_/g, "[_ ]")).join("|");
+const VERDICT_LEAD = new RegExp(`^(${VERDICT_WORDS})\\b`, "i");
+// Inside a sentence only the words that are unlikely in ordinary prose count (not CLEAN, PASS, OK).
+const VERDICT_INLINE = /\b(READY[_ ]TO[_ ]CLOSE|READY|NEEDS[_ ](?:WORK|INVESTIGATION)|REMEDIATE|SCAN[_ ]UNTRUSTWORTHY)\b/i;
+// The unfilled template line lists the choices ("READY_TO_CLOSE / NEEDS_WORK / ..."); it is not a verdict.
+const VERDICT_CHOICES = new RegExp(`(?:${VERDICT_WORDS})\\s*/\\s*(?:${VERDICT_WORDS})`, "i");
+
+/** Verdict from findings/review-*.md or findings/hygiene-*.md: the whole `## Verdict` block is read. */
 export function parseVerdict(src) {
-  const block = (src.match(/^##\s*Verdict\s*\n+([\s\S]*?)(?=\n##\s|\n*$)/im) || [])[1] || "";
-  const lines = block.split("\n").map((l) => l.trim()).filter(Boolean);
+  const at = /^##[ \t]*Verdict[ \t]*$/im.exec(src);
+  const block = at ? src.slice(at.index + at[0].length).split(/^##\s/m)[0] : "";
+  const lines = block.split("\n").map((l) => l.trim()).filter((l) => l && !VERDICT_CHOICES.test(l));
   if (!lines.length) return { label: "", tone: "na" };
   const joined = lines.join(" ");
-  const token = (lines[0].match(/^(READY(?:_TO_CLOSE)?|NEEDS_WORK|REMEDIATE|CLEAN|PASS|OK)\b/i)
-    || joined.match(/\b(READY(?:_TO_CLOSE)?|NEEDS_WORK|REMEDIATE)\b/i) || [])[1];
-  if (token) {
-    const u = token.toUpperCase().replace(/\s+/g, "_");
-    const tone = /READY|CLEAN|PASS|^OK$/.test(u) ? "ok" : /NEEDS_WORK|REMEDIATE/.test(u) ? "bad" : "na";
-    return { label: u.replace(/_/g, " "), tone };
+  for (const l of lines) {
+    const word = l.replace(/^[\s>*`_-]+/, "").match(VERDICT_LEAD)?.[1];
+    if (word) return verdictOf(word, l);
   }
-  const tone = /\bready\b/i.test(joined) && !/needs[_\s-]?work|remediate/i.test(joined) ? "ok"
-    : /needs[_\s-]?work|remediate|\bcritical\b/i.test(joined) ? "bad" : "na";
-  return { label: clip(lines[0].replace(/\*\*/g, ""), 52), tone };
+  // "Not ready" contains the word READY; it must never read as a pass.
+  if (/\bnot\s+(?:yet\s+)?ready\b|\bunready\b/i.test(joined)) return { label: verdictLine(lines[0]), tone: "bad" };
+  const inline = joined.match(VERDICT_INLINE)?.[1];
+  if (inline) return verdictOf(inline, lines[0]);
+  return { label: verdictLine(lines[0]), tone: /\bcritical\b/i.test(joined) ? "bad" : "na" };
+}
+
+const verdictLine = (l) => clip(l.replace(/\*\*/g, ""), 52);
+
+function verdictOf(word, line) {
+  const key = word.toUpperCase().replace(/\s+/g, "_");
+  const tone = VERDICT_TONES[key];
+  // A neutral word keeps the line as written (it usually carries the reason); the others show the bare word.
+  return { label: tone === "na" ? verdictLine(line) : key.replace(/_/g, " "), tone };
 }
 
 function remainingStillOpen(text, stepList) {
