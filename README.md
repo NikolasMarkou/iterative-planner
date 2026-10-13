@@ -1,9 +1,23 @@
 # Iterative Planner
 
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Skill](https://img.shields.io/badge/Skill-v2.67.0-green.svg)](CHANGELOG.md)
-[![Tests](https://img.shields.io/badge/tests-1070%20passing-brightgreen.svg)](src/scripts/bootstrap.test.mjs)
-[![Sponsored by Electi](https://img.shields.io/badge/Sponsored%20by-Electi-red.svg)](https://www.electiconsulting.com)
+<p align="center">
+  <a href="LICENSE">
+    <img alt="License: Apache 2.0" src="https://img.shields.io/badge/License-Apache%202.0-blue.svg">
+  </a>
+  <a href="CHANGELOG.md">
+    <img alt="Skill Version" src="https://img.shields.io/badge/Skill-v2.67.0-green.svg">
+  </a>
+  <a href="src/scripts/bootstrap.test.mjs">
+    <img alt="Tests" src="https://img.shields.io/badge/tests-1070%20passing-brightgreen.svg">
+  </a>
+  <a href="https://www.electiconsulting.com">
+    <img alt="Sponsored by Electi Consulting" src="https://img.shields.io/badge/Sponsored%20by-Electi%20Consulting-8B1C34">
+  </a>
+</p>
+
+<p align="center">
+  <img src="imgs/logo_v1.jpg" alt="Iterative Planner" width="350">
+</p>
 
 **A [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skill that stops an agent from losing the plot halfway through a hard task.**
 
