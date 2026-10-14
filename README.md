@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <img src="imgs/logo_v2.jpg" alt="Iterative Planner" width="550">
+  <img src="imgs/logo_v3.jpg" alt="Iterative Planner" width="550">
 </p>
 
 **A [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skill that stops an agent from losing the plot halfway through a hard task.**
