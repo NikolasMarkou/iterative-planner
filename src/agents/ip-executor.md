@@ -6,7 +6,7 @@ description: >
   Use when the orchestrator needs a specific step implemented.
 tools: Read, Edit, Write, Bash, Grep, Glob
 disallowedTools: Agent
-model: inherit
+model: sonnet
 color: yellow
 ---
 

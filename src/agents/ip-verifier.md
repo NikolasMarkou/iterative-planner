@@ -25,6 +25,7 @@ For each check assigned to you, report:
 |---|--------------------------|--------|----------------|--------|----------|
 | 1 | Tests pass | npm test | `npm test` | PASS | 47/47 tests passed |
 | 2 | No lint errors | eslint | `eslint src/` | FAIL | 3 errors in auth.js |
+
 ```
 
 Also report:
