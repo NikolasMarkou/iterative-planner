@@ -235,12 +235,15 @@ function runCliAgainst(root, args = [], validatorPath = realValidator) {
  * that follow fail loudly, because a test that quietly skips itself is the
  * defect this suite was rewritten to remove (decisions.md D-013).
  *
- * Contract: (root: string, messages: string[]) -> void. Never throws.
+ * Contract: (root: string, messages: string[]) -> void. Throws only if `git init` fails.
  */
 function gitInitFixture(root, messages) {
   const run = (...args) =>
     spawnSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
-  run("init", "-q", "-b", "main", ".");
+  // `git init -b` needs git >= 2.28; init + symbolic-ref works on every version.
+  const init = run("init", "-q", ".");
+  if (init.status !== 0) throw new Error(`git init failed in ${root}: ${init.stderr || init.error}`);
+  run("symbolic-ref", "HEAD", "refs/heads/main");
   run("config", "user.email", "scar-scan@test.invalid");
   run("config", "user.name", "scar-scan tests");
   run("config", "commit.gpgsign", "false");

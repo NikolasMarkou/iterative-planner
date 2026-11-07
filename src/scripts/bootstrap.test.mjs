@@ -100,13 +100,17 @@ function gitInit(dir) {
  * `git check-ignore -q` exits 0 for ignored, 1 for not ignored, >1 for error.
  */
 function gitIgnores(dir, relPath) {
-  const r = spawnSync("git", ["check-ignore", "-q", "--no-index", relPath], {
+  // -v names the matching pattern: git 2.25.1 exits 0 even when the match is a
+  // negation (`!plans/ANCHORS.md`), so the exit code alone cannot say "ignored".
+  const r = spawnSync("git", ["check-ignore", "-v", "-n", "--no-index", relPath], {
     cwd: dir,
     encoding: "utf-8",
   });
-  if (r.status === 0) return true;
-  if (r.status === 1) return false;
-  throw new Error(`git check-ignore failed for ${relPath}: ${r.stderr || r.error}`);
+  if (r.status !== 0 && r.status !== 1) {
+    throw new Error(`git check-ignore failed for ${relPath}: ${r.stderr || r.error}`);
+  }
+  const m = /^[^:]*:\d*:([^\t]*)\t/.exec(r.stdout);
+  return m !== null && m[1] !== "" && !m[1].startsWith("!");
 }
 
 // ---------------------------------------------------------------------------
