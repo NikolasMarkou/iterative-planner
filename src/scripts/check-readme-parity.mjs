@@ -24,17 +24,18 @@ import { fileURLToPath } from "node:url";
 // A badge is a WHOLE shields.io image in one of two forms: markdown `![alt](https://img.shields.io/badge/<label>…)`
 // or HTML `<img … src="https://img.shields.io/badge/<label>…" …>`. In the HTML form `[^>]*` cannot
 // cross a tag boundary, so the shields host must sit inside the same <img> tag as the label.
-// Capture group 1 is the markdown form's value, group 2 the HTML form's (see badgeValue()).
+// Capture group 1 is the markdown form's value; the HTML form spends group 2 on its opening quote
+// (closed by backreference \2) and puts its value in group 3 (see badgeValue()).
 // `label` is a regex source containing exactly one capture group.
 function badgeRe(label) {
   const host = "https:\\/\\/img\\.shields\\.io\\/badge\\/";
   return new RegExp(
-    `!\\[[^\\]]*\\]\\(${host}${label}[^)]*\\)|<img\\b[^>]*?\\bsrc=["']${host}${label}[^"']*["'][^>]*>`,
+    `!\\[[^\\]]*\\]\\(${host}${label}[^)]*\\)|<img\\b[^>]*?\\ssrc=(["'])${host}${label}[^"']*\\2[^>]*>`,
   );
 }
 
 /** Value captured by whichever badge form matched ("" when none did). */
-const badgeValue = (m) => (m ? (m[1] ?? m[2]) : "");
+const badgeValue = (m) => (m ? (m[1] ?? m[3]) : "");
 
 // DECISION plan-2026-09-01T100120-4f591469/D-014 — anchored to the BADGE, not a bare version
 // substring: the old regex passed as long as any line carried the string, badge or not.

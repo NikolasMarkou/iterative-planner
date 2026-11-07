@@ -76,6 +76,24 @@ describe("check-readme-parity", () => {
     assert.strictEqual(checkVersionBadge(badge + noBadge, "2.60.0").ok, true);
   });
 
+  // HTML badge form tightening (plan-2026-11-07-2d3e3920, D-009).
+  it("HTML <img> badge: data-src, mismatched quotes rejected; single quotes accepted", () => {
+    const u = "https://img.shields.io/badge/Skill-v2.60.0-green.svg";
+    assert.strictEqual(checkVersionBadge(`<img src="${u}">`, "2.60.0").ok, true);
+    assert.strictEqual(checkVersionBadge(`<img src='${u}'>`, "2.60.0").ok, true);
+    // data-src carrying the badge, real src not a badge -> not a badge
+    assert.strictEqual(
+      checkVersionBadge(`<img data-src="${u}" src="x.png">`, "2.60.0").found,
+      false,
+    );
+    // opening and closing quotes differ
+    assert.strictEqual(checkVersionBadge(`<img src="${u}'>`, "2.60.0").found, false);
+    assert.strictEqual(checkVersionBadge(`<img src='${u}">`, "2.60.0").found, false);
+    const t = "https://img.shields.io/badge/tests-806%20passing-brightgreen.svg";
+    assert.strictEqual(checkTestCount(`<img src='${t}'>`, 806).ok, true);
+    assert.strictEqual(checkTestCount(`<img data-src="${t}">`, 806).found, false);
+  });
+
   it("real CLI FAIL (C4): badge deleted, version string still present -> exit 1", () => {
     const root = mkdtempSync(join(tmpdir(), "crp-badge-"));
     try {
