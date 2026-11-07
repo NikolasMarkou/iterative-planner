@@ -6,7 +6,7 @@
     <img alt="Skill Version" src="https://img.shields.io/badge/Skill-v2.68.0-green.svg">
   </a>
   <a href="src/scripts/bootstrap.test.mjs">
-    <img alt="Tests" src="https://img.shields.io/badge/tests-1077%20passing-brightgreen.svg">
+    <img alt="Tests" src="https://img.shields.io/badge/tests-1080%20passing-brightgreen.svg">
   </a>
   <a href="https://www.electiconsulting.com">
     <img alt="Sponsored by Electi Consulting" src="https://img.shields.io/badge/Sponsored%20by-Electi%20Consulting-8B1C34">
@@ -97,13 +97,20 @@ mkdir -p ~/.claude/agents
 cp ~/.claude/skills/iterative-planner/agents/*.md ~/.claude/agents/
 ```
 
-The skill works without this step too — sub-agents are an optimization layer, not a requirement.
+To get the `/ip-dashboard` slash command, copy it into Claude Code's commands directory too:
+
+```bash
+mkdir -p ~/.claude/commands
+cp ~/.claude/skills/iterative-planner/commands/ip-dashboard.md ~/.claude/commands/
+```
+
+The skill works without these steps too — sub-agents and the slash command are optional extras, not requirements.
 
 ### Option 2 — Single-file skill
 
 Download `iterative-planner-combined.md` from [Releases](https://github.com/NikolasMarkou/iterative-planner/releases) and add it to Claude Code's Custom Instructions (Settings → Custom Instructions).
 
-> The single-file version does not include `bootstrap.mjs` or the sub-agent definitions (`src/agents/*.md`) — no agent files ship with this option at all. The combined file runs in SKILL.md's single-thread monolithic-fallback mode. Plan directories must be created manually. For full bootstrap and sub-agent support, use the zip package.
+> The single-file version does not include `bootstrap.mjs` or the sub-agent definitions (`src/agents/*.md`) — no agent files ship with this option at all. The combined file runs in SKILL.md's single-thread monolithic-fallback mode. Plan directories must be created manually. The combined file has no `/ip-dashboard` slash command either; only the terminal command in the Dashboard section applies. For full bootstrap and sub-agent support, use the zip package.
 
 ### Option 3 — Clone and install
 
@@ -121,7 +128,14 @@ mkdir -p ~/.claude/agents
 cp src/agents/*.md ~/.claude/agents/
 ```
 
-The skill works without this step too — sub-agents are an optimization layer, not a requirement.
+To get the `/ip-dashboard` slash command, copy it into Claude Code's commands directory too:
+
+```bash
+mkdir -p ~/.claude/commands
+cp src/commands/ip-dashboard.md ~/.claude/commands/
+```
+
+The skill works without these steps too — sub-agents and the slash command are optional extras, not requirements.
 
 `cp -r` above is fine for a first install, but it only ever adds files — it can't remove one that was deleted upstream, so re-running it after a `git pull` leaves orphans behind. To update an existing from-source install, `git pull` then run the sync target instead:
 
@@ -130,7 +144,7 @@ make sync-skill          # Unix/Linux/macOS
 .\build.ps1 sync-skill   # Windows
 ```
 
-This prunes before copying and verifies every synced tree with `diff -rq`, so deleted files actually disappear from the install.
+This prunes before copying and verifies every synced tree with `diff -rq`, so deleted files actually disappear from the install. If the install folder is itself a git checkout (it has a `.git`), sync-skill skips the prune and the folder check, prints a warning, and only overwrites files; delete that folder and sync again for a plain install.
 
 ### First run
 
@@ -461,7 +475,7 @@ The validator cannot inspect chat content — it surfaces metadata signals only.
 
 ## Dashboard
 
-Inside Claude Code, in any project that uses the planner, type `/ip-dashboard`. It starts the dashboard as a background task, opens it in your browser, and keeps it current while a plan runs. Stop the background task to stop it. `make sync-skill` installs the command to `~/.claude/commands/`; the planner's banner also mentions it.
+Inside Claude Code, in any project that uses the planner, type `/ip-dashboard`. It starts the dashboard as a background task, opens it in your browser, and keeps it current while a plan runs. Stop the background task to stop it. `make sync-skill` installs the command to `~/.claude/commands/`; the zip and clone installs need the copy step shown under Installation. The planner's banner names `/ip-dashboard` only when that command file is installed, and otherwise shows just the terminal command.
 
 From a plain terminal, run `node <skill-path>/scripts/dashboard.mjs --open` (add `--watch` to keep it current).
 
@@ -576,10 +590,10 @@ node --test src/scripts/bootstrap.test.mjs \
             src/scripts/check-register.test.mjs \
             src/scripts/scar-scan.test.mjs \
             src/scripts/dashboard.test.mjs
-# 1077 tests across 16 suites: bootstrap 289, validate-plan 234, shared 97,
+# 1080 tests across 16 suites: bootstrap 290, validate-plan 234, shared 97,
 #                  check-agent-wiring 62, schema 53, scar-scan 50, dashboard 84,
-#                  blast-radius 41, check-template-parity 41, check-register 32, check-doc-parity 27,
-#                  check-test-count 17, emit-state 15, check-readme-parity 16,
+#                  blast-radius 41, check-template-parity 41, check-register 32, check-doc-parity 28,
+#                  check-test-count 17, emit-state 15, check-readme-parity 17,
 #                  emit-template 11, check-changelog-parity 8
 ```
 

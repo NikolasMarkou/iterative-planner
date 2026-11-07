@@ -11,14 +11,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - **`/ip-dashboard`.** A slash command in the new `src/commands/ip-dashboard.md`. It starts the installed `dashboard.mjs --watch --open` as a background task and reports the page's location. `make build` bundles it and `make sync-skill` (and `build.ps1`) installs it to `~/.claude/commands/`, pruning only that one file in the shared folder.
-- **Banner hint.** `bootstrap.mjs new`, `resume` and `banner` print one line naming `/ip-dashboard`, plus a quoted terminal fallback path. The fallback is left out when `dashboard.mjs` is absent. Bootstrap only checks that the path exists; it never imports or runs the dashboard.
-- **Guards.** A test fails when any agent, module, `SKILL.md` or reference prose names `dashboard.mjs` (with a file-count floor). A test fails when the Agent Definitions table's Model column disagrees with an agent's frontmatter.
-- **Install allowlist.** After copying, `sync-skill` checks the top-level entries of the installed skill folder against an 11-entry allowlist and fails with a named error on anything else. It never deletes by this check. The list includes `.git` and `.gitignore` because the install can be a git clone of the upstream repo (D-008); that git data is never touched.
+- **Banner hint.** `bootstrap.mjs new`, `resume` and `banner` print one line naming `/ip-dashboard`, plus a quoted terminal fallback path. Each half is named only when what it names exists: `/ip-dashboard` only when `~/.claude/commands/ip-dashboard.md` is installed (a zip, clone or combined-file install does not get it by itself), the terminal path only when `dashboard.mjs` is present. Bootstrap only checks that the path exists; it never imports or runs the dashboard.
+- **Guards.** A test fails when any agent, module, `SKILL.md` or reference prose names `dashboard.mjs` (with a file-count floor pinned equal to the scanned count). A second test fails when `bootstrap.mjs` contains a dynamic `import(` or uses the dashboard path anywhere but its declaration, the existence check and the printed hint, so a spawn or import cannot slip in. A test fails when the Agent Definitions table's Model column disagrees with an agent's frontmatter.
+- **Install allowlist.** After copying, `sync-skill` checks the top-level entries of the installed skill folder against a 10-entry allowlist (which includes `commands`, since the build now ships that folder) and fails with a named error on anything else. It never deletes by this check.
+- **Git-checkout installs are detected.** When the install folder has a `.git`, `sync-skill` skips both the prune and the allowlist, prints one warning, and only overwrites files. It never touches the git data. To switch to a plain install, delete that folder and sync again. Both channels behave the same, with a lockstep test.
 
 ### Changed
 
-- **`sync-skill` prunes install litter.** It removes four stale paths left by the pre-restructure layout from the installed skill folder (`src/`, `CLAUDE.md`, `Makefile`, `build.ps1`), in both channels, guarded against an empty `$HOME`. On a clone install these show as deleted in the clone's own `git status`; a later `git pull` there restores them and the next sync prunes them again.
-- **README badge gate accepts HTML.** `check-readme-parity.mjs` accepts the version and test-count badges as a whole markdown image or a whole HTML `<img src="https://img.shields.io/badge/…">`. It still never matches a bare substring. The register baseline was regenerated after the README changes.
+- **`sync-skill` prunes install litter.** It removes four stale paths left by the pre-restructure layout from the installed skill folder (`src/`, `CLAUDE.md`, `Makefile`, `build.ps1`), in both channels, guarded against an empty `$HOME`. This runs only for a plain install; a git-checkout install is left alone (see Added).
+- **README badge gate accepts HTML.** `check-readme-parity.mjs` accepts the version and test-count badges as a whole markdown image or a whole HTML `<img src="https://img.shields.io/badge/…">`. The HTML form needs whitespace before `src=` and a matching closing quote. It still never matches a bare substring. The register baseline was regenerated after the README changes.
 - **Executor model.** The Agent Definitions table in `SKILL.md` and README now says `sonnet` for the Executor, matching `ip-executor.md`.
 - **PIVOT module.** `state-pivot.md` cites `references/root-cause-analysis.md` at the log-pivot bullet.
 
@@ -28,6 +29,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Notes
 
+- **Install steps.** README's zip and clone install options now copy `commands/ip-dashboard.md` to `~/.claude/commands/`. The single-file combined build has no slash command; only the terminal command applies.
+- **Broad tool permission, left as is.** `/ip-dashboard` declares `allowed-tools: Bash(node:*)`, which pre-approves any `node` command for as long as the command runs. It was not narrowed because the permission-rule syntax for a quoted `$HOME` script path is unverified, and a wrong narrow rule would break the command. The command's own text only runs the installed `dashboard.mjs`.
 - **User-side file, not shipped.** `~/.claude/commands/plan.md` is a hand-installed file that this repo does not ship. Its three paths pointed into the stale `src/` tree inside the install, which the new prune removes, so they were repointed to the install layout (outside the repo, backed up first). `sync-skill` will not maintain it.
 - Cost: no walk over `plans/` was added; the banner does one `existsSync`, and the new tests read repo files only.
 
