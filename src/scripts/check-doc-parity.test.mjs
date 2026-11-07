@@ -526,18 +526,46 @@ test("build channels: sync-skill prunes the same four litter paths and enforces 
   const mkSync = makefileSrc.slice(makefileSrc.indexOf("\nsync-skill:"), makefileSrc.indexOf("\n.PHONY: help"));
   const psSync = psFunction(buildPs1Src, "Invoke-SyncSkill");
   assert.ok(mkSync.length > 200, "anti-vacuity: sync-skill section not found in the Makefile");
-  const mkLitter = (mkSync.match(/^\trm -rf (.+)$/m) || [, ""])[1]
+  const mkLitter = (mkSync.match(/else rm -rf (.+?); fi$/m) || [, ""])[1]
     .split(/\s+/).map((t) => t.replace("$(SKILL_INSTALL_DIR)/", ""));
   const psLitter = [...((psSync.match(/foreach \(\$litter in @\(([^)]*)\)\)/) || [, ""])[1].matchAll(/"([^"]+)"/g))].map((m) => m[1]);
   assert.deepEqual(mkLitter, ["src", "CLAUDE.md", "Makefile", "build.ps1"], "Makefile litter prune list changed");
   assert.deepEqual(psLitter, mkLitter, "build.ps1 and the Makefile prune different litter paths");
   const mkAllow = (mkSync.match(/case "\$\$e" in ([^;)]+)\)/) || [, ""])[1].split("|");
   const psAllow = [...((psSync.match(/\$allowed = @\(([^)]*)\)/) || [, ""])[1].matchAll(/"([^"]+)"/g))].map((m) => m[1]);
-  assert.equal(mkAllow.length, 11, "anti-vacuity: Makefile allowlist should hold 11 entries");
+  assert.equal(mkAllow.length, 10, "anti-vacuity: Makefile allowlist should hold 10 entries");
   assert.deepEqual(sorted(psAllow), sorted(mkAllow), "build.ps1 and the Makefile allow different install entries");
   assert.match(mkSync, /test -n "\$\(HOME\)"/, "Makefile prune lost its empty-HOME guard");
   assert.match(psSync, /IsNullOrEmpty\(\$HOME\)/, "build.ps1 prune lost its empty-HOME guard");
   assert.ok(!/Test-Path[^\n]*litter/.test(psSync), "build.ps1 wraps the prune in a Test-Path skip");
+  // The allowlist is the 10 names the build package and sync-skill write, with commands and without .git/.gitignore.
+  const expected = ["SKILL.md", "README.md", "LICENSE", "CHANGELOG.md", "VERSION", "scripts", "references", "agents", "commands", ".claude"];
+  assert.deepEqual(sorted(mkAllow), sorted(expected), "install allowlist changed");
+  assert.ok(!mkAllow.includes(".git") && !mkAllow.includes(".gitignore"), "allowlist must not name .git/.gitignore");
+  // Clone-install mode (D-009): a .git in the install skips BOTH the prune and the allowlist, in both channels.
+  assert.match(mkSync, /if \[ -e \$\(SKILL_INSTALL_DIR\)\/\.git \]; then echo "WARNING:[^\n]*else rm -rf /, "Makefile prune lost its .git clone guard");
+  assert.match(mkSync, /if \[ ! -e \$\(SKILL_INSTALL_DIR\)\/\.git \]; then bad=0;/, "Makefile allowlist lost its .git clone guard");
+  assert.match(psSync, /\$isClone = Test-Path -LiteralPath \(Join-Path \$skillInstallDir "\.git"\)/, "build.ps1 lost its clone detection");
+  assert.match(psSync, /if \(\$isClone\) \{\s*Write-Host "WARNING:[\s\S]*?\} else \{\s*foreach \(\$litter/, "build.ps1 prune lost its clone guard");
+  assert.match(psSync, /if \(-not \$isClone\) \{\s*foreach \(\$entry/, "build.ps1 allowlist lost its clone guard");
+  // The allowlist check precedes the success line in the Makefile (as it already does in build.ps1).
+  assert.ok(mkSync.indexOf("unexpected entry in install") < mkSync.indexOf("Sync verified"), "Makefile prints Sync verified before the allowlist check");
+});
+
+test("build channels: every top-level entry the build package writes is on the install allowlist", () => {
+  const mkBuild = makefileSrc.slice(makefileSrc.indexOf("\nbuild:"), makefileSrc.indexOf("\n.PHONY: build-combined"));
+  const psBuild = psFunction(buildPs1Src, "Invoke-Build");
+  const mkSync = makefileSrc.slice(makefileSrc.indexOf("\nsync-skill:"), makefileSrc.indexOf("\n.PHONY: help"));
+  const allow = (mkSync.match(/case "\$\$e" in ([^;)]+)\)/) || [, ""])[1].split("|");
+  // Top-level names: the package dir itself via $(BUILD_DIR)/$(SKILL_NAME)/<name>[/] and $skillDir/<name>.
+  const mkNames = new Set([...mkBuild.matchAll(/\$\(BUILD_DIR\)\/\$\(SKILL_NAME\)\/([A-Za-z][\w.-]*)/g)].map((m) => m[1]));
+  const psNames = new Set([...psBuild.matchAll(/\$skillDir\/([A-Za-z][\w.-]*)/g)].map((m) => m[1]));
+  for (const must of ["agents", "commands", "scripts", "references"]) {
+    assert.ok(mkNames.has(must), `anti-vacuity: Makefile build no longer writes ${must}/`);
+    assert.ok(psNames.has(must), `anti-vacuity: build.ps1 build no longer writes ${must}/`);
+  }
+  for (const n of mkNames) assert.ok(allow.includes(n), `Makefile build writes ${n} but the install allowlist lacks it`);
+  for (const n of psNames) assert.ok(allow.includes(n), `build.ps1 build writes ${n} but the install allowlist lacks it`);
 });
 
 test("build channels: build and sync-skill both ship commands/ip-dashboard.md (install, exact-name prune, verify)", () => {

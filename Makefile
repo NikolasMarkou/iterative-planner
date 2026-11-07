@@ -343,8 +343,11 @@ sync-skill:
 	rm -f $(SKILL_INSTALL_DIR)/agents/*.md
 # Pre-restructure litter in the install ROOT (D-005): exactly these four named paths, never a
 # glob. The HOME guard keeps an empty HOME from turning the target into `rm -rf /.claude/...`.
+# If the install is a git checkout (<install>/.git exists, D-009) the prune AND the allowlist
+# check are skipped: those top-level files are the user's checked-out tree, not our litter, and
+# a prune there can destroy uncommitted work. The copy and the diff verify still run.
 	@test -n "$(HOME)" || { echo "ERROR: HOME is empty; refusing to prune the install" && exit 1; }
-	rm -rf $(SKILL_INSTALL_DIR)/src $(SKILL_INSTALL_DIR)/CLAUDE.md $(SKILL_INSTALL_DIR)/Makefile $(SKILL_INSTALL_DIR)/build.ps1
+	@if [ -e $(SKILL_INSTALL_DIR)/.git ]; then echo "WARNING: $(SKILL_INSTALL_DIR) is a git checkout. sync-skill overwrites files there and leaves the rest alone; for a plain install, delete that folder and run sync-skill again."; else rm -rf $(SKILL_INSTALL_DIR)/src $(SKILL_INSTALL_DIR)/CLAUDE.md $(SKILL_INSTALL_DIR)/Makefile $(SKILL_INSTALL_DIR)/build.ps1; fi
 # $(AGENTS_INSTALL_DIR) is SHARED with every other installed skill. Prune ONLY our own
 # ip-*.md agents here — a glob prune would delete other skills' agent definitions.
 	rm -f $(AGENTS_INSTALL_DIR)/ip-*.md
@@ -362,6 +365,15 @@ sync-skill:
 	cp src/agents/*.md $(SKILL_INSTALL_DIR)/agents/
 	cp src/agents/*.md $(AGENTS_INSTALL_DIR)/
 	cp src/commands/ip-dashboard.md $(COMMANDS_INSTALL_DIR)/ip-dashboard.md
+# Allowlist check (D-005): every top-level entry of a PLAIN install must be one sync-skill (or the
+# build package) writes, or .claude. Detect only, NEVER delete. Skipped for a git checkout (D-009).
+# The flag is accumulated and tested after the loop so a bad entry fails the target from ANY
+# iteration, not just the last (a subshell exit would not). It runs before the success line.
+	@if [ ! -e $(SKILL_INSTALL_DIR)/.git ]; then bad=0; for p in $(SKILL_INSTALL_DIR)/* $(SKILL_INSTALL_DIR)/.[!.]*; do \
+		[ -e "$$p" ] || continue; e=$$(basename "$$p"); \
+		case "$$e" in SKILL.md|README.md|LICENSE|CHANGELOG.md|VERSION|scripts|references|agents|commands|.claude) ;; \
+		*) echo "ERROR: unexpected entry in install: $$e"; bad=1;; esac; \
+	done; test "$$bad" = 0 || { echo "ERROR: install holds entries sync-skill does not own (not deleted)" && exit 1; }; fi
 # Verify ALL synced trees, not just agents+modules. The old check diffed only those two, so a
 # stale script or reference could survive a "Sync verified." with no complaint.
 # kg-edges.jsonl is generated-only (gitignored, regenerated
@@ -382,16 +394,6 @@ sync-skill:
 	  && diff -q src/commands/ip-dashboard.md $(COMMANDS_INSTALL_DIR)/ip-dashboard.md \
 	  && echo "Sync verified (scripts, references, agents, modules, SKILL.md, VERSION, commands)." \
 	  || (echo "ERROR: sync diff mismatch" && exit 1)
-# Allowlist check (D-005): every top-level entry of the install must be one sync-skill writes
-# (or .claude). Detect only, NEVER delete. The flag is accumulated and tested after the loop so
-# a bad entry fails the target from ANY iteration, not just the last (a subshell exit would not).
-# The install may be a git clone of the upstream repo, so .git/.gitignore are allowed and never touched.
-	@bad=0; for p in $(SKILL_INSTALL_DIR)/* $(SKILL_INSTALL_DIR)/.[!.]*; do \
-		[ -e "$$p" ] || continue; e=$$(basename "$$p"); \
-		case "$$e" in SKILL.md|README.md|LICENSE|CHANGELOG.md|VERSION|scripts|references|agents|.claude|.git|.gitignore) ;; \
-		*) echo "ERROR: unexpected entry in install: $$e"; bad=1;; esac; \
-	done; test "$$bad" = 0 || { echo "ERROR: install holds entries sync-skill does not own (not deleted)" && exit 1; }
-
 # Help
 .PHONY: help
 help:

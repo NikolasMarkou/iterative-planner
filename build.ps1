@@ -536,8 +536,15 @@ function Invoke-SyncSkill {
         Write-Host "ERROR: HOME is empty; refusing to prune the install" -ForegroundColor Red
         exit 1
     }
-    foreach ($litter in @("src", "CLAUDE.md", "Makefile", "build.ps1")) {
-        Remove-Item (Join-Path $skillInstallDir $litter) -Recurse -Force -ErrorAction SilentlyContinue
+    # If the install is a git checkout (<install>/.git exists, D-009) the prune AND the allowlist
+    # check are skipped: those top-level files are the user's checked-out tree, not our litter.
+    $isClone = Test-Path -LiteralPath (Join-Path $skillInstallDir ".git")
+    if ($isClone) {
+        Write-Host "WARNING: $skillInstallDir is a git checkout. sync-skill overwrites files there and leaves the rest alone; for a plain install, delete that folder and run sync-skill again." -ForegroundColor Yellow
+    } else {
+        foreach ($litter in @("src", "CLAUDE.md", "Makefile", "build.ps1")) {
+            Remove-Item (Join-Path $skillInstallDir $litter) -Recurse -Force -ErrorAction SilentlyContinue
+        }
     }
     # $agentsInstallDir is SHARED with every other installed skill. Prune ONLY our own ip-*.md
     # agents here — a glob prune would delete other skills' agent definitions.
@@ -630,14 +637,16 @@ function Invoke-SyncSkill {
         Write-Host "ERROR: sync-skill shipped *.test.mjs into the install (D-008 regression)" -ForegroundColor Red
         $mismatch = $true
     }
-    # Allowlist check (D-005): every top-level entry of the install must be one sync-skill writes
-    # (or .claude). Detect only, NEVER delete. Failures accumulate in $mismatch (no early exit).
-    # The install may be a git clone of the upstream repo, so .git/.gitignore are allowed and never touched.
-    $allowed = @("SKILL.md", "README.md", "LICENSE", "CHANGELOG.md", "VERSION", "scripts", "references", "agents", ".claude", ".git", ".gitignore")
-    foreach ($entry in @(Get-ChildItem -LiteralPath $skillInstallDir -Force)) {
-        if ($allowed -cnotcontains $entry.Name) {
-            Write-Host "ERROR: unexpected entry in install: $($entry.Name) (not deleted)" -ForegroundColor Red
-            $mismatch = $true
+    # Allowlist check (D-005): every top-level entry of a PLAIN install must be one sync-skill (or the
+    # build package) writes, or .claude. Detect only, NEVER delete. Skipped for a git checkout (D-009).
+    # Failures accumulate in $mismatch (no early exit).
+    $allowed = @("SKILL.md", "README.md", "LICENSE", "CHANGELOG.md", "VERSION", "scripts", "references", "agents", "commands", ".claude")
+    if (-not $isClone) {
+        foreach ($entry in @(Get-ChildItem -LiteralPath $skillInstallDir -Force)) {
+            if ($allowed -cnotcontains $entry.Name) {
+                Write-Host "ERROR: unexpected entry in install: $($entry.Name) (not deleted)" -ForegroundColor Red
+                $mismatch = $true
+            }
         }
     }
     if ($mismatch) { exit 1 }
