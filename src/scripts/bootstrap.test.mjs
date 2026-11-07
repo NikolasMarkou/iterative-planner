@@ -217,6 +217,17 @@ describe("bootstrap.mjs", () => {
         /iterative-planner v\S+ — Developed by Nikolas Markou @ Electi Consulting/,
         "banner subcommand should print the credit banner",
       );
+      assert.match(
+        r.stdout,
+        /\n  Dashboard: type \/ip-dashboard in Claude Code, or run node ".+dashboard\.mjs" --open from the project root/,
+        "banner should carry the dashboard hint line",
+      );
+    });
+
+    it("bootstrap.mjs never imports or spawns the dashboard (hint is text only)", () => {
+      const src = readFileSync(new URL("./bootstrap.mjs", import.meta.url), "utf-8");
+      assert.doesNotMatch(src, /import[^;\n]*dashboard/i, "no import naming dashboard");
+      assert.doesNotMatch(src, /(spawn|exec|fork)\w*\([^)]*dashboard/i, "no spawn/exec naming dashboard");
     });
 
     it("LESSONS.md has correct initial content", () => {

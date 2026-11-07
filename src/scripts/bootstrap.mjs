@@ -71,8 +71,14 @@ function resolveSkillVersion() {
 // so the credit renders only where the caller logs it — never on an `import()` of this module
 // (D-001). Shared by cmdNewInner + cmdResume (≥2 call sites, earned abstraction — D-002).
 // Two leading spaces match the sibling `  Pointer:`/`  Goal:` banner indentation.
+// Second line is a dashboard discoverability hint: text only. The path is built with
+// fileURLToPath and probed with existsSync; dashboard.mjs is never imported, spawned or run
+// from here, so a viewer bug cannot reach plan creation. The terminal-fallback clause is
+// omitted when the file is absent.
 function creditBanner(version) {
-  return `  iterative-planner v${version} — Developed by Nikolas Markou @ Electi Consulting`;
+  const dash = fileURLToPath(new URL("./dashboard.mjs", import.meta.url));
+  const fallback = existsSync(dash) ? `, or run node "${dash}" --open from the project root` : "";
+  return `  iterative-planner v${version} — Developed by Nikolas Markou @ Electi Consulting\n  Dashboard: type /ip-dashboard in Claude Code${fallback}`;
 }
 
 // NOTE: concurrent-new race fix (OBS-003).
