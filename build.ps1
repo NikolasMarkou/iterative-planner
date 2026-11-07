@@ -78,6 +78,12 @@ function Invoke-Build {
         Copy-Item "src/agents/*.md" "$skillDir/agents/"
     }
 
+    # Copy slash-command definitions (if any)
+    if (Test-Path "src/commands") {
+        New-Item -ItemType Directory -Force -Path "$skillDir/commands" | Out-Null
+        Copy-Item "src/commands/*.md" "$skillDir/commands/"
+    }
+
     # Copy documentation. VERSION ships INSIDE the package: bootstrap.mjs resolves the skill
     # version at runtime by probing <pkg>/VERSION (installed) / <repo>/VERSION (dev). Without
     # it the installed skill stamps every new plan "unknown". 1:1 with the Makefile DOC_FILES.
@@ -504,6 +510,7 @@ function Invoke-List {
 function Invoke-SyncSkill {
     $skillInstallDir = Join-Path $HOME ".claude/skills/$SkillName"
     $agentsInstallDir = Join-Path $HOME ".claude/agents"
+    $commandsInstallDir = Join-Path $HOME ".claude/commands"
 
     Write-Host "Syncing repo source to local installed skill: $skillInstallDir" -ForegroundColor Yellow
 
@@ -512,6 +519,7 @@ function Invoke-SyncSkill {
     New-Item -ItemType Directory -Force -Path "$skillInstallDir/scripts/modules" | Out-Null
     New-Item -ItemType Directory -Force -Path "$skillInstallDir/agents" | Out-Null
     New-Item -ItemType Directory -Force -Path $agentsInstallDir | Out-Null
+    New-Item -ItemType Directory -Force -Path $commandsInstallDir | Out-Null
 
     # Prune before copy: Copy-Item alone cannot remove a file that was DELETED from the repo, so a
     # copy-only sync leaves orphans behind forever (v2.35.0 removed xml.mjs/changelog.mjs; a
@@ -534,6 +542,9 @@ function Invoke-SyncSkill {
     # $agentsInstallDir is SHARED with every other installed skill. Prune ONLY our own ip-*.md
     # agents here — a glob prune would delete other skills' agent definitions.
     Remove-Item (Join-Path $agentsInstallDir "ip-*.md") -Force -ErrorAction SilentlyContinue
+    # $commandsInstallDir is SHARED too (the user's own slash commands live there). Prune ONLY our
+    # own ip-dashboard.md, by exact name — never a glob.
+    Remove-Item (Join-Path $commandsInstallDir "ip-dashboard.md") -Force -ErrorAction SilentlyContinue
 
     Copy-Item "src/SKILL.md" "$skillInstallDir/SKILL.md"
     # Exclude *.test.mjs from the copy (mirrors Invoke-Build line ~60 and the Makefile
@@ -548,6 +559,7 @@ function Invoke-SyncSkill {
     }
     Copy-Item "src/agents/*.md" "$skillInstallDir/agents/"
     Copy-Item "src/agents/*.md" $agentsInstallDir
+    Copy-Item "src/commands/ip-dashboard.md" (Join-Path $commandsInstallDir "ip-dashboard.md")
 
     # Verify every synced tree. The Makefile checked only agents+modules and build.ps1 checked
     # nothing at all, so a stale script or reference could survive a clean-looking sync.
@@ -601,6 +613,15 @@ function Invoke-SyncSkill {
         Write-Host "ERROR: content differs: VERSION" -ForegroundColor Red
         $mismatch = $true
     }
+    # The slash command is installed outside the skill folder, so it is verified on its own.
+    $cmdDst = Join-Path $commandsInstallDir "ip-dashboard.md"
+    if (-not (Test-Path $cmdDst)) {
+        Write-Host "ERROR: missing from install: commands/ip-dashboard.md" -ForegroundColor Red
+        $mismatch = $true
+    } elseif ((Get-FileHash "src/commands/ip-dashboard.md" -Algorithm SHA256).Hash -ne (Get-FileHash $cmdDst -Algorithm SHA256).Hash) {
+        Write-Host "ERROR: content differs: commands/ip-dashboard.md" -ForegroundColor Red
+        $mismatch = $true
+    }
     # Non-vacuous assertion: zero *.test.mjs may leak into the install scripts dir (D-008). The
     # Compare-Object above excludes test files from both sides, so this is what actually guards
     # the invariant — mirrors the Makefile `test -z "$(ls .../scripts/*.test.mjs)"` guard.
@@ -621,7 +642,7 @@ function Invoke-SyncSkill {
     }
     if ($mismatch) { exit 1 }
 
-    Write-Host "Sync verified (scripts, references, agents, modules, SKILL.md, VERSION)." -ForegroundColor Green
+    Write-Host "Sync verified (scripts, references, agents, modules, SKILL.md, VERSION, commands)." -ForegroundColor Green
 }
 
 # Execute command

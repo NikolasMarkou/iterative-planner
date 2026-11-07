@@ -9,6 +9,7 @@ DIST_DIR := dist
 # Local install destinations for the opt-in sync-skill target (writes to $HOME)
 SKILL_INSTALL_DIR := $(HOME)/.claude/skills/$(SKILL_NAME)
 AGENTS_INSTALL_DIR := $(HOME)/.claude/agents
+COMMANDS_INSTALL_DIR := $(HOME)/.claude/commands
 
 # Files to include in the skill package
 SKILL_FILE := src/SKILL.md
@@ -16,6 +17,7 @@ REFERENCE_FILES := $(sort $(wildcard src/references/*.md))
 SCRIPT_FILES := $(filter-out %.test.mjs,$(wildcard src/scripts/*.mjs)) $(wildcard src/scripts/*.json)
 MODULE_FILES := $(sort $(wildcard src/scripts/modules/*.md))
 AGENT_FILES := $(sort $(wildcard src/agents/*.md))
+COMMAND_FILES := $(sort $(wildcard src/commands/*.md))
 # VERSION ships INSIDE the package: bootstrap.mjs resolves the skill version at runtime by
 # probing <pkg>/VERSION (installed layout) / <repo>/VERSION (dev layout). If VERSION is not
 # copied here, the installed skill has no VERSION file and every new plan is stamped
@@ -49,6 +51,11 @@ build:
 	@if [ -n "$(AGENT_FILES)" ]; then \
 		mkdir -p $(BUILD_DIR)/$(SKILL_NAME)/agents; \
 		cp $(AGENT_FILES) $(BUILD_DIR)/$(SKILL_NAME)/agents/; \
+	fi
+	@# Copy slash-command definitions (if any)
+	@if [ -n "$(COMMAND_FILES)" ]; then \
+		mkdir -p $(BUILD_DIR)/$(SKILL_NAME)/commands; \
+		cp $(COMMAND_FILES) $(BUILD_DIR)/$(SKILL_NAME)/commands/; \
 	fi
 	@# Copy documentation
 	cp $(DOC_FILES) $(BUILD_DIR)/$(SKILL_NAME)/ 2>/dev/null || true
@@ -324,6 +331,7 @@ sync-skill:
 	mkdir -p $(SKILL_INSTALL_DIR)/scripts/modules
 	mkdir -p $(SKILL_INSTALL_DIR)/agents
 	mkdir -p $(AGENTS_INSTALL_DIR)
+	mkdir -p $(COMMANDS_INSTALL_DIR)
 # Prune before copy: `cp` alone cannot remove a file that was DELETED from the repo, so a
 # copy-only sync leaves orphans behind forever (v2.35.0 removed xml.mjs/changelog.mjs; a
 # copy-only sync would have left both live in the install). Prune by glob, per directory.
@@ -340,6 +348,9 @@ sync-skill:
 # $(AGENTS_INSTALL_DIR) is SHARED with every other installed skill. Prune ONLY our own
 # ip-*.md agents here — a glob prune would delete other skills' agent definitions.
 	rm -f $(AGENTS_INSTALL_DIR)/ip-*.md
+# $(COMMANDS_INSTALL_DIR) is SHARED too (the user's own slash commands live there). Prune ONLY
+# our own ip-dashboard.md, by exact name — never a glob.
+	rm -f $(COMMANDS_INSTALL_DIR)/ip-dashboard.md
 	cp src/SKILL.md $(SKILL_INSTALL_DIR)/SKILL.md
 # Copy scripts via $(SCRIPT_FILES), which already excludes %.test.mjs and includes the .json
 # gate-data files. The raw `cp src/scripts/*.mjs` glob shipped all *.test.mjs into the live
@@ -350,6 +361,7 @@ sync-skill:
 	cp README.md LICENSE CHANGELOG.md VERSION $(SKILL_INSTALL_DIR)/
 	cp src/agents/*.md $(SKILL_INSTALL_DIR)/agents/
 	cp src/agents/*.md $(AGENTS_INSTALL_DIR)/
+	cp src/commands/ip-dashboard.md $(COMMANDS_INSTALL_DIR)/ip-dashboard.md
 # Verify ALL synced trees, not just agents+modules. The old check diffed only those two, so a
 # stale script or reference could survive a "Sync verified." with no complaint.
 # kg-edges.jsonl is generated-only (gitignored, regenerated
@@ -367,7 +379,8 @@ sync-skill:
 	  && diff -rq --exclude='.claude' src/scripts/modules $(SKILL_INSTALL_DIR)/scripts/modules \
 	  && diff -q src/SKILL.md $(SKILL_INSTALL_DIR)/SKILL.md \
 	  && diff -q VERSION $(SKILL_INSTALL_DIR)/VERSION \
-	  && echo "Sync verified (scripts, references, agents, modules, SKILL.md, VERSION)." \
+	  && diff -q src/commands/ip-dashboard.md $(COMMANDS_INSTALL_DIR)/ip-dashboard.md \
+	  && echo "Sync verified (scripts, references, agents, modules, SKILL.md, VERSION, commands)." \
 	  || (echo "ERROR: sync diff mismatch" && exit 1)
 # Allowlist check (D-005): every top-level entry of the install must be one sync-skill writes
 # (or .claude). Detect only, NEVER delete. The flag is accumulated and tested after the loop so

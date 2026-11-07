@@ -539,3 +539,25 @@ test("build channels: sync-skill prunes the same four litter paths and enforces 
   assert.match(psSync, /IsNullOrEmpty\(\$HOME\)/, "build.ps1 prune lost its empty-HOME guard");
   assert.ok(!/Test-Path[^\n]*litter/.test(psSync), "build.ps1 wraps the prune in a Test-Path skip");
 });
+
+test("build channels: build and sync-skill both ship commands/ip-dashboard.md (install, exact-name prune, verify)", () => {
+  const mkBuild = makefileSrc.slice(makefileSrc.indexOf("\nbuild:"), makefileSrc.indexOf("\n.PHONY: build-combined"));
+  const mkSync = makefileSrc.slice(makefileSrc.indexOf("\nsync-skill:"), makefileSrc.indexOf("\n.PHONY: help"));
+  const psBuild = psFunction(buildPs1Src, "Invoke-Build");
+  const psSync = psFunction(buildPs1Src, "Invoke-SyncSkill");
+  assert.ok(mkBuild.length > 200 && mkSync.length > 200, "anti-vacuity: Makefile build/sync-skill sections not found");
+  assert.ok(psBuild.length > 200 && psSync.length > 200, "anti-vacuity: build.ps1 build/sync-skill functions not found");
+  assert.match(mkBuild, /COMMAND_FILES[\s\S]*commands\//, "Makefile build does not copy src/commands into the package");
+  assert.match(psBuild, /src\/commands\/\*\.md[\s\S]*\/commands\//, "build.ps1 build does not copy src/commands into the package");
+  // install
+  assert.match(mkSync, /^\tcp src\/commands\/ip-dashboard\.md \$\(COMMANDS_INSTALL_DIR\)\/ip-dashboard\.md$/m, "Makefile does not install the command");
+  assert.match(psSync, /Copy-Item "src\/commands\/ip-dashboard\.md"/, "build.ps1 does not install the command");
+  // prune: exact name only, never a glob, in the shared commands dir
+  assert.match(mkSync, /^\trm -f \$\(COMMANDS_INSTALL_DIR\)\/ip-dashboard\.md$/m, "Makefile prune is not the exact command name");
+  assert.match(psSync, /Remove-Item \(Join-Path \$commandsInstallDir "ip-dashboard\.md"\)/, "build.ps1 prune is not the exact command name");
+  assert.ok(!/\$\(COMMANDS_INSTALL_DIR\)\/\*/.test(mkSync), "Makefile globs the shared commands dir");
+  assert.ok(!/commandsInstallDir[^\n]*\*/.test(psSync.replace(/Join-Path \$HOME[^\n]*/, "")), "build.ps1 globs the shared commands dir");
+  // verify
+  assert.match(mkSync, /diff -q src\/commands\/ip-dashboard\.md \$\(COMMANDS_INSTALL_DIR\)\/ip-dashboard\.md/, "Makefile does not verify the command");
+  assert.match(psSync, /Get-FileHash "src\/commands\/ip-dashboard\.md"/, "build.ps1 does not verify the command");
+});
