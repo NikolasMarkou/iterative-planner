@@ -20,6 +20,7 @@
 import { mkdirSync, writeFileSync, readFileSync, readdirSync, renameSync, unlinkSync, existsSync, rmSync, copyFileSync, openSync, closeSync } from "fs";
 import { join, extname } from "path";
 import { randomBytes, createHash } from "crypto";
+import { homedir } from "os";
 import {
   extractField,
   splitChangelogFields,
@@ -71,14 +72,28 @@ function resolveSkillVersion() {
 // so the credit renders only where the caller logs it — never on an `import()` of this module
 // (D-001). Shared by cmdNewInner + cmdResume (≥2 call sites, earned abstraction — D-002).
 // Two leading spaces match the sibling `  Pointer:`/`  Goal:` banner indentation.
-// Second line is a dashboard discoverability hint: text only. The path is built with
+// Second line is a dashboard discoverability hint: text only. The script path is built with
 // fileURLToPath and probed with existsSync; dashboard.mjs is never imported, spawned or run
-// from here, so a viewer bug cannot reach plan creation. The terminal-fallback clause is
-// omitted when the file is absent.
-function creditBanner(version) {
-  const dash = fileURLToPath(new URL("./dashboard.mjs", import.meta.url));
-  const fallback = existsSync(dash) ? `, or run node "${dash}" --open from the project root` : "";
-  return `  iterative-planner v${version} — Developed by Nikolas Markou @ Electi Consulting\n  Dashboard: type /ip-dashboard in Claude Code${fallback}`;
+// from here, so a viewer bug cannot reach plan creation. Each half of the hint is named only
+// when what it names exists: `/ip-dashboard` needs ~/.claude/commands/ip-dashboard.md (a zip or
+// combined-file install never got it), the terminal clause needs dashboard.mjs. Neither → no line.
+// `exists` and `home` are injectable so tests never touch the real home directory.
+// Contract: creditBanner(version, { exists, home }) -> string; never throws.
+export function creditBanner(version, { exists = existsSync, home = homedir } = {}) {
+  const dashboardPath = fileURLToPath(new URL("./dashboard.mjs", import.meta.url));
+  let hasCommand = false;
+  try {
+    hasCommand = exists(join(home(), ".claude", "commands", "ip-dashboard.md"));
+  } catch {
+    // homedir() can throw in odd environments — a banner must never break `new`.
+  }
+  const hasScript = exists(dashboardPath);
+  const run = hasScript ? `run node "${dashboardPath}" --open from the project root` : "";
+  const hint = hasCommand
+    ? `type /ip-dashboard in Claude Code${hasScript ? `, or ${run}` : ""}`
+    : run;
+  const credit = `  iterative-planner v${version} — Developed by Nikolas Markou @ Electi Consulting`;
+  return hint ? `${credit}\n  Dashboard: ${hint}` : credit;
 }
 
 // NOTE: concurrent-new race fix (OBS-003).

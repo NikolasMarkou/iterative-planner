@@ -204,6 +204,7 @@ describe("bootstrap.mjs", () => {
         /iterative-planner v\S+ — Developed by Nikolas Markou @ Electi Consulting/,
         "should print credit banner",
       );
+      assert.match(r.stdout, /Dashboard: .*dashboard\.mjs/, "new output carries the dashboard hint");
     });
 
     it("prints the credit banner via the banner subcommand (no active plan needed)", () => {
@@ -219,15 +220,46 @@ describe("bootstrap.mjs", () => {
       );
       assert.match(
         r.stdout,
-        /\n  Dashboard: type \/ip-dashboard in Claude Code, or run node ".+dashboard\.mjs" --open from the project root/,
+        /\n  Dashboard: (type \/ip-dashboard in Claude Code, or )?run node ".+dashboard\.mjs" --open from the project root|\n  Dashboard: type \/ip-dashboard in Claude Code/,
         "banner should carry the dashboard hint line",
       );
     });
 
+    it("creditBanner names /ip-dashboard and the script only when each exists", async () => {
+      const { creditBanner } = await import(`file://${BOOTSTRAP}`);
+      const home = () => "/fake/home";
+      const cmd = (p) => p.endsWith("ip-dashboard.md");
+      const script = (p) => p.endsWith("dashboard.mjs");
+      const both = creditBanner("1.2.3", { exists: () => true, home });
+      assert.match(both, /\n  Dashboard: type \/ip-dashboard in Claude Code, or run node ".+dashboard\.mjs" --open from the project root$/);
+      const noCmd = creditBanner("1.2.3", { exists: script, home });
+      assert.doesNotMatch(noCmd, /ip-dashboard/);
+      assert.match(noCmd, /\n  Dashboard: run node ".+dashboard\.mjs" --open from the project root$/);
+      const noScript = creditBanner("1.2.3", { exists: cmd, home });
+      assert.match(noScript, /\n  Dashboard: type \/ip-dashboard in Claude Code$/);
+      assert.doesNotMatch(noScript, /node "/);
+      const none = creditBanner("1.2.3", { exists: () => false, home });
+      assert.doesNotMatch(none, /Dashboard/);
+      assert.match(none, /^  iterative-planner v1\.2\.3 — Developed by Nikolas Markou @ Electi Consulting$/);
+      const throwing = creditBanner("1.2.3", { exists: script, home: () => { throw new Error("no home"); } });
+      assert.match(throwing, /Dashboard: run node/, "homedir failure degrades, never throws");
+    });
+
     it("bootstrap.mjs never imports or spawns the dashboard (hint is text only)", () => {
-      const src = readFileSync(new URL("./bootstrap.mjs", import.meta.url), "utf-8");
+      const raw = readFileSync(new URL("./bootstrap.mjs", import.meta.url), "utf-8");
+      // Code only: drop block comments and whole-line // comments.
+      const src = raw.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+      assert.doesNotMatch(src, /\bimport\s*\(/, "no dynamic import( call anywhere in bootstrap.mjs");
       assert.doesNotMatch(src, /import[^;\n]*dashboard/i, "no import naming dashboard");
-      assert.doesNotMatch(src, /(spawn|exec|fork)\w*\([^)]*dashboard/i, "no spawn/exec naming dashboard");
+      assert.doesNotMatch(src, /(spawn|exec|fork)\w*\([^;]*\b(dashboardPath|dashboard)/i, "no spawn/exec naming dashboard");
+      const uses = src.split("\n").filter((l) => /\bdashboardPath\b/.test(l));
+      for (const l of uses) {
+        assert.ok(
+          /const dashboardPath = fileURLToPath/.test(l) || /exists\(dashboardPath\)/.test(l) || /node "\$\{dashboardPath\}"/.test(l),
+          `dashboardPath used outside declaration / exists probe / template string: ${l.trim()}`,
+        );
+      }
+      assert.ok(uses.length >= 3, "declaration, probe and template string all present");
     });
 
     it("LESSONS.md has correct initial content", () => {
