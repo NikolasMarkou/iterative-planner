@@ -583,8 +583,8 @@ test("build channels: build and sync-skill both ship commands/ip-dashboard.md (i
   // prune: exact name only, never a glob, in the shared commands dir
   assert.match(mkSync, /^\trm -f \$\(COMMANDS_INSTALL_DIR\)\/ip-dashboard\.md$/m, "Makefile prune is not the exact command name");
   assert.match(psSync, /Remove-Item \(Join-Path \$commandsInstallDir "ip-dashboard\.md"\)/, "build.ps1 prune is not the exact command name");
-  assert.ok(!/\$\(COMMANDS_INSTALL_DIR\)\/\*/.test(mkSync), "Makefile globs the shared commands dir");
-  assert.ok(!/commandsInstallDir[^\n]*\*/.test(psSync.replace(/Join-Path \$HOME[^\n]*/, "")), "build.ps1 globs the shared commands dir");
+  assert.ok(!/\$\(COMMANDS_INSTALL_DIR\)\/[*]/.test(mkSync), "Makefile globs the shared commands dir");
+  assert.ok(!/commandsInstallDir[^\n]*[*]/.test(psSync.replace(/Join-Path \$HOME[^\n]{0,}/, "")), "build.ps1 globs the shared commands dir");
   // verify
   assert.match(mkSync, /diff -q src\/commands\/ip-dashboard\.md \$\(COMMANDS_INSTALL_DIR\)\/ip-dashboard\.md/, "Makefile does not verify the command");
   assert.match(psSync, /Get-FileHash "src\/commands\/ip-dashboard\.md"/, "build.ps1 does not verify the command");
@@ -599,7 +599,7 @@ test("Agent Definitions Model column matches each agent's frontmatter model (SKI
   // SKILL.md names the file in cell 2; README names the agent in cell 1 (bold, `ip-` prefix optional on the orchestrator).
   const find = (tbl, f, pick) => tbl.find((r) => r.length >= 4 && pick(r, f));
   const bySkill = (r, f) => r[1] === `\`agents/${f}\``;
-  const byReadme = (r, f) => r[0].toLowerCase().replace(/\*/g, "").replace(/^ip-/, "") === f.replace(/^ip-|\.md$/g, "");
+  const byReadme = (r, f) => r[0].toLowerCase().replace(/[*]/g, "").replace(/^ip-/, "") === f.replace(/^ip-|\.md$/g, "");
   assert.equal(files.length, 8, "expected 8 ip-*.md agents");
   for (const f of files) for (const [tbl, pick, name] of [[skill, bySkill, "SKILL.md"], [readme, byReadme, "README.md"]]) {
     const row = find(tbl, f, pick);

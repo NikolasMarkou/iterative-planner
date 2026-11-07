@@ -32,7 +32,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Install steps.** README's zip and clone install options now copy `commands/ip-dashboard.md` to `~/.claude/commands/`. The single-file combined build has no slash command; only the terminal command applies.
 - **Broad tool permission, left as is.** `/ip-dashboard` declares `allowed-tools: Bash(node:*)`, which pre-approves any `node` command for as long as the command runs. It was not narrowed because the permission-rule syntax for a quoted `$HOME` script path is unverified, and a wrong narrow rule would break the command. The command's own text only runs the installed `dashboard.mjs`.
 - **User-side file, not shipped.** `~/.claude/commands/plan.md` is a hand-installed file that this repo does not ship. Its three paths pointed into the stale `src/` tree inside the install, which the new prune removes, so they were repointed to the install layout (outside the repo, backed up first). `sync-skill` will not maintain it.
-- Cost: no walk over `plans/` was added; the banner does one `existsSync`, and the new tests read repo files only.
+- Cost: no walk over `plans/` was added; the banner does two `existsSync` checks (command file and script), and the new tests read repo files only.
 
 ## [2.67.0] - 2026-10-09
 
