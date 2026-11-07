@@ -3,10 +3,10 @@
     <img alt="License: Apache 2.0" src="https://img.shields.io/badge/License-Apache%202.0-blue.svg">
   </a>
   <a href="CHANGELOG.md">
-    <img alt="Skill Version" src="https://img.shields.io/badge/Skill-v2.67.0-green.svg">
+    <img alt="Skill Version" src="https://img.shields.io/badge/Skill-v2.68.0-green.svg">
   </a>
   <a href="src/scripts/bootstrap.test.mjs">
-    <img alt="Tests" src="https://img.shields.io/badge/tests-1070%20passing-brightgreen.svg">
+    <img alt="Tests" src="https://img.shields.io/badge/tests-1077%20passing-brightgreen.svg">
   </a>
   <a href="https://www.electiconsulting.com">
     <img alt="Sponsored by Electi Consulting" src="https://img.shields.io/badge/Sponsored%20by-Electi%20Consulting-8B1C34">
@@ -461,6 +461,10 @@ The validator cannot inspect chat content — it surfaces metadata signals only.
 
 ## Dashboard
 
+Inside Claude Code, in any project that uses the planner, type `/ip-dashboard`. It starts the dashboard as a background task, opens it in your browser, and keeps it current while a plan runs. Stop the background task to stop it. `make sync-skill` installs the command to `~/.claude/commands/`; the planner's banner also mentions it.
+
+From a plain terminal, run `node <skill-path>/scripts/dashboard.mjs --open` (add `--watch` to keep it current).
+
 `src/scripts/dashboard.mjs` turns the plans directory into a small website you open in a browser. It is a viewer for people: no agent reads or runs it. It only reads, it writes into the repo only if you point `--out` there, and its pages load nothing from the network.
 
 ```bash
@@ -572,10 +576,10 @@ node --test src/scripts/bootstrap.test.mjs \
             src/scripts/check-register.test.mjs \
             src/scripts/scar-scan.test.mjs \
             src/scripts/dashboard.test.mjs
-# 1070 tests across 16 suites: bootstrap 288, validate-plan 234, shared 97,
-#                  check-agent-wiring 61, schema 53, scar-scan 50, dashboard 84,
-#                  blast-radius 41, check-template-parity 41, check-register 32, check-doc-parity 24,
-#                  check-test-count 17, emit-state 15, check-readme-parity 14,
+# 1077 tests across 16 suites: bootstrap 289, validate-plan 234, shared 97,
+#                  check-agent-wiring 62, schema 53, scar-scan 50, dashboard 84,
+#                  blast-radius 41, check-template-parity 41, check-register 32, check-doc-parity 27,
+#                  check-test-count 17, emit-state 15, check-readme-parity 16,
 #                  emit-template 11, check-changelog-parity 8
 ```
 
@@ -651,6 +655,8 @@ iterative-planner/
 ├── build.ps1                       # Windows PowerShell build
 └── src/
     ├── SKILL.md                    # core protocol — the complete skill specification
+    ├── commands/
+    │   └── ip-dashboard.md         # the /ip-dashboard slash command (installed to ~/.claude/commands/)
     ├── agents/                     # sub-agent definitions (optional, install to ~/.claude/agents/)
     │   ├── ip-orchestrator.md      # state machine owner, spawns all other agents
     │   ├── ip-explorer.md          # codebase-first research, with web fallback (EXPLORE)

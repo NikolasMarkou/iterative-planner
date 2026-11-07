@@ -4,6 +4,33 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.68.0] - 2026-11-07
+
+**One command opens the plan dashboard from inside Claude Code, and the build is green again.** An audit found a red `make validate`, nine tests that failed only on an older git, a stale Executor model cell, a missing pointer in the PIVOT module, and install-folder litter that `sync-skill` never noticed. All are fixed here. The protocol itself is unchanged: no agent runs the dashboard and `SKILL.md` still does not mention it.
+
+### Added
+
+- **`/ip-dashboard`.** A slash command in the new `src/commands/ip-dashboard.md`. It starts the installed `dashboard.mjs --watch --open` as a background task and reports the page's location. `make build` bundles it and `make sync-skill` (and `build.ps1`) installs it to `~/.claude/commands/`, pruning only that one file in the shared folder.
+- **Banner hint.** `bootstrap.mjs new`, `resume` and `banner` print one line naming `/ip-dashboard`, plus a quoted terminal fallback path. The fallback is left out when `dashboard.mjs` is absent. Bootstrap only checks that the path exists; it never imports or runs the dashboard.
+- **Guards.** A test fails when any agent, module, `SKILL.md` or reference prose names `dashboard.mjs` (with a file-count floor). A test fails when the Agent Definitions table's Model column disagrees with an agent's frontmatter.
+- **Install allowlist.** After copying, `sync-skill` checks the top-level entries of the installed skill folder against an 11-entry allowlist and fails with a named error on anything else. It never deletes by this check. The list includes `.git` and `.gitignore` because the install can be a git clone of the upstream repo (D-008); that git data is never touched.
+
+### Changed
+
+- **`sync-skill` prunes install litter.** It removes four stale paths left by the pre-restructure layout from the installed skill folder (`src/`, `CLAUDE.md`, `Makefile`, `build.ps1`), in both channels, guarded against an empty `$HOME`. On a clone install these show as deleted in the clone's own `git status`; a later `git pull` there restores them and the next sync prunes them again.
+- **README badge gate accepts HTML.** `check-readme-parity.mjs` accepts the version and test-count badges as a whole markdown image or a whole HTML `<img src="https://img.shields.io/badge/…">`. It still never matches a bare substring. The register baseline was regenerated after the README changes.
+- **Executor model.** The Agent Definitions table in `SKILL.md` and README now says `sonnet` for the Executor, matching `ip-executor.md`.
+- **PIVOT module.** `state-pivot.md` cites `references/root-cause-analysis.md` at the log-pivot bullet.
+
+### Fixed
+
+- **Tests that failed only on git 2.25.1.** The `.gitignore` check in the bootstrap tests parses `git check-ignore -v -n` output instead of trusting exit codes, and the scar-scan fixtures initialise with `init` plus `symbolic-ref` and fail loudly at setup. The products (`bootstrap.mjs`, `scar-scan.mjs`) were not changed for this.
+
+### Notes
+
+- **User-side file, not shipped.** `~/.claude/commands/plan.md` is a hand-installed file that this repo does not ship. Its three paths pointed into the stale `src/` tree inside the install, which the new prune removes, so they were repointed to the install layout (outside the repo, backed up first). `sync-skill` will not maintain it.
+- Cost: no walk over `plans/` was added; the banner does one `existsSync`, and the new tests read repo files only.
+
 ## [2.67.0] - 2026-10-09
 
 **The plan dashboard now shows which plans are still open, what the protocol is waiting on you for, and a compact sticky header once you scroll past the hero.** Follow-up to 2.66.0. Still a viewer: no agent reads it, `SKILL.md` does not mention it, pages load nothing from the network, and `plans/.current_plan` is still the live plan.
