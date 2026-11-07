@@ -410,7 +410,7 @@ When the skill activates with the definitions present, the conversation assumes 
 | **Orchestrator** | State machine owner, dispatcher, user-facing relay | Agent, Read, Write, Edit, Bash, Grep, Glob | inherit |
 | **ip-explorer** | Codebase-first research, with web fallback (EXPLORE) | Read, Write, Grep, Glob, Bash, WebFetch, WebSearch | sonnet |
 | **ip-plan-writer** | Generates `plan.md` and the `verification.md` template (PLAN) | Read, Write, Edit, Grep, Glob | inherit |
-| **ip-executor** | Implements one plan step at a time (EXECUTE) | Read, Edit, Write, Bash, Grep, Glob | inherit |
+| **ip-executor** | Implements one plan step at a time (EXECUTE) | Read, Edit, Write, Bash, Grep, Glob | sonnet |
 | **ip-verifier** | Runs verification checks, returns results for the Orchestrator to merge into `verification.md` (REFLECT) | Read, Bash, Grep, Glob | sonnet |
 | **ip-reviewer** | Adversarial review, iteration ≥ 2 by default; earlier by orchestrator choice, e.g. an iteration-1 attack-before-release pass (REFLECT) | Read, Write, Grep, Glob, Bash | opus |
 | **ip-boyscout** | Read-only hygiene sweep once the work looks close-ready, separating residue this plan introduced from residue already there (REFLECT) | Read, Write, Bash, Grep, Glob | sonnet |

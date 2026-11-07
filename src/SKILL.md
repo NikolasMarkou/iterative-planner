@@ -423,7 +423,7 @@ A sub-agent can terminate WITHOUT reporting — killed by the user, harness inte
 | Orchestrator | `agents/ip-orchestrator.md` | State machine owner, coordinator | Agent, Read, Write, Edit, Bash, Grep, Glob | inherit |
 | Explorer | `agents/ip-explorer.md` | Codebase-first research, with web fallback | Read, Write, Grep, Glob, Bash, WebFetch, WebSearch | sonnet |
 | Plan-Writer | `agents/ip-plan-writer.md` | Generates plan.md + verification.md | Read, Write, Edit, Grep, Glob | inherit |
-| Executor | `agents/ip-executor.md` | Implements one plan step | Read, Edit, Write, Bash, Grep, Glob | inherit |
+| Executor | `agents/ip-executor.md` | Implements one plan step | Read, Edit, Write, Bash, Grep, Glob | sonnet |
 | Verifier | `agents/ip-verifier.md` | Runs verification checks | Read, Bash, Grep, Glob | sonnet |
 | Reviewer | `agents/ip-reviewer.md` | Adversarial review (iteration ≥ 2 by default; earlier by orchestrator choice, e.g. an iteration-1 attack-before-release pass) | Read, Write, Grep, Glob, Bash | opus |
 | BoyScout | `agents/ip-boyscout.md` | Read-only hygiene sweep (REFLECT) | Read, Write, Bash, Grep, Glob | sonnet |

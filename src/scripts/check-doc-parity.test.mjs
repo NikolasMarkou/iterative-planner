@@ -7,7 +7,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -560,4 +560,22 @@ test("build channels: build and sync-skill both ship commands/ip-dashboard.md (i
   // verify
   assert.match(mkSync, /diff -q src\/commands\/ip-dashboard\.md \$\(COMMANDS_INSTALL_DIR\)\/ip-dashboard\.md/, "Makefile does not verify the command");
   assert.match(psSync, /Get-FileHash "src\/commands\/ip-dashboard\.md"/, "build.ps1 does not verify the command");
+});
+
+test("Agent Definitions Model column matches each agent's frontmatter model (SKILL.md and README)", () => {
+  const agentsDir = join(repoRoot, "src", "agents");
+  const files = readdirSync(agentsDir).filter((f) => /^ip-.*\.md$/.test(f));
+  const model = (f) => (readFileSync(join(agentsDir, f), "utf8").match(/^model:\s*(\S+)/m) || [, "inherit"])[1];
+  const rows = (rel) => readFileSync(join(repoRoot, rel), "utf8").split("\n").filter((l) => l.startsWith("|")).map((l) => l.split("|").slice(1, -1).map((c) => c.trim()));
+  const skill = rows("src/SKILL.md"), readme = rows("README.md");
+  // SKILL.md names the file in cell 2; README names the agent in cell 1 (bold, `ip-` prefix optional on the orchestrator).
+  const find = (tbl, f, pick) => tbl.find((r) => r.length >= 4 && pick(r, f));
+  const bySkill = (r, f) => r[1] === `\`agents/${f}\``;
+  const byReadme = (r, f) => r[0].toLowerCase().replace(/\*/g, "").replace(/^ip-/, "") === f.replace(/^ip-|\.md$/g, "");
+  assert.equal(files.length, 8, "expected 8 ip-*.md agents");
+  for (const f of files) for (const [tbl, pick, name] of [[skill, bySkill, "SKILL.md"], [readme, byReadme, "README.md"]]) {
+    const row = find(tbl, f, pick);
+    assert.ok(row, `${name}: no Agent Definitions row for ${f}`);
+    assert.equal(row[row.length - 1], model(f), `${name}: Model cell for ${f} disagrees with frontmatter`);
+  }
 });
