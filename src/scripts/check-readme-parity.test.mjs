@@ -298,4 +298,28 @@ describe("check-readme-parity", () => {
     assert.strictEqual(checkVersionBadge(real, "0.0.0").found, true);
     assert.strictEqual(checkTestCount(real, -1).found, true);
   });
+
+  it("HTML <img> badges: accepted, wrong value rejected, both attribute orders", () => {
+    const v = '<img alt="Skill Version" src="https://img.shields.io/badge/Skill-v2.67.0-green.svg">';
+    const t = '<img src="https://img.shields.io/badge/tests-1070%20passing-brightgreen.svg" alt="Tests" width="90">';
+    assert.deepStrictEqual(checkVersionBadge(v, "2.67.0"), { ok: true, found: true, readmeVersion: "2.67.0", expected: "2.67.0" });
+    assert.strictEqual(checkVersionBadge(v, "2.68.0").ok, false);
+    assert.strictEqual(checkVersionBadge(v, "2.68.0").readmeVersion, "2.67.0");
+    assert.strictEqual(checkTestCount(t, 1070).ok, true);
+    assert.strictEqual(checkTestCount(t, 1071).ok, false);
+    assert.strictEqual(checkTestCount(t, 1071).readmeCount, 1070);
+  });
+
+  it("HTML badge gate stays anchored: non-shields host, other tag, and bare strings are not badges", () => {
+    const other = '<img alt="x" src="https://example.com/badge/Skill-v2.67.0-green.svg">';
+    assert.strictEqual(checkVersionBadge(other, "2.67.0").found, false);
+    // the shields host in a DIFFERENT tag must not satisfy a label in this one
+    const split = '<img src="https://img.shields.io/badge/License-x-blue.svg"> <a href="Skill-v2.67.0-green.svg">';
+    assert.strictEqual(checkVersionBadge(split, "2.67.0").found, false);
+    const notImg = '<a src="https://img.shields.io/badge/Skill-v2.67.0-green.svg">';
+    assert.strictEqual(checkVersionBadge(notImg, "2.67.0").found, false);
+    const bare = "Use `Skill-v2.67.0-green.svg` and tests-1070%20passing- in prose.";
+    assert.strictEqual(checkVersionBadge(bare, "2.67.0").found, false);
+    assert.strictEqual(checkTestCount(bare, 1070).found, false);
+  });
 });

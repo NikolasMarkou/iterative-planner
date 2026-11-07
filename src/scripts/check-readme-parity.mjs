@@ -6,6 +6,7 @@
 //   (b) the README test-count badge matches the TEST_COUNT file.
 //
 // Badge formats parsed (as found in README.md):
+//   Both badges may also be an HTML `<img … src="https://img.shields.io/badge/…">` (the README's form).
 //   Version:    ![Skill](https://img.shields.io/badge/Skill-v<VER>-green.svg)
 //               matched as a whole shields.io image badge (VERSION_BADGE_RE),
 //               not as a bare `Skill-v<VER>-` substring
@@ -20,11 +21,25 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+// A badge is a WHOLE shields.io image in one of two forms: markdown `![alt](https://img.shields.io/badge/<label>…)`
+// or HTML `<img … src="https://img.shields.io/badge/<label>…" …>`. In the HTML form `[^>]*` cannot
+// cross a tag boundary, so the shields host must sit inside the same <img> tag as the label.
+// Capture group 1 is the markdown form's value, group 2 the HTML form's (see badgeValue()).
+// `label` is a regex source containing exactly one capture group.
+function badgeRe(label) {
+  const host = "https:\\/\\/img\\.shields\\.io\\/badge\\/";
+  return new RegExp(
+    `!\\[[^\\]]*\\]\\(${host}${label}[^)]*\\)|<img\\b[^>]*?\\bsrc=["']${host}${label}[^"']*["'][^>]*>`,
+  );
+}
+
+/** Value captured by whichever badge form matched ("" when none did). */
+const badgeValue = (m) => (m ? (m[1] ?? m[2]) : "");
+
 // DECISION plan-2026-09-01T100120-4f591469/D-014 — anchored to the BADGE, not a bare version
 // substring: the old regex passed as long as any line carried the string, badge or not.
 // Do not loosen this back to a substring match.
-const VERSION_BADGE_RE =
-  /!\[[^\]]*\]\(https:\/\/img\.shields\.io\/badge\/Skill-v(\d+\.\d+\.\d+)-[^)]*\)/;
+const VERSION_BADGE_RE = badgeRe("Skill-v(\\d+\\.\\d+\\.\\d+)-");
 
 /**
  * Check that the README version badge matches the expected version string.
@@ -38,7 +53,7 @@ const VERSION_BADGE_RE =
  */
 export function checkVersionBadge(readmeText, version) {
   const m = (readmeText || "").match(VERSION_BADGE_RE);
-  const readmeVersion = m ? m[1] : "";
+  const readmeVersion = badgeValue(m);
   return {
     ok: readmeVersion === version,
     found: Boolean(m),
@@ -49,8 +64,7 @@ export function checkVersionBadge(readmeText, version) {
 
 // DECISION plan-2026-09-01T100120-4f591469/D-016 — sibling of VERSION_BADGE_RE, same reason:
 // anchored to the badge, not a bare substring.
-const TEST_BADGE_RE =
-  /!\[[^\]]*\]\(https:\/\/img\.shields\.io\/badge\/tests-(\d+)%20passing-[^)]*\)/;
+const TEST_BADGE_RE = badgeRe("tests-(\\d+)%20passing-");
 
 /**
  * Check that the README test-count badge matches the expected count.
@@ -62,7 +76,7 @@ const TEST_BADGE_RE =
  */
 export function checkTestCount(readmeText, testCount) {
   const m = (readmeText || "").match(TEST_BADGE_RE);
-  const readmeCount = m ? parseInt(m[1], 10) : NaN;
+  const readmeCount = m ? parseInt(badgeValue(m), 10) : NaN;
   return {
     ok: readmeCount === testCount,
     found: Boolean(m),
