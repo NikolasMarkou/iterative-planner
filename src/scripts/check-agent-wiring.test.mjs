@@ -781,3 +781,14 @@ test("agent contract: every agent declares Edit and Agent exactly once — grant
     }
   }
 });
+
+test("agent-facing prose never names dashboard.mjs (viewer stays out of the protocol)", () => {
+  const src = join(dirname(fileURLToPath(import.meta.url)), "..");
+  const files = [join(src, "SKILL.md")];
+  for (const d of ["agents", "scripts/modules"]) {
+    for (const f of readdirSync(join(src, d))) if (f.endsWith(".md")) files.push(join(src, d, f));
+  }
+  assert.ok(files.length >= 14, `scanned only ${files.length} files; glob likely empty`);
+  const hits = files.filter((f) => readFileSync(f, "utf8").includes("dashboard.mjs"));
+  assert.deepEqual(hits, [], "dashboard.mjs must not appear in agent-facing prose");
+});
