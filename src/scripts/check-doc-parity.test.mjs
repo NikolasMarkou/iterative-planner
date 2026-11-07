@@ -521,3 +521,21 @@ test("build.ps1: declares #Requires -Version 7 and encodes every content round-t
   const unencoded = io.filter((l) => !/-Encoding utf8/.test(l));
   assert.deepEqual(unencoded, [], "Get-Content/Set-Content without an explicit -Encoding utf8 (PS 5.1 would use the ANSI codepage)");
 });
+
+test("build channels: sync-skill prunes the same four litter paths and enforces the same install allowlist", () => {
+  const mkSync = makefileSrc.slice(makefileSrc.indexOf("\nsync-skill:"), makefileSrc.indexOf("\n.PHONY: help"));
+  const psSync = psFunction(buildPs1Src, "Invoke-SyncSkill");
+  assert.ok(mkSync.length > 200, "anti-vacuity: sync-skill section not found in the Makefile");
+  const mkLitter = (mkSync.match(/^\trm -rf (.+)$/m) || [, ""])[1]
+    .split(/\s+/).map((t) => t.replace("$(SKILL_INSTALL_DIR)/", ""));
+  const psLitter = [...((psSync.match(/foreach \(\$litter in @\(([^)]*)\)\)/) || [, ""])[1].matchAll(/"([^"]+)"/g))].map((m) => m[1]);
+  assert.deepEqual(mkLitter, ["src", "CLAUDE.md", "Makefile", "build.ps1"], "Makefile litter prune list changed");
+  assert.deepEqual(psLitter, mkLitter, "build.ps1 and the Makefile prune different litter paths");
+  const mkAllow = (mkSync.match(/case "\$\$e" in ([^;)]+)\)/) || [, ""])[1].split("|");
+  const psAllow = [...((psSync.match(/\$allowed = @\(([^)]*)\)/) || [, ""])[1].matchAll(/"([^"]+)"/g))].map((m) => m[1]);
+  assert.equal(mkAllow.length, 11, "anti-vacuity: Makefile allowlist should hold 11 entries");
+  assert.deepEqual(sorted(psAllow), sorted(mkAllow), "build.ps1 and the Makefile allow different install entries");
+  assert.match(mkSync, /test -n "\$\(HOME\)"/, "Makefile prune lost its empty-HOME guard");
+  assert.match(psSync, /IsNullOrEmpty\(\$HOME\)/, "build.ps1 prune lost its empty-HOME guard");
+  assert.ok(!/Test-Path[^\n]*litter/.test(psSync), "build.ps1 wraps the prune in a Test-Path skip");
+});

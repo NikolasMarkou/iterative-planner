@@ -522,6 +522,15 @@ function Invoke-SyncSkill {
     Remove-Item "$skillInstallDir/scripts/modules/*.md" -Force -ErrorAction SilentlyContinue
     Remove-Item "$skillInstallDir/references/*.md" -Force -ErrorAction SilentlyContinue
     Remove-Item "$skillInstallDir/agents/*.md" -Force -ErrorAction SilentlyContinue
+    # Pre-restructure litter in the install ROOT (D-005): exactly these four named paths, never a
+    # glob. The HOME guard keeps an empty HOME from resolving the install dir to a root path.
+    if ([string]::IsNullOrEmpty($HOME)) {
+        Write-Host "ERROR: HOME is empty; refusing to prune the install" -ForegroundColor Red
+        exit 1
+    }
+    foreach ($litter in @("src", "CLAUDE.md", "Makefile", "build.ps1")) {
+        Remove-Item (Join-Path $skillInstallDir $litter) -Recurse -Force -ErrorAction SilentlyContinue
+    }
     # $agentsInstallDir is SHARED with every other installed skill. Prune ONLY our own ip-*.md
     # agents here — a glob prune would delete other skills' agent definitions.
     Remove-Item (Join-Path $agentsInstallDir "ip-*.md") -Force -ErrorAction SilentlyContinue
@@ -599,6 +608,16 @@ function Invoke-SyncSkill {
     if ($leakedTests.Count -gt 0) {
         Write-Host "ERROR: sync-skill shipped *.test.mjs into the install (D-008 regression)" -ForegroundColor Red
         $mismatch = $true
+    }
+    # Allowlist check (D-005): every top-level entry of the install must be one sync-skill writes
+    # (or .claude). Detect only, NEVER delete. Failures accumulate in $mismatch (no early exit).
+    # The install may be a git clone of the upstream repo, so .git/.gitignore are allowed and never touched.
+    $allowed = @("SKILL.md", "README.md", "LICENSE", "CHANGELOG.md", "VERSION", "scripts", "references", "agents", ".claude", ".git", ".gitignore")
+    foreach ($entry in @(Get-ChildItem -LiteralPath $skillInstallDir -Force)) {
+        if ($allowed -cnotcontains $entry.Name) {
+            Write-Host "ERROR: unexpected entry in install: $($entry.Name) (not deleted)" -ForegroundColor Red
+            $mismatch = $true
+        }
     }
     if ($mismatch) { exit 1 }
 

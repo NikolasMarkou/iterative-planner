@@ -333,6 +333,10 @@ sync-skill:
 	rm -f $(SKILL_INSTALL_DIR)/scripts/modules/*.md
 	rm -f $(SKILL_INSTALL_DIR)/references/*.md
 	rm -f $(SKILL_INSTALL_DIR)/agents/*.md
+# Pre-restructure litter in the install ROOT (D-005): exactly these four named paths, never a
+# glob. The HOME guard keeps an empty HOME from turning the target into `rm -rf /.claude/...`.
+	@test -n "$(HOME)" || { echo "ERROR: HOME is empty; refusing to prune the install" && exit 1; }
+	rm -rf $(SKILL_INSTALL_DIR)/src $(SKILL_INSTALL_DIR)/CLAUDE.md $(SKILL_INSTALL_DIR)/Makefile $(SKILL_INSTALL_DIR)/build.ps1
 # $(AGENTS_INSTALL_DIR) is SHARED with every other installed skill. Prune ONLY our own
 # ip-*.md agents here — a glob prune would delete other skills' agent definitions.
 	rm -f $(AGENTS_INSTALL_DIR)/ip-*.md
@@ -365,6 +369,15 @@ sync-skill:
 	  && diff -q VERSION $(SKILL_INSTALL_DIR)/VERSION \
 	  && echo "Sync verified (scripts, references, agents, modules, SKILL.md, VERSION)." \
 	  || (echo "ERROR: sync diff mismatch" && exit 1)
+# Allowlist check (D-005): every top-level entry of the install must be one sync-skill writes
+# (or .claude). Detect only, NEVER delete. The flag is accumulated and tested after the loop so
+# a bad entry fails the target from ANY iteration, not just the last (a subshell exit would not).
+# The install may be a git clone of the upstream repo, so .git/.gitignore are allowed and never touched.
+	@bad=0; for p in $(SKILL_INSTALL_DIR)/* $(SKILL_INSTALL_DIR)/.[!.]*; do \
+		[ -e "$$p" ] || continue; e=$$(basename "$$p"); \
+		case "$$e" in SKILL.md|README.md|LICENSE|CHANGELOG.md|VERSION|scripts|references|agents|.claude|.git|.gitignore) ;; \
+		*) echo "ERROR: unexpected entry in install: $$e"; bad=1;; esac; \
+	done; test "$$bad" = 0 || { echo "ERROR: install holds entries sync-skill does not own (not deleted)" && exit 1; }
 
 # Help
 .PHONY: help
