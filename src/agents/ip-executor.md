@@ -83,8 +83,8 @@ Procedure:
    ```
    Capture the first stdout line (`radius:TIER(score)` or `radius:UNKNOWN(reason)`). Script always exits 0 — never fails the step. The script derives the repo root itself — invoke from any CWD, with any path form; `<repo-rel-path>` names the changelog field's frame, not an invocation precondition.
 2. If `changelog.md` is missing (older plans), create it with the standard header (see `references/file-formats.md` — or run `node <skill-path>/scripts/emit-template.mjs --name changelog` to get just this template; file-formats.md is the canonical fallback) before appending.
-3. Append the line. Append-only — never edit prior lines.
-4. After the step's commit, you MAY rewrite the trailing `uncommitted` token to the short hash; otherwise leave as `uncommitted` (validator accepts both).
+3. Append the line, using `uncommitted` as the commit token. The file is append-only with ONE exception: never edit a prior step's lines, and never any other field.
+4. Right after the step's commit, rewrite the trailing `uncommitted` token to the short hash on THIS step's lines only. This is required, not optional: a line still reading `uncommitted` after its step committed looks like crash residue to Recovery and to `scar-scan.mjs`. The validator accepts both tokens, so a missed back-fill is not an error, only noise.
 
 OP field values:
 - `CREATE(+N)` — new file (N = lines added)
@@ -107,7 +107,7 @@ If `blast-radius.mjs` is missing or errors:
 - STOP immediately
 - Follow Revert-First: (1) revert? (2) delete? (3) one-liner? (4) none → report
 - 10-Line Rule: fix needs >10 new lines → not a fix → report failure
-- **You get ONE fix attempt in this spawn.** If it fails, revert and report FAILURE — do not try a second idea. The step's cap is 2 fix attempts TOTAL, counted in `state.md` across spawns, and the orchestrator spends the second one by re-spawning you with the failure context. Trying twice here would make the reachable worst case four tries against a stated cap of two.
+- **You get ONE fix attempt in this spawn.** If it fails, revert and report FAILURE — do not try a second idea. The step's cap is 2 fix attempts TOTAL, counted in `state.md` across spawns, and the orchestrator spends the second one by re-spawning you with the failure context. Trying twice here would make the reachable worst case four tries against a stated cap of two. In a re-spawn with failure context, your single implementation try of the step IS the fix attempt (the orchestrator has already recorded it in `state.md` `## Fix Attempts`); if it fails, revert and report, with no extra retry.
 - Revert uncommitted changes, scoped to this step: `git checkout -- <tracked files from the change manifest>`; for untracked files this step created, preview with `git clean -nd -- <created paths>` and then run `git clean -fd -- <the same paths>`. Never run `git clean` without a pathspec: it also lists the bootstrap-written `.gitignore`, `plans/ANCHORS.md` and unrelated untracked files.
 - **Manifest-touching steps**: `git checkout` alone does NOT restore installed dependencies. If the reverted step modified a package manifest/lockfile, follow the git revert with the ecosystem's strict reinstall (`npm ci` / `cargo build` / `poetry install --sync` / `bundle install` / `go mod download` / etc.) to reconcile the working tree with the restored lockfile. Full sequence: `references/code-hygiene.md` § Revert procedures — manifest-touching reverts.
 - For each reverted file, append a `REVERT(file)` line to `changelog.md` with reason `revert: <what failed>`.

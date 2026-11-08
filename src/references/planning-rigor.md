@@ -64,7 +64,7 @@ Quality gate for EXPLORE → PLAN transition. The 3-finding minimum is a *quanti
 Before transitioning to PLAN, self-assess in the EXPLORE → PLAN transition log in `state.md`:
 
 ```markdown
-- EXPLORE → PLAN (confidence: scope=adequate, solutions=adequate, risks=partial)
+- EXPLORE → PLAN (confidence: scope=adequate, solutions=open, risks=partial)
 ```
 
 | Dimension | Levels |
@@ -73,7 +73,7 @@ Before transitioning to PLAN, self-assess in the EXPLORE → PLAN transition log
 | **Solution space** | narrow (one obvious approach) / open (multiple approaches identified) / constrained (few options, hard limits) |
 | **Risk visibility** | blind (unknown unknowns) / partial (some risks identified) / clear (risks mapped, unknowns located) |
 
-**Gate**: All three must be at least "adequate" to transition. Any "shallow" or "blind" → keep exploring. This is a mental check recorded in the transition log, not a separate file section.
+**Gate**: Scope must be adequate or deep, and risks must be partial or clear. Solution space has no order, so any of its three values passes, provided you can name the options. Scope "shallow" or risks "blind" → keep exploring. This is a mental check recorded in the transition log, not a separate file section.
 
 **Calibration cues by dimension**:
 

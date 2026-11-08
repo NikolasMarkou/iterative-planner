@@ -1130,7 +1130,7 @@ The regions below are the **exact bytes `bootstrap.mjs` writes** for each plan f
 - INIT → EXPLORE (task started)
 <!-- When logging EXPLORE → PLAN, add Exploration Confidence on the line below the transition entry, e.g.:
 - EXPLORE → PLAN (gathered enough context, YYYY-MM-DDTHH:MM:SSZ)
-  - confidence: scope=deep|partial|shallow, solutions=adequate|thin, risks=clear|unclear
+  - confidence: scope=shallow|adequate|deep, solutions=narrow|open|constrained, risks=blind|partial|clear
 See references/planning-rigor.md for definitions. -->
 ```
 

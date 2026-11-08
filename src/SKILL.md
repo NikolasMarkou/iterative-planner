@@ -101,7 +101,7 @@ These files are active working memory. Re-read during the conversation, not just
 | Before modifying `DECISION`-commented code | Referenced `decisions.md` entry | Understand why before changing |
 | Before PLAN or PIVOT | `decisions.md`, `findings.md`, `findings/*`, `plans/LESSONS.md`, `plans/SYSTEM.md`, `plans/DECISIONS.md` *(PLAN only)*, `changelog.md` *(PIVOT only)* | Ground plan in known facts + institutional memory + system atlas |
 | Before any REFLECT | `plan.md` (criteria + verification strategy + assumptions), `progress.md`, `verification.md`, `findings.md`, `checkpoints/*`, `decisions.md`, `changelog.md` | Phase 1 Gate-In: full context before evaluating |
-| Every 10 tool calls | `state.md` | Reorient. Right step? Scope crept? |
+| Every 10 tool calls | `state.md` (and `node <skill-path>/scripts/bootstrap.mjs status` for the one-line summary; re-read `plan.md` in full only when `status` shows a step or state you did not expect) | Reorient. Right step? Scope crept? |
 
 `|messages| > 50` → re-read `state.md` + `plan.md` before every response. Files are truth, not memory.
 

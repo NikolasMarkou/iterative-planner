@@ -554,7 +554,7 @@ Commits are the agent's undo history, and the protocol is deliberate about when 
 | PIVOT | Decide: keep successful commits, or `git checkout <checkpoint-commit> -- .` to revert. Choice logged in `decisions.md`. |
 | CLOSE | Finalizes **on disk**: writes `summary.md`, audits DECISION anchors, rewrites `plans/LESSONS.md` + `plans/SYSTEM.md`, merges the consolidated cross-plan files, then runs `bootstrap.mjs close`. **No git commit or tag is created** — a summarizing commit/tag at CLOSE is a documented, deferred spec item, not yet implemented (no agent or script issues any git commit/tag). |
 
-Bootstrap automatically adds `plans/` to `.gitignore`. Remove that entry if your team wants decision logs versioned for post-mortems.
+Bootstrap writes two lines into `.gitignore`: `plans/*` and the negation `!plans/ANCHORS.md`. Nothing commits for you, including `.gitignore` and `plans/ANCHORS.md`: commit both yourself. `ANCHORS.md` is the durable record that lets `# DECISION` anchors resolve after plan directories are gone, so leaving it uncommitted defeats it. Remove the `plans/*` line if your team wants the full decision logs versioned.
 
 ---
 
@@ -570,7 +570,7 @@ No. One active plan at a time, tracked by `plans/.current_plan`. Close the curre
 Always under `plans/` in the project root. Bootstrap creates this directory automatically.
 
 **Are plan files committed to git?**
-No. Bootstrap adds `plans/` to `.gitignore` by default. Remove it if you want decision logs versioned.
+No, except `plans/ANCHORS.md`. Bootstrap adds `plans/*` to `.gitignore` with a `!plans/ANCHORS.md` exception; you commit that one file (and `.gitignore`) yourself, since the skill never runs `git add`. Remove the `plans/*` line if you want decision logs versioned.
 
 **What if I want to start completely over?**
 Run `bootstrap.mjs new --force "new goal"`. This closes the active plan (merging its findings) and creates a fresh one. All previous plan directories are preserved.
@@ -600,30 +600,10 @@ The test suite covers bootstrap operations, state transitions, consolidated file
 <summary><strong>Running the tests (and the per-suite breakdown)</strong></summary>
 
 ```bash
-node --test src/scripts/bootstrap.test.mjs \
-            src/scripts/validate-plan.test.mjs \
-            src/scripts/blast-radius.test.mjs \
-            src/scripts/check-doc-parity.test.mjs \
-            src/scripts/emit-state.test.mjs \
-            src/scripts/emit-template.test.mjs \
-            src/scripts/check-readme-parity.test.mjs \
-            src/scripts/check-changelog-parity.test.mjs \
-            src/scripts/shared.test.mjs \
-            src/scripts/check-test-count.test.mjs \
-            src/scripts/schema.test.mjs \
-            src/scripts/check-agent-wiring.test.mjs \
-            src/scripts/check-template-parity.test.mjs \
-            src/scripts/check-register.test.mjs \
-            src/scripts/scar-scan.test.mjs \
-            src/scripts/dashboard.test.mjs
-# 1080 tests across 16 suites: bootstrap 290, validate-plan 234, shared 97,
-#                  check-agent-wiring 62, schema 53, scar-scan 50, dashboard 84,
-#                  blast-radius 41, check-template-parity 41, check-register 32, check-doc-parity 28,
-#                  check-test-count 17, emit-state 15, check-readme-parity 17,
-#                  emit-template 11, check-changelog-parity 8
+node --test src/scripts/*.test.mjs     # every suite; make test runs them through check-test-count
 ```
 
-`node src/scripts/check-test-count.mjs` re-runs the suite and fails if the live pass count disagrees with the `TEST_COUNT` file. It runs as part of `make test` (not `make validate`, which stays suite-free and fast). The per-suite numbers above are hand-maintained prose — if they drift, `TEST_COUNT` and the badge remain the machine-checked source of truth.
+`node src/scripts/check-test-count.mjs` re-runs the suite and fails if the live pass count disagrees with the `TEST_COUNT` file. It runs as part of `make test` (not `make validate`, which stays suite-free and fast). The README states no per-suite counts; `TEST_COUNT` and the badge are the machine-checked total.
 
 </details>
 

@@ -17,7 +17,7 @@ You are a planning specialist for the iterative planning protocol.
 ## Your Task
 Read all findings, decisions, and lessons. Produce a complete plan.md
 with every required section. Also write the initial verification.md template.
-For these templates, Read `references/file-formats.md` — it is the sole template source (you have no Bash and MUST NOT run any code).
+The sole template source is `references/file-formats.md`, but it is about 84 KB: do NOT read it whole. You have no Bash and MUST NOT run any code, so use Grep with `-n` for `<!-- TEMPLATE:plan -->` and `<!-- TEMPLATE:verification -->`, then Read only from each marker line (`offset`) to the next `<!-- TEMPLATE:` marker (`limit`; about 90 lines for plan, 85 for verification). If the spawn prompt already includes the output of `emit-template --name plan` / `--name verification`, use that and read nothing.
 
 ## Required Plan Sections (ALL mandatory)
 1. **Goal** — what we're trying to achieve
