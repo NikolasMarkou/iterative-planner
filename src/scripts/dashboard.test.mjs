@@ -221,6 +221,14 @@ test("parseState: a SPAWN line between a transition and its confidence sub-line 
   assert.deepEqual(s.hist[1].sub, []);
 });
 
+test("parseState: SPAWN lines with arrows in the slug create no phase visits but stay in the timeline", () => {
+  const s = parseState("# Current State: PLAN\n## Transition History:\n- EXPLORE → PLAN (x)\n- SPAWN ip-executor slug=a → REFLECT started 2026-01-01T00:00:00Z\n- SPAWN ip-executor slug=b → PIVOT started 2026-01-01T00:00:00Z\n");
+  assert.equal(s.visits.REFLECT, 0);
+  assert.equal(s.visits.PIVOT, 0);
+  assert.equal(s.visits.PLAN, 1);
+  assert.equal(s.hist.length, 3);
+});
+
 test("parseDecisions: the commented schema example is ignored, a repeated id keeps its last entry, 4-digit ids parse", () => {
   const d = parseDecisions("<!--\n## D-099 | PLAN | YYYY-MM-DD\n**Decision**: example\n-->\n## D-001 | PLAN | 2026-01-01\n**Decision**: first\n## D-001 | PLAN | 2026-01-01\n**Decision**: second\n**Trade-off**: a at the cost of b\n## D-1000 | EXECUTE | 2026-01-02\n**Context**: ctx\n**Decision**: big\n");
   assert.deepEqual(d.map((x) => x.id), ["D-1000", "D-001"]);

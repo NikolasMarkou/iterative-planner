@@ -1,6 +1,6 @@
 {
   "CLAUDE.md": {
-    "ceiling": 7.46,
+    "ceiling": 7.45,
     "markers": 61
   },
   "README.md": {
@@ -28,7 +28,7 @@
     "markers": 1
   },
   "src/agents/ip-orchestrator.md": {
-    "ceiling": 9.71,
+    "ceiling": 9.69,
     "markers": 46
   },
   "src/agents/ip-plan-writer.md": {
@@ -64,7 +64,7 @@
     "markers": 11
   },
   "src/references/file-formats.md": {
-    "ceiling": 6.85,
+    "ceiling": 6.84,
     "markers": 82
   },
   "src/references/planning-rigor.md": {

@@ -15,9 +15,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- **SPAWN lines are ignored.** `validate-plan.mjs` and the dashboard skip `- SPAWN …` lines, including when counting transitions, iterations and re-plans (`bootstrap.mjs status` too), so a start-time line is never read as a state change.
+- **SPAWN lines are ignored.** `validate-plan.mjs` and the dashboard skip `- SPAWN …` lines, including when counting transitions, iterations and re-plans (`bootstrap.mjs status` too; its iteration counter got a one-line SPAWN filter, a deliberate addition to a file the plan had not meant to touch), so a start-time line is never read as a state change.
 - **Lint and test lists.** `Makefile` and `build.ps1` include `session-title.mjs` and its test in both lists. `build.ps1` was verified by reading only; no PowerShell ran here.
-- `TEST_COUNT` and the README badges: 1080 to 1109 passing.
+- `TEST_COUNT` and the README badges: 1080 to 1110 passing.
 
 ### Notes
 

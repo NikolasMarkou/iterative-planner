@@ -48,7 +48,7 @@ Update on every state transition.
 
 **Change Manifest**: one line per step, formatted as `- Step N (commit-hash-or-"uncommitted"):` followed by each filename wrapped in backticks and comma-separated — e.g. `file1`, `file2`, `file3`. A step line carrying `uncommitted` (or no hash) has not yet landed; on failed step / PIVOT → revert those files. Backticking each filename is non-negotiable (see `code-hygiene.md` for why); capitalization/hyphenation of `Step N` vs `step-N` is a minor stylistic variant, not load-bearing. See `code-hygiene.md`.
 
-**Transition History**: append-only log of state transitions, one bullet each, in the `FROM → TO (reason)` shape shown above. It also carries one deliberately arrow-free exception — the hygiene-sweep skip line, written by the orchestrator at REFLECT the moment it legitimately decides not to spawn `ip-boyscout` this pass:
+**Transition History**: append-only log of state transitions, one bullet each, in the `FROM → TO (reason)` shape shown above. It also carries arrow-free lines that are not transitions: the orchestrator's `- SPAWN <agent> slug=<x> started <time>` start-time lines (ignored by the validator, `bootstrap.mjs status` and the dashboard), and the hygiene-sweep skip line, written by the orchestrator at REFLECT the moment it legitimately decides not to spawn `ip-boyscout` this pass:
 
 ```markdown
 ## Transition History:

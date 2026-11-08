@@ -252,7 +252,7 @@ export function parseState(text) {
     else if (/^\s+- /.test(line) && owner) owner.sub.push(line.trim().slice(2));
   }
   const visits = Object.fromEntries(PHASES.map((p) => [p, 0]));
-  for (const h of hist) { const m = h.text.match(/→\s*(EXPLORE|PLAN|EXECUTE|REFLECT|PIVOT|CLOSE)\b/); if (m) visits[m[1]]++; }
+  for (const h of hist) { if (/^SPAWN /.test(h.text)) continue; const m = h.text.match(/→\s*(EXPLORE|PLAN|EXECUTE|REFLECT|PIVOT|CLOSE)\b/); if (m) visits[m[1]]++; }
   const last = g(/^## Last Transition:\s*(.+)$/m);
   const lastTs = Date.parse((last.match(ISO_RE) || [])[0] || "") || 0;
   const lastDetail = ((last.match(/\((.*)\)\s*$/) || [])[1] || "").replace(ISO_RE, "").replace(/[,;\s]+$/, "").trim();
