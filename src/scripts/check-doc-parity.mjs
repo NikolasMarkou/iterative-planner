@@ -20,7 +20,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { isMain } from "./shared.mjs";
+import { isMain, tagLines } from "./shared.mjs";
 
 // The floor (anti-vacuity), mirroring EXPECTED_SLUGS in
 // check-template-parity.mjs. A renamed "File Ownership" heading, a
@@ -62,14 +62,18 @@ function normalizeCell(text) {
  *   - plain-text suffixes: `findings.md` (index) -> only the backtick token is
  *     taken; the "(index)" text is ignored.
  * Table boundary: starts after the heading line containing "File Ownership"
- * (case-insensitive), stops at the next `## `/`### ` section or end of file.
+ * (case-insensitive), stops at the next heading of ANY level (`#`..`######`) or end of file.
+ * Lines inside fenced code blocks are ignored (a sample table in a fence is not the table).
+ * A key listed on two rows keeps BOTH owner cells (joined with " || "), so a second row that
+ * disagrees with the other doc is reported as an owner mismatch instead of being ignored.
  */
 export function parseOwnershipTable(markdownText) {
   const keys = new Set();
   const owners = new Map();
-  const lines = (markdownText || "").split("\n");
+  const lines = tagLines(markdownText);
   let inTable = false;
-  for (const line of lines) {
+  for (const { text: line, fenced } of lines) {
+    if (fenced) continue;
     if (!inTable) {
       if (/file ownership/i.test(line) && /^#{1,6}\s/.test(line)) {
         inTable = true;
@@ -77,7 +81,7 @@ export function parseOwnershipTable(markdownText) {
       continue;
     }
     // Stop at the next section heading.
-    if (/^#{2,3}\s/.test(line)) break;
+    if (/^#{1,6}\s/.test(line)) break;
     const trimmed = line.trim();
     if (!trimmed.startsWith("|")) continue;
     // First column cell = text between the first and second pipe.
@@ -97,6 +101,7 @@ export function parseOwnershipTable(markdownText) {
       if (tok) {
         keys.add(tok);
         if (!owners.has(tok)) owners.set(tok, ownerCell);
+        else if (!owners.get(tok).split(" || ").includes(ownerCell)) owners.set(tok, `${owners.get(tok)} || ${ownerCell}`);
       }
     }
   }

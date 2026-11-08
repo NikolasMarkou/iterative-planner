@@ -154,4 +154,24 @@ describe("check-changelog-parity", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  it("an entry heading inside a fenced block or an HTML comment does not count", () => {
+    assert.strictEqual(checkChangelogVersion("# C\n\n```\n## [1.2.3] - x\n```\n", "1.2.3").ok, false);
+    assert.strictEqual(checkChangelogVersion("# C\n\n<!--\n## [1.2.3] - x\n-->\n", "1.2.3").ok, false);
+    // the first REAL entry after a decoy is the one compared
+    assert.strictEqual(checkChangelogVersion("```\n## [9.9.9]\n```\n## [1.2.3] - d\n", "1.2.3").ok, true);
+  });
+
+  it("an empty or malformed VERSION never passes (library and CLI)", () => {
+    assert.strictEqual(checkChangelogVersion("no entries", "").ok, false);
+    assert.strictEqual(checkChangelogVersion("## [1.2.3] - d", "").ok, false);
+    const root = makeFixtureRoot({ version: "", changelog: "no entries\n" });
+    try {
+      const r = spawnSync(process.execPath, [script], { env: { ...process.env, IP_CHECK_CHANGELOG_PARITY_ROOT: root }, encoding: "utf8" });
+      assert.strictEqual(r.status, 1);
+      assert.match(r.stderr, /FAIL — VERSION/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });

@@ -3,7 +3,7 @@
 //
 // check-register — executable gate that ratchets JARGON down (never up) across
 // the register-carrying shipped docs (CLAUDE.md, README.md, src/SKILL.md,
-// src/agents/*.md, src/references/*.md). It measures a purely LEXICAL marker
+// src/agents/*.md, src/references/*.md, src/scripts/modules/*.md, src/commands/*.md). It measures a purely LEXICAL marker
 // count — bracket-tags `[kebab-tag]`, coded refs
 // (`PC-*` / `D-\d\d` / `[A-Z]-\d{3}` / `[UFWNS]\d`), and 3+-segment compounds —
 // plus that count as a density per 1000 words, and compares both against the
@@ -56,15 +56,17 @@ import { fileURLToPath } from "node:url";
 import { DECISION_ID_NUM_PATTERN, isMain } from "./shared.mjs";
 
 // Anti-vacuity floor: the real scanned-doc count today (3 fixed docs +
-// src/agents/*.md + src/references/*.md) — 20 files: CLAUDE.md, README.md,
-// src/SKILL.md, 8 agents, 9 references. A broken glob or a deleted docs dir
+// src/agents/*.md + src/references/*.md + src/scripts/modules/*.md + src/commands/*.md) — 26 files:
+// CLAUDE.md, README.md, src/SKILL.md, 8 agents, 9 references, 5 state modules, 1 command. The
+// modules are the verbatim per-state rule bodies agents actually read; leaving them out put the
+// rules relocated out of SKILL.md outside the ratchet. A broken glob or a deleted docs dir
 // that makes the scanner resolve FEWER docs than this must FAIL loud
 // ([register-floor]), never vacuously PASS on an empty scan. Bump deliberately
 // when the real doc count changes; the `pin:` test in check-register.test.mjs
 // asserts this constant EQUALS the live scanned count (and that the baseline
 // has exactly that many keys), so a drifted constant fails rather than passing
 // on slack.
-export const EXPECTED_MIN_FILES = 20;
+export const EXPECTED_MIN_FILES = 26;
 
 // A scanned doc below this word count has been gutted/truncated — a floor fail,
 // not a silently-passing near-empty file.
@@ -125,7 +127,7 @@ export function density(text) {
 
 /**
  * The exact list of relpaths the gate scans: 3 fixed root docs + every .md
- * under src/agents and src/references, forward-slashed (baseline keys are
+ * under src/agents, src/references, src/scripts/modules and src/commands, forward-slashed (baseline keys are
  * forward-slashed, so keys match on every platform) and sorted for
  * deterministic output. Exported so the CLI, the regenerator, and the `pin:`
  * test all ask ONE function what the scan set is — a replicated scan list is a
@@ -150,6 +152,8 @@ export function buildScanList(repoRoot) {
     "src/SKILL.md",
     ...listMd(join(repoRoot, "src", "agents"), "src/agents"),
     ...listMd(join(repoRoot, "src", "references"), "src/references"),
+    ...listMd(join(repoRoot, "src", "scripts", "modules"), "src/scripts/modules"),
+    ...listMd(join(repoRoot, "src", "commands"), "src/commands"),
   ].sort();
 }
 

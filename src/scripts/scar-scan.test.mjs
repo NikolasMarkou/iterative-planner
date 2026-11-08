@@ -1494,3 +1494,11 @@ test("category A end-to-end: an anchor bearing the ACTIVE plan-id is INTRODUCED 
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("every spawnSync in scar-scan raises the 1 MB stdout cap (SPAWN_MAX_BUFFER)", () => {
+  const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "scar-scan.mjs"), "utf8");
+  const calls = [...src.matchAll(/spawnSync\([^;]*?\}\);/gs)].map((m) => m[0]);
+  assert.ok(calls.length >= 2, "anti-vacuity: expected the validator and git spawnSync calls");
+  for (const c of calls) assert.match(c, /maxBuffer: SPAWN_MAX_BUFFER/);
+  assert.match(src, /export const SPAWN_MAX_BUFFER = 32 << 20;/);
+});

@@ -11,6 +11,17 @@ SKILL_INSTALL_DIR := $(HOME)/.claude/skills/$(SKILL_NAME)
 AGENTS_INSTALL_DIR := $(HOME)/.claude/agents
 COMMANDS_INSTALL_DIR := $(HOME)/.claude/commands
 
+# In-place sed differs by implementation: GNU takes `sed -i`, BSD/macOS needs `sed -i ''` (a bare
+# `-i` there eats the script as the backup suffix). `sed --version` succeeds only on GNU sed.
+SED_I := $(shell sed --version >/dev/null 2>&1 && echo "sed -i" || echo "sed -i ''")
+
+# Frontmatter / diagram scoping for the validate greps. A bare `grep "^name:" file` matches anywhere
+# in the file, so a body line starting with `name:` satisfied it. FM_AWK prints only the lines
+# between the first two `---` lines (nothing at all unless line 1 is `---`); MERMAID_AWK prints only
+# the inside of ```mermaid fences. Keep in lockstep with build.ps1's Invoke-Validate.
+FM_AWK := awk 'NR==1{if($$0!="---")exit} NR>1&&$$0=="---"{exit} NR>1'
+MERMAID_AWK := awk '/^```mermaid/{f=1;next} /^```/{f=0} f'
+
 # Files to include in the skill package
 SKILL_FILE := src/SKILL.md
 REFERENCE_FILES := $(sort $(wildcard src/references/*.md))
@@ -40,9 +51,9 @@ build:
 	mkdir -p $(BUILD_DIR)/$(SKILL_NAME)/scripts/modules
 	@# Copy main skill file
 	cp $(SKILL_FILE) $(BUILD_DIR)/$(SKILL_NAME)/
-	sed -i "s/__SKILL_VERSION__/$(VERSION)/g" $(BUILD_DIR)/$(SKILL_NAME)/SKILL.md
-	sed -i "s/__SKILL_DATE__/$$(date -u +%Y-%m-%d)/g" $(BUILD_DIR)/$(SKILL_NAME)/SKILL.md
-	sed -i "s/__SKILL_COMMIT__/$$(git rev-parse --short HEAD)/g" $(BUILD_DIR)/$(SKILL_NAME)/SKILL.md
+	$(SED_I) "s/__SKILL_VERSION__/$(VERSION)/g" $(BUILD_DIR)/$(SKILL_NAME)/SKILL.md
+	$(SED_I) "s/__SKILL_DATE__/$$(date -u +%Y-%m-%d)/g" $(BUILD_DIR)/$(SKILL_NAME)/SKILL.md
+	$(SED_I) "s/__SKILL_COMMIT__/$$(git rev-parse --short HEAD)/g" $(BUILD_DIR)/$(SKILL_NAME)/SKILL.md
 	@# Copy reference files
 	cp $(REFERENCE_FILES) $(BUILD_DIR)/$(SKILL_NAME)/references/
 	@# Copy scripts
@@ -60,7 +71,7 @@ build:
 		cp $(COMMAND_FILES) $(BUILD_DIR)/$(SKILL_NAME)/commands/; \
 	fi
 	@# Copy documentation
-	cp $(DOC_FILES) $(BUILD_DIR)/$(SKILL_NAME)/ 2>/dev/null || true
+	cp $(DOC_FILES) $(BUILD_DIR)/$(SKILL_NAME)/
 	@echo "Build complete: $(BUILD_DIR)/$(SKILL_NAME)"
 
 # Create a combined single-file skill (SKILL.md with references inlined)
@@ -110,42 +121,42 @@ build-combined:
 	@echo "> so it runs in SKILL.md's single-thread monolithic-fallback mode, and plan directories" >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	@echo "> must be created with the full package or by hand." >> $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	@# Rewrite references/ cross-references to anchor links (content is inlined above)
-	@sed -i 's|`references/blast-radius\.md`|the Blast Radius Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
-	@sed -i 's|`references/code-hygiene\.md`|the Code Hygiene Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
-	@sed -i 's|`references/complexity-control\.md`|the Complexity Control Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
-	@sed -i 's|`references/convergence-metrics\.md`|the Convergence Metrics Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
-	@sed -i 's|`references/decision-anchoring\.md`|the Decision Anchoring Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
-	@sed -i 's|`references/file-formats\.md`|the File Formats Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
-	@sed -i 's|`references/planning-rigor\.md`|the Planning Rigor Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
-	@sed -i 's|`references/root-cause-analysis\.md`|the Root Cause Analysis Methods Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
-	@sed -i 's|`references/python-software\.md`|the Python / Software-Engineering Caveat section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
-	@sed -i 's|`src/references/blast-radius\.md`|the Blast Radius Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
-	@sed -i 's|`src/references/code-hygiene\.md`|the Code Hygiene Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
-	@sed -i 's|`src/references/complexity-control\.md`|the Complexity Control Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
-	@sed -i 's|`src/references/convergence-metrics\.md`|the Convergence Metrics Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
-	@sed -i 's|`src/references/decision-anchoring\.md`|the Decision Anchoring Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
-	@sed -i 's|`src/references/file-formats\.md`|the File Formats Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
-	@sed -i 's|`src/references/planning-rigor\.md`|the Planning Rigor Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
-	@sed -i 's|`src/references/root-cause-analysis\.md`|the Root Cause Analysis Methods Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
-	@sed -i 's|`src/references/python-software\.md`|the Python / Software-Engineering Caveat section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@$(SED_I) 's|`references/blast-radius\.md`|the Blast Radius Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@$(SED_I) 's|`references/code-hygiene\.md`|the Code Hygiene Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@$(SED_I) 's|`references/complexity-control\.md`|the Complexity Control Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@$(SED_I) 's|`references/convergence-metrics\.md`|the Convergence Metrics Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@$(SED_I) 's|`references/decision-anchoring\.md`|the Decision Anchoring Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@$(SED_I) 's|`references/file-formats\.md`|the File Formats Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@$(SED_I) 's|`references/planning-rigor\.md`|the Planning Rigor Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@$(SED_I) 's|`references/root-cause-analysis\.md`|the Root Cause Analysis Methods Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@$(SED_I) 's|`references/python-software\.md`|the Python / Software-Engineering Caveat section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@$(SED_I) 's|`src/references/blast-radius\.md`|the Blast Radius Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@$(SED_I) 's|`src/references/code-hygiene\.md`|the Code Hygiene Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@$(SED_I) 's|`src/references/complexity-control\.md`|the Complexity Control Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@$(SED_I) 's|`src/references/convergence-metrics\.md`|the Convergence Metrics Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@$(SED_I) 's|`src/references/decision-anchoring\.md`|the Decision Anchoring Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@$(SED_I) 's|`src/references/file-formats\.md`|the File Formats Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@$(SED_I) 's|`src/references/planning-rigor\.md`|the Planning Rigor Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@$(SED_I) 's|`src/references/root-cause-analysis\.md`|the Root Cause Analysis Methods Reference section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@$(SED_I) 's|`src/references/python-software\.md`|the Python / Software-Engineering Caveat section below|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	@# Rewrite the emit-state.mjs / emit-template.mjs invocations: neither router is runnable in a
 	@# paste context, and the module bodies they would emit are inlined above as "## State Module: <s>"
 	@# sections. Keep this map in lockstep with build.ps1 $pointerMap — check-doc-parity.test.mjs
 	@# asserts both channels declare the same key/value pairs.
-	@sed -i 's|`node <skill-path>/scripts/emit-state\.mjs --state explore` (module: `scripts/modules/state-explore\.md`)|the "State Module: explore" section below (inlined verbatim from `scripts/modules/state-explore.md`)|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
-	@sed -i 's|`node <skill-path>/scripts/emit-state\.mjs --state plan` (module: `scripts/modules/state-plan\.md`)|the "State Module: plan" section below (inlined verbatim from `scripts/modules/state-plan.md`)|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
-	@sed -i 's|`node <skill-path>/scripts/emit-state\.mjs --state execute` (module: `scripts/modules/state-execute\.md`)|the "State Module: execute" section below (inlined verbatim from `scripts/modules/state-execute.md`)|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
-	@sed -i 's|`node <skill-path>/scripts/emit-state\.mjs --state reflect` (module: `scripts/modules/state-reflect\.md`)|the "State Module: reflect" section below (inlined verbatim from `scripts/modules/state-reflect.md`)|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
-	@sed -i 's|`node <skill-path>/scripts/emit-state\.mjs --state pivot` (module: `scripts/modules/state-pivot\.md`)|the "State Module: pivot" section below (inlined verbatim from `scripts/modules/state-pivot.md`)|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
-	@sed -i 's|emitted on demand by the router `scripts/emit-state\.mjs`, not inlined here\. On \*\*entering\*\* a state, run `node <skill-path>/scripts/emit-state\.mjs --state <state>` and follow its stdout as the authoritative per-state rules\.|inlined verbatim below as the "State Module: <state>" sections. On **entering** a state, read the section for that state and follow it as the authoritative per-state rules.|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
-	@sed -i 's|the per-state operative rules come from the `emit-state` router (see below), NOT from inline bodies (the Per-State Rules section is summaries + pointers only)|the per-state operative rules come from the inlined "State Module: <state>" sections below, NOT from the Per-State Rules section (which is summaries + pointers only)|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
-	@sed -i 's|In this mode you also run `node <skill-path>/scripts/emit-state\.mjs --state <state>` on entering each of EXPLORE/PLAN/EXECUTE/REFLECT/PIVOT and follow its output as the operative per-state rules (the Per-State Rules section here is now a summary + pointer; the scripts ship with the skill bundle, so the router resolves even without agent definitions installed)\.|In this mode you also read the "State Module: <state>" section below on entering each of EXPLORE/PLAN/EXECUTE/REFLECT/PIVOT and follow it as the operative per-state rules (the Per-State Rules section here is now a summary + pointer; the module bodies are inlined verbatim in this file, so they resolve without any script).|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
-	@sed -i 's|(or run `node <skill-path>/scripts/emit-template\.mjs --name changelog` to get just this template — file-formats\.md is the canonical fallback)|(the changelog template is inlined there)|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
-	@sed -i 's| — or run `node <skill-path>/scripts/emit-template\.mjs --name plan` to get just this template (file-formats\.md is the canonical fallback)| (the plan template is inlined there)|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
-	@sed -i 's| — or run `node <skill-path>/scripts/emit-template\.mjs --name verification` to get just this template (file-formats\.md is the canonical fallback)| (the verification template is inlined there)|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
-	sed -i "s/__SKILL_VERSION__/$(VERSION)/g" $(BUILD_DIR)/$(SKILL_NAME)-combined.md
-	sed -i "s/__SKILL_DATE__/$$(date -u +%Y-%m-%d)/g" $(BUILD_DIR)/$(SKILL_NAME)-combined.md
-	sed -i "s/__SKILL_COMMIT__/$$(git rev-parse --short HEAD)/g" $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@$(SED_I) 's|`node <skill-path>/scripts/emit-state\.mjs --state explore` (module: `scripts/modules/state-explore\.md`)|the "State Module: explore" section below (inlined verbatim from `scripts/modules/state-explore.md`)|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@$(SED_I) 's|`node <skill-path>/scripts/emit-state\.mjs --state plan` (module: `scripts/modules/state-plan\.md`)|the "State Module: plan" section below (inlined verbatim from `scripts/modules/state-plan.md`)|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@$(SED_I) 's|`node <skill-path>/scripts/emit-state\.mjs --state execute` (module: `scripts/modules/state-execute\.md`)|the "State Module: execute" section below (inlined verbatim from `scripts/modules/state-execute.md`)|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@$(SED_I) 's|`node <skill-path>/scripts/emit-state\.mjs --state reflect` (module: `scripts/modules/state-reflect\.md`)|the "State Module: reflect" section below (inlined verbatim from `scripts/modules/state-reflect.md`)|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@$(SED_I) 's|`node <skill-path>/scripts/emit-state\.mjs --state pivot` (module: `scripts/modules/state-pivot\.md`)|the "State Module: pivot" section below (inlined verbatim from `scripts/modules/state-pivot.md`)|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@$(SED_I) 's|emitted on demand by the router `scripts/emit-state\.mjs`, not inlined here\. On \*\*entering\*\* a state, run `node <skill-path>/scripts/emit-state\.mjs --state <state>` and follow its stdout as the authoritative per-state rules\.|inlined verbatim below as the "State Module: <state>" sections. On **entering** a state, read the section for that state and follow it as the authoritative per-state rules.|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@$(SED_I) 's|the per-state operative rules come from the `emit-state` router (see below), NOT from inline bodies (the Per-State Rules section is summaries + pointers only)|the per-state operative rules come from the inlined "State Module: <state>" sections below, NOT from the Per-State Rules section (which is summaries + pointers only)|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@$(SED_I) 's|In this mode you also run `node <skill-path>/scripts/emit-state\.mjs --state <state>` on entering each of EXPLORE/PLAN/EXECUTE/REFLECT/PIVOT and follow its output as the operative per-state rules (the Per-State Rules section here is now a summary + pointer; the scripts ship with the skill bundle, so the router resolves even without agent definitions installed)\.|In this mode you also read the "State Module: <state>" section below on entering each of EXPLORE/PLAN/EXECUTE/REFLECT/PIVOT and follow it as the operative per-state rules (the Per-State Rules section here is now a summary + pointer; the module bodies are inlined verbatim in this file, so they resolve without any script).|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@$(SED_I) 's|(or run `node <skill-path>/scripts/emit-template\.mjs --name changelog` to get just this template — file-formats\.md is the canonical fallback)|(the changelog template is inlined there)|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@$(SED_I) 's| — or run `node <skill-path>/scripts/emit-template\.mjs --name plan` to get just this template (file-formats\.md is the canonical fallback)| (the plan template is inlined there)|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@$(SED_I) 's| — or run `node <skill-path>/scripts/emit-template\.mjs --name verification` to get just this template (file-formats\.md is the canonical fallback)| (the verification template is inlined there)|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	$(SED_I) "s/__SKILL_VERSION__/$(VERSION)/g" $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	$(SED_I) "s/__SKILL_DATE__/$$(date -u +%Y-%m-%d)/g" $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	$(SED_I) "s/__SKILL_COMMIT__/$$(git rev-parse --short HEAD)/g" $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	@echo "Combined skill created: $(BUILD_DIR)/$(SKILL_NAME)-combined.md"
 
 # Package as zip for distribution
@@ -178,8 +189,8 @@ package-tar: validate build
 validate:
 	@echo "Validating skill structure..."
 	@test -f $(SKILL_FILE) || (echo "ERROR: $(SKILL_FILE) not found" && exit 1)
-	@grep -q "^name:" $(SKILL_FILE) || (echo "ERROR: SKILL.md missing 'name' in frontmatter" && exit 1)
-	@grep -q "^description:" $(SKILL_FILE) || (echo "ERROR: SKILL.md missing 'description' in frontmatter" && exit 1)
+	@$(FM_AWK) $(SKILL_FILE) | grep -q "^name:" || (echo "ERROR: SKILL.md missing 'name' in frontmatter" && exit 1)
+	@$(FM_AWK) $(SKILL_FILE) | grep -q "^description:" || (echo "ERROR: SKILL.md missing 'description' in frontmatter" && exit 1)
 	@test -d src/references || (echo "ERROR: src/references/ directory not found" && exit 1)
 	@test -d src/scripts || (echo "ERROR: src/scripts/ directory not found" && exit 1)
 	@# Verify all references/ cross-references in SKILL.md resolve to actual files
@@ -199,15 +210,13 @@ validate:
 	@# Verify bootstrap.mjs creates expected plan directory files
 	@echo "Checking bootstrap file list..."
 	@for f in state.md plan.md decisions.md findings.md progress.md verification.md changelog.md; do \
-		grep -q "\"$$f\"" src/scripts/bootstrap.mjs || \
-		grep -q "'$$f'" src/scripts/bootstrap.mjs || \
-		grep -q "$$f" src/scripts/bootstrap.mjs || \
+		grep -qF -- "$$f" src/scripts/bootstrap.mjs || \
 		{ echo "ERROR: bootstrap.mjs does not create $$f" && exit 1; }; \
 	done
 	@# Verify bootstrap.mjs creates expected subdirectories
 	@echo "Checking bootstrap directory creation..."
 	@for d in checkpoints findings; do \
-		grep -q "$$d" src/scripts/bootstrap.mjs || \
+		grep -qF -- "$$d" src/scripts/bootstrap.mjs || \
 		{ echo "ERROR: bootstrap.mjs does not create $$d/ directory" && exit 1; }; \
 	done
 	@# Verify bootstrap.mjs references consolidated files
@@ -224,9 +233,9 @@ validate:
 	@echo "Checking agent definitions..."
 	@if [ -d src/agents ]; then \
 		for agent in src/agents/*.md; do \
-			grep -q "^name:" "$$agent" || { echo "ERROR: $$agent missing 'name' in frontmatter" && exit 1; }; \
-			grep -q "^description:" "$$agent" || { echo "ERROR: $$agent missing 'description' in frontmatter" && exit 1; }; \
-			grep -q "^tools:" "$$agent" || { echo "ERROR: $$agent missing 'tools' in frontmatter" && exit 1; }; \
+			$(FM_AWK) "$$agent" | grep -q "^name:" || { echo "ERROR: $$agent missing 'name' in frontmatter" && exit 1; }; \
+			$(FM_AWK) "$$agent" | grep -q "^description:" || { echo "ERROR: $$agent missing 'description' in frontmatter" && exit 1; }; \
+			$(FM_AWK) "$$agent" | grep -q "^tools:" || { echo "ERROR: $$agent missing 'tools' in frontmatter" && exit 1; }; \
 		done; \
 	fi
 	@# Verify every protocol transition appears as a literal Mermaid edge in SKILL.md's state diagram.
@@ -237,7 +246,7 @@ validate:
 	@for edge in "EXPLORE --> PLAN" "PLAN --> EXPLORE" "PLAN --> PLAN" "PLAN --> EXECUTE" \
 		"EXECUTE --> REFLECT" "REFLECT --> CLOSE" "REFLECT --> PIVOT" "REFLECT --> EXPLORE" \
 		"REFLECT --> EXECUTE" "PIVOT --> PLAN"; do \
-		grep -qE "^[[:space:]]+$$edge([[:space:]]|$$)" $(SKILL_FILE) || \
+		$(MERMAID_AWK) $(SKILL_FILE) | grep -qE "^[[:space:]]+$$edge([[:space:]]|$$)" || \
 		{ echo "ERROR: Mermaid edge '$$edge' missing from SKILL.md state diagram" && exit 1; }; \
 	done
 	@# Verify validate-plan.mjs VALID_TRANSITIONS covers all SKILL.md transitions
@@ -300,15 +309,15 @@ lint:
 	@echo "Syntax check passed!"
 
 # Run tests
-# NOTE: check-test-count.mjs is wired here and NOT into `validate` — it re-runs the
-# suite (defect #7: nothing compared TEST_COUNT against reality; README<->TEST_COUNT
-# parity passes when BOTH are stale). `validate` must stay fast and suite-free.
+# NOTE: check-test-count.mjs is the ONE suite runner. It enumerates every src/scripts/*.test.mjs, runs
+# the suite once, fails on any failing test, compares TEST_COUNT against the live pass count (defect
+# #7: README<->TEST_COUNT parity passes when BOTH are stale) and prints an excerpt of any failure.
+# This target used to run `node --test <list>` first, which paid for the ~90s suite twice.
+# It is NOT in `validate`, which must stay fast and suite-free.
 # Keep this target in lockstep with build.ps1's Invoke-Test.
 .PHONY: test
 test: lint
-	@echo "Running all test suites..."
-	node --test src/scripts/bootstrap.test.mjs src/scripts/validate-plan.test.mjs src/scripts/blast-radius.test.mjs src/scripts/check-doc-parity.test.mjs src/scripts/emit-state.test.mjs src/scripts/emit-template.test.mjs src/scripts/check-readme-parity.test.mjs src/scripts/check-changelog-parity.test.mjs src/scripts/shared.test.mjs src/scripts/check-test-count.test.mjs src/scripts/schema.test.mjs src/scripts/check-agent-wiring.test.mjs src/scripts/check-template-parity.test.mjs src/scripts/check-register.test.mjs src/scripts/scar-scan.test.mjs src/scripts/dashboard.test.mjs src/scripts/session-title.test.mjs
-	@echo "Checking TEST_COUNT against the live suite result..."
+	@echo "Running all test suites and checking TEST_COUNT against the live result..."
 	node src/scripts/check-test-count.mjs
 	@echo "Tests passed!"
 
@@ -330,51 +339,60 @@ list: build
 # Opt-in: deploy repo source to the local installed skill (writes to $HOME). Not a prereq of build/package.
 .PHONY: sync-skill
 sync-skill:
+# The guards are the FIRST recipe lines: nothing below (mkdir, rm, cp) may run before they pass.
+# An empty HOME would turn every path into `/.claude/...`; a symlinked install dir would let the
+# prune below delete whatever the link points at (a developer who links the install's scripts/ to
+# src/scripts/ would lose the repo sources). Detect and refuse; never follow, never delete.
+	@test -n "$(HOME)" || { echo "ERROR: HOME is empty; refusing to sync" && exit 1; }
+	@bad=0; for d in "$(SKILL_INSTALL_DIR)" "$(SKILL_INSTALL_DIR)/scripts" "$(SKILL_INSTALL_DIR)/scripts/modules" "$(SKILL_INSTALL_DIR)/references" "$(SKILL_INSTALL_DIR)/agents"; do \
+		if [ -L "$$d" ]; then echo "ERROR: $$d is a symlink; refusing to prune through it"; bad=1; fi; \
+	done; test "$$bad" = 0 || { echo "ERROR: install path is a symlink (nothing was changed)" && exit 1; }
 	@echo "Syncing repo source to local installed skill: $(SKILL_INSTALL_DIR)"
-	mkdir -p $(SKILL_INSTALL_DIR)/references
-	mkdir -p $(SKILL_INSTALL_DIR)/scripts
-	mkdir -p $(SKILL_INSTALL_DIR)/scripts/modules
-	mkdir -p $(SKILL_INSTALL_DIR)/agents
-	mkdir -p $(AGENTS_INSTALL_DIR)
-	mkdir -p $(COMMANDS_INSTALL_DIR)
+	mkdir -p "$(SKILL_INSTALL_DIR)/references"
+	mkdir -p "$(SKILL_INSTALL_DIR)/scripts"
+	mkdir -p "$(SKILL_INSTALL_DIR)/scripts/modules"
+	mkdir -p "$(SKILL_INSTALL_DIR)/agents"
+	mkdir -p "$(AGENTS_INSTALL_DIR)"
+	mkdir -p "$(COMMANDS_INSTALL_DIR)"
 # Prune before copy: `cp` alone cannot remove a file that was DELETED from the repo, so a
 # copy-only sync leaves orphans behind forever (v2.35.0 removed xml.mjs/changelog.mjs; a
 # copy-only sync would have left both live in the install). Prune by glob, per directory.
 # The four dirs below are wholly owned by this skill, so a glob prune is safe there.
-	rm -f $(SKILL_INSTALL_DIR)/scripts/*.mjs
-	rm -f $(SKILL_INSTALL_DIR)/scripts/*.json
-	rm -f $(SKILL_INSTALL_DIR)/scripts/modules/*.md
-	rm -f $(SKILL_INSTALL_DIR)/references/*.md
-	rm -f $(SKILL_INSTALL_DIR)/agents/*.md
+# Every install path is double-quoted (a HOME with a space must not split an `rm -rf`); the glob
+# stays OUTSIDE the quotes so it still expands.
+	rm -f "$(SKILL_INSTALL_DIR)"/scripts/*.mjs
+	rm -f "$(SKILL_INSTALL_DIR)"/scripts/*.json
+	rm -f "$(SKILL_INSTALL_DIR)"/scripts/modules/*.md
+	rm -f "$(SKILL_INSTALL_DIR)"/references/*.md
+	rm -f "$(SKILL_INSTALL_DIR)"/agents/*.md
 # Pre-restructure litter in the install ROOT (D-005): exactly these four named paths, never a
-# glob. The HOME guard keeps an empty HOME from turning the target into `rm -rf /.claude/...`.
+# glob. The HOME guard at the top keeps an empty HOME from turning the target into `rm -rf /.claude/...`.
 # If the install is a git checkout (<install>/.git exists, D-009) the prune AND the allowlist
 # check are skipped: those top-level files are the user's checked-out tree, not our litter, and
 # a prune there can destroy uncommitted work. The copy and the diff verify still run.
-	@test -n "$(HOME)" || { echo "ERROR: HOME is empty; refusing to prune the install" && exit 1; }
-	@if [ -e $(SKILL_INSTALL_DIR)/.git ]; then echo "WARNING: $(SKILL_INSTALL_DIR) is a git checkout. sync-skill overwrites files there and leaves the rest alone; for a plain install, delete that folder and run sync-skill again."; else rm -rf $(SKILL_INSTALL_DIR)/src $(SKILL_INSTALL_DIR)/CLAUDE.md $(SKILL_INSTALL_DIR)/Makefile $(SKILL_INSTALL_DIR)/build.ps1; fi
+	@if [ -e "$(SKILL_INSTALL_DIR)/.git" ]; then echo "WARNING: $(SKILL_INSTALL_DIR) is a git checkout. sync-skill overwrites files there and leaves the rest alone; for a plain install, delete that folder and run sync-skill again."; else rm -rf "$(SKILL_INSTALL_DIR)/src" "$(SKILL_INSTALL_DIR)/CLAUDE.md" "$(SKILL_INSTALL_DIR)/Makefile" "$(SKILL_INSTALL_DIR)/build.ps1"; fi
 # $(AGENTS_INSTALL_DIR) is SHARED with every other installed skill. Prune ONLY our own
 # ip-*.md agents here — a glob prune would delete other skills' agent definitions.
-	rm -f $(AGENTS_INSTALL_DIR)/ip-*.md
+	rm -f "$(AGENTS_INSTALL_DIR)"/ip-*.md
 # $(COMMANDS_INSTALL_DIR) is SHARED too (the user's own slash commands live there). Prune ONLY
 # our own ip-dashboard.md, by exact name — never a glob.
-	rm -f $(COMMANDS_INSTALL_DIR)/ip-dashboard.md
-	cp src/SKILL.md $(SKILL_INSTALL_DIR)/SKILL.md
+	rm -f "$(COMMANDS_INSTALL_DIR)/ip-dashboard.md"
+	cp src/SKILL.md "$(SKILL_INSTALL_DIR)/SKILL.md"
 # Copy scripts via $(SCRIPT_FILES), which already excludes %.test.mjs and includes the .json
 # gate-data files. The raw `cp src/scripts/*.mjs` glob shipped all *.test.mjs into the live
 # install (D-008 regression, re-fixed here); do NOT revert to it. See decisions.md D-002.
-	cp $(SCRIPT_FILES) $(SKILL_INSTALL_DIR)/scripts/
-	cp src/scripts/modules/*.md $(SKILL_INSTALL_DIR)/scripts/modules/
-	cp src/references/*.md $(SKILL_INSTALL_DIR)/references/
-	cp README.md LICENSE CHANGELOG.md VERSION $(SKILL_INSTALL_DIR)/
-	cp src/agents/*.md $(SKILL_INSTALL_DIR)/agents/
-	cp src/agents/*.md $(AGENTS_INSTALL_DIR)/
-	cp src/commands/ip-dashboard.md $(COMMANDS_INSTALL_DIR)/ip-dashboard.md
+	cp $(SCRIPT_FILES) "$(SKILL_INSTALL_DIR)/scripts/"
+	cp src/scripts/modules/*.md "$(SKILL_INSTALL_DIR)/scripts/modules/"
+	cp src/references/*.md "$(SKILL_INSTALL_DIR)/references/"
+	cp README.md LICENSE CHANGELOG.md VERSION "$(SKILL_INSTALL_DIR)/"
+	cp src/agents/*.md "$(SKILL_INSTALL_DIR)/agents/"
+	cp src/agents/*.md "$(AGENTS_INSTALL_DIR)/"
+	cp src/commands/ip-dashboard.md "$(COMMANDS_INSTALL_DIR)/ip-dashboard.md"
 # Allowlist check (D-005): every top-level entry of a PLAIN install must be one sync-skill (or the
 # build package) writes, or .claude. Detect only, NEVER delete. Skipped for a git checkout (D-009).
 # The flag is accumulated and tested after the loop so a bad entry fails the target from ANY
 # iteration, not just the last (a subshell exit would not). It runs before the success line.
-	@if [ ! -e $(SKILL_INSTALL_DIR)/.git ]; then bad=0; for p in $(SKILL_INSTALL_DIR)/* $(SKILL_INSTALL_DIR)/.[!.]*; do \
+	@if [ ! -e "$(SKILL_INSTALL_DIR)/.git" ]; then bad=0; for p in "$(SKILL_INSTALL_DIR)"/* "$(SKILL_INSTALL_DIR)"/.[!.]*; do \
 		[ -e "$$p" ] || continue; e=$$(basename "$$p"); \
 		case "$$e" in SKILL.md|README.md|LICENSE|CHANGELOG.md|VERSION|scripts|references|agents|commands|.claude) ;; \
 		*) echo "ERROR: unexpected entry in install: $$e"; bad=1;; esac; \
@@ -389,14 +407,14 @@ sync-skill:
 # an unfiltered diff would false-fail on every src-side test file as "only in src/scripts".
 # The guard below then asserts, non-vacuously, that ZERO test files leaked into the install
 # (restoring D-008's verification shape — the old whole-dir diff passed vacuously). See D-002.
-	@test -z "$$(ls $(SKILL_INSTALL_DIR)/scripts/*.test.mjs 2>/dev/null)" || { echo "ERROR: sync-skill shipped *.test.mjs into the install (D-008 regression)" && exit 1; }
-	@diff -rq --exclude='.claude' --exclude='*.test.mjs' src/scripts $(SKILL_INSTALL_DIR)/scripts \
-	  && diff -rq --exclude='.claude' --exclude='kg-edges.jsonl' src/references $(SKILL_INSTALL_DIR)/references \
-	  && diff -rq --exclude='.claude' src/agents $(SKILL_INSTALL_DIR)/agents \
-	  && diff -rq --exclude='.claude' src/scripts/modules $(SKILL_INSTALL_DIR)/scripts/modules \
-	  && diff -q src/SKILL.md $(SKILL_INSTALL_DIR)/SKILL.md \
-	  && diff -q VERSION $(SKILL_INSTALL_DIR)/VERSION \
-	  && diff -q src/commands/ip-dashboard.md $(COMMANDS_INSTALL_DIR)/ip-dashboard.md \
+	@test -z "$$(ls "$(SKILL_INSTALL_DIR)"/scripts/*.test.mjs 2>/dev/null)" || { echo "ERROR: sync-skill shipped *.test.mjs into the install (D-008 regression)" && exit 1; }
+	@diff -rq --exclude='.claude' --exclude='*.test.mjs' src/scripts "$(SKILL_INSTALL_DIR)/scripts" \
+	  && diff -rq --exclude='.claude' --exclude='kg-edges.jsonl' src/references "$(SKILL_INSTALL_DIR)/references" \
+	  && diff -rq --exclude='.claude' src/agents "$(SKILL_INSTALL_DIR)/agents" \
+	  && diff -rq --exclude='.claude' src/scripts/modules "$(SKILL_INSTALL_DIR)/scripts/modules" \
+	  && diff -q src/SKILL.md "$(SKILL_INSTALL_DIR)/SKILL.md" \
+	  && diff -q VERSION "$(SKILL_INSTALL_DIR)/VERSION" \
+	  && diff -q src/commands/ip-dashboard.md "$(COMMANDS_INSTALL_DIR)/ip-dashboard.md" \
 	  && echo "Sync verified (scripts, references, agents, modules, SKILL.md, VERSION, commands)." \
 	  || (echo "ERROR: sync diff mismatch" && exit 1)
 # Help

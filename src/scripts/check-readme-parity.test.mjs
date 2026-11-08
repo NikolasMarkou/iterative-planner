@@ -340,4 +340,33 @@ describe("check-readme-parity", () => {
     assert.strictEqual(checkVersionBadge(bare, "2.67.0").found, false);
     assert.strictEqual(checkTestCount(bare, 1070).found, false);
   });
+
+  it("a badge inside a fenced block or an HTML comment is not a badge", () => {
+    const badge = "![Skill](https://img.shields.io/badge/Skill-v2.67.0-green.svg)";
+    const tbadge = "![T](https://img.shields.io/badge/tests-1070%20passing-green.svg)";
+    for (const wrap of [(b) => "```\n" + b + "\n```", (b) => "<!-- " + b + " -->", (b) => "~~~\n" + b + "\n~~~"]) {
+      assert.strictEqual(checkVersionBadge(wrap(badge), "2.67.0").ok, false);
+      assert.strictEqual(checkVersionBadge(wrap(badge), "2.67.0").found, false);
+      assert.strictEqual(checkTestCount(wrap(tbadge), 1070).ok, false);
+    }
+    // a real badge after a fenced decoy still passes
+    assert.strictEqual(checkVersionBadge("```\nx\n```\n" + badge, "2.67.0").ok, true);
+  });
+
+  it("an empty or malformed expected VERSION never passes", () => {
+    assert.strictEqual(checkVersionBadge("nothing", "").ok, false);
+    assert.strictEqual(checkVersionBadge("![Skill](https://img.shields.io/badge/Skill-v2.67.0-green.svg)", "").ok, false);
+    assert.strictEqual(checkTestCount("nothing", NaN).ok, false);
+  });
+
+  it("CLI: an empty VERSION file fails instead of printing PASS", () => {
+    const root = makeFixtureRoot({ version: "", testCount: 5, badgeVersion: "1.0.0", badgeCount: 5 });
+    try {
+      const r = spawnSync(process.execPath, [script], { env: { ...process.env, IP_CHECK_README_PARITY_ROOT: root }, encoding: "utf8" });
+      assert.strictEqual(r.status, 1);
+      assert.match(r.stderr, /FAIL — VERSION/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });

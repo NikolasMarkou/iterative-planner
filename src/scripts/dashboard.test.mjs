@@ -48,6 +48,8 @@ import {
   mdToHtml,
   modelName,
   newestFirst,
+  nextWait,
+  inline,
   openCommand,
   pairReviews,
   attention,
@@ -1706,5 +1708,38 @@ test("CLI: --open with no opener on PATH still exits 0 and prints the path", POS
     assert.equal(r.status, 0, r.stderr);
     assert.ok(r.stdout.includes(`Dashboard: ${out}`), r.stdout);
     assert.ok(statSync(out).isFile());
+  } finally { fx.cleanup(); }
+});
+
+test("watch back-off never drops below the requested interval, and a change resets to it", () => {
+  assert.equal(nextWait(10, true, 10), 10);
+  assert.equal(nextWait(10, false, 10), 15);
+  assert.equal(nextWait(50, false, 10), 60, "capped at 60 for a short interval");
+  assert.equal(nextWait(60, false, 10), 60);
+  assert.equal(nextWait(120, false, 120), 120, "a 120s interval stays at 120s, not 60s");
+  assert.equal(nextWait(120, true, 120), 120);
+});
+
+test("a code span or emphasis inside a link URL never puts markup in the href; link text keeps its emphasis", () => {
+  const h = inline("[a](https://a.com/`x`) [**b** `c`](https://x.y/*z*)");
+  assert.doesNotMatch(h, /href="[^"]*<(code|em|strong)>/);
+  assert.match(h, /href="https:\/\/a\.com\/`x`"/);
+  assert.match(h, /<strong>b<\/strong> <code>c<\/code><\/a>/);
+  assert.doesNotMatch(inline("[q](javascript:alert(1))"), /<a /);
+});
+
+test("a symlink inside a plan directory is neither listed nor read into the page", POSIX, () => {
+  const fx = makeFixture();
+  try {
+    const secret = join(fx.root, "secret.txt");
+    writeFileSync(secret, "# Leak\n\nTOPSECRETMARK\n");
+    symlinkSync(secret, join(fx.plans, B, "findings-leak.md"));
+    mkdirSync(join(fx.plans, B, "findings"), { recursive: true });
+    symlinkSync(secret, join(fx.plans, B, "findings", "linked.md"));
+    symlinkSync(secret, join(fx.plans, B, "progress-copy.md"));
+    dashFor(fx).generate();
+    const all = snapshot(dirname(fx.out));
+    assert.ok(Object.keys(all).length > 3, "anti-vacuity: the dashboard wrote files");
+    for (const [name, body] of Object.entries(all)) assert.ok(!body.includes("TOPSECRETMARK"), `symlink target leaked into ${name}`);
   } finally { fx.cleanup(); }
 });

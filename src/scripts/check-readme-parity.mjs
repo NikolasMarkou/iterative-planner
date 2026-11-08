@@ -14,13 +14,16 @@
 //               matched as a whole shields.io image badge (TEST_BADGE_RE),
 //               not as a bare `tests-<N>%20passing` substring
 //
+// A badge inside a fenced code block or an HTML comment is invisible to a reader and does not count
+// (proseOnly in shared.mjs); an empty or malformed VERSION fails, it never matches "nothing".
+//
 // Exports two pure functions (importable without side effects — isEntryPoint guard).
 // CLI reads VERSION, TEST_COUNT, README.md from repo root; exits 0 on all OK, 1 on any failure.
 
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { isMain } from "./shared.mjs";
+import { isMain, proseOnly, VERSION_RE } from "./shared.mjs";
 
 // A badge is a WHOLE shields.io image in one of two forms: markdown `![alt](https://img.shields.io/badge/<label>…)`
 // or HTML `<img … src="https://img.shields.io/badge/<label>…" …>`. In the HTML form `[^>]*` cannot
@@ -54,10 +57,10 @@ const VERSION_BADGE_RE = badgeRe("Skill-v(\\d+\\.\\d+\\.\\d+)-");
  * @returns {{ ok: boolean, found: boolean, readmeVersion: string, expected: string }}
  */
 export function checkVersionBadge(readmeText, version) {
-  const m = (readmeText || "").match(VERSION_BADGE_RE);
+  const m = proseOnly(readmeText).match(VERSION_BADGE_RE);
   const readmeVersion = badgeValue(m);
   return {
-    ok: readmeVersion === version,
+    ok: Boolean(m) && VERSION_RE.test(version) && readmeVersion === version,
     found: Boolean(m),
     readmeVersion,
     expected: version,
@@ -77,10 +80,10 @@ const TEST_BADGE_RE = badgeRe("tests-(\\d+)%20passing-");
  * @returns {{ ok: boolean, found: boolean, readmeCount: number, expected: number }}
  */
 export function checkTestCount(readmeText, testCount) {
-  const m = (readmeText || "").match(TEST_BADGE_RE);
+  const m = proseOnly(readmeText).match(TEST_BADGE_RE);
   const readmeCount = m ? parseInt(badgeValue(m), 10) : NaN;
   return {
-    ok: readmeCount === testCount,
+    ok: Boolean(m) && Number.isInteger(testCount) && readmeCount === testCount,
     found: Boolean(m),
     readmeCount,
     expected: testCount,
@@ -100,6 +103,13 @@ if (isEntryPoint) {
     readFileSync(join(repoRoot, "TEST_COUNT"), "utf8").trim(),
     10,
   );
+  // An empty or malformed VERSION / TEST_COUNT must fail loudly, never pass as "nothing == nothing".
+  if (!VERSION_RE.test(version) || !Number.isInteger(testCount)) {
+    console.error(
+      `check-readme-parity: FAIL — VERSION (${JSON.stringify(version)}) must be X.Y.Z and TEST_COUNT (${testCount}) an integer`,
+    );
+    process.exit(1);
+  }
   const readmeText = readFileSync(join(repoRoot, "README.md"), "utf8");
 
   const vResult = checkVersionBadge(readmeText, version);

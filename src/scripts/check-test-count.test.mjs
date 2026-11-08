@@ -18,6 +18,8 @@ import {
   parseTestCount,
   evaluate,
   testFiles,
+  failureExcerpt,
+  SUITE_TIMEOUT_MS,
 } from "./check-test-count.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -205,6 +207,25 @@ describe("check-test-count — testFiles", () => {
       files.includes(join("src", "scripts", "check-test-count.test.mjs")),
       "its own test file must be part of the enumerated suite",
     );
+  });
+});
+
+describe("check-test-count — failureExcerpt / timeout", () => {
+  it("keeps each failing test with its trailing diagnostics and drops passing noise", () => {
+    const tap = ["ok 1 - fine", "not ok 2 - broken", "  ---", "  error: 'boom'", "  ...", "ok 3 - later"].join("\n");
+    const ex = failureExcerpt(tap);
+    assert.match(ex, /not ok 2 - broken/);
+    assert.match(ex, /error: 'boom'/);
+    assert.ok(!/ok 1 - fine/.test(ex));
+  });
+  it("falls back to the tail when nothing is marked failing (crash before summary)", () => {
+    const ex = failureExcerpt(Array.from({ length: 100 }, (_, i) => "line " + i).join("\n"));
+    assert.match(ex, /line 99/);
+    assert.ok(!/line 10\b/.test(ex));
+    assert.strictEqual(failureExcerpt(""), "");
+  });
+  it("bounds the suite run", () => {
+    assert.ok(Number.isInteger(SUITE_TIMEOUT_MS) && SUITE_TIMEOUT_MS >= 60000);
   });
 });
 

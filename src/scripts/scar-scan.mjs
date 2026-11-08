@@ -130,6 +130,10 @@ import {
 } from "./shared.mjs";
 import { STEP_RE } from "./schema.mjs";
 
+// spawnSync defaults to a 1 MB stdout cap: a big validator report or git diff overflowed it (ENOBUFS), which read as
+// "scan unavailable" / a degraded category. 32 MB matches dashboard.mjs.
+export const SPAWN_MAX_BUFFER = 32 << 20;
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -318,6 +322,7 @@ export function runValidator({ scriptPath, planDirName, cwd }) {
       encoding: "utf-8",
       stdio: ["ignore", "pipe", "pipe"],
       timeout: VALIDATOR_TIMEOUT_MS,
+      maxBuffer: SPAWN_MAX_BUFFER,
     });
   } catch (err) {
     return { ok: false, stdout: "", reason: `validate-plan.mjs spawn threw (${err.code ?? err.message})` };
@@ -762,6 +767,7 @@ function git(args, cwd) {
       encoding: "utf-8",
       stdio: ["ignore", "pipe", "ignore"],
       timeout: 10_000,
+      maxBuffer: SPAWN_MAX_BUFFER,
     });
     if (r.error || r.status !== 0) return null;
     return (r.stdout ?? "").trim();

@@ -46,7 +46,7 @@
 import { readFileSync, writeFileSync, existsSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { isMain } from "./shared.mjs";
+import { isMain, tagLines } from "./shared.mjs";
 
 // DECISION plan-2026-09-01T100120-4f591469/D-012 — command grammar (`node`, option run, script
 // arg), not token adjacency: a flag between `node` and the path used to evade this rule entirely.
@@ -79,15 +79,7 @@ export const EXPECTED_MIN_PROSE_FILES = 23;
 
 const issue = (rule, file, line, message) => ({ rule, file, line, message });
 
-/** Split into lines tagged with fenced-code membership (1-based numbers). */
-export function tagLines(text) {
-  let fenced = false;
-  return (text || "").split("\n").map((t, i) => {
-    const isFence = /^\s*(```|~~~)/.test(t);
-    if (isFence) fenced = !fenced;
-    return { no: i + 1, text: t, fenced: isFence || fenced };
-  });
-}
+export { tagLines };
 
 /** Normalize a heading title / pointer text for comparison. */
 export function norm(s) {

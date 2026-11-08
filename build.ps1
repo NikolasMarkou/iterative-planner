@@ -59,7 +59,7 @@ function Invoke-Build {
     $skillMdPath = Join-Path $skillDir "SKILL.md"
     $skillMdContent = Get-Content $skillMdPath -Raw -Encoding utf8
     $skillMdContent = $skillMdContent -replace '__SKILL_VERSION__', $Version
-    $skillMdContent = $skillMdContent -replace '__SKILL_DATE__', (Get-Date -Format 'yyyy-MM-dd')
+    $skillMdContent = $skillMdContent -replace '__SKILL_DATE__', ([DateTime]::UtcNow.ToString('yyyy-MM-dd'))
     $skillMdContent = $skillMdContent -replace '__SKILL_COMMIT__', (git rev-parse --short HEAD)
     Set-Content -Path $skillMdPath -Value $skillMdContent -Encoding utf8
 
@@ -90,9 +90,7 @@ function Invoke-Build {
     # version at runtime by probing <pkg>/VERSION (installed) / <repo>/VERSION (dev). Without
     # it the installed skill stamps every new plan "unknown". 1:1 with the Makefile DOC_FILES.
     @("README.md", "LICENSE", "CHANGELOG.md", "VERSION") | ForEach-Object {
-        if (Test-Path $_) {
-            Copy-Item $_ $skillDir
-        }
+        Copy-Item $_ $skillDir -ErrorAction Stop
     }
 
     Write-Host "Build complete: $skillDir" -ForegroundColor Green
@@ -189,7 +187,7 @@ function Invoke-BuildCombined {
     }
 
     $content = $content -replace '__SKILL_VERSION__', $Version
-    $content = $content -replace '__SKILL_DATE__', (Get-Date -Format 'yyyy-MM-dd')
+    $content = $content -replace '__SKILL_DATE__', ([DateTime]::UtcNow.ToString('yyyy-MM-dd'))
     $content = $content -replace '__SKILL_COMMIT__', (git rev-parse --short HEAD)
 
     Set-Content -Path $outputFile -Value $content -Encoding utf8
@@ -256,10 +254,13 @@ function Invoke-Validate {
         $errors += "ERROR: src/SKILL.md not found"
     } else {
         $content = Get-Content "src/SKILL.md" -Raw -Encoding utf8
-        if ($content -notmatch "(?m)^name:") {
+        # Frontmatter fields are checked INSIDE the first --- ... --- block only (the Makefile's FM_AWK);
+        # a body line starting with "name:" must not satisfy them.
+        $skillFm = if ($content -match '(?s)\A---\r?\n(.*?)\r?\n---') { $Matches[1] } else { "" }
+        if ($skillFm -notmatch "(?m)^name:") {
             $errors += "ERROR: SKILL.md missing 'name' in frontmatter"
         }
-        if ($content -notmatch "(?m)^description:") {
+        if ($skillFm -notmatch "(?m)^description:") {
             $errors += "ERROR: SKILL.md missing 'description' in frontmatter"
         }
 
@@ -283,9 +284,11 @@ function Invoke-Validate {
             "REFLECT --> PIVOT", "REFLECT --> EXPLORE", "REFLECT --> EXECUTE",
             "PIVOT --> PLAN"
         )
+        # Scoped to the inside of the mermaid fence (the Makefile's MERMAID_AWK), not anywhere in the file.
+        $mermaidBlock = if ($content -match '(?s)```mermaid\r?\n(.*?)\r?\n```') { $Matches[1] } else { "" }
         foreach ($edge in $mermaidEdges) {
             $pattern = '(?m)^\s+' + [regex]::Escape($edge) + '(\s|$)'
-            if ($content -notmatch $pattern) {
+            if ($mermaidBlock -notmatch $pattern) {
                 $errors += "ERROR: Mermaid edge '$edge' missing from SKILL.md state diagram"
             }
         }
@@ -342,13 +345,14 @@ function Invoke-Validate {
         Write-Host "Checking agent definitions..."
         Get-ChildItem "src/agents/*.md" | ForEach-Object {
             $agentContent = Get-Content $_.FullName -Raw -Encoding utf8
-            if ($agentContent -notmatch "(?m)^name:") {
+            $agentFm = if ($agentContent -match '(?s)\A---\r?\n(.*?)\r?\n---') { $Matches[1] } else { "" }
+            if ($agentFm -notmatch "(?m)^name:") {
                 $errors += "ERROR: $($_.Name) missing 'name' in frontmatter"
             }
-            if ($agentContent -notmatch "(?m)^description:") {
+            if ($agentFm -notmatch "(?m)^description:") {
                 $errors += "ERROR: $($_.Name) missing 'description' in frontmatter"
             }
-            if ($agentContent -notmatch "(?m)^tools:") {
+            if ($agentFm -notmatch "(?m)^tools:") {
                 $errors += "ERROR: $($_.Name) missing 'tools' in frontmatter"
             }
         }
@@ -466,19 +470,14 @@ function Invoke-PackageTar {
 function Invoke-Test {
     Invoke-Lint
 
-    Write-Host "Running all test suites..." -ForegroundColor Yellow
-
-    node --test src/scripts/bootstrap.test.mjs src/scripts/validate-plan.test.mjs src/scripts/blast-radius.test.mjs src/scripts/check-doc-parity.test.mjs src/scripts/emit-state.test.mjs src/scripts/emit-template.test.mjs src/scripts/check-readme-parity.test.mjs src/scripts/check-changelog-parity.test.mjs src/scripts/shared.test.mjs src/scripts/check-test-count.test.mjs src/scripts/schema.test.mjs src/scripts/check-agent-wiring.test.mjs src/scripts/check-template-parity.test.mjs src/scripts/check-register.test.mjs src/scripts/scar-scan.test.mjs src/scripts/dashboard.test.mjs src/scripts/session-title.test.mjs
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "Tests failed!" -ForegroundColor Red
-        exit 1
-    }
-
-    Write-Host "Checking TEST_COUNT against the live suite result..." -ForegroundColor Yellow
+    # check-test-count.mjs is the ONE suite runner (it enumerates every src/scripts/*.test.mjs, runs the
+    # suite once, fails on any failing test and on a TEST_COUNT mismatch). Do not add a separate
+    # `node --test` here: that paid for the whole suite twice. 1:1 with the Makefile test target.
+    Write-Host "Running all test suites and checking TEST_COUNT against the live result..." -ForegroundColor Yellow
 
     node src/scripts/check-test-count.mjs
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "TEST_COUNT is out of sync with the live suite result!" -ForegroundColor Red
+        Write-Host "Tests failed or TEST_COUNT is out of sync with the live suite result!" -ForegroundColor Red
         exit 1
     }
 
@@ -513,9 +512,29 @@ function Invoke-List {
 
 # Opt-in: deploy repo source to the local installed skill (writes to $HOME). Not a prereq of build/package.
 function Invoke-SyncSkill {
+    # The guards come FIRST: nothing below (no directory creation, deletion or copy) may run before they pass.
+    # An empty HOME would resolve every path to a root path; a symlinked install dir would let the
+    # prune below delete whatever the link points at. Detect and refuse; never follow, never delete.
+    if ([string]::IsNullOrEmpty($HOME)) {
+        Write-Host "ERROR: HOME is empty; refusing to sync" -ForegroundColor Red
+        exit 1
+    }
     $skillInstallDir = Join-Path $HOME ".claude/skills/$SkillName"
     $agentsInstallDir = Join-Path $HOME ".claude/agents"
     $commandsInstallDir = Join-Path $HOME ".claude/commands"
+
+    $linked = $false
+    foreach ($d in @($skillInstallDir, "$skillInstallDir/scripts", "$skillInstallDir/scripts/modules", "$skillInstallDir/references", "$skillInstallDir/agents")) {
+        $item = Get-Item -LiteralPath $d -Force -ErrorAction SilentlyContinue
+        if ($item -and ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+            Write-Host "ERROR: $d is a symlink; refusing to prune through it" -ForegroundColor Red
+            $linked = $true
+        }
+    }
+    if ($linked) {
+        Write-Host "ERROR: install path is a symlink (nothing was changed)" -ForegroundColor Red
+        exit 1
+    }
 
     Write-Host "Syncing repo source to local installed skill: $skillInstallDir" -ForegroundColor Yellow
 
@@ -536,11 +555,7 @@ function Invoke-SyncSkill {
     Remove-Item "$skillInstallDir/references/*.md" -Force -ErrorAction SilentlyContinue
     Remove-Item "$skillInstallDir/agents/*.md" -Force -ErrorAction SilentlyContinue
     # Pre-restructure litter in the install ROOT (D-005): exactly these four named paths, never a
-    # glob. The HOME guard keeps an empty HOME from resolving the install dir to a root path.
-    if ([string]::IsNullOrEmpty($HOME)) {
-        Write-Host "ERROR: HOME is empty; refusing to prune the install" -ForegroundColor Red
-        exit 1
-    }
+    # glob. The HOME guard at the top keeps an empty HOME from resolving the install dir to a root path.
     # If the install is a git checkout (<install>/.git exists, D-009) the prune AND the allowlist
     # check are skipped: those top-level files are the user's checked-out tree, not our litter.
     $isClone = Test-Path -LiteralPath (Join-Path $skillInstallDir ".git")
@@ -567,7 +582,7 @@ function Invoke-SyncSkill {
     Copy-Item "src/scripts/modules/*.md" "$skillInstallDir/scripts/modules/"
     Copy-Item "src/references/*.md" "$skillInstallDir/references/"
     @("README.md", "LICENSE", "CHANGELOG.md", "VERSION") | ForEach-Object {
-        if (Test-Path $_) { Copy-Item $_ $skillInstallDir }
+        Copy-Item $_ $skillInstallDir -ErrorAction Stop
     }
     Copy-Item "src/agents/*.md" "$skillInstallDir/agents/"
     Copy-Item "src/agents/*.md" $agentsInstallDir

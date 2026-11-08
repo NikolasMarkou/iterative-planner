@@ -34,6 +34,36 @@ export function isMain(importMetaUrl, argv1 = process.argv[1]) {
 }
 
 /**
+ * Split `text` into lines tagged with fenced-code membership (1-based numbers).
+ * Contract: returns [{ no, text, fenced }]; `fenced` is true for the fence delimiter lines
+ * themselves and everything between them. A fence opened and never closed runs to EOF.
+ * Never throws (falsy text yields one empty line). Single definition: check-agent-wiring
+ * re-exports it and `proseOnly` below builds on it.
+ */
+export function tagLines(text) {
+  let fenced = false;
+  return (text || "").split("\n").map((t, i) => {
+    const isFence = /^\s*(```|~~~)/.test(t);
+    if (isFence) fenced = !fenced;
+    return { no: i + 1, text: t, fenced: isFence || fenced };
+  });
+}
+
+/**
+ * The text a human reader sees as prose: fenced code blocks and complete HTML comments are
+ * blanked (line count preserved, so line numbers stay valid). Used by the README / CHANGELOG
+ * parity gates so a badge or a `## [x.y.z]` heading inside a code fence or an HTML comment
+ * cannot satisfy them. Contract: string in, string out; never throws.
+ */
+export function proseOnly(text) {
+  const noFences = tagLines(text).map((l) => (l.fenced ? "" : l.text)).join("\n");
+  return stripHtmlComments(noFences);
+}
+
+/** A release / VERSION string: exactly X.Y.Z, digits only. An empty or malformed VERSION must fail a parity gate. */
+export const VERSION_RE = /^\d+\.\d+\.\d+$/;
+
+/**
  * Extract the first capture group of `pattern` from `content`, trimmed.
  * Returns null when content is falsy or the pattern does not match.
  */

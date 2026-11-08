@@ -23,7 +23,9 @@ const SEP = " · ";
 const STATES = "EXPLORE|PLAN|EXECUTE|REFLECT|PIVOT|CLOSE|UNKNOWN";
 const OWN_REST_RE = new RegExp(`^(${STATES}) \\u00b7 `);
 const UNSAFE_RE = /[\u0000-\u001f\u007f-\u009f\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
-const INVISIBLE_RE = /[\u00ad\u200b-\u200d\u2060\ufeff]/g;
+// Also: the Arabic letter mark (a bidi control), Mongolian vowel separator, combining grapheme joiner,
+// variation selectors, and the Unicode TAG block U+E0000-E007F (invisible text that renders as nothing).
+const INVISIBLE_RE = /[\u00ad\u061c\u034f\u180e\u200b-\u200d\u2060\ufeff\ufe00-\ufe0f\u{e0000}-\u{e007f}\u{e0100}-\u{e01ef}]/gu;
 const MAX_STDIN = 1024 * 1024;
 const STDIN_TIMEOUT_MS = 2000;
 const MAX_GOAL = 50;

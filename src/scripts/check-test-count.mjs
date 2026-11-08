@@ -10,9 +10,14 @@
 // while the live suite reported 333 passing, and `make validate` stayed green.
 //
 // NOTE: wired into the `test` target of Makefile + build.ps1, deliberately NOT into
-// `validate`. `validate` is the fast structural gate (no suite run); `test` already
-// pays for a suite run. Do not "simplify" this by moving it into `validate` — that
-// would make every package/validate invocation pay a full ~16s suite.
+// `validate`. `validate` is the fast structural gate (no suite run). Do not "simplify" this by
+// moving it into `validate` — that would make every package/validate invocation pay a full suite.
+//
+// THE SUITE RUNS ONCE. `make test` / `build.ps1 test` used to run `node --test <list>` and then this
+// script, which spawned the whole suite again (~90s twice). This script is the one runner now: it
+// enumerates every *.test.mjs itself, fails on any `# fail`, and on failure prints an excerpt of the
+// failing tests (failureExcerpt) because the captured TAP is otherwise invisible. A hung test is
+// killed after SUITE_TIMEOUT_MS instead of hanging the build forever.
 //
 // TAP source: `node --test` writes TAP when stdout is not a TTY (a spawned pipe never
 // is), so no `--test-reporter` flag is passed — that flag does not exist on early
@@ -90,6 +95,28 @@ export function parseTestCount(raw) {
     };
   }
   return { ok: true, value: parseInt(trimmed, 10) };
+}
+
+/** Upper bound for the whole suite run; a hung test is killed and reported, never waited on forever. */
+export const SUITE_TIMEOUT_MS = 20 * 60 * 1000;
+
+/**
+ * Excerpt of a failing run for the console: every `not ok` line with the 14 lines after it, capped at
+ * 300 lines; when there is no `not ok` (a crash before any summary) the last 40 lines instead.
+ * Contract: string in, string out ("" for empty input); never throws.
+ * @param {string} tapText
+ * @returns {string}
+ */
+export function failureExcerpt(tapText) {
+  const lines = String(tapText ?? "").split("\n");
+  const keep = new Set();
+  lines.forEach((l, i) => {
+    if (/^\s*not ok\b/.test(l)) for (let j = i; j <= Math.min(i + 14, lines.length - 1); j++) keep.add(j);
+  });
+  const picked = keep.size > 0
+    ? [...keep].sort((a, b) => a - b).slice(0, 300).map((i) => lines[i])
+    : lines.filter((l) => l.trim() !== "").slice(-40);
+  return picked.join("\n");
 }
 
 /**
@@ -180,7 +207,12 @@ if (isEntryPoint) {
     encoding: "utf8",
     env: { ...process.env, [CHILD_ENV_FLAG]: "1" },
     maxBuffer: 64 * 1024 * 1024,
+    timeout: SUITE_TIMEOUT_MS,
   });
+  if (run.error && run.error.code === "ETIMEDOUT") {
+    console.error(`check-test-count: FAIL — the suite did not finish within ${SUITE_TIMEOUT_MS / 60000} minutes and was killed (a test is hung).`);
+    process.exit(1);
+  }
 
   const tapText = `${run.stdout ?? ""}\n${run.stderr ?? ""}`;
 
@@ -199,5 +231,9 @@ if (isEntryPoint) {
 
   for (const line of result.stdout) console.log(line);
   for (const line of result.stderr) console.error(line);
+  if (result.exitCode !== 0) {
+    const excerpt = failureExcerpt(tapText);
+    if (excerpt) console.error(`--- test output excerpt ---\n${excerpt}`);
+  }
   process.exit(result.exitCode);
 }

@@ -70,7 +70,10 @@ import {
 } from "./shared.mjs";
 
 // ---------- small helpers ----------
-const read = (p) => { try { return fs.readFileSync(p, "utf8"); } catch { return ""; } };
+// Plan files are untrusted and plans/ may come from a hostile worktree: only a regular file is read. A symlink
+// (findings/x.md -> ~/.ssh/id_rsa) would be rendered into the page, and a FIFO would block the single-threaded
+// generator forever. lstat does not follow the final component.
+const read = (p) => { try { if (!fs.lstatSync(p).isFile()) return ""; return fs.readFileSync(p, "utf8"); } catch { return ""; } };
 const mtime = (p) => { try { return fs.statSync(p).mtimeMs; } catch { return 0; } };
 const git = (cwd, ...a) => {
   try { return execFileSync("git", ["-C", cwd, ...a], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], maxBuffer: 32 << 20 }); }
@@ -143,12 +146,22 @@ const I = {
 // only a fixed set of constructs is turned into markup. Raw HTML in a plan file renders as text, and
 // only http(s) links become anchors.
 export function inline(s) {
-  const codes = [];
-  s = String(s ?? "").replace(/`([^`]+)`/g, (_, c) => `\u0000${codes.push(c) - 1}\u0000`);
-  s = esc(s)
+  const codes = [], links = [];
+  s = String(s ?? "").replace(/[\u0000\u0001]/g, "").replace(/`([^`]+)`/g, (_, c) => `\u0000${codes.push(c) - 1}\u0000`);
+  const emph = (t) => t
     .replace(/\*\*([^*]+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/(^|[\s(])\*(?!\s)([^*\n]+?)\*(?=[\s).,;:!?]|$)/g, "$1<em>$2</em>")
-    .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, txt, url) => (/^https?:\/\//.test(url) ? `<a href="${url}" target="_blank" rel="noopener noreferrer">${txt}</a>` : `<span class="lnk" title="${url}">${txt}</span>`));
+    .replace(/(^|[\s(])\*(?!\s)([^*\n]+?)\*(?=[\s).,;:!?]|$)/g, "$1<em>$2</em>");
+  // Links are lifted out FIRST (as placeholders) so code/emphasis markup can never reach a URL: a code span
+  // inside a URL used to put <code> into the href. Only the link TEXT gets emphasis; the URL gets the raw
+  // backtick text back, already escaped.
+  s = esc(s).replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, txt, url) => {
+    url = url.replace(/\u0000(\d+)\u0000/g, (_m, n) => `\`${esc(codes[n])}\``);
+    return `\u0001${links.push({ txt, url }) - 1}\u0001`;
+  });
+  s = emph(s).replace(/\u0001(\d+)\u0001/g, (_, n) => {
+    const { txt, url } = links[n];
+    return /^https?:\/\//.test(url) ? `<a href="${url}" target="_blank" rel="noopener noreferrer">${emph(txt)}</a>` : `<span class="lnk" title="${url}">${emph(txt)}</span>`;
+  });
   return s.replace(/\u0000(\d+)\u0000/g, (_, n) => `<code>${esc(codes[n])}</code>`);
 }
 
@@ -714,7 +727,8 @@ function listFiles(dir, depth = 2) {
     for (const e of ents) {
       const p = path.join(d, e.name);
       if (e.isDirectory()) { if (lvl < depth) walk(p, lvl + 1); continue; }
-      let st; try { st = fs.statSync(p); } catch { continue; }
+      let st; try { st = fs.lstatSync(p); } catch { continue; }
+      if (!st.isFile()) continue; // symlinks, FIFOs, sockets, devices: never listed, never read
       out.push({ path: p, rel: path.relative(dir, p), ms: st.mtimeMs, size: st.size });
     }
   };
@@ -2185,6 +2199,15 @@ function openInBrowser(file) {
   try { spawn(cmd, args, { detached: true, stdio: "ignore" }).on("error", () => {}).unref(); } catch { /* the path is printed either way */ }
 }
 
+/**
+ * Seconds until the next --watch poll. A change resets to the requested interval; an idle tick backs off
+ * x1.5 toward a ceiling of 60s, but never below the interval the user asked for (a 120s interval used to
+ * back off DOWN to 60s). Pure: (currentWait, changed, interval) -> seconds.
+ */
+export function nextWait(wait, changed, interval) {
+  return changed ? interval : Math.min(Math.round(wait * 1.5), Math.max(60, interval));
+}
+
 const isEntryPoint = isMain(import.meta.url);
 
 if (isEntryPoint) {
@@ -2198,13 +2221,13 @@ if (isEntryPoint) {
   console.log(`Dashboard: ${dash.entry}`);
   if (o.open) openInBrowser(dash.entry);
   if (o.watch) {
-    console.log(`Watching every ${o.interval}s (backing off to 60s while nothing changes). Ctrl-C to stop.`);
+    console.log(`Watching every ${o.interval}s (backing off while nothing changes, never faster than the interval). Ctrl-C to stop.`);
     let wait = o.interval;
     const tick = () => {
       let changed = true;
       // A refused folder stays refused, so stop; any other error may pass (a file mid-save), so keep watching.
       try { changed = dash.generate(); } catch (e) { if (e.code === "EDASHBOARD") fail(e); console.error(e.stack || e.message); }
-      wait = changed ? o.interval : Math.min(Math.round(wait * 1.5), 60);
+      wait = nextWait(wait, changed, o.interval);
       setTimeout(tick, wait * 1000);
     };
     setTimeout(tick, o.interval * 1000);

@@ -22,6 +22,8 @@ import {
   splitChangelogFields,
   blankCompressedSummaryBlock,
   stripHtmlComments,
+  proseOnly,
+  VERSION_RE,
   htmlCommentSpans,
   blockCommentSpans,
   BLOCK_COMMENT_EXTS,
@@ -1229,4 +1231,19 @@ test("anchor walk tables live in shared.mjs only (scripts-core #9)", async () =>
     assert.ok(!/new Set\(\[\s*"\.py"/.test(src), `${f} re-declares the extension table`);
     assert.ok(!/new Set\(\[\s*"node_modules"/.test(src), `${f} re-declares the skip-dir table`);
   }
+});
+
+test("proseOnly blanks fenced blocks and HTML comments, keeps line count and ordinary prose", () => {
+  const src = "keep\n```\nfenced\n```\n<!-- hidden\nmore -->\ntail";
+  const out = proseOnly(src);
+  assert.equal(out.split("\n").length, src.split("\n").length);
+  assert.ok(out.includes("keep") && out.includes("tail"));
+  assert.ok(!out.includes("fenced") && !out.includes("hidden") && !out.includes("more"));
+  assert.equal(proseOnly(""), "");
+  assert.equal(proseOnly(undefined), "");
+});
+
+test("VERSION_RE accepts exactly X.Y.Z", () => {
+  assert.ok(VERSION_RE.test("2.69.0"));
+  for (const bad of ["", "2.69", "v2.69.0", "2.69.0-rc1", "2.69.0\n", " 2.69.0"]) assert.ok(!VERSION_RE.test(bad), bad);
 });

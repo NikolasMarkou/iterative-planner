@@ -8,6 +8,9 @@
 //   ## [<X.Y.Z>] - YYYY-MM-DD
 //   regex: /^## \[(\d+\.\d+\.\d+)\]/m  (first match = top release entry)
 //
+// An entry inside a fenced code block or an HTML comment does not count (proseOnly), and an
+// empty or malformed VERSION is a FAIL.
+//
 // A missing or unparseable CHANGELOG.md is a FAIL, not a skip: this gate's
 // whole job is to go red when the release bookkeeping is broken.
 //
@@ -18,7 +21,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { isMain } from "./shared.mjs";
+import { isMain, proseOnly, VERSION_RE } from "./shared.mjs";
 
 /**
  * Check that the FIRST `## [X.Y.Z]` entry in CHANGELOG.md matches the
@@ -29,10 +32,10 @@ import { isMain } from "./shared.mjs";
  *   `changelogVersion` is "" when no parseable entry exists (ok: false).
  */
 export function checkChangelogVersion(changelogText, version) {
-  const m = (changelogText || "").match(/^## \[(\d+\.\d+\.\d+)\]/m);
+  const m = proseOnly(changelogText).match(/^## \[(\d+\.\d+\.\d+)\]/m);
   const changelogVersion = m ? m[1] : "";
   return {
-    ok: changelogVersion === version,
+    ok: changelogVersion !== "" && VERSION_RE.test(version) && changelogVersion === version,
     changelogVersion,
     expected: version,
   };
@@ -47,6 +50,10 @@ if (isEntryPoint) {
     process.env.IP_CHECK_CHANGELOG_PARITY_ROOT ??
     join(dirname(fileURLToPath(import.meta.url)), "..", "..");
   const version = readFileSync(join(repoRoot, "VERSION"), "utf8").trim();
+  if (!VERSION_RE.test(version)) {
+    console.error(`check-changelog-parity: FAIL — VERSION (${JSON.stringify(version)}) must be X.Y.Z`);
+    process.exit(1);
+  }
 
   let changelogText;
   try {

@@ -484,17 +484,20 @@ test("build channels: `lint` node --check the same script list", () => {
   assert.deepEqual(ps, mk, "build.ps1 Invoke-Lint and the Makefile lint target check different scripts");
 });
 
-test("build channels: `test` run the same test-file list", () => {
-  const mk = sorted(matchAll(makeRecipe(makefileSrc, "test"), /src\/scripts\/([a-z-]+\.test\.mjs)/g));
-  const ps = sorted(matchAll(psFunction(buildPs1Src, "Invoke-Test"), /src\/scripts\/([a-z-]+\.test\.mjs)/g));
-  assert.ok(mk.length >= 14, `anti-vacuity: parsed only ${mk.length} test files from the Makefile`);
-  assert.deepEqual(ps, mk, "build.ps1 Invoke-Test and the Makefile test target run different suites");
+test("build channels: `test` runs the suite exactly once, through check-test-count", () => {
+  const mk = makeRecipe(makefileSrc, "test");
+  const ps = psFunction(buildPs1Src, "Invoke-Test");
+  for (const [name, body] of [["Makefile", mk], ["build.ps1", ps]]) {
+    assert.ok(/node src\/scripts\/check-test-count\.mjs/.test(body), `${name} test no longer runs check-test-count`);
+    const code = body.split("\n").filter((l) => !l.trimStart().startsWith("#") && !/^\s*@?echo|Write-Host/.test(l)).join("\n");
+    assert.ok(!/node --test/.test(code), `${name} test runs \`node --test\` directly AND via check-test-count (suite twice)`);
+  }
 });
 
 test("build channels: build-combined declares the same rewrite key/value pairs", () => {
-  // Makefile: `@sed -i 's|PATTERN|REPLACEMENT|g' ...` — PATTERN is a BRE, so unescape it.
+  // Makefile: `@$(SED_I) 's|PATTERN|REPLACEMENT|g' ...` — PATTERN is a BRE, so unescape it.
   const mk = sorted(
-    [...makeRecipe(makefileSrc, "build-combined").matchAll(/^\t@sed -i 's\|([^|]*)\|([^|]*)\|g'/gm)]
+    [...makeRecipe(makefileSrc, "build-combined").matchAll(/^\t@\$\(SED_I\) 's\|([^|]*)\|([^|]*)\|g'/gm)]
       .map((m) => `${m[1].replace(/\\(.)/g, "$1")} ${m[2]}`),
   );
   // build.ps1: hashtable entries `'KEY' = 'VALUE'` (single-quoted, '' escapes a quote).
@@ -549,7 +552,7 @@ test("build channels: sync-skill prunes the same four litter paths and enforces 
   const psSync = psFunction(buildPs1Src, "Invoke-SyncSkill");
   assert.ok(mkSync.length > 200, "anti-vacuity: sync-skill section not found in the Makefile");
   const mkLitter = (mkSync.match(/else rm -rf (.+?); fi$/m) || [, ""])[1]
-    .split(/\s+/).map((t) => t.replace("$(SKILL_INSTALL_DIR)/", ""));
+    .split(/\s+/).map((t) => t.replace(/"/g, "").replace("$(SKILL_INSTALL_DIR)/", ""));
   const psLitter = [...((psSync.match(/foreach \(\$litter in @\(([^)]*)\)\)/) || [, ""])[1].matchAll(/"([^"]+)"/g))].map((m) => m[1]);
   assert.deepEqual(mkLitter, ["src", "CLAUDE.md", "Makefile", "build.ps1"], "Makefile litter prune list changed");
   assert.deepEqual(psLitter, mkLitter, "build.ps1 and the Makefile prune different litter paths");
@@ -565,13 +568,41 @@ test("build channels: sync-skill prunes the same four litter paths and enforces 
   assert.deepEqual(sorted(mkAllow), sorted(expected), "install allowlist changed");
   assert.ok(!mkAllow.includes(".git") && !mkAllow.includes(".gitignore"), "allowlist must not name .git/.gitignore");
   // Clone-install mode (D-009): a .git in the install skips BOTH the prune and the allowlist, in both channels.
-  assert.match(mkSync, /if \[ -e \$\(SKILL_INSTALL_DIR\)\/\.git \]; then echo "WARNING:[^\n]*else rm -rf /, "Makefile prune lost its .git clone guard");
-  assert.match(mkSync, /if \[ ! -e \$\(SKILL_INSTALL_DIR\)\/\.git \]; then bad=0;/, "Makefile allowlist lost its .git clone guard");
+  assert.match(mkSync, /if \[ -e "\$\(SKILL_INSTALL_DIR\)\/\.git" \]; then echo "WARNING:[^\n]*else rm -rf /, "Makefile prune lost its .git clone guard");
+  assert.match(mkSync, /if \[ ! -e "\$\(SKILL_INSTALL_DIR\)\/\.git" \]; then bad=0;/, "Makefile allowlist lost its .git clone guard");
   assert.match(psSync, /\$isClone = Test-Path -LiteralPath \(Join-Path \$skillInstallDir "\.git"\)/, "build.ps1 lost its clone detection");
   assert.match(psSync, /if \(\$isClone\) \{\s*Write-Host "WARNING:[\s\S]*?\} else \{\s*foreach \(\$litter/, "build.ps1 prune lost its clone guard");
   assert.match(psSync, /if \(-not \$isClone\) \{\s*foreach \(\$entry/, "build.ps1 allowlist lost its clone guard");
   // The allowlist check precedes the success line in the Makefile (as it already does in build.ps1).
   assert.ok(mkSync.indexOf("unexpected entry in install") < mkSync.indexOf("Sync verified"), "Makefile prints Sync verified before the allowlist check");
+});
+
+test("build channels: sync-skill guards (empty HOME, symlinked install) run BEFORE any mkdir/rm/cp, and every install path is quoted", () => {
+  const mkSync = makefileSrc.slice(makefileSrc.indexOf("\nsync-skill:"), makefileSrc.indexOf("\n.PHONY: help"));
+  const psSync = psFunction(buildPs1Src, "Invoke-SyncSkill");
+  const firstMut = mkSync.search(/^\t(mkdir|rm|cp) /m);
+  assert.ok(firstMut > 0, "anti-vacuity: no mutating recipe line found in sync-skill");
+  assert.ok(mkSync.indexOf('test -n "$(HOME)"') < firstMut, "Makefile HOME guard must precede the first mkdir/rm/cp");
+  assert.ok(mkSync.indexOf("-L \"$$d\"") > 0 && mkSync.indexOf("-L \"$$d\"") < firstMut, "Makefile symlink guard must precede the first mkdir/rm/cp");
+  const psFirstMut = psSync.search(/New-Item|Remove-Item|Copy-Item/);
+  assert.ok(psSync.indexOf("IsNullOrEmpty($HOME)") > 0 && psSync.indexOf("IsNullOrEmpty($HOME)") < psFirstMut, "build.ps1 HOME guard must precede the first New-Item/Remove-Item/Copy-Item");
+  assert.ok(psSync.indexOf("ReparsePoint") > 0 && psSync.indexOf("ReparsePoint") < psFirstMut, "build.ps1 symlink guard must precede the first mutation");
+  assert.ok(psSync.indexOf("$skillInstallDir = Join-Path $HOME") > psSync.indexOf("IsNullOrEmpty($HOME)"), "build.ps1 must not join paths onto an unchecked $HOME");
+  const bare = mkSync.split("\n").filter((l) => /^\t/.test(l) && /(^|[^"])\$\((SKILL|AGENTS|COMMANDS)_INSTALL_DIR\)/.test(l.replace(/echo "[^"]*"/g, "").replace(/"\$\([A-Z_]+\)[^"]*"/g, "")));
+  assert.deepEqual(bare, [], "sync-skill recipe lines use an unquoted $(..._INSTALL_DIR) path (a HOME with a space splits an rm -rf)");
+});
+
+test("build channels: in-place sed goes through SED_I (GNU vs BSD), never a bare sed -i", () => {
+  assert.match(makefileSrc, /^SED_I := \$\(shell sed --version/m, "Makefile lost its SED_I detection");
+  const bare = makefileSrc.split("\n").filter((l) => /^\t/.test(l) && /\bsed -i\b/.test(l));
+  assert.deepEqual(bare, [], "Makefile recipe uses a bare sed -i (breaks on BSD/macOS)");
+});
+
+test("build channels: the __SKILL_DATE__ stamp is UTC in both channels, and doc copies are not skip-wrapped", () => {
+  assert.ok(!/Get-Date/.test(buildPs1Src), "build.ps1 stamps the local date (Makefile uses date -u)");
+  assert.equal((buildPs1Src.match(/\[DateTime\]::UtcNow/g) || []).length, 2, "both build.ps1 date stamps must be UtcNow");
+  assert.ok(!/2>\/dev\/null \|\| true/.test(makeRecipe(makefileSrc, "build")), "Makefile build swallows a missing doc file");
+  assert.ok(!/if \(Test-Path \$_\)/.test(buildPs1Src), "build.ps1 skips a missing doc file");
 });
 
 test("build channels: every top-level entry the build package writes is on the install allowlist", () => {
@@ -600,15 +631,15 @@ test("build channels: build and sync-skill both ship commands/ip-dashboard.md (i
   assert.match(mkBuild, /COMMAND_FILES[\s\S]*commands\//, "Makefile build does not copy src/commands into the package");
   assert.match(psBuild, /src\/commands\/\*\.md[\s\S]*\/commands\//, "build.ps1 build does not copy src/commands into the package");
   // install
-  assert.match(mkSync, /^\tcp src\/commands\/ip-dashboard\.md \$\(COMMANDS_INSTALL_DIR\)\/ip-dashboard\.md$/m, "Makefile does not install the command");
+  assert.match(mkSync, /^\tcp src\/commands\/ip-dashboard\.md "\$\(COMMANDS_INSTALL_DIR\)\/ip-dashboard\.md"$/m, "Makefile does not install the command");
   assert.match(psSync, /Copy-Item "src\/commands\/ip-dashboard\.md"/, "build.ps1 does not install the command");
   // prune: exact name only, never a glob, in the shared commands dir
-  assert.match(mkSync, /^\trm -f \$\(COMMANDS_INSTALL_DIR\)\/ip-dashboard\.md$/m, "Makefile prune is not the exact command name");
+  assert.match(mkSync, /^\trm -f "\$\(COMMANDS_INSTALL_DIR\)\/ip-dashboard\.md"$/m, "Makefile prune is not the exact command name");
   assert.match(psSync, /Remove-Item \(Join-Path \$commandsInstallDir "ip-dashboard\.md"\)/, "build.ps1 prune is not the exact command name");
-  assert.ok(!/\$\(COMMANDS_INSTALL_DIR\)\/[*]/.test(mkSync), "Makefile globs the shared commands dir");
+  assert.ok(!/\$\(COMMANDS_INSTALL_DIR\)"?\/[*]/.test(mkSync), "Makefile globs the shared commands dir");
   assert.ok(!/commandsInstallDir[^\n]*[*]/.test(psSync.replace(/Join-Path \$HOME[^\n]{0,}/, "")), "build.ps1 globs the shared commands dir");
   // verify
-  assert.match(mkSync, /diff -q src\/commands\/ip-dashboard\.md \$\(COMMANDS_INSTALL_DIR\)\/ip-dashboard\.md/, "Makefile does not verify the command");
+  assert.match(mkSync, /diff -q src\/commands\/ip-dashboard\.md "\$\(COMMANDS_INSTALL_DIR\)\/ip-dashboard\.md"/, "Makefile does not verify the command");
   assert.match(psSync, /Get-FileHash "src\/commands\/ip-dashboard\.md"/, "build.ps1 does not verify the command");
 });
 
@@ -628,4 +659,21 @@ test("Agent Definitions Model column matches each agent's frontmatter model (SKI
     assert.ok(row, `${name}: no Agent Definitions row for ${f}`);
     assert.equal(row[row.length - 1], model(f), `${name}: Model cell for ${f} disagrees with frontmatter`);
   }
+});
+
+test("parseOwnershipTable: duplicate key keeps both owner cells, fenced rows are ignored, any heading ends the table", () => {
+  const doc = [
+    "## File Ownership", "", "| File | Owner | Readers |", "|---|---|---|",
+    "| `a.md` | alpha | x |", "| `a.md` | beta | x |", "| `b.md` | gamma | x |",
+    "```", "| `fenced.md` | zed | x |", "```",
+    "#### Sub heading", "| `after.md` | late | x |", "",
+  ].join("\n");
+  const t = parseOwnershipTable(doc);
+  assert.equal(t.owners.get("a.md"), "alpha || beta");
+  assert.ok(!t.keys.has("fenced.md"), "a row inside a code fence is not part of the table");
+  assert.ok(!t.keys.has("after.md"), "a #### heading ends the table");
+  assert.deepEqual([...t.keys].sort(), ["a.md", "b.md"]);
+  // the second row's owner now participates in the comparison
+  const other = ["## File Ownership", "| File | Owner |", "|---|---|", "| `a.md` | alpha |", "| `b.md` | gamma |"].join("\n");
+  assert.deepEqual(comparison(doc, other).ownerMismatches.map((m) => m.key), ["a.md"]);
 });

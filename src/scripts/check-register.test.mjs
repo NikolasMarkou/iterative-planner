@@ -39,7 +39,7 @@ const repoRoot = join(here, "..", "..");
 const script = join(here, "check-register.mjs");
 
 // The exact fixed doc list the gate scans: 3 root docs + every .md in
-// src/agents + src/references. Must match the real repo's scan set so no
+// src/agents + src/references + src/scripts/modules + src/commands. Must match the real repo's scan set so no
 // spurious [register-floor] "no committed ceiling" / "missing" fires.
 const AGENTS = [
   "ip-archivist",
@@ -62,12 +62,15 @@ const REFS = [
   "python-software",
   "root-cause-analysis",
 ];
+const MODULES = ["execute", "explore", "pivot", "plan", "reflect"];
 const RELPATHS = [
   "CLAUDE.md",
   "README.md",
   "src/SKILL.md",
   ...AGENTS.map((a) => `src/agents/${a}.md`),
   ...REFS.map((r) => `src/references/${r}.md`),
+  ...MODULES.map((m) => `src/scripts/modules/state-${m}.md`),
+  "src/commands/ip-dashboard.md",
 ];
 
 // Plain, marker-free prose well above MIN_WORDS: density 0.
@@ -87,7 +90,7 @@ const HIGH_JARGON = Array.from({ length: 40 }, () => "[foo-bar]").join(" ");
 const DEFAULT_ENTRY = { ceiling: 50, markers: 0 };
 
 /**
- * Build a temp fixture root with the complete valid 19-doc layout the gate
+ * Build a temp fixture root with the complete valid 26-doc layout the gate
  * scans, plus a matching register-baseline.json. `overrides` lets one test
  * mutate the fixture before spawning:
  *   content:      { [relpath]: string }  override a doc's body
@@ -103,7 +106,8 @@ function makeFixtureRoot(overrides = {}) {
   const root = mkdtempSync(join(tmpdir(), "creg-fixture-"));
   mkdirSync(join(root, "src", "agents"), { recursive: true });
   mkdirSync(join(root, "src", "references"), { recursive: true });
-  mkdirSync(join(root, "src", "scripts"), { recursive: true });
+  mkdirSync(join(root, "src", "scripts", "modules"), { recursive: true });
+  mkdirSync(join(root, "src", "commands"), { recursive: true });
   for (const rel of RELPATHS) {
     if (omit.includes(rel)) continue;
     writeFileSync(join(root, rel), rel in content ? content[rel] : FILLER);
@@ -288,7 +292,7 @@ test("compareToBaseline: floor variants (missing, no-ceiling, near-empty, min-fi
 
 // --- REAL-CLI SPAWN TESTS (exit code + stderr slug) ---
 
-test("real CLI PASS: complete clean fixture (19 low-density docs) -> exit 0", () => {
+test("real CLI PASS: complete clean fixture (26 low-density docs) -> exit 0", () => {
   const root = makeFixtureRoot();
   try {
     const res = runCliAgainst(root);
@@ -323,7 +327,7 @@ test("pin: EXPECTED_MIN_FILES equals the live scanned doc count in the real repo
   // buildScanList — a replicated scan list here would be a second definition
   // that can drift from the thing it claims to pin. Cross-checked against a
   // raw directory count so this cannot become "the function agrees with
-  // itself": 3 fixed root docs + every .md under src/agents + src/references.
+  // itself": 3 fixed root docs + every .md under src/agents, src/references, src/scripts/modules and src/commands.
   const listMd = (absDir) =>
     readdirSync(absDir).filter((f) => f.endsWith(".md"));
   const live = buildScanList(repoRoot).length;
@@ -331,8 +335,10 @@ test("pin: EXPECTED_MIN_FILES equals the live scanned doc count in the real repo
     live,
     3 +
       listMd(join(repoRoot, "src", "agents")).length +
-      listMd(join(repoRoot, "src", "references")).length,
-    "buildScanList must resolve exactly the 3 fixed docs plus every agent/reference .md",
+      listMd(join(repoRoot, "src", "references")).length +
+      listMd(join(repoRoot, "src", "scripts", "modules")).length +
+      listMd(join(repoRoot, "src", "commands")).length,
+    "buildScanList must resolve exactly the 3 fixed docs plus every agent/reference/module/command .md",
   );
   assert.strictEqual(
     EXPECTED_MIN_FILES,

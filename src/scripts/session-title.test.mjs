@@ -337,3 +337,11 @@ test("zero-width and invisible format characters are stripped from the title", (
     assert.ok(!/[\u200b-\u200d\u2060\ufeff\u00ad]/.test(title));
   });
 });
+
+test("Unicode tag characters, the Arabic letter mark and variation selectors are stripped from the title", () => {
+  withProject({ goal: "a\u{e0001}\u{e0048}b\u061cc\ufe0fd\u180ee\u034ff" }, (root) => {
+    const title = titleOf(run({ hook_event_name: "SessionStart", cwd: root }));
+    assert.match(title, / · abcdef$/);
+    assert.ok(!/[\u061c\ufe0f\u180e\u034f]|[\u{e0000}-\u{e007f}]/u.test(title));
+  });
+});
