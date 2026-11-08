@@ -6,15 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [2.69.0] - 2026-11-08
 
-**The terminal tab can carry the plan's name and phase, and the orchestrator now says when each sub-agent started.** Opt-in and outside the protocol's state: nothing here edits your settings.
+**A hook can set the session title to the plan's name and phase, and the orchestrator now says when each sub-agent started.** Opt-in and outside the protocol's state: nothing here edits your settings.
 
 ### Added
 
-- **`session-title.mjs`.** A hook helper that returns a `sessionTitle` for the SessionStart and UserPromptSubmit hooks, naming the active plan and its phase. `--print-settings` prints the hook block to paste; the helper never edits `settings.json`. It is opt-in. It skips output only when the hook input carries a `session_title` that is not its own earlier title; if Claude Code does not send that field on UserPromptSubmit (unverified), a `/rename` name is overwritten on every prompt. Tested only with piped sample input, not in a live Claude Code session. Its tests and isolation pins are included (the helper imports no write or spawn API, and neither build script writes to `settings.json`).
+- **`session-title.mjs`.** A hook helper that returns a `sessionTitle` for the SessionStart and UserPromptSubmit hooks, naming the active plan and its phase. `--print-settings` prints the hook block to paste; the helper never edits `settings.json`. It is opt-in. It skips output only when the hook input carries a `session_title` that is not its own earlier title; if Claude Code does not send that field on UserPromptSubmit (unverified), a `/rename` name is overwritten on every prompt. Tested only with piped sample input, not in a live Claude Code session. The title is set through hook output; whether it shows in a terminal tab is not verified. The helper reads stdin that arrives late, in chunks or large (1 MB cap, 2 s timeout), exits even if stdin never closes, and strips zero-width characters. Run through a symlink, `--print-settings` prints the resolved path, quoted but not shell-escaped, so a path with quote characters needs manual editing. If the project folder is renamed, the old title looks foreign and is not updated for that session. Its tests and isolation pins are included (the helper imports no write or spawn API, and neither build script writes to `settings.json`).
 - **Sub-agent start times.** Before each spawn the orchestrator runs `date -u`, prints one chat line (`<agent> (<slug or step>) started <UTC time>`) and appends an arrow-free `- SPAWN <agent> slug=<x> started <UTC time>` line to `state.md` Transition History.
 
 ### Changed
 
+- **SPAWN lines are ignored.** `validate-plan.mjs` and the dashboard skip `- SPAWN …` lines, including when counting transitions, iterations and re-plans (`bootstrap.mjs status` too), so a start-time line is never read as a state change.
 - **Lint and test lists.** `Makefile` and `build.ps1` include `session-title.mjs` and its test in both lists. `build.ps1` was verified by reading only; no PowerShell ran here.
 - `TEST_COUNT` and the README badges: 1080 to 1109 passing.
 

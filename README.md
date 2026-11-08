@@ -528,13 +528,15 @@ About `/rename`, plainly: the hook skips its output only when the hook input car
 
 Scope: the title follows the active plan of the project directory the session runs in. Several sessions in one project show the same plan. After CLOSE there is no active plan, so the next hook run prints nothing and the old title stays as it was, with the last state in it.
 
+Limits: if you rename the project folder, the old title looks foreign and the hint is not updated for that session. Zero-width characters in the goal are stripped. `--print-settings` prints this script's resolved path (through a symlink, the real file), wrapped in double quotes but not shell-escaped, so an install path containing quote characters needs manual editing.
+
 Removing it: delete the two hook entries (`SessionStart` and `UserPromptSubmit`) from `~/.claude/settings.json`. If you uninstall the skill but leave the hook in place, the hook command fails on every prompt.
 
 Tested only with piped sample hook input, not in a live Claude Code session. To check it yourself:
 
 1. Paste the snippet from `--print-settings` into `~/.claude/settings.json`.
 2. Start a new session in a project that has an active plan.
-3. Look at the session title (`/status` or the terminal title); it should read `<project> · <STATE> · <goal>`. Then run `/rename something`, send a prompt, and see whether your name survives.
+3. Look at the session title (`/status`; whether it also shows in a terminal tab is not verified); it should read `<project> · <STATE> · <goal>`. Then run `/rename something`, send a prompt, and see whether your name survives.
 
 When the orchestrator starts a sub agent, it prints one line with that agent's UTC start time and records the same line in `state.md`.
 
