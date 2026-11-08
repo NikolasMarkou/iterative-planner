@@ -1244,6 +1244,6 @@ test("proseOnly blanks fenced blocks and HTML comments, keeps line count and ord
 });
 
 test("VERSION_RE accepts exactly X.Y.Z", () => {
-  assert.ok(VERSION_RE.test("2.69.0"));
-  for (const bad of ["", "2.69", "v2.69.0", "2.69.0-rc1", "2.69.0\n", " 2.69.0"]) assert.ok(!VERSION_RE.test(bad), bad);
+  assert.ok(VERSION_RE.test("2.70.0"));
+  for (const bad of ["", "2.69", "v2.70.0", "2.70.0-rc1", "2.70.0\n", " 2.70.0"]) assert.ok(!VERSION_RE.test(bad), bad);
 });

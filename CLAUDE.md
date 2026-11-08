@@ -19,6 +19,7 @@ iterative-planner/
 ├── CLAUDE.md                         # This file
 ├── Makefile                          # Unix/Linux/macOS build script (reads VERSION)
 ├── build.ps1                         # Windows PowerShell build script (reads VERSION)
+├── .github/workflows/ci.yml          # CI: `make validate` then `make test` on push to main and on pull requests (never run here)
 └── src/
     ├── SKILL.md                      # Core protocol (state machine, rules) - the main instruction set
     ├── commands/
@@ -72,7 +73,7 @@ iterative-planner/
     │   │   ├── state-execute.md      # EXECUTE per-state rules (incl. Post-Step Gate)
     │   │   ├── state-reflect.md      # REFLECT per-state rules (all 3 phases)
     │   │   └── state-pivot.md        # PIVOT per-state rules
-    │   ├── shared.mjs                # Shared helpers (field extraction, changelog field split, compression markers)
+    │   ├── shared.mjs                # Shared helpers (field extraction, changelog field split, compression markers, `isMain` symlink-aware entry-point check)
     │   └── shared.test.mjs           # Test suite (node:test)
     └── references/                   # Knowledge base documents
         ├── blast-radius.md           # Per-edit blast-radius signals + scoring spec
@@ -168,7 +169,7 @@ Do not duplicate protocol content here. Read src/SKILL.md directly.
 .\build.ps1 package-tar      # Create tarball package
 .\build.ps1 validate         # Validate skill structure
 .\build.ps1 lint             # Check script syntax
-.\build.ps1 test             # Run tests (lint + round-trip)
+.\build.ps1 test             # Run tests (lint + one full suite run + TEST_COUNT check)
 .\build.ps1 clean            # Remove build artifacts
 .\build.ps1 list             # Show package contents
 .\build.ps1 help             # Show available commands
@@ -181,7 +182,7 @@ make package-combined        # Create single-file skill package
 make package-tar             # Create tarball package
 make validate                # Validate skill structure
 make lint                    # Check script syntax
-make test                    # Run tests (lint + round-trip)
+make test                    # Run tests (lint + one full suite run + TEST_COUNT check)
 make clean                   # Remove build artifacts
 make list                    # Show package contents
 make help                    # Show available targets

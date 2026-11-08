@@ -1,14 +1,14 @@
 {
   "CLAUDE.md": {
-    "ceiling": 7.43,
+    "ceiling": 7.4,
     "markers": 62
   },
   "README.md": {
-    "ceiling": 6.95,
-    "markers": 55
+    "ceiling": 5.57,
+    "markers": 44
   },
   "src/SKILL.md": {
-    "ceiling": 5.5,
+    "ceiling": 5.48,
     "markers": 39
   },
   "src/agents/ip-archivist.md": {
@@ -20,7 +20,7 @@
     "markers": 3
   },
   "src/agents/ip-executor.md": {
-    "ceiling": 8.66,
+    "ceiling": 8.26,
     "markers": 16
   },
   "src/agents/ip-explorer.md": {
@@ -28,11 +28,11 @@
     "markers": 1
   },
   "src/agents/ip-orchestrator.md": {
-    "ceiling": 9.56,
+    "ceiling": 9.24,
     "markers": 46
   },
   "src/agents/ip-plan-writer.md": {
-    "ceiling": 5.84,
+    "ceiling": 5.45,
     "markers": 5
   },
   "src/agents/ip-reviewer.md": {
@@ -72,7 +72,7 @@
     "markers": 82
   },
   "src/references/planning-rigor.md": {
-    "ceiling": 1.05,
+    "ceiling": 1.04,
     "markers": 2
   },
   "src/references/python-software.md": {
@@ -100,7 +100,7 @@
     "markers": 1
   },
   "src/scripts/modules/state-reflect.md": {
-    "ceiling": 3.43,
+    "ceiling": 3.27,
     "markers": 7
   }
 }

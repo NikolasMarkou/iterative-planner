@@ -3,10 +3,10 @@
     <img alt="License: Apache 2.0" src="https://img.shields.io/badge/License-Apache%202.0-blue.svg">
   </a>
   <a href="CHANGELOG.md">
-    <img alt="Skill Version" src="https://img.shields.io/badge/Skill-v2.69.0-green.svg">
+    <img alt="Skill Version" src="https://img.shields.io/badge/Skill-v2.70.0-green.svg">
   </a>
   <a href="src/scripts/bootstrap.test.mjs">
-    <img alt="Tests" src="https://img.shields.io/badge/tests-1110%20passing-brightgreen.svg">
+    <img alt="Tests" src="https://img.shields.io/badge/tests-1177%20passing-brightgreen.svg">
   </a>
   <a href="https://www.electiconsulting.com">
     <img alt="Sponsored by Electi Consulting" src="https://img.shields.io/badge/Sponsored%20by-Electi%20Consulting-8B1C34">

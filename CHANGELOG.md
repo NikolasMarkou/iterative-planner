@@ -4,6 +4,36 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.70.0] - 2026-11-08
+
+**An audit of the whole repository was fixed: the six high-severity findings, then the medium and low batches.** One behaviour change needs attention: the iteration cap now counts re-plans, not review rounds.
+
+### Changed (semantic change)
+
+- **Iteration now means re-plans.** The enforced iteration is the larger of the declared `## Iteration:` and the number of PLAN to EXECUTE arrivals in `state.md`'s Transition History. Completion-fix round trips (REFLECT to EXECUTE) no longer raise it, so the `iteration-cap` fires on re-plans only. `bootstrap.mjs resume` and `status` derive it the same way, and HYGIENE SKIP lines are stripped from the count. The orchestrator is stated as the writer of `## Iteration:`.
+- **New round cap.** A separate hard stop fires at 18 `EXECUTE → REFLECT` arrivals (6 iterations of 3 rounds), so a loop that never re-plans cannot run forever. When a cap fires, the protocol now documents a partial CLOSE exit path.
+
+### Fixed (high severity)
+
+- **Symlinked CLIs ran nothing.** Every CLI script now uses one `isMain(import.meta.url)` from `shared.mjs`, which resolves symlinks. The old per-file `isEntryPoint` copies compared raw paths and silently did nothing when invoked through a symlink. A source-grep test forbids a script comparing `process.argv[1]` itself.
+- **Agent-wiring gate checks existence.** `check-agent-wiring.mjs` now verifies that a referenced script, agent and module exist, and reads quoted script paths.
+- **Stale build output.** `build` prunes the old build directory, and `package` / `package-tar` remove the previous archive first, in both channels, with lockstep tests.
+- **Scoped revert recipe.** The `git clean` revert recipe is limited to the manifest paths, so it cannot delete unrelated untracked files.
+- **Iteration ownership.** The protocol states who writes `## Iteration:`.
+
+### Fixed (medium and low)
+
+- **Scripts.** `bootstrap new` flag parsing; the plans lock is published atomically (temp file plus `linkSync`, empty lock under 10 s treated as live, stale reclaim by rename); `blockCommentSpans` takes the extension so a Rust lifetime `'` no longer hides a real anchor; `blast-radius` reports `radius:UNKNOWN(timeout)` or `UNKNOWN(grep-failed)` instead of a guessed tier, with path-frame and test-credit fixes; `validate-plan` memoizes source-file scans; anchor tables are shared; the compressor has a spec gate.
+- **Gates, tools and build.** `sync-skill` guards and quoting; the parity gates ignore fences and comments and reject an empty VERSION; the register ratchet now covers the modules and the command file; `SED_I` for portable in-place edits; `make test` and `Invoke-Test` run the suite once through `check-test-count.mjs`, which prints failing-test excerpts and has a 20-minute kill; session-title, dashboard and scar-scan hardening.
+- **CI.** New `.github/workflows/ci.yml` runs `make validate` then `make test` on push to main and on pull requests.
+- **Protocol docs.** Changelog backfill rule; the re-spawned executor counts as the second fix attempt; REFLECT module and SKILL.md synced; confidence hint wording; CLOSE rules for blocked plans, merge and `ANCHORS.md`; README gitignore and test notes; EXPLORE wording; plan-writer slices; status reorientation.
+
+### Notes
+
+- **Disclosed residuals (not fixed, with reasons in the plan's `decisions.md`).** D-008: a regex literal ending in `*/` still over-reports as a block closer (a fix is a lexer). D-010: `emit-template` still honours a mid-line marker (pinned by the template-parity tests), the three changelog data-line classification sites and the per-extension comment arrays stay separate, and `retire` takes no lock. D-011: the README snippet listing the explicit `node --test` command is left; losing live progress output is the price of a single suite run. D-012: light REFLECT for completion-fix rounds, SPAWN logging in the explore/plan/reflect modules, the double leash prompt, Task versus Agent naming, fidelity wording, the Windows ESM specifier and dashboard args are left as disclosed low-severity items.
+- **Never run here.** `build.ps1` and the CI workflow were not executed: this environment has no PowerShell and no CI runner. The Windows channel was checked by reading and by text-level lockstep tests only.
+- Cost: the `validate-plan` memoization reduces repeated source-tree parses within one run; it adds no walk over `plans/` and does not change the O(referenced-plans) cost of the existing scan. No new full-corpus walk over `plans/`.
+
 ## [2.69.0] - 2026-11-08
 
 **A hook can set the session title to the plan's name and phase, and the orchestrator now says when each sub-agent started.** Opt-in and outside the protocol's state: nothing here edits your settings.
