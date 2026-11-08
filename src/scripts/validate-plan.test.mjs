@@ -4533,6 +4533,19 @@ ${verdict}
       `the arrow-free skip line must never be read as a state transition, got:\n${r.stdout}`);
   });
 
+  it("(i2) a SPAWN start-time line in Transition History produces NO transition finding", () => {
+    const cwd = getTempDir();
+    writePlan(cwd, {
+      state: "EXECUTE",
+      iteration: 1,
+      transitionHistoryExtra: "- SPAWN ip-executor slug=step-1 started 2026-11-08T05:07:43Z",
+    });
+    const r = run(cwd);
+    const transitionLines = r.stdout.split("\n").filter((l) => l.includes("[transition"));
+    assert.equal(transitionLines.length, 0,
+      `a SPAWN line carries no arrow and must never be read as a state transition, got:\n${r.stdout}`);
+  });
+
   for (const state of ["EXECUTE", "PLAN", "EXPLORE"]) {
     it(`(j) ${state} state -> gate silent regardless of record presence/absence`, () => {
       // absent case

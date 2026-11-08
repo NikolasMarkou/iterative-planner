@@ -51,6 +51,8 @@ Throughout this section, "Spawn ip-X" means **issue an actual agent-tool call** 
 
 **Skill-path injection (MANDATORY):** every spawn prompt you issue MUST carry a `SKILL PATH: <absolute-path>` line — the skill base directory the harness announced to you on activation. Sub-agents never see that announcement, so this line is the only way they can resolve `<skill-path>` in the `node <skill-path>/scripts/...` calls their own prompts print. Omit it and those calls silently resolve to nothing. Definition: `SKILL.md` § Resolving `<skill-path>`.
 
+**Spawn start time (MANDATORY):** before every Agent spawn, run Bash `date -u +%Y-%m-%dT%H:%M:%SZ` and use only the time it prints; never write a time you did not read from that command. Say one chat line naming the agent, its slug or step, and the start time (for example `ip-executor (step-4) started 2026-11-08T05:13:39Z`), and append `- SPAWN <agent> slug=<x> started <time>` to the `## Transition History` of `state.md`. That line must contain no arrow of either kind, because the validator reads any arrow in that section as a state transition.
+
 **Per-state rule emission (v2.23.0+):** On ENTERING each of EXPLORE/PLAN/EXECUTE/REFLECT/PIVOT, FIRST run `node <skill-path>/scripts/emit-state.mjs --state <state>` and treat its stdout as the authoritative, operative per-state rules for that state (they are no longer inlined in SKILL.md — only a one-line summary + pointer remains there). Then proceed with the dispatch steps below. CLOSE has no module and no emit call.
 
 ### EXPLORE State
