@@ -262,6 +262,11 @@ describe("bootstrap.mjs", () => {
       assert.ok(uses.length >= 3, "declaration, probe and template string all present");
     });
 
+    it("bootstrap.mjs never names session-title (hook helper stays isolated)", () => {
+      const raw = readFileSync(new URL("./bootstrap.mjs", import.meta.url), "utf-8");
+      assert.doesNotMatch(raw, /session-title/, "bootstrap.mjs must not reference session-title");
+    });
+
     it("LESSONS.md has correct initial content", () => {
       const dir = getTempDir();
       run(dir, "new", "Test goal");

@@ -782,7 +782,7 @@ test("agent contract: every agent declares Edit and Agent exactly once — grant
   }
 });
 
-test("agent-facing prose never names dashboard.mjs (viewer stays out of the protocol)", () => {
+test("agent-facing prose never names dashboard.mjs or session-title.mjs (viewer and hook helper stay out of the protocol)", () => {
   const src = join(dirname(fileURLToPath(import.meta.url)), "..");
   const files = [join(src, "SKILL.md")];
   for (const d of ["agents", "scripts/modules", "references"]) {
@@ -790,6 +790,8 @@ test("agent-facing prose never names dashboard.mjs (viewer stays out of the prot
   }
   // Pinned EQUAL to the live count (SKILL.md + 8 agents + 5 modules + 9 references): a new prose file must move this floor.
   assert.strictEqual(files.length, 23, `scanned ${files.length} files, expected 23; glob likely changed`);
-  const hits = files.filter((f) => readFileSync(f, "utf8").includes("dashboard.mjs"));
-  assert.deepEqual(hits, [], "dashboard.mjs must not appear in agent-facing prose");
+  for (const name of ["dashboard.mjs", "session-title.mjs"]) {
+    const hits = files.filter((f) => readFileSync(f, "utf8").includes(name));
+    assert.deepEqual(hits, [], `${name} must not appear in agent-facing prose`);
+  }
 });
