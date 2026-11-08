@@ -10,7 +10,8 @@
 //   (a) script-path        — `node [options...] <path>/scripts/<x>.mjs` must
 //        use the `<skill-path>` placeholder; a bare path resolves to nothing
 //        from a consuming project's root. Interposed node options (`-e`,
-//        `--test`) do not exempt the invocation.
+//        `--test`) do not exempt the invocation; an optional quote before the
+//        path is allowed, and the named script must exist (CLI wires existsSync).
 //   (b) reference-citation — every `references/<f>.md` citation must resolve,
 //        written either way (`references/x.md` or `src/references/x.md`).
 //   (c) section-pointer    — pointers must read `§ <Code> <Title>` (or
@@ -50,7 +51,7 @@ import { isMain } from "./shared.mjs";
 // DECISION plan-2026-09-01T100120-4f591469/D-012 — command grammar (`node`, option run, script
 // arg), not token adjacency: a flag between `node` and the path used to evade this rule entirely.
 // Do not widen the option run past a leading `-`, or `node` in ordinary prose swallows later paths.
-const SCRIPT_ARG_RE = /\bnode(?:\s+-[^\s`'"]*)*\s+([^\s`'"]*scripts\/[A-Za-z0-9_.-]+\.mjs)/g;
+const SCRIPT_ARG_RE = /\bnode(?:\s+-[^\s`'"]*)*\s+['"]?([^\s`'"]*scripts\/[A-Za-z0-9_.-]+\.mjs)/g;
 const CITATION_RE = /`([A-Za-z0-9_<][A-Za-z0-9_.<>/-]*\.md)`/g;
 // Trailing lookahead is `(?!\w)` (not `(?![\w.])`) so a sentence-final code —
 // "see Section B.10." — is still a code, not silently skipped.
@@ -126,11 +127,18 @@ function opensWith(rest, title) {
 }
 
 /** (a) Script invocations that do not use the `<skill-path>` placeholder. */
-export function scanScriptPaths(relPath, text, edges) {
+// Optional 4th arg `scriptExists(name)` (name relative to scripts/, e.g. "emit-state.mjs"): when given,
+// a `<skill-path>/scripts/x.mjs` invocation whose file is absent is an issue. Omitted = no existence check.
+export function scanScriptPaths(relPath, text, edges, scriptExists) {
   const issues = [];
   for (const line of tagLines(text)) {
     for (const m of line.text.matchAll(SCRIPT_ARG_RE)) {
       if (m[1].startsWith(OK_PREFIX)) {
+        if (scriptExists && !scriptExists(m[1].slice(OK_PREFIX.length))) {
+          issues.push(issue("script-path", relPath, line.no,
+            `\`node ${m[1]}\` names a script that does not exist in src/scripts/`));
+          continue;
+        }
         edges?.push({ src: relPath, dst: `src/scripts/${m[1].slice(OK_PREFIX.length)}`, type: "script-path", line: line.no });
         continue;
       }
@@ -150,13 +158,26 @@ export function canonicalDocPath(citation) {
   return c.startsWith("src/") ? c.slice("src/".length) : c;
 }
 
-/** (b) `references/<f>.md` citations that do not resolve (either spelling). */
-export function scanReferenceCitations(relPath, text, refExists, edges) {
+/**
+ * (b) `references/<f>.md` citations that do not resolve (either spelling).
+ * Optional 5th arg `docExists(srcRelPath)` (e.g. "agents/ip-x.md", "scripts/modules/state-x.md"):
+ * when given, `agents/ip-*.md` and `scripts/modules/*.md` citations must exist too
+ * (a `<placeholder>` name is a pattern, not a file, and is skipped).
+ */
+export function scanReferenceCitations(relPath, text, refExists, edges, docExists) {
   const issues = [];
   for (const line of tagLines(text)) {
     if (line.fenced) continue;
     for (const m of line.text.matchAll(CITATION_RE)) {
       const cited = canonicalDocPath(m[1]);
+      if (docExists && (/^agents\/ip-[^/<>]+\.md$/.test(cited) || /^scripts\/modules\/[^/<>]+\.md$/.test(cited))) {
+        if (docExists(cited)) {
+          edges?.push({ src: relPath, dst: `src/${cited}`, type: "reference-citation", line: line.no });
+        } else {
+          issues.push(issue("reference-citation", relPath, line.no, `\`${m[1]}\` does not resolve to a file in src/`));
+        }
+        continue;
+      }
       if (!cited.startsWith("references/")) continue;
       if (refExists(cited.slice("references/".length))) {
         edges?.push({ src: relPath, dst: `src/${cited}`, type: "reference-citation", line: line.no });
@@ -322,6 +343,8 @@ if (isEntryPoint) {
     return cache.get(rel);
   };
   const refExists = (name) => existsSync(join(repoRoot, "src", "references", name));
+  const scriptExists = (name) => existsSync(join(repoRoot, "src", "scripts", name));
+  const docExists = (srcRel) => existsSync(join(repoRoot, "src", srcRel));
 
   // --emit-edges [path]: opt-in; without it edges stays undefined and the
   // scans behave exactly as the read-only gate always has.
@@ -350,8 +373,8 @@ if (isEntryPoint) {
     // to all 5 modules — none carries one today, so widening now would fail
     // all 5 immediately (see decisions.md D-001).
     issues.push(
-      ...scanScriptPaths(rel, text, edges),
-      ...scanReferenceCitations(rel, text, refExists, edges),
+      ...scanScriptPaths(rel, text, edges, scriptExists),
+      ...scanReferenceCitations(rel, text, refExists, edges, docExists),
       ...scanSectionPointers(rel, text, headingsFor, edges),
       ...(rel.startsWith("src/agents/") ? scanSkillPathResolution(rel, text) : []),
     );

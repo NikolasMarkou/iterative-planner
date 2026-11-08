@@ -225,6 +225,58 @@ test("canonicalDocPath collapses the two spellings; resolveTarget follows it", (
   assert.equal(resolveTarget("src/SKILL.md", "self.md"), "src/SKILL.md");
 });
 
+const scriptExists = (n) => ["emit-state.mjs", "bootstrap.mjs", "validate-plan.mjs"].includes(n);
+const docExists = (p) => ["agents/ip-executor.md", "agents/ip-verifier.md", "scripts/modules/state-plan.md", "scripts/modules/state-pivot.md"].includes(p);
+
+test("(a) a missing <skill-path> script is flagged, MIDDLE of a multi-entry fixture", () => {
+  const text = [
+    "Run `node <skill-path>/scripts/emit-state.mjs --state plan`.",
+    "Run `node <skill-path>/scripts/ghost.mjs`.",
+    "Run `node <skill-path>/scripts/bootstrap.mjs status`.",
+  ].join("\n");
+  const issues = scanScriptPaths("a.md", text, undefined, scriptExists);
+  assert.equal(issues.length, 1);
+  assert.equal(issues[0].line, 2);
+  assert.match(msgs(issues), /ghost\.mjs.*does not exist/);
+});
+
+test("(a) a QUOTED missing script is flagged; a quoted existing one passes", () => {
+  const text = [
+    "node '<skill-path>/scripts/bootstrap.mjs' status",
+    'node "<skill-path>/scripts/ghost.mjs" x',
+    "node <skill-path>/scripts/validate-plan.mjs",
+  ].join("\n");
+  const issues = scanScriptPaths("a.md", text, undefined, scriptExists);
+  assert.equal(issues.length, 1);
+  assert.equal(issues[0].line, 2);
+});
+
+test("(a) without a scriptExists callback the old 3-arg call still passes (no existence check)", () => {
+  assert.deepEqual(scanScriptPaths("a.md", "node <skill-path>/scripts/ghost.mjs", []), []);
+});
+
+test("(a) a missing script is not emitted as a verified edge", () => {
+  const edges = [];
+  scanScriptPaths("a.md", "node <skill-path>/scripts/ghost.mjs", edges, scriptExists);
+  assert.deepEqual(edges, []);
+});
+
+test("(b) missing agent and module citations are flagged, bad entry in the MIDDLE", () => {
+  const text = [
+    "See `agents/ip-executor.md`.",
+    "See `agents/ip-ghost.md`.",
+    "See `scripts/modules/state-plan.md`.",
+    "See `scripts/modules/state-ghost.md`.",
+    "See `src/agents/ip-verifier.md` and `scripts/modules/state-<state>.md`.",
+  ].join("\n");
+  const issues = scanReferenceCitations("a.md", text, refExists, undefined, docExists);
+  assert.deepEqual(issues.map((i) => i.line), [2, 4]);
+});
+
+test("(b) without a docExists callback agent/module citations are not checked", () => {
+  assert.deepEqual(scanReferenceCitations("a.md", "See `agents/ip-ghost.md`.", refExists), []);
+});
+
 test("(b) catches a dangling references/ citation", () => {
   const issues = scanReferenceCitations("a.md", "See `references/nope.md` for details.", refExists);
   assert.equal(issues.length, 1);
