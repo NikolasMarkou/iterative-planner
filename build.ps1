@@ -47,6 +47,8 @@ function Invoke-Build {
 
     # Create directories
     $skillDir = Join-Path $BuildDir $SkillName
+    # Prune first: Copy-Item never removes a file deleted from the source (matches the Makefile rm -rf).
+    if (Test-Path $skillDir) { Remove-Item -Recurse -Force $skillDir }
     New-Item -ItemType Directory -Force -Path $skillDir | Out-Null
     New-Item -ItemType Directory -Force -Path "$skillDir/references" | Out-Null
     New-Item -ItemType Directory -Force -Path "$skillDir/scripts" | Out-Null
@@ -444,6 +446,9 @@ function Invoke-PackageTar {
 
     $tarFile = Join-Path (Resolve-Path $DistDir) "$SkillName-v$Version.tar.gz"
     $sourcePath = Join-Path $BuildDir $SkillName
+
+    # Remove existing tarball if present (matches the Makefile rm -f)
+    if (Test-Path $tarFile) { Remove-Item -Force $tarFile }
 
     tar -czvf $tarFile -C $BuildDir $SkillName
     if ($LASTEXITCODE -ne 0) {

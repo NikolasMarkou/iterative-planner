@@ -32,6 +32,8 @@ all: package
 .PHONY: build
 build:
 	@echo "Building skill package: $(SKILL_NAME)"
+	@# Prune first: cp never removes a file deleted from the source, so a stale build dir would ship orphans.
+	rm -rf $(BUILD_DIR)/$(SKILL_NAME)
 	mkdir -p $(BUILD_DIR)/$(SKILL_NAME)
 	mkdir -p $(BUILD_DIR)/$(SKILL_NAME)/references
 	mkdir -p $(BUILD_DIR)/$(SKILL_NAME)/scripts
@@ -151,6 +153,7 @@ build-combined:
 package: validate build
 	@echo "Packaging skill as zip..."
 	mkdir -p $(DIST_DIR)
+	rm -f $(DIST_DIR)/$(SKILL_NAME)-v$(VERSION).zip
 	cd $(BUILD_DIR) && zip -r ../$(DIST_DIR)/$(SKILL_NAME)-v$(VERSION).zip $(SKILL_NAME)
 	@echo "Package created: $(DIST_DIR)/$(SKILL_NAME)-v$(VERSION).zip"
 
@@ -166,6 +169,7 @@ package-combined: validate build-combined
 package-tar: validate build
 	@echo "Packaging skill as tarball..."
 	mkdir -p $(DIST_DIR)
+	rm -f $(DIST_DIR)/$(SKILL_NAME)-v$(VERSION).tar.gz
 	cd $(BUILD_DIR) && tar -czvf ../$(DIST_DIR)/$(SKILL_NAME)-v$(VERSION).tar.gz $(SKILL_NAME)
 	@echo "Package created: $(DIST_DIR)/$(SKILL_NAME)-v$(VERSION).tar.gz"
 

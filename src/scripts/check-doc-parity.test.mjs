@@ -455,6 +455,28 @@ test("build.ps1: no mandatory script or gate is wrapped in a Test-Path skip", ()
   assert.deepEqual(skips, [], `build.ps1 silently skips a missing script instead of failing: ${skips.join(", ")}`);
 });
 
+test("build channels: `build` prunes the previous build dir before copying", () => {
+  const mk = makeRecipe(makefileSrc, "build");
+  const ps = psFunction(buildPs1Src, "Invoke-Build");
+  const mkPrune = mk.indexOf("rm -rf $(BUILD_DIR)/$(SKILL_NAME)");
+  const mkFirstCopy = mk.indexOf("mkdir -p $(BUILD_DIR)/$(SKILL_NAME)");
+  assert.ok(mkPrune >= 0 && mkPrune < mkFirstCopy, "Makefile build must rm -rf the skill build dir BEFORE recreating it");
+  const psPrune = ps.search(/Remove-Item -Recurse -Force \$skillDir/);
+  const psCreate = ps.indexOf("New-Item -ItemType Directory -Force -Path $skillDir");
+  assert.ok(psPrune >= 0 && psPrune < psCreate, "build.ps1 Invoke-Build must remove $skillDir BEFORE recreating it");
+});
+
+test("build channels: `package` and `package-tar` remove the old archive before creating it", () => {
+  const mkZip = makeRecipe(makefileSrc, "package");
+  assert.ok(/rm -f \$\(DIST_DIR\)\/\$\(SKILL_NAME\)-v\$\(VERSION\)\.zip[\s\S]*zip -r/.test(mkZip), "Makefile package must rm -f the zip before zip -r");
+  const mkTar = makeRecipe(makefileSrc, "package-tar");
+  assert.ok(/rm -f \$\(DIST_DIR\)\/\$\(SKILL_NAME\)-v\$\(VERSION\)\.tar\.gz[\s\S]*tar -czvf/.test(mkTar), "Makefile package-tar must rm -f the tarball before tar");
+  const psZip = psFunction(buildPs1Src, "Invoke-Package");
+  assert.ok(/Remove-Item \$zipFile[\s\S]*ZipFile\]::Open/.test(psZip), "build.ps1 Invoke-Package must remove the old zip before Open");
+  const psTar = psFunction(buildPs1Src, "Invoke-PackageTar");
+  assert.ok(/Remove-Item -Force \$tarFile[\s\S]*tar -czvf/.test(psTar), "build.ps1 Invoke-PackageTar must remove the old tarball before tar");
+});
+
 test("build channels: `lint` node --check the same script list", () => {
   const mk = sorted(matchAll(makeRecipe(makefileSrc, "lint"), /node --check src\/scripts\/([a-z-]+\.mjs)/g));
   const ps = sorted(matchAll(psFunction(buildPs1Src, "Invoke-Lint"), /"([a-z-]+\.mjs)"/g));
