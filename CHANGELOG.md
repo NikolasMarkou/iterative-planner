@@ -4,6 +4,24 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.69.0] - 2026-11-08
+
+**The terminal tab can carry the plan's name and phase, and the orchestrator now says when each sub-agent started.** Opt-in and outside the protocol's state: nothing here edits your settings.
+
+### Added
+
+- **`session-title.mjs`.** A hook helper that returns a `sessionTitle` for the SessionStart and UserPromptSubmit hooks, naming the active plan and its phase. `--print-settings` prints the hook block to paste; the helper never edits `settings.json`. It is opt-in, and it respects a title the user set with `/rename`. Its tests and isolation pins are included (the helper imports no write or spawn API, and neither build script writes to `settings.json`).
+- **Sub-agent start times.** Before each spawn the orchestrator runs `date -u`, prints one chat line (`[ip] <agent> (<slug or step>) started <UTC time>`) and appends an arrow-free `- SPAWN <agent> slug=<x> started <UTC time>` line to `state.md` Transition History.
+
+### Changed
+
+- **Lint and test lists.** `Makefile` and `build.ps1` include `session-title.mjs` and its test in both lists. `build.ps1` was verified by reading only; no PowerShell ran here.
+- `TEST_COUNT` and the README badges: 1080 to 1097 passing.
+
+### Notes
+
+- Cost: the helper reads at most 3 small files per hook call and adds no full walk over `plans/`.
+
 ## [2.68.0] - 2026-11-07
 
 **One command opens the plan dashboard from inside Claude Code, and the build is green again.** An audit found a red `make validate`, nine tests that failed only on an older git, an Executor model cell out of step with its agent file, a missing pointer in the PIVOT module, and install-folder litter that `sync-skill` never noticed. All are fixed here. The protocol itself is unchanged: no agent runs the dashboard and `SKILL.md` still does not mention it.
