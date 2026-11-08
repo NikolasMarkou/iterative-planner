@@ -703,7 +703,7 @@ describe("bootstrap.mjs", () => {
       run(dir, "new", "Spawn iteration goal");
       const statePath = join(dir, "plans", getPointer(dir), "state.md");
       const st = readFileSync(statePath, "utf-8");
-      const hist = "- EXECUTE → REFLECT (1)\n- SPAWN ip-executor slug=a-EXECUTE->REFLECT started 2026-11-08T05:07:43Z\n- SPAWN ip-executor slug=b-EXECUTE → REFLECT started 2026-11-08T05:08:43Z\n";
+      const hist = "- PLAN → EXECUTE (1)\n- SPAWN ip-executor slug=a-PLAN->EXECUTE started 2026-11-08T05:07:43Z\n- SPAWN ip-executor slug=b-PLAN → EXECUTE started 2026-11-08T05:08:43Z\n";
       writeFileSync(statePath, st.replace(/(## Transition History:\n)/, `$1${hist}`));
       const r = run(dir, "status");
       assert.ok(/iter=1\b/.test(r.stdout), `SPAWN lines skewed the iteration:\n${r.stdout}`);
@@ -1348,7 +1348,7 @@ describe("bootstrap.mjs", () => {
       assert.ok(r.stdout.includes("2"), "should show decision count");
     });
 
-    // Regression tests for displayIteration()/countExecuteReflectStripped()
+    // Regression tests for displayIteration()/countPlanExecuteStripped()
     // (plan-2026-07-31T203947-de0ded98 completion-fix, pass-2 WARNING 2): these
     // functions previously had zero automated coverage — only a reviewer's
     // manual CLI run proved the reconciled-display behavior worked.
@@ -1358,7 +1358,7 @@ describe("bootstrap.mjs", () => {
       const planDir = getPointer(dir);
       const transitions = Array.from(
         { length: 6 },
-        (_, i) => `- EXECUTE → REFLECT (hop ${i + 1})`
+        (_, i) => `- PLAN → EXECUTE (hop ${i + 1})`
       ).join("\n");
       writeFileSync(
         join(dir, "plans", planDir, "state.md"),
@@ -1370,6 +1370,23 @@ describe("bootstrap.mjs", () => {
 
       const resumeR = run(dir, "resume");
       assert.ok(resumeR.stdout.includes("Iteration:  6"), "resume should show the derived iteration (6), not the stale declared value (1)");
+    });
+
+    it("status/resume iteration is unchanged by completion-fix round trips and HYGIENE SKIP lines", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Completion fix iteration test");
+      const planDir = getPointer(dir);
+      const hist = [
+        "- PLAN → EXECUTE (approved)", "- EXECUTE → REFLECT (r1)", "- REFLECT → EXECUTE (fix)",
+        "- EXECUTE → REFLECT (r2)", "- REFLECT → EXECUTE (fix)", "- EXECUTE → REFLECT (r3)",
+        "- HYGIENE SKIP (iter 1): PLAN -> EXECUTE again",
+      ].join("\n");
+      writeFileSync(
+        join(dir, "plans", planDir, "state.md"),
+        `# Current State: REFLECT\n## Iteration: 1\n## Current Plan Step: N/A\n## Last Transition: EXECUTE → REFLECT\n## Transition History:\n${hist}\n`
+      );
+      assert.ok(run(dir, "status").stdout.includes("iter=1"), "status should stay at iteration 1");
+      assert.ok(run(dir, "resume").stdout.includes("Iteration:  1"), "resume should stay at iteration 1");
     });
 
     it("status/resume show 0 for a fresh plan with no real transitions (no false positive)", () => {

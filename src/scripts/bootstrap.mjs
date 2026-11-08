@@ -1785,8 +1785,10 @@ function cmdNewInner(goal, force) {
   console.log(`  Next: Read code, ask questions, write findings.`);
 }
 
-// Count `EXECUTE → REFLECT` arrows in the (comment-stripped) Transition History block.
-// Deliberately mirrors only the STRIPPED half of validate-plan.mjs's countExecuteReflect
+// Count `PLAN → EXECUTE` arrivals (= the iteration, plan-2026-11-08T075330-b464ad63/D-002;
+// a completion-fix REFLECT → EXECUTE round trip does not raise it) in the (comment-stripped)
+// Transition History block. SPAWN and HYGIENE SKIP lines are dropped whole, as in validate-plan.mjs.
+// Deliberately mirrors only the STRIPPED half of validate-plan.mjs's deriveIterationFromHistory
 // / transitionHistoryBlock (see that file's D-009 commentary) — NOT the RAW half that
 // makes the safety-critical iteration hard-cap incapable of under-counting. This helper
 // backs a *display* surface (resume/status), not a HARD gate, so the friendlier
@@ -1800,14 +1802,14 @@ function cmdNewInner(goal, force) {
 // to exercise `new` in a minimal install — importing validate-plan.mjs at module load
 // time broke `new` there with ERR_MODULE_NOT_FOUND even though only resume/status need
 // the value. See decisions.md for the corresponding entry recording this trade-off.
-function countExecuteReflectStripped(state) {
+function countPlanExecuteStripped(state) {
   if (!state) return 0;
   const stripped = stripHtmlComments(state);
   const m = /^## Transition History:/m.exec(stripped);
   if (!m) return 0;
   // "- SPAWN ..." log lines carry a free-text slug; drop them whole so they never count.
-  const block = stripped.slice(m.index).replace(/[–—‐]/g, "-").split("\n").filter((l) => !/^-\s+SPAWN /.test(l)).join("\n");
-  const re = /EXECUTE\s*(?:→|->)\s*REFLECT/g;
+  const block = stripped.slice(m.index).replace(/[–—‐]/g, "-").split("\n").filter((l) => !/^-\s+(?:SPAWN |HYGIENE SKIP \(iter \d+\):)/.test(l)).join("\n");
+  const re = /PLAN\s*(?:→|->)\s*EXECUTE/g;
   let count = 0;
   while (re.exec(block) !== null) count++;
   return count;
@@ -1817,11 +1819,11 @@ function countExecuteReflectStripped(state) {
 // surfaces (W1 fix, plan-2026-07-31T203947-de0ded98 completion-fix).
 // Params: state (string) — the already-read state.md contents.
 // Returns: string — max(declared, derived) as a string, or "?" if state.md has no
-//   parseable `## Iteration:` field AND no derivable EXECUTE -> REFLECT history.
+//   parseable `## Iteration:` field AND no derivable PLAN -> EXECUTE history.
 // Failure mode: never throws; a missing/malformed declared field falls back to 0
 //   before the max(), so a bad declared value cannot suppress a real derived count.
 // Known asymmetric risk (see decisions.md "Completion-fix round 2 (pass-2) note"):
-// countExecuteReflectStripped() is stripped-comment-only,
+// countPlanExecuteStripped() is stripped-comment-only,
 // so a stray `<!--` opener above Transition History that blanks the whole block makes
 // this DISPLAY under-report toward the stale declared value (opposite direction from
 // the HARD gate's over-count risk, which is safe-by-design) — validate-plan.mjs's
@@ -1829,7 +1831,7 @@ function countExecuteReflectStripped(state) {
 function displayIteration(state) {
   const iterStr = extractField(state, /^## Iteration:\s*(.+)$/m);
   const declared = iterStr ? parseInt(iterStr, 10) : 0;
-  const derived = countExecuteReflectStripped(state);
+  const derived = countPlanExecuteStripped(state);
   const iter = Math.max(Number.isFinite(declared) ? declared : 0, derived);
   if (iter <= 0) return iterStr || "?";
   return String(iter);
