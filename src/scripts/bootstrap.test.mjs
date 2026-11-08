@@ -3459,11 +3459,11 @@ describe("bootstrap.mjs", () => {
       const body = [];
       body.push(...padFiller(210));
       // Group A: 6 elidable lines
-      for (let i = 0; i < 6; i++) body.push(entryLine({ iterStep: `iter-1/step-A${i}`, path: `src/a${i}.mjs` }));
+      for (let i = 0; i < 6; i++) body.push(entryLine({ iterStep: `iter-1/step-1${i}`, path: `src/a${i}.mjs` }));
       // Sentinel HIGH line in between
       body.push(entryLine({ iterStep: "iter-1/step-mid", path: "src/mid.mjs", tier: "HIGH", score: 8, reason: "load-bearing" }));
       // Group B: 7 elidable lines
-      for (let i = 0; i < 7; i++) body.push(entryLine({ iterStep: `iter-1/step-B${i}`, path: `src/b${i}.mjs` }));
+      for (let i = 0; i < 7; i++) body.push(entryLine({ iterStep: `iter-1/step-2${i}`, path: `src/b${i}.mjs` }));
       writeChangelog(planDir, body);
 
       const r = maybeCompressChangelog(planDir);
@@ -3557,7 +3557,7 @@ describe("bootstrap.mjs", () => {
       for (let i = 0; i < 3; i++) body.push(entryLine({ iterStep: `iter-1/step-mid2-${i}` }));
       body.push(entryLine({ iterStep: "iter-1/step-A", path: "src/anchored.mjs", decisionRef: "D-007", reason: "anchored impl" }));
       // 6-line elidable run (only run >=5, so it WILL be elided)
-      for (let i = 0; i < 6; i++) body.push(entryLine({ iterStep: `iter-1/step-tail${i}` }));
+      for (let i = 0; i < 6; i++) body.push(entryLine({ iterStep: `iter-1/step-9${i}` }));
       writeChangelog(planDir, body);
 
       const r = maybeCompressChangelog(planDir);
@@ -3580,7 +3580,7 @@ describe("bootstrap.mjs", () => {
       // The raw entry line for tail0 is gone (the substring may still appear
       // inside the inline summary's iter-range citation; we check for the
       // entry's path+op signature instead).
-      assert.ok(!/iter-1\/step-tail0 \| abc1234 \| src\/foo\.mjs \| EDIT/.test(after),
+      assert.ok(!/iter-1\/step-90 \| abc1234 \| src\/foo\.mjs \| EDIT/.test(after),
         "raw tail entry line gone");
     });
 
@@ -4610,6 +4610,7 @@ describe("bootstrap.mjs — skill version stamp", () => {
     mkdirSync(join(pkg, "scripts"), { recursive: true });
     copyFileSync(BOOTSTRAP, join(pkg, "scripts", "bootstrap.mjs"));
     copyFileSync(SHARED, join(pkg, "scripts", "shared.mjs"));
+    copyFileSync(resolve(import.meta.dirname, "schema.mjs"), join(pkg, "scripts", "schema.mjs"));
     if (version !== null) writeFileSync(join(pkg, "VERSION"), version);
     return join(pkg, "scripts", "bootstrap.mjs");
   }
@@ -5424,5 +5425,127 @@ describe("retire: block-comment stamping is span-aware (A3 / D-007)", () => {
     const r = run(dir, "retire", GONE);
     assert.equal(stampCount(r.stdout), 1, `retire must stamp exactly once, got:\n${r.stdout}`);
     assert.match(readFileSync(f, "utf-8"), /D-780 \[STALE\]/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// plan-2026-11-08-b464ad63 step 9 — findings/scripts-core.md #4, #6, #7, #10, #11
+// ---------------------------------------------------------------------------
+describe("scripts-core MED/LOW fixes (step 9)", () => {
+  let tempDirs = [];
+  function getTempDir() { const d = makeTempDir(); tempDirs.push(d); return d; }
+  afterEach(() => { for (const d of tempDirs) removeTempDir(d); tempDirs = []; });
+
+  const planDirs = (dir) => existsSync(join(dir, "plans"))
+    ? readdirSync(join(dir, "plans")).filter((n) => n.startsWith("plan-")) : [];
+
+  it("#4 `new --help`, `new -f x`, `new --forcee x` are rejected and create nothing", () => {
+    for (const bad of [["--help"], ["-f", "real goal"], ["--forcee", "x"]]) {
+      const dir = getTempDir();
+      const r = runFull(dir, "new", ...bad);
+      assert.equal(r.exitCode, 1, `new ${bad.join(" ")}`);
+      assert.match(r.stderr, /Unknown flag/);
+      assert.deepEqual(planDirs(dir), [], "no plan dir may be created");
+    }
+  });
+
+  it("#4 `new -- \"-weird goal\"` is the explicit escape; `new --force` still works", () => {
+    const dir = getTempDir();
+    const r = runFull(dir, "new", "--", "-weird goal");
+    assert.equal(r.exitCode, 0, r.stderr);
+    const plan = getPointer(dir);
+    assert.match(readPlanFile(dir, plan, "plan.md"), /\n-weird goal\n/);
+    const r2 = runFull(dir, "new", "--force", "second goal");
+    assert.equal(r2.exitCode, 0, r2.stderr);
+  });
+
+  it("#6 a lock file holding a dead pid is reclaimed and the lock is released afterwards", () => {
+    const dir = getTempDir();
+    mkdirSync(join(dir, "plans"), { recursive: true });
+    writeFileSync(join(dir, "plans", ".lock"), "2147483646");
+    const r = runFull(dir, "new", "stale lock goal");
+    assert.equal(r.exitCode, 0, r.stderr);
+    assert.equal(existsSync(join(dir, "plans", ".lock")), false);
+    assert.deepEqual(readdirSync(join(dir, "plans")).filter((n) => /\.(tmp|stale)/.test(n)), []);
+  });
+
+  it("#6 a FRESH lock file with empty content is treated as live (being written), not stale", () => {
+    const dir = getTempDir();
+    mkdirSync(join(dir, "plans"), { recursive: true });
+    writeFileSync(join(dir, "plans", ".lock"), "");
+    const r = runFull(dir, "new", "racing goal");
+    assert.equal(r.exitCode, 1);
+    assert.match(r.stderr, /in progress|Retry shortly/);
+    assert.deepEqual(planDirs(dir), []);
+    assert.equal(existsSync(join(dir, "plans", ".lock")), true, "a live lock must not be unlinked");
+  });
+
+  it("#6 a lock held by a live pid is respected", () => {
+    const dir = getTempDir();
+    mkdirSync(join(dir, "plans"), { recursive: true });
+    writeFileSync(join(dir, "plans", ".lock"), String(process.pid));
+    const r = runFull(dir, "new", "blocked goal");
+    assert.equal(r.exitCode, 1);
+    assert.match(r.stderr, new RegExp(`pid ${process.pid}`));
+  });
+
+  it("#7 `new --force` creation failure restores NO pointer to the already-closed plan", () => {
+    const dir = getTempDir();
+    run(dir, "new", "first goal");
+    const first = getPointer(dir);
+    // A directory squatting on the pointer temp name makes the pointer write fail.
+    mkdirSync(join(dir, "plans", ".current_plan.tmp"));
+    const r = runFull(dir, "new", "--force", "second goal");
+    assert.equal(r.exitCode, 1);
+    assert.match(r.stderr, /already closed by --force; no pointer was restored/);
+    assert.doesNotMatch(r.stderr, /Restored pointer/);
+    assert.equal(existsSync(join(dir, "plans", ".current_plan")), false);
+    assert.match(readPlanFile(dir, first, "state.md"), /CLOSE/);
+  });
+
+  it("#11 goal truncation never splits a surrogate pair and drops a dangling `<!--`", () => {
+    const dir = getTempDir();
+    run(dir, "new", "a".repeat(59) + "\u{1F600}\u{1F600}");
+    const s = runFull(dir, "status").stdout;
+    assert.ok(s.includes("a".repeat(59) + "\u{1F600} |"), s);
+    assert.ok(!/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(s), "no lone high surrogate");
+    const dir2 = getTempDir();
+    run(dir2, "new", "fix <!-- bug in the parser");
+    const s2 = runFull(dir2, "status").stdout;
+    assert.ok(!s2.includes("<!--"), s2);
+  });
+
+  it("#11 a CRLF consolidated file still dedups a re-merged plan section", async () => {
+    const dir = getTempDir();
+    run(dir, "new", "crlf goal");
+    const plan = getPointer(dir);
+    run(dir, "close");
+    const f = join(dir, "plans", "FINDINGS.md");
+    writeFileSync(f, readFileSync(f, "utf-8").replace(/\n/g, "\r\n"));
+    writeFileSync(join(dir, "plans", ".current_plan"), plan);
+    run(dir, "close");
+    const count = (readFileSync(f, "utf-8").match(new RegExp(`^## ${plan}\\r?$`, "gm")) || []).length;
+    assert.ok(count <= 1, `section merged ${count} times`);
+  });
+
+  it("#10 a malformed row (bad timestamp) is never folded into a compressed summary", async () => {
+    const { maybeCompressChangelog } = await import(BOOTSTRAP);
+    const dir = getTempDir();
+    const planDir = join(dir, "plans", "plan-x");
+    mkdirSync(planDir, { recursive: true });
+    const header = ["# Changelog", "*a*", "*b*", "*c*"];
+    const good = (i) => `2026-05-15T12:00:00Z | iter-1/step-${i} | abc1234 | src/f${i}.mjs | EDIT(+1,-1) | radius:LOW(0) | - | r`;
+    const bad = "yesterday | iter-1/step-4 | abc1234 | src/bad.mjs | EDIT(+1,-1) | radius:LOW(0) | - | malformed";
+    const body = [];
+    for (let i = 0; i < 205; i++) body.push(`filler ${i}`);
+    for (let i = 1; i <= 3; i++) body.push(good(i));
+    body.push(bad);
+    for (let i = 5; i <= 9; i++) body.push(good(i));
+    writeFileSync(join(planDir, "changelog.md"), [...header, ...body].join("\n") + "\n");
+    const r = maybeCompressChangelog(planDir);
+    assert.equal(r.compressed, true, JSON.stringify(r));
+    const after = readFileSync(join(planDir, "changelog.md"), "utf-8");
+    assert.ok(after.includes(bad), "the malformed row must survive verbatim");
+    assert.deepEqual(Object.keys(r).sort(), ["afterLines", "beforeLines", "compressed", "elidedCount", "reason"]);
   });
 });

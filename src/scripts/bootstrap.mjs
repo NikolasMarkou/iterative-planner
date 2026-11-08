@@ -17,7 +17,7 @@
 // Writes plans/.current_plan with the directory name for discovery.
 // Requires Node.js 18+ (guaranteed by Claude Code).
 
-import { mkdirSync, writeFileSync, readFileSync, readdirSync, renameSync, unlinkSync, existsSync, rmSync, copyFileSync, openSync, closeSync } from "fs";
+import { mkdirSync, writeFileSync, readFileSync, readdirSync, renameSync, unlinkSync, existsSync, rmSync, copyFileSync, linkSync, statSync } from "fs";
 import { join, extname } from "path";
 import { randomBytes, createHash } from "crypto";
 import { homedir } from "os";
@@ -39,7 +39,11 @@ import {
   DECISION_ID_NUM_PATTERN,
   stripHtmlComments,
   isMain,
+  ANCHOR_SOURCE_EXTS,
+  ANCHOR_SKIP_DIRS,
+  ANCHOR_WALK_MAX_DEPTH,
 } from "./shared.mjs";
+import { entryFromFields } from "./schema.mjs";
 // DECISION plan_2026-07-14_79ee0f59/D-002 — the changelog is markdown and an append is ONE LINE
 // via writeFileSync. Do NOT re-encode it or route writes through a document library: v2.33.0 tried
 // that, silently dropped concurrent entries, and was reverted. Field shapes live only in schema.mjs.
@@ -145,42 +149,79 @@ function editDistance(a, b) {
   return dp[m][n];
 }
 
+// DECISION plan-2026-11-08T075330-b464ad63/D-007 — lock protocol (findings #6): the lock file is created WITH its content in one atomic step —
+// the pid is written to a private temp file, then `linkSync` publishes it under the lock name
+// (EEXIST if held). A reader can therefore never see an empty lock file and mistake a live
+// lock for a stale one. Stale reclaim renames the stale file aside (only one reclaimer wins the
+// rename) and re-checks what it moved before discarding it. A lock whose content is empty or
+// unparseable is treated as "being written / foreign": locked unless it is older than 10 s.
+// Do NOT go back to openSync("wx") + a later write of the pid (an empty window a reader mistakes
+// for stale) or to unlink-then-create reclaim (two reclaimers each delete the other's fresh lock).
+function readLockPid() {
+  const raw = readFileSync(lockFile, "utf-8").trim();
+  const pid = parseInt(raw, 10);
+  return Number.isInteger(pid) && pid > 0 ? pid : null;
+}
+
+function lockHeld(msg) {
+  const e = new Error(msg);
+  e.code = "ELOCKED";
+  return e;
+}
+
+function publishLock() {
+  const tmp = `${lockFile}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
+  writeFileSync(tmp, String(process.pid));
+  try {
+    linkSync(tmp, lockFile); // atomic create-with-content; throws EEXIST when held
+  } finally {
+    try { unlinkSync(tmp); } catch { /* temp already gone */ }
+  }
+}
+
 function acquireLock() {
   mkdirSync(plansDir, { recursive: true });
-  // Try atomic exclusive creation.
-  let fd;
   try {
-    fd = openSync(lockFile, "wx");
+    publishLock();
+    return true;
   } catch (err) {
     if (err.code !== "EEXIST") throw err;
-    // Lock exists. Read PID; if stale, reclaim.
-    let priorPid = null;
-    try { priorPid = parseInt(readFileSync(lockFile, "utf-8").trim(), 10); } catch {}
-    if (priorPid && isPidAlive(priorPid)) {
-      const e = new Error(`Another bootstrap.mjs invocation is in progress (pid ${priorPid}). Retry shortly.`);
-      e.code = "ELOCKED";
-      throw e;
+  }
+  // Lock exists. Decide whether it is live.
+  let priorPid = null;
+  let ageMs = 0;
+  try {
+    priorPid = readLockPid();
+    ageMs = Date.now() - statSync(lockFile).mtimeMs;
+  } catch { /* vanished between EEXIST and read: fall through to a retry */ }
+  if (priorPid && isPidAlive(priorPid)) {
+    throw lockHeld(`Another bootstrap.mjs invocation is in progress (pid ${priorPid}). Retry shortly.`);
+  }
+  if (!priorPid && existsSync(lockFile) && ageMs < 10000) {
+    throw lockHeld("Another bootstrap.mjs invocation is in progress (lock being written). Retry shortly.");
+  }
+  // Stale: move it aside atomically. Only one reclaimer's rename succeeds.
+  const aside = `${lockFile}.stale.${process.pid}.${randomBytes(4).toString("hex")}`;
+  try {
+    renameSync(lockFile, aside);
+    let movedPid = null;
+    try { movedPid = parseInt(readFileSync(aside, "utf-8").trim(), 10) || null; } catch {}
+    if (movedPid !== priorPid) {
+      // We moved someone else's fresh lock: put it back and stand down.
+      try { linkSync(aside, lockFile); } catch { /* a newer lock exists; fine */ }
+      try { unlinkSync(aside); } catch {}
+      throw lockHeld("Lock contention reclaiming stale lock. Retry shortly.");
     }
-    // Stale lock — remove and retry once. The retry is also racy if many
-    // processes converge on the stale lock simultaneously; the second-level
-    // EEXIST surfaces ELOCKED so callers see a clean failure rather than
-    // silent overwrite.
-    try { unlinkSync(lockFile); } catch {}
-    try {
-      fd = openSync(lockFile, "wx");
-    } catch (err2) {
-      if (err2.code === "EEXIST") {
-        const e = new Error("Lock contention reclaiming stale lock. Retry shortly.");
-        e.code = "ELOCKED";
-        throw e;
-      }
-      throw err2;
-    }
+    try { unlinkSync(aside); } catch {}
+  } catch (err) {
+    if (err.code === "ELOCKED") throw err;
+    if (err.code !== "ENOENT") throw err;
   }
   try {
-    writeFileSync(fd, String(process.pid));
-  } finally {
-    closeSync(fd);
+    publishLock();
+  } catch (err2) {
+    if (err2.code === "EEXIST") throw lockHeld("Lock contention reclaiming stale lock. Retry shortly.");
+    throw err2;
   }
   return true;
 }
@@ -631,7 +672,8 @@ function prependToConsolidated(filePath, planDirName, newSection) {
   try { existing = readFileSync(filePath, "utf-8"); } catch { /* file may not exist */ }
 
   // Dedup guard: skip if this plan was already merged
-  if (existing.includes(`\n## ${planDirName}\n`)) return;
+  // CRLF-tolerant: a consolidated file saved with Windows line endings must still dedup.
+  if (existing.includes(`\n## ${planDirName}\n`) || existing.includes(`\n## ${planDirName}\r\n`)) return;
 
   // Skip past compressed summary block if present
   const closeMarker = existing.indexOf(COMPRESSED_SUMMARY_CLOSE);
@@ -1215,6 +1257,15 @@ export function maybeCompressDecisions(planDir, opts = {}) {
   const afterLinesCount = newContent.split("\n").length;
 
   if (!dryRun) {
+    // Compression is a read-modify-write of a ledger executors append to. Re-read just before the
+    // swap: if a line arrived since our read, stand down rather than lose it (the next pass
+    // compresses). Narrows the window to the rename itself; compression still should not be
+    // scheduled concurrently with an EXECUTE step.
+    let current = null;
+    try { current = readFileSync(filePath, "utf-8"); } catch { /* vanished: treat as changed */ }
+    if (current !== content) {
+      return { compressed: false, beforeLines, afterLines: beforeLines, elidedCount: 0, reason: "concurrent-append" };
+    }
     writeFileSync(filePath + ".tmp", newContent);
     renameSync(filePath + ".tmp", filePath);
   }
@@ -1312,11 +1363,15 @@ function classifyChangelogLine(line) {
   if (fields.length < 8) return { kind: "non-entry" };
 
   // Elidable/preserve rules: isElidableRecord() — the one definition.
-  const { tier, isRevert, isAnchored, elidable } = isElidableRecord({
+  const rec = isElidableRecord({
     op: fields[4],
     radius: fields[5],
     dref: fields[6],
   });
+  const { tier, isRevert, isAnchored } = rec;
+  // A row the validator would flag (bad timestamp, op, commit...) is "preserved verbatim, never
+  // dropped" (schema.mjs): only a row that satisfies CHANGELOG_SPEC may be folded into a summary.
+  const elidable = rec.elidable && entryFromFields(fields) !== null;
 
   return {
     kind: "entry",
@@ -1410,6 +1465,7 @@ function parseChangelogFile(content) {
  *   - "under-threshold"  line count <= threshold
  *   - "no-elidable-groups"  no group of >=5 consecutive elidable lines exists
  *   - "no-new-entries"   prior metadata block records same entry count
+ *   - "concurrent-append" the file changed between our read and the swap; nothing written
  *
  * Options:
  *   threshold (default 200) — line count above which compression triggers.
@@ -1537,6 +1593,15 @@ export function maybeCompressChangelog(planDir, opts = {}) {
   };
 }
 
+// Cut a one-line goal to `max` CODE POINTS (never half a surrogate pair) and drop a trailing
+// unterminated `<!--` opener, which would otherwise comment out the rest of an INDEX.md row.
+function truncateGoal(text, max) {
+  let out = Array.from(String(text)).slice(0, max).join("");
+  const open = out.lastIndexOf("<!--");
+  if (open >= 0 && out.indexOf("-->", open) < 0) out = out.slice(0, open).trimEnd();
+  return out;
+}
+
 function appendToIndex(planDirName) {
   const indexPath = join(plansDir, "INDEX.md");
   ensureConsolidatedFiles(); // creates INDEX.md if missing
@@ -1553,7 +1618,7 @@ function appendToIndex(planDirName) {
   // against a goal section that begins with a blank line, which would
   // otherwise produce an empty INDEX.md goal column.
   const goalFirstNonBlank = goal.split("\n").find((l) => l.trim().length > 0) || "No goal";
-  const goalOneLine = goalFirstNonBlank.slice(0, 60);
+  const goalOneLine = truncateGoal(goalFirstNonBlank, 60);
   // Date column: both grammars (`plan_YYYY-MM-DD_…` and `plan-YYYY-MM-DDTHHMMSS-…`)
   // via shared.mjs. A name that is not a plan-id yields null → "unknown", as before.
   const date = planDateFromId(planDirName) || "unknown";
@@ -1750,13 +1815,11 @@ function cmdNewInner(goal, force) {
   } catch (err) {
     try { rmSync(planDir, { recursive: true, force: true }); } catch (e) { console.error(`WARNING: Failed to clean up partial plan directory: ${planDir}`); }
     try { if (existsSync(pointerFile + ".tmp")) unlinkSync(pointerFile + ".tmp"); } catch (e) { console.error("WARNING: Failed to clean up temp pointer file."); }
-    // If --force was used, restore the old pointer so the previous plan is not orphaned
+    // If --force was used, the previous plan was already CLOSED (state.md rewritten, merged into
+    // the consolidated files) before creation began. Restoring its pointer would make `resume`
+    // report an INCOMPLETE CLOSE for a plan that closed fine, so restore nothing and say so.
     if (previousPlan) {
-      try {
-        writeFileSync(pointerFile + ".tmp", previousPlan);
-        renameSync(pointerFile + ".tmp", pointerFile);
-        console.error(`WARNING: Restored pointer to previous plan: plans/${previousPlan}`);
-      } catch (e) { console.error(`WARNING: Failed to restore pointer to previous plan: plans/${previousPlan}`); }
+      console.error(`WARNING: previous plan plans/${previousPlan} was already closed by --force; no pointer was restored. Run \`new\` again to start the new plan.`);
     } else if (wePersistedPointer) {
       // D-004 — only unlink pointer we ourselves wrote. Pre-fix this branch
       // ran unconditionally and could nuke another invocation's pointer under
@@ -1941,7 +2004,7 @@ function cmdStatus() {
 
   // Interrupted-CLOSE anomaly suffix (see cmdResume) — same one-line contract.
   const closeSuffix = currentState === "CLOSE" ? " | INCOMPLETE CLOSE: re-run close" : "";
-  console.log(`[${currentState}] iter=${iteration} step=${step} | ${goal.split("\n")[0].slice(0, 60)} | plans/${planDirName}${closeSuffix}`);
+  console.log(`[${currentState}] iter=${iteration} step=${step} | ${truncateGoal(goal.split("\n")[0], 60)} | plans/${planDirName}${closeSuffix}`);
 }
 
 function cmdClose(opts = {}) {
@@ -2105,13 +2168,13 @@ function cmdList() {
     const plan = readPlanFile(name, "plan.md");
     const currentState = extractField(state, /^# Current State:\s*(.+)$/m) || "?";
     const goal = extractField(plan, /\n## Goal\s*\n([\s\S]+?)(?=\n## |$)/) || "?";
-    const goalOneLine = goal.split("\n")[0].slice(0, 60);
+    const goalOneLine = truncateGoal(goal.split("\n")[0], 60);
     console.log(`  ${name}  [${currentState}] ${goalOneLine}${marker}`);
   }
 }
 
-// Source-file walk parameters for anchor maintenance (cmdRetire). Kept in sync
-// with validate-plan.mjs ANCHOR_SOURCE_EXTS / SKIP_DIR_NAMES so `retire` stamps
+// Source-file walk parameters for anchor maintenance (cmdRetire) come from shared.mjs, the
+// same tables validate-plan.mjs walks, so `retire` stamps
 // exactly the anchors the validator scans. NOTE the `.md` exception: in Markdown
 // an anchor is a `DECISION … D-NNN` token anywhere inside a CLOSED HTML comment
 // span, so for those extensions (see ANCHOR_HTML_EXTS below) cmdRetire scopes its
@@ -2119,24 +2182,10 @@ function cmdList() {
 // scan uses. Without that scoping, `retire` would irreversibly stamp `[STALE]`
 // into documentation prose, doc examples, and unclosed comments the validator
 // does not consider anchors.
-export const ANCHOR_SOURCE_EXTS = new Set([
-  ".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".rb", ".go", ".rs",
-  ".c", ".h", ".cpp", ".hpp", ".java", ".kt", ".sql", ".md",
-  // 16 additions (v2.57.6): the union of findAnchorsInFile's hash-style and
-  // slash-style per-family lists — restores real anchor-audit coverage for
-  // extensions that scanner already knows how to parse but this collection-side
-  // allowlist never grew to include. Must stay byte-identical to validate-plan.mjs's
-  // own ANCHOR_SOURCE_EXTS copy (see that file's "Kept in sync" comment).
-  ".sh", ".bash", ".zsh", ".yml", ".yaml", ".toml", ".r", ".pl", ".pm", ".tf",
-  ".jsx", ".cc", ".swift", ".scala", ".cs", ".php",
-]);
+export { ANCHOR_SOURCE_EXTS }; // defined once in shared.mjs (the validator walks the same set)
 // NOTE: mirrors validate-plan.mjs HTML_STYLE_EXTS, narrowed to the extensions
 // this walk actually visits (ANCHOR_SOURCE_EXTS ∩ HTML_STYLE_EXTS).
 const ANCHOR_HTML_EXTS = new Set([".md"]);
-const ANCHOR_SKIP_DIRS = new Set([
-  "node_modules", ".git", "dist", "build", "plans",
-  "target", "__pycache__", ".cache", "vendor", "out",
-]);
 
 // NOTE: `retire <plan-id>` is the auditable
 // path out of the "anchor graveyard" (OBS-004 / P1): when a plan dir is removed
@@ -2183,7 +2232,7 @@ function cmdRetire(planId) {
   let stamped = 0;
   let filesChanged = 0;
   const walk = (dir, depth = 0) => {
-    if (depth > 12) return;
+    if (depth > ANCHOR_WALK_MAX_DEPTH) return;
     let ents;
     try { ents = readdirSync(dir, { withFileTypes: true }); } catch { return; }
     for (const e of ents) {
@@ -2238,7 +2287,7 @@ function cmdRetire(planId) {
           // span there is always phantom; gating it here keeps the two tools' notion of
           // "comment context" identical rather than merely similar. The LINE-MARKER arm
           // below stays un-gated (D-007): retire must remain a SUPERSET.
-          const spans = BLOCK_COMMENT_EXTS.has(extname(e.name)) ? blockCommentSpans(txt) : [];
+          const spans = BLOCK_COMMENT_EXTS.has(extname(e.name)) ? blockCommentSpans(txt, extname(e.name)) : [];
           const inSpan = (idx) => spans.some((sp) => idx >= sp.start && idx < sp.end);
           // The line prefix a validator-visible anchor must end with — the same
           // `(?:^|\s)(#|//|--)\s+` shape the four anchor regexes require before DECISION.
@@ -2401,7 +2450,15 @@ function runCli() {
     // after `new`). A tolerant `args.includes("--force")` scan made goal TEXT destructive:
     // `new "add a --force flag"` silently force-closed the active plan.
     const force = args[1] === "--force";
-    const goalArgs = force ? args.slice(2) : args.slice(1);
+    let goalArgs = force ? args.slice(2) : args.slice(1);
+    // A flag-like first goal token (`new --help`, `new -f x`, `new --forcee x`) is rejected, not
+    // swallowed into the goal. `--` is the explicit escape: `new -- "-weird goal"`.
+    if (goalArgs[0] === "--") {
+      goalArgs = goalArgs.slice(1);
+    } else if (goalArgs[0] !== undefined && goalArgs[0].startsWith("-")) {
+      console.error(`ERROR: Unknown flag "${goalArgs[0]}" after "new". Only --force is accepted; use "--" before a goal that starts with "-".`);
+      process.exit(1);
+    }
     // v2.60.0 — no `|| "No goal specified"` default. A missing goal is now an error in
     // cmdNew, not a placeholder string: the placeholder produced indistinguishable
     // unlabelled plans that INDEX.md could not describe.

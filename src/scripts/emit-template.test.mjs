@@ -230,3 +230,11 @@ test("resolveTemplate(slug, Buffer.from(text)) byte-equals resolveTemplate(slug)
     assert.ok(fromBuffer.body.equals(fromFile.body), `${slug}: Buffer-input slice != file slice`);
   }
 });
+
+// plan-2026-11-08-b464ad63 step 9 (scripts-core #11): the CLI exits through exitCode, output intact.
+test("CLI still prints the full body and exits 0 through exitCode", () => {
+  const r = spawnSync("node", [join(here, "emit-template.mjs"), "--name", "plan"], { encoding: "utf-8" });
+  assert.equal(r.status, 0);
+  assert.ok(r.stdout.startsWith("## plan.md"));
+  assert.equal(r.stdout, resolveTemplate("plan").body.toString());
+});

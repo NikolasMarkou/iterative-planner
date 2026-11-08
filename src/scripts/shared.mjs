@@ -417,6 +417,10 @@ export function unterminatedCommentOpener(content) {
 // one over-masks (double-reports) rather than losing anything. Template literals aren't
 // skipped either (D-033) — same over-report trade, chosen over the silent multi-file
 // masking an unbalanced backtick skip caused previously.
+// A regex literal ending in `*/` (`/a*/`) is read as a closer: the span swallows the code up to
+// it (over-report; pinned by a test in shared.test.mjs, step 9 of plan-b464ad63, D-007 there).
+// A quote inside a regex literal (`/"/`) hides a same-line `/* */`, bounded to that line.
+// Rust lifetimes / C++ digit separators are handled by CHAR_LITERAL_ONLY_EXTS below.
 // ---------------------------------------------------------------------------
 
 // DECISION plan-2026-09-01T100120-4f591469/D-032 — the block-comment scan is gated by
@@ -433,6 +437,23 @@ export const BLOCK_COMMENT_EXTS = new Set([
   ".c", ".h", ".cpp", ".hpp", ".cc", ".java", ".kt", ".swift", ".scala", ".cs", ".php",
 ]);
 
+// Source-file walk parameters for anchor maintenance, the ONE definition (scripts-core #9):
+// validate-plan.mjs's reverse-anchor scan and bootstrap.mjs `retire` both walk with these, so
+// `retire` stamps exactly the files the validator scans. Both modules re-export
+// ANCHOR_SOURCE_EXTS for their existing importers.
+export const ANCHOR_SOURCE_EXTS = new Set([
+  ".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".rb", ".go", ".rs",
+  ".c", ".h", ".cpp", ".hpp", ".java", ".kt", ".sql", ".md",
+  // the union of findAnchorsInFile's hash-style and slash-style per-family lists
+  ".sh", ".bash", ".zsh", ".yml", ".yaml", ".toml", ".r", ".pl", ".pm", ".tf",
+  ".jsx", ".cc", ".swift", ".scala", ".cs", ".php",
+]);
+export const ANCHOR_SKIP_DIRS = new Set([
+  "node_modules", ".git", "dist", "build", "plans",
+  "target", "__pycache__", ".cache", "vendor", "out",
+]);
+export const ANCHOR_WALK_MAX_DEPTH = 12;
+
 // DECISION plan-2026-09-01T100120-4f591469/D-033 — the BACKTICK is deliberately ABSENT
 // from this set; do not add it back. Skipping template literals previously let an odd
 // backtick count inside a regex literal run to the next backtick anywhere in the file and
@@ -441,12 +462,26 @@ export const BLOCK_COMMENT_EXTS = new Set([
 // literal now opens a phantom span).
 const BLOCK_STRING_DELIMS = new Set(['"', "'"]);
 
+// DECISION plan-2026-11-08T075330-b464ad63/D-008 — extension-aware quotes, not a lexer. Extensions where a bare `'` is usually NOT a string delimiter (Rust lifetimes, C++14 digit
+// separators, Scala symbols). Pass the extension as `blockCommentSpans`'s 2nd argument; both
+// consumers (validate-plan findAnchorsInFile, bootstrap retire) do. Extension-aware quote
+// handling, not a lexer (D-025/D-032 stand). Do NOT extend this to regex literals: that is the lexer
+// those decisions deleted after three strikes.
+export const CHAR_LITERAL_ONLY_EXTS = new Set([".rs", ".c", ".h", ".cpp", ".hpp", ".cc", ".scala"]);
+
 // Skip a quoted string starting at `i`. Returns the offset one past its closing quote,
 // or -1 when the quote never closes — in which case the caller must treat the quote as
 // ORDINARY TEXT (under-masking, the loud direction). Neither delimiter may span a
 // newline, which BOUNDS a mis-read to one line. Backslash escapes the next character.
-function skipStringLiteral(content, i) {
+function skipStringLiteral(content, i, charOnly = false) {
   const quote = content[i];
+  // charOnly (Rust/C/C++/Scala): a single quote opens a string ONLY in the char-literal shape
+  // `'x'` / `'\x..'`. Otherwise it is a lifetime (`&'a T`), a digit separator (`1'000`) or a
+  // symbol, and runs to the next quote on the line, hiding a real `/* */` there.
+  if (charOnly && quote === "'") {
+    const m = /^'(?:\\[^\n']{1,10}|[^\\\n'])'/u.exec(content.slice(i, i + 14));
+    return m ? i + m[0].length : -1;
+  }
   let j = i + 1;
   while (j < content.length) {
     const c = content[j];
@@ -462,7 +497,7 @@ function skipStringLiteral(content, i) {
 // block-comment closer — one with no opener, which is a syntax error in every C-family
 // language and is therefore evidence that an EARLIER closer was prose inside a comment
 // rather than its terminator. Returns that offset, or -1 if a `/*` or EOF comes first.
-function nextStrayBlockCloser(content, from) {
+function nextStrayBlockCloser(content, from, charOnly = false) {
   let i = from;
   while (i < content.length) {
     const c = content[i];
@@ -476,7 +511,7 @@ function nextStrayBlockCloser(content, from) {
       continue;
     }
     if (BLOCK_STRING_DELIMS.has(c)) {
-      const e = skipStringLiteral(content, i);
+      const e = skipStringLiteral(content, i, charOnly);
       if (e > 0) { i = e; continue; }
     }
     i += 1;
@@ -496,8 +531,9 @@ function nextStrayBlockCloser(content, from) {
 //  - `validate-plan.mjs`'s `findAnchorsInFile` and `bootstrap.mjs retire`'s stamper BOTH
 //    consume this, which is what keeps the "the validator sees exactly what retire stamps"
 //    contract true by construction instead of by two regexes kept in lockstep by hand.
-export function blockCommentSpans(content) {
+export function blockCommentSpans(content, ext = "") {
   if (!content) return [];
+  const charOnly = CHAR_LITERAL_ONLY_EXTS.has(ext);
   const spans = [];
   let i = 0;
   while (i < content.length) {
@@ -508,7 +544,7 @@ export function blockCommentSpans(content) {
       let close = content.indexOf("*/", i + 2);
       if (close < 0) { i += 2; continue; } // unterminated → no span (fail safe)
       for (;;) {
-        const stray = nextStrayBlockCloser(content, close + 2);
+        const stray = nextStrayBlockCloser(content, close + 2, charOnly);
         if (stray < 0) break;
         close = stray;
       }
@@ -523,7 +559,7 @@ export function blockCommentSpans(content) {
       continue;
     }
     if (BLOCK_STRING_DELIMS.has(c)) {
-      const e = skipStringLiteral(content, i);
+      const e = skipStringLiteral(content, i, charOnly);
       if (e > 0) { i = e; continue; }
     }
     i += 1;

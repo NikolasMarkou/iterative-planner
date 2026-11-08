@@ -10,7 +10,7 @@
 // Requires Node.js 18+.
 
 import { readFileSync, existsSync, readdirSync } from "fs";
-import { join, extname, relative, basename } from "path";
+import { join, extname, relative, basename, resolve, isAbsolute } from "path";
 import {
   extractField,
   splitChangelogFields,
@@ -27,6 +27,9 @@ import {
   DECISION_ID_NUM_PATTERN,
   COUNTED_BUDGET_RE,
   isMain,
+  ANCHOR_SOURCE_EXTS,
+  ANCHOR_SKIP_DIRS,
+  ANCHOR_WALK_MAX_DEPTH,
 } from "./shared.mjs";
 // Changelog field shapes are schema-driven (see checkChangelogFormat / D-001).
 import { CHANGELOG_SPEC, entryFromFields, validateElement } from "./schema.mjs";
@@ -292,6 +295,12 @@ function transitionHistoryBlock(state, { raw = false } = {}) {
   return text.slice(m.index);
 }
 
+// A CLI argument names a path (not a bare plan-dir name) when it contains either separator
+// (a Windows `plans\\plan-x` too) or starts with `.`; a drive-letter absolute path counts as well.
+function looksLikePath(arg) {
+  return arg.includes("/") || arg.includes("\\") || arg.startsWith(".") || /^[A-Za-z]:/.test(arg);
+}
+
 function checkStateTransitions(planDir, issues) {
   const state = readFile(join(planDir, "state.md"));
   if (!state) {
@@ -313,7 +322,11 @@ function checkStateTransitions(planDir, issues) {
 
   // HYGIENE SKIP lines are excluded WHOLESALE, not just guarded at the prefix — see
   // stripHygieneSkipLines (reviewer CRITICAL #1).
-  const lines = stripHygieneSkipLines(historyBlock).split("\n").filter((l) => l.startsWith("- "));
+  // The block runs to EOF; bound it at the next `## ` heading so a later appended section with an
+  // `- A -> B` bullet is not read as a transition. (The hard-cap counters deliberately keep the
+  // unbounded block: they must not be able to under-count.)
+  const bounded = historyBlock.split(/\n(?=## )/)[0];
+  const lines = stripHygieneSkipLines(bounded).split("\n").filter((l) => l.startsWith("- "));
 
   for (const line of lines) {
     // Format: "- STATE1 → STATE2 (reason)" — arrow can be → or ->
@@ -1476,17 +1489,7 @@ function checkFindingsIndexLinks(planDir, issues) {
 // Reverse anchor check (Step 3.1g — added in 2.13.0)
 // ---------------------------------------------------------------------------
 
-export const ANCHOR_SOURCE_EXTS = new Set([
-  ".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".rb", ".go", ".rs",
-  ".c", ".h", ".cpp", ".hpp", ".java", ".kt", ".sql", ".md",
-  // 16 additions (v2.57.6): the union of findAnchorsInFile's hash-style and
-  // slash-style per-family lists — restores real anchor-audit coverage for
-  // extensions that scanner already knows how to parse but this collection-side
-  // allowlist never grew to include. Must stay byte-identical to bootstrap.mjs's
-  // own ANCHOR_SOURCE_EXTS copy (see that file's "Kept in sync" comment).
-  ".sh", ".bash", ".zsh", ".yml", ".yaml", ".toml", ".r", ".pl", ".pm", ".tf",
-  ".jsx", ".cc", ".swift", ".scala", ".cs", ".php",
-]);
+export { ANCHOR_SOURCE_EXTS }; // defined once in shared.mjs
 
 // NOTE: extensions whose ONLY anchor form is the HTML comment `<!-- DECISION … -->`.
 // In these files the hash/slash/SQL/block scans are suppressed: Markdown prose and
@@ -1499,13 +1502,9 @@ export const ANCHOR_SOURCE_EXTS = new Set([
 // block scan below has no marker prefix and would read it as a real anchor block.
 export const HTML_STYLE_EXTS = new Set([".md", ".markdown", ".mdx", ".html", ".htm"]);
 
-const SKIP_DIR_NAMES = new Set([
-  "node_modules", ".git", "dist", "build", "plans",
-  "target", "__pycache__", ".cache", "vendor", "out",
-]);
 
 function walkSourceFiles(root, files = [], depth = 0) {
-  if (depth > 12) return files;
+  if (depth > ANCHOR_WALK_MAX_DEPTH) return files;
   let entries;
   try {
     entries = readdirSync(root, { withFileTypes: true });
@@ -1519,7 +1518,7 @@ function walkSourceFiles(root, files = [], depth = 0) {
     }
     const full = join(root, ent.name);
     if (ent.isDirectory()) {
-      if (SKIP_DIR_NAMES.has(ent.name)) continue;
+      if (ANCHOR_SKIP_DIRS.has(ent.name)) continue;
       walkSourceFiles(full, files, depth + 1);
     } else if (ent.isFile()) {
       const ext = extname(ent.name);
@@ -1568,7 +1567,26 @@ function buildAnchorRegexes(prefixPattern) {
 // scan re-runs this same walk with LOOSE_ANCHOR_PREFIX_PATTERN — same extension gating,
 // same comment spans, same doc-example immunity — so the two scans cannot disagree about
 // what counts as a comment.
+//
+// Per-run memo (scripts-core #8): one `validate()` run asks for the same (file, prefix) pair from
+// checkReverseAnchors (loose + strict), checkAnchorRefsRequired and the Anchor-Refs resolver, and
+// walks the tree twice. The cache is cleared at the top of `validate()`, so it never outlives the
+// run it serves and a long-lived importer (tests) never sees stale files.
+const scanCache = { walks: new Map(), anchors: new Map() };
+function clearScanCache() { scanCache.walks.clear(); scanCache.anchors.clear(); }
+
+function walkSourceFilesCached(root) {
+  if (!scanCache.walks.has(root)) scanCache.walks.set(root, walkSourceFiles(root));
+  return scanCache.walks.get(root);
+}
+
 function findAnchorsInFile(file, projectRoot, prefixPattern = ANY_PLAN_ID_PATTERN) {
+  const key = `${file}\0${projectRoot}\0${prefixPattern}`;
+  if (!scanCache.anchors.has(key)) scanCache.anchors.set(key, scanAnchorsInFile(file, projectRoot, prefixPattern));
+  return scanCache.anchors.get(key);
+}
+
+function scanAnchorsInFile(file, projectRoot, prefixPattern) {
   let text;
   try {
     text = readFileSync(file, "utf-8");
@@ -1629,7 +1647,7 @@ function findAnchorsInFile(file, projectRoot, prefixPattern = ANY_PLAN_ID_PATTER
   // double-reporting and silent anchor loss). Byte offsets into `text`, never paired with
   // stripped text. `bootstrap.mjs retire` consumes the same primitive — change one, change both.
   if (BLOCK_COMMENT_EXTS.has(ext)) {
-    for (const { start, end } of blockCommentSpans(text)) {
+    for (const { start, end } of blockCommentSpans(text, ext)) {
       const body = text.slice(start + 2, end - 2); // strip "/*" and its closer
       const bodyOffset = start + 2;
       const innerRe = new RegExp(blockInnerRe.source, "g");
@@ -1796,12 +1814,13 @@ function tierPlural(knownByPlan, planName) {
 function checkReverseAnchors(planDir, planDirName, issues, projectRoot) {
   let files;
   try {
-    files = walkSourceFiles(projectRoot);
+    files = walkSourceFilesCached(projectRoot);
   } catch {
     return;
   }
 
-  // Pass 1: scan every source file once (same two reads per file as before),
+  // Pass 1: scan every source file (loose + strict prefix; both memoized per run, so the file is
+  // read and its comment spans computed once per prefix, not once per consumer),
   // collecting the per-file anchor results and the set of plan-ids that strict
   // qualified anchors reference. Stale anchors are included (they must keep
   // resolving); bad-prefix anchors are excluded by construction (their prefix
@@ -2213,7 +2232,7 @@ function checkAnchorRefsRequired(planDir, planDirName, issues, projectRoot) {
   const anchoredIds = new Set();
   let files;
   try {
-    files = walkSourceFiles(projectRoot);
+    files = walkSourceFilesCached(projectRoot);
   } catch {
     return;
   }
@@ -2272,6 +2291,17 @@ function checkAnchorRefsValidity(planDir, planDirName, issues, projectRoot) {
       if (colonIdx < 1) continue; // malformed; skip silently
       const filePart = ref.slice(0, colonIdx);
       const target = join(projectRoot, filePart);
+      // Containment: a ref must name a file INSIDE the project. `../x` or an absolute path would
+      // make the validator read (read-only) outside the repo.
+      const rel = relative(resolve(projectRoot), resolve(target));
+      if (rel.startsWith("..") || isAbsolute(rel)) {
+        issues.push({
+          severity: "WARN",
+          check: "anchor-refs-stale",
+          message: `decisions.md ${e.idStr} **Anchor-Refs** points outside the project root: ${ref}`,
+        });
+        continue;
+      }
       if (!existsSync(target)) {
         issues.push({
           severity: "WARN",
@@ -2491,7 +2521,8 @@ function checkChangelogCommentAnomaly(planDir, issues) {
 // ---------------------------------------------------------------------------
 
 function validate(planDirName) {
-  const planDir = (planDirName.includes("/") || planDirName.startsWith(".")) ? planDirName : join(plansDir, planDirName);
+  clearScanCache();
+  const planDir = looksLikePath(planDirName) ? planDirName : join(plansDir, planDirName);
   // Identity comparisons use the bare plan-id, NOT the filesystem path: a CLI arg
   // like `plans/plan_XXX` must still match a `*Plan: plan_XXX*` preamble and bare
   // `plan_XXX/D-NNN` anchors. Keep planDir (filesystem path) raw; basename only the
@@ -2722,7 +2753,7 @@ Exit codes:
     let preStepDir;
     if (positional) {
       // Accept absolute path, relative path, or bare plan-dir name (resolved under plans/).
-      if (positional.includes("/") || positional.startsWith(".")) {
+      if (looksLikePath(positional)) {
         preStepDir = positional;
       } else {
         preStepDir = join(plansDir, positional);
@@ -2730,6 +2761,8 @@ Exit codes:
     } else {
       try {
         const pointed = readFileSync(pointerFile, "utf-8").trim();
+        // The pointer is joined under plans/: refuse anything that could leave it.
+        if (!pointed || /[\\/]|\.\./.test(pointed)) throw new Error("pointer is not a bare plan-dir name");
         preStepDir = join(plansDir, pointed);
       } catch {
         console.log("GATE:FAIL [no-plan]");
@@ -2741,6 +2774,10 @@ Exit codes:
 
   let planDirName;
   if (args.length > 0) {
+    if (args[0].startsWith("-")) {
+      console.error(`ERROR: Unknown flag "${args[0]}". Use --help for usage.`);
+      process.exit(1);
+    }
     planDirName = args[0];
   } else {
     try {

@@ -61,6 +61,12 @@ const repoRel = relative(cwd, filePath);
 //   ok:true                  → command succeeded; stdout is the trimmed output
 //   ok:false, noMatch:true   → command ran fine and found nothing
 //   ok:false, noMatch:false  → real failure (spawn error, timeout, status >= 2)
+// DECISION plan-2026-11-08T075330-b464ad63/D-009 — a subprocess that TIMED OUT is recorded in `timedOut`: its signal then silently reads as 0
+// (no deps, no churn, no tests) and the tier would understate the radius on exactly the large
+// repos where it matters. The compose step turns it into radius:UNKNOWN(timeout) instead.
+// Do NOT widen this to every non-zero exit: `git diff HEAD` legitimately fails in a repo with no
+// HEAD and falls back; only a timeout (and both grep searches failing) means "no data".
+let timedOut = false;
 function execArgs(cmd, args, opts = {}) {
   const fail = { ok: false, noMatch: false, stdout: "" };
   try {
@@ -70,7 +76,10 @@ function execArgs(cmd, args, opts = {}) {
       timeout: 1500,
       ...opts,
     });
-    if (r.error) return fail;
+    if (r.error) {
+      if (r.error.code === "ETIMEDOUT") timedOut = true;
+      return fail;
+    }
     const stdout = (r.stdout ?? "").trim();
     if (r.status === 0) return { ok: true, noMatch: false, stdout };
     if (r.status === 1 && stdout === "") return { ok: false, noMatch: true, stdout: "" };
@@ -195,6 +204,7 @@ function locChurn() {
 // Range 0..3 by tier. Pattern is heuristic and language-agnostic.
 // -----------------------------------------------------------------------------
 
+let depsUnavailable = false;
 function reverseDeps() {
   const ext = extname(repoRel);
   const base = basename(repoRel, ext);
@@ -220,14 +230,27 @@ function reverseDeps() {
   const gitGrep = execArgs("git", ["grep", "-E", "-l", "--untracked", "--no-color", pat,
                                    "--", ":(top)", `:(top,exclude)${rootRel}`, ":(top,exclude)plans/"]);
   if (gitGrep.noMatch) return { score: 0, count: 0 };
-  const out = gitGrep.ok
-    ? gitGrep.stdout
-    : tryExecArgs("grep", ["-E", "-r", "-l",
-                           "--exclude-dir=.git", "--exclude-dir=node_modules",
-                           "--exclude-dir=dist", "--exclude-dir=plans",
-                           `--include=*.${ext.slice(1) || "*"}`, pat, "."]);
-  if (out == null) return { score: 0, count: 0 };
-  const lines = out.split("\n").filter((l) => l.trim().length > 0 && l !== repoRel);
+  let out;
+  let fromFallback = false;
+  if (gitGrep.ok) {
+    out = gitGrep.stdout;
+  } else {
+    fromFallback = true;
+    const fb = execArgs("grep", ["-E", "-r", "-l",
+                                 "--exclude-dir=.git", "--exclude-dir=node_modules",
+                                 "--exclude-dir=dist", "--exclude-dir=plans",
+                                 `--include=*.${ext.slice(1) || "*"}`, pat, "."]);
+    if (fb.noMatch) return { score: 0, count: 0 };
+    // Both searches failed outright (not "no match"): the dependent count is unknown, not zero.
+    if (!fb.ok) { depsUnavailable = true; return { score: 0, count: 0 }; }
+    out = fb.stdout;
+  }
+  // Self-exclusion in the frame each path family prints: git grep (with :(top)) prints
+  // ROOT-relative paths; the grep fallback prints cwd-relative paths with a `./` prefix.
+  const selfPath = fromFallback ? repoRel.replace(/\\/g, "/") : rootRel;
+  const lines = out.split("\n")
+    .map((l) => l.trim().replace(/\\/g, "/").replace(/^\.\//, ""))
+    .filter((l) => l.length > 0 && l !== selfPath);
   const count = lines.length;
   let score = 0;
   if (count === 0) score = 0;
@@ -312,6 +335,12 @@ function testDelta() {
   ]);
   if (candidates.size === 0) return { score: 0, hit: false };
   const escaped = base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  // A 1-2 character basename (`a`, `io`) matches nearly any test file as a bare substring and
+  // would grant the -1 credit for free: require the basename with its extension, and for longer
+  // names a non-identifier boundary on both sides.
+  const nameRe = base.length < 3
+    ? new RegExp(escaped + ext.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    : new RegExp(`(^|[^A-Za-z0-9_])${escaped}([^A-Za-z0-9_]|$)`);
   // Root frame (D-002, extended step 8): `f` values come from `git diff
   // --name-only` / untrackedPaths(), both ROOT-relative from any cwd — so the
   // self-skip compares rootRel and the read joins root, never cwd. Pre-fix a
@@ -324,7 +353,7 @@ function testDelta() {
     const content = (() => {
       try { return readFileSync(join(root, f), "utf-8"); } catch { return ""; }
     })();
-    if (new RegExp(escaped).test(content)) return { score: -1, hit: true };
+    if (nameRe.test(content)) return { score: -1, hit: true };
   }
   return { score: 0, hit: false };
 }
@@ -386,7 +415,8 @@ if (!isGitRepo()) emitUnknown("no-git");
 // reverseDeps(), testDelta(), iterationHistory(). Do not move git pathspec args to rootRel —
 // git resolves those against cwd, and output is pinned root-relative by existing tests.
 const root = tryExecArgs("git", ["rev-parse", "--show-toplevel"]) ?? cwd;
-const rootRel = relative(root, filePath);
+// POSIX separators: git prints `/` on every platform, and manifests record `/` paths.
+const rootRel = relative(root, filePath).replace(/\\/g, "/");
 if (!existsSync(filePath)) {
   // File may have been deleted as part of edit; still try to score from diff.
   // If git diff returns nothing, give up.
@@ -402,6 +432,11 @@ const shared = sharedPath();
 const api = publicApiTouch();
 const tests = testDelta();
 const hist = iterationHistory();
+
+// A timed-out git/grep subprocess (or a failed reverse-dep search) means a signal read 0 for lack
+// of data, not because the answer is 0: report UNKNOWN rather than an understated tier.
+if (timedOut) emitUnknown("timeout");
+if (depsUnavailable) emitUnknown("grep-failed");
 
 const score = loc.score + deps.score + shared.score + api.score + tests.score + hist.score;
 const tier = score <= 2 ? "LOW" : score <= 5 ? "MED" : "HIGH";

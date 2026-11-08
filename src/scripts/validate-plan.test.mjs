@@ -4939,3 +4939,70 @@ ${verdict}
       `expected hygiene-iter-2.md (the true derived iteration) to satisfy the gate, got:\n${rRight.stdout}`);
   });
 });
+
+// plan-2026-11-08-b464ad63 step 9 — findings/scripts-core.md #11 (and #8's behavior pin).
+describe("scripts-core MED/LOW fixes (step 9)", () => {
+  const tempDirs = [];
+  function getTempDir() { const d = makeTempDir(); tempDirs.push(d); return d; }
+  afterEach(() => { while (tempDirs.length) removeTempDir(tempDirs.pop()); });
+
+  it("a later section with an `- A -> B` bullet is not validated as a transition", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    const st = join(planDir, "state.md");
+    writeFileSync(st, readFileSync(st, "utf-8") + "\n## Notes\n- FOO → BAR (appended by a human)\n");
+    const r = run(cwd);
+    assert.doesNotMatch(r.stdout, /Invalid transition: FOO/);
+  });
+
+  it("an invalid transition INSIDE the history block is still reported", () => {
+    const cwd = getTempDir();
+    writePlan(cwd, { transitionHistoryExtra: "- EXECUTE → EXPLORE (bad, 2026-05-15T12:00:00Z)" });
+    assert.match(run(cwd).stdout, /Invalid transition: EXECUTE→EXPLORE/);
+  });
+
+  it("an unknown leading flag is rejected instead of being read as a plan name", () => {
+    const cwd = getTempDir();
+    writePlan(cwd);
+    const r = run(cwd, "--bogus");
+    assert.equal(r.exitCode, 1);
+    assert.match(r.stderr, /Unknown flag "--bogus"/);
+  });
+
+  it("--pre-step with a pointer that escapes plans/ fails closed: GATE:FAIL [no-plan], exit 2", () => {
+    const cwd = getTempDir();
+    writePlan(cwd);
+    writeFileSync(join(cwd, "plans", ".current_plan"), "../outside");
+    const r = run(cwd, "--pre-step");
+    assert.equal(r.exitCode, 2);
+    assert.match(r.stdout, /^GATE:FAIL \[no-plan\]/);
+  });
+
+  it("an Anchor-Refs path that leaves the project root is flagged, not read", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd);
+    writeFileSync(join(planDir, "decisions.md"),
+`# Decision Log
+*Plan: plan_2026-05-15_aaaabbbb*
+
+## D-001 | EXECUTE | 2026-05-15
+**Context**: ctx
+**Decision**: d
+**Trade-off**: a at the cost of b
+**Reasoning**: r
+**Anchor-Refs**: \`../escape.js:1\`
+`);
+    const r = run(cwd);
+    assert.match(r.stdout, /anchor-refs-stale\][^\n]*outside the project root/);
+  });
+
+  it("source-tree scans are memoized per run: validator output is unchanged and a second run sees edits", () => {
+    const cwd = getTempDir();
+    writePlan(cwd);
+    writeFileSync(join(cwd, "a.js"), "// DECISION plan_2026-01-01_deadbeef/D-001 orphan\n");
+    const first = run(cwd).stdout;
+    assert.match(first, /anchor-unknown-plan\][^\n]*a\.js/);
+    writeFileSync(join(cwd, "a.js"), "// nothing here\n");
+    assert.doesNotMatch(run(cwd).stdout, /a\.js/);
+  });
+});

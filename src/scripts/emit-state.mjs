@@ -65,8 +65,9 @@ function runCli(argv) {
     process.stderr.write(result.message + "\n");
     process.exit(result.code);
   }
+  // exitCode, not exit(): process.exit() right after write() can truncate output on an async pipe.
   process.stdout.write(result.body);
-  process.exit(0);
+  process.exitCode = 0;
 }
 
 // Standard Node.js ESM dual-mode guard (mirrors bootstrap.mjs): importable in tests

@@ -807,3 +807,76 @@ describe("blast-radius.mjs — F1: CWD-invariant scoring (root-frame signals)", 
     } finally { removeTempDir(cwd); removeTempDir(shim); }
   });
 });
+
+// plan-2026-11-08-b464ad63 step 9 (scripts-core #5, #11): UNKNOWN on timeout / failed search,
+// self-exclusion in the fallback's frame, short-basename test credit.
+describe("blast-radius.mjs — degraded signals report UNKNOWN, not an understated tier", POSIX_ONLY, () => {
+  function shimDirWith(gitBody, grepBody) {
+    const dir = join(tmpdir(), `radius-shim2-${randomBytes(4).toString("hex")}`);
+    mkdirSync(dir, { recursive: true });
+    const realGit = which("git");
+    const realGrep = which("grep");
+    if (gitBody) {
+      writeFileSync(join(dir, "git"), `#!/bin/sh\n${gitBody}\nexec '${realGit}' "$@"\n`);
+      chmodSync(join(dir, "git"), 0o755);
+    }
+    if (grepBody) {
+      writeFileSync(join(dir, "grep"), `#!/bin/sh\n${grepBody}\nexec '${realGrep}' "$@"\n`);
+      chmodSync(join(dir, "grep"), 0o755);
+    }
+    return dir;
+  }
+  function runWith(cwd, shim, ...args) {
+    const r = spawnSync("node", [SCRIPT, ...args], {
+      cwd, encoding: "utf-8", timeout: 8000, env: { ...process.env, PATH: `${shim}:${process.env.PATH}` },
+    });
+    return { stdout: r.stdout ?? "", exitCode: r.status ?? 1 };
+  }
+
+  it("a timed-out `git grep` yields radius:UNKNOWN(timeout), exit 0", () => {
+    const repo = makeTempDir();
+    const shim = shimDirWith('if [ "$1" = "grep" ]; then sleep 4; fi');
+    try {
+      writeFileSync(join(repo, "m.js"), "export const m = 1;\n");
+      commitAll(repo);
+      const r = runWith(repo, shim, "m.js");
+      assert.equal(r.stdout.trim(), "radius:UNKNOWN(timeout)");
+      assert.equal(r.exitCode, 0);
+    } finally { removeTempDir(repo); removeTempDir(shim); }
+  });
+
+  it("git grep AND the grep fallback both failing yields radius:UNKNOWN(grep-failed)", () => {
+    const repo = makeTempDir();
+    const shim = shimDirWith('if [ "$1" = "grep" ]; then exit 128; fi', "exit 2");
+    try {
+      writeFileSync(join(repo, "m.js"), "export const m = 1;\n");
+      commitAll(repo);
+      assert.equal(runWith(repo, shim, "m.js").stdout.trim(), "radius:UNKNOWN(grep-failed)");
+    } finally { removeTempDir(repo); removeTempDir(shim); }
+  });
+
+  it("fallback path: the file's own `./path` line is not counted as its own reverse dependency", () => {
+    const repo = makeTempDir();
+    const shim = shimDirWith('if [ "$1" = "grep" ]; then exit 128; fi');
+    try {
+      // The file mentions its own basename in an import-shaped line, so grep -l lists `./self.js`.
+      writeFileSync(join(repo, "self.js"), "import x from './self.js';\n");
+      commitAll(repo);
+      const r = runWith(repo, shim, "self.js", "--json");
+      assert.equal(JSON.parse(r.stdout).signals.deps.count, 0);
+    } finally { removeTempDir(repo); removeTempDir(shim); }
+  });
+
+  it("a 1-2 character basename does not earn the test credit from an unrelated test file", () => {
+    const repo = makeTempDir();
+    try {
+      writeFileSync(join(repo, "a.js"), "export const a = 1;\n");
+      mkdirSync(join(repo, "test"));
+      writeFileSync(join(repo, "test", "other.test.js"), "// a quick brown fox, a lazy dog\n");
+      const r = run(repo, "a.js", "--json");
+      assert.equal(JSON.parse(r.stdout).signals.tests.hit, false);
+      writeFileSync(join(repo, "test", "other.test.js"), "import { a } from '../a.js';\n");
+      assert.equal(JSON.parse(run(repo, "a.js", "--json").stdout).signals.tests.hit, true);
+    } finally { removeTempDir(repo); }
+  });
+});

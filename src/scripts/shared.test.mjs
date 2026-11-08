@@ -1184,3 +1184,49 @@ test("source grep: no script but shared.mjs (and session-title.mjs) compares pro
   }
   assert.deepEqual(offenders, [], "use isMain(import.meta.url) from shared.mjs");
 });
+
+import { CHAR_LITERAL_ONLY_EXTS } from "./shared.mjs";
+{
+  const texts = (c, ext) => blockCommentSpans(c, ext).map((s) => c.slice(s.start, s.end));
+
+  test("blockCommentSpans ext: Rust lifetimes no longer hide a real block comment on the same line", () => {
+    const src = "let x: &'a T = y; /* c */ let z: &'b U;";
+    assert.deepEqual(texts(src, ".rs"), ["/* c */"]);
+  });
+  test("blockCommentSpans ext: without the extension (JS default) the old string-pairing behaviour is unchanged", () => {
+    const src = "let x: &'a T = y; /* c */ let z: &'b U;";
+    assert.deepEqual(texts(src, ".js"), []);
+    assert.deepEqual(texts(src), []);
+  });
+  test("blockCommentSpans ext: real char literals in Rust still shield a comment opener inside them", () => {
+    assert.deepEqual(texts("let c = '/'; /* c */ let d = '\\n'; /* d */", ".rs"), ["/* c */", "/* d */"]);
+    assert.deepEqual(texts("let s = '*'; // '/*' not an opener\n/* real */", ".rs"), ["/* real */"]);
+  });
+  test("blockCommentSpans ext: C++ digit separators do not pair into a string", () => {
+    assert.deepEqual(texts("int n = 1'000'000; /* c */ int m = 2;", ".cpp"), ["/* c */"]);
+  });
+  test("blockCommentSpans ext: the set names every char-literal-only extension and no block-less extension", () => {
+    for (const e of CHAR_LITERAL_ONLY_EXTS) assert.ok(/^\.[a-z]+$/.test(e));
+  });
+  test("blockCommentSpans ext: PINNED over-report (D-025/D-032): a regex literal ending in `*/` swallows the line up to it", () => {
+    const src = "/* a */\nconst r = /a*/;\n/* DECISION x */\n";
+    assert.deepEqual(texts(src, ".js"), ["/* a */\nconst r = /a*/", "/* DECISION x */"]);
+  });
+  test("blockCommentSpans ext: PINNED: a quote inside a regex literal hides a same-line block comment (bounded to the line)", () => {
+    assert.deepEqual(texts('const re = /"/; /* c */ const s = "x";', ".js"), []);
+  });
+}
+
+test("anchor walk tables live in shared.mjs only (scripts-core #9)", async () => {
+  const { ANCHOR_SOURCE_EXTS, ANCHOR_SKIP_DIRS } = await import("./shared.mjs");
+  const v = await import("./validate-plan.mjs");
+  const b = await import("./bootstrap.mjs");
+  assert.equal(v.ANCHOR_SOURCE_EXTS, ANCHOR_SOURCE_EXTS);
+  assert.equal(b.ANCHOR_SOURCE_EXTS, ANCHOR_SOURCE_EXTS);
+  assert.ok(ANCHOR_SKIP_DIRS.has("node_modules") && ANCHOR_SKIP_DIRS.has("plans"));
+  for (const f of ["validate-plan.mjs", "bootstrap.mjs"]) {
+    const src = readFileSync(new URL(`./${f}`, import.meta.url), "utf-8");
+    assert.ok(!/new Set\(\[\s*"\.py"/.test(src), `${f} re-declares the extension table`);
+    assert.ok(!/new Set\(\[\s*"node_modules"/.test(src), `${f} re-declares the skip-dir table`);
+  }
+});
