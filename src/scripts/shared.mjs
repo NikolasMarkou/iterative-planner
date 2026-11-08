@@ -11,6 +11,28 @@
 // automatically with no build change. Importers use a relative "./shared.mjs".
 // Requires Node.js 18+ (ESM).
 
+import { realpathSync } from "fs";
+import { fileURLToPath } from "url";
+
+/**
+ * Entry-point check for CLI scripts: `if (isMain(import.meta.url)) main();`
+ * Params: importMetaUrl (string, the caller's import.meta.url); argv1 (string,
+ * defaults to process.argv[1]).
+ * Returns: true when argv1 and the module file resolve to the same real path.
+ * Failure mode: never throws; any error (missing/nonexistent argv1, bad URL)
+ * yields false. Both sides are realpath'd because Node resolves symlinks in
+ * import.meta.url but leaves process.argv[1] as typed, so a plain compare
+ * silently no-ops when a script is reached through a symlink.
+ */
+export function isMain(importMetaUrl, argv1 = process.argv[1]) {
+  try {
+    if (!argv1) return false;
+    return realpathSync(fileURLToPath(importMetaUrl)) === realpathSync(argv1);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Extract the first capture group of `pattern` from `content`, trimmed.
  * Returns null when content is falsy or the pattern does not match.

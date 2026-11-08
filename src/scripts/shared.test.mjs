@@ -9,7 +9,10 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "fs";
+import { readFileSync, readdirSync, mkdtempSync, writeFileSync, symlinkSync, rmSync } from "fs";
+import { tmpdir } from "os";
+import { pathToFileURL } from "url";
+import { spawnSync } from "child_process";
 import { resolve } from "path";
 
 const SHARED = resolve(import.meta.dirname, "shared.mjs");
@@ -37,6 +40,7 @@ import {
   planDateFromId,
   DECISION_ID_NUM_PATTERN,
   COUNTED_BUDGET_RE,
+  isMain,
 } from "./shared.mjs";
 
 // ---------------------------------------------------------------------------
@@ -1081,4 +1085,53 @@ test("COUNTED_BUDGET_RE: parses the tolerated shapes and refuses the target line
   assert.equal(cap("prose mentioning Files added: 4/3 max mid-sentence"), null, "the grammar is line-anchored");
   // Non-global: a shared instance carries no lastIndex, so repeated execs agree.
   assert.deepEqual(cap("**Files added: 4/3 max**"), ["Files added", 4, 3]);
+});
+
+// --- isMain ---------------------------------------------------------------
+
+test("isMain: real path, symlinked path, other file, missing argv1", () => {
+  const dir = mkdtempSync(resolve(tmpdir(), "ismain-"));
+  try {
+    const url = pathToFileURL(SHARED).href;
+    const link = resolve(dir, "link.mjs");
+    symlinkSync(SHARED, link);
+    assert.equal(isMain(url, SHARED), true, "real path");
+    assert.equal(isMain(url, link), true, "symlinked path");
+    assert.equal(isMain(url, resolve(import.meta.dirname, "shared.test.mjs")), false, "different file");
+    assert.equal(isMain(url, resolve(dir, "nope.mjs")), false, "nonexistent argv1");
+    assert.equal(isMain(url, undefined), false, "missing argv1");
+    assert.equal(isMain(url, ""), false, "empty argv1");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("isMain: never throws on bad input", () => {
+  assert.doesNotThrow(() => isMain("not a url", "/x"));
+  assert.equal(isMain("not a url", "/x"), false);
+  assert.doesNotThrow(() => isMain(undefined, undefined));
+  assert.equal(isMain(undefined, undefined), false);
+  assert.equal(isMain(pathToFileURL(SHARED).href, 42), false);
+});
+
+test("isMain: fixture script runs main directly and through a symlink", () => {
+  const dir = mkdtempSync(resolve(tmpdir(), "ismain-fx-"));
+  try {
+    const fx = resolve(dir, "fx.mjs");
+    writeFileSync(fx, `import { isMain } from ${JSON.stringify(pathToFileURL(SHARED).href)};\nif (isMain(import.meta.url)) console.log("MAIN");\n`);
+    const link = resolve(dir, "fx-link.mjs");
+    symlinkSync(fx, link);
+    for (const p of [fx, link]) {
+      const r = spawnSync(process.execPath, [p], { encoding: "utf8" });
+      assert.equal(r.status, 0, p);
+      assert.equal(r.stdout.trim(), "MAIN", p);
+    }
+    // Imported (not entry point): prints nothing.
+    const imp = resolve(dir, "imp.mjs");
+    writeFileSync(imp, `import ${JSON.stringify(pathToFileURL(fx).href)};\n`);
+    const r = spawnSync(process.execPath, [imp], { encoding: "utf8" });
+    assert.equal(r.stdout.trim(), "", "imported module is not main");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
