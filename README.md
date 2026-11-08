@@ -516,7 +516,7 @@ The log format belongs to Claude Code and is not a published interface. If it is
 
 ## Session title hint
 
-Optional. A small hook script, `src/scripts/session-title.mjs`, sets the Claude Code session title to `<project> · <STATE> · <goal>` (for example `my-app · EXECUTE · Migrate the auth layer`), so a list of sessions shows which plan each one is on. The state comes from the active plan's `state.md` and the goal from its `plan.md`, cut to 50 characters. It runs on two hook events, `SessionStart` (startup, resume and fork) and `UserPromptSubmit`, and it only reads: it writes no file, starts no process and uses no network. If anything goes wrong, or there is no active plan, it prints nothing.
+Optional. A small hook script, `src/scripts/session-title.mjs`, sets the Claude Code session title to `<project> · <STATE> · <goal>` (for example `my-app · EXECUTE · Migrate the auth layer`), so a session list shows what the project's active plan is doing. The state comes from the active plan's `state.md` and the goal from its `plan.md`, cut to 50 characters. It runs on two hook events, `SessionStart` (startup, resume and fork) and `UserPromptSubmit`, and it only reads: it writes no file, starts no process and uses no network. If anything goes wrong, or there is no active plan, it prints nothing.
 
 It is opt-in. Nothing installs it and nothing edits your `settings.json`. To enable it, print the snippet and paste it into the `hooks` section of `~/.claude/settings.json`, merging with any hooks you already have:
 
@@ -524,9 +524,17 @@ It is opt-in. Nothing installs it and nothing edits your `settings.json`. To ena
 node ~/.claude/skills/iterative-planner/scripts/session-title.mjs --print-settings
 ```
 
-If you rename the session yourself with `/rename`, the hook leaves your name alone: it only replaces a title that is empty or already has its own `<project> · <STATE> · <goal>` shape.
+About `/rename`, plainly: the hook skips its output only when the hook input carries a `session_title` that is not one of its own earlier titles. Whether Claude Code sends `session_title` on `UserPromptSubmit` is unverified. If it does not, a name you set with `/rename` is overwritten on every prompt. An AI-generated title may count as a foreign title and keep the hint from being set. The hint also only appears after you paste the snippet.
 
-Limits: whether Claude Code puts the current `session_title` into the `UserPromptSubmit` input is unverified, so the rename check may not see your name there. An AI-generated title may also appear in `session_title` and keep the hint from being set. And the hint only appears after you paste the snippet.
+Scope: the title follows the active plan of the project directory the session runs in. Several sessions in one project show the same plan. After CLOSE there is no active plan, so the next hook run prints nothing and the old title stays as it was, with the last state in it.
+
+Removing it: delete the two hook entries (`SessionStart` and `UserPromptSubmit`) from `~/.claude/settings.json`. If you uninstall the skill but leave the hook in place, the hook command fails on every prompt.
+
+Tested only with piped sample hook input, not in a live Claude Code session. To check it yourself:
+
+1. Paste the snippet from `--print-settings` into `~/.claude/settings.json`.
+2. Start a new session in a project that has an active plan.
+3. Look at the session title (`/status` or the terminal title); it should read `<project> · <STATE> · <goal>`. Then run `/rename something`, send a prompt, and see whether your name survives.
 
 When the orchestrator starts a sub agent, it prints one line with that agent's UTC start time and records the same line in `state.md`.
 

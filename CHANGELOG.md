@@ -10,7 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- **`session-title.mjs`.** A hook helper that returns a `sessionTitle` for the SessionStart and UserPromptSubmit hooks, naming the active plan and its phase. `--print-settings` prints the hook block to paste; the helper never edits `settings.json`. It is opt-in, and it respects a title the user set with `/rename`. Its tests and isolation pins are included (the helper imports no write or spawn API, and neither build script writes to `settings.json`).
+- **`session-title.mjs`.** A hook helper that returns a `sessionTitle` for the SessionStart and UserPromptSubmit hooks, naming the active plan and its phase. `--print-settings` prints the hook block to paste; the helper never edits `settings.json`. It is opt-in. It skips output only when the hook input carries a `session_title` that is not its own earlier title; if Claude Code does not send that field on UserPromptSubmit (unverified), a `/rename` name is overwritten on every prompt. Tested only with piped sample input, not in a live Claude Code session. Its tests and isolation pins are included (the helper imports no write or spawn API, and neither build script writes to `settings.json`).
 - **Sub-agent start times.** Before each spawn the orchestrator runs `date -u`, prints one chat line (`<agent> (<slug or step>) started <UTC time>`) and appends an arrow-free `- SPAWN <agent> slug=<x> started <UTC time>` line to `state.md` Transition History.
 
 ### Changed
