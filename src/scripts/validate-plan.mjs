@@ -233,6 +233,9 @@ function isPivotPhase(s) {
 // Do not restrict what a skip-line reason may say — the fix is exclusion of the whole line,
 // not a content ban on operator-authored prose.
 const HYGIENE_SKIP_LINE_RE = /^-\s+HYGIENE SKIP \(iter \d+\):/;
+// "- SPAWN <agent> slug=<x> started <time>" log lines get the same wholesale exclusion: their slug is
+// free text, so one containing an arrow or "EXECUTE → REFLECT" must never count as a transition.
+const SPAWN_LINE_RE = /^-\s+SPAWN /;
 
 // DECISION plan-2026-09-11T141919-e5db2894/D-003 — structural fix for reviewer pass-2
 // CONCERN #1: the original fix (EXECUTE step-1.1) patched checkStateTransitions and
@@ -263,7 +266,10 @@ function stripHygieneSkipLines(text) {
   if (text === null || text === undefined) return text;
   return text
     .split("\n")
-    .filter((l) => !HYGIENE_SKIP_LINE_RE.test(l.replace(/[–—‐]/g, "-")))
+    .filter((l) => {
+      const n = l.replace(/[–—‐]/g, "-");
+      return !HYGIENE_SKIP_LINE_RE.test(n) && !SPAWN_LINE_RE.test(n);
+    })
     .join("\n");
 }
 
@@ -2141,9 +2147,9 @@ function checkExplorationConfidence(planDir, issues) {
   // priority over, since only the LAST match counts) a real EXPLORE → PLAN transition,
   // producing a spurious WARN and masking the genuine confidence sub-line check (reviewer
   // pass-2 CONCERN #1, plan-2026-09-11T141919-e5db2894). See stripHygieneSkipLines.
-  // SPAWN start-time lines are dropped too: one placed between a transition and its
-  // `confidence:` sub-line would otherwise be read as the "next line" and fire a false WARN.
-  const lines = stripHygieneSkipLines(historyBlock).split("\n").filter((l) => !/^- SPAWN /.test(l));
+  // SPAWN start-time lines are dropped by the same helper (SPAWN_LINE_RE), so one placed between a
+  // transition and its `confidence:` sub-line is not read as the "next line".
+  const lines = stripHygieneSkipLines(historyBlock).split("\n");
 
   // Index of the LAST real `EXPLORE → PLAN` transition line, or -1.
   let last = -1;

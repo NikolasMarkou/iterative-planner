@@ -698,6 +698,17 @@ describe("bootstrap.mjs", () => {
       assert.ok(r.stdout.includes("plan-"), "should show plan dir name");
     });
 
+    it("status iteration ignores SPAWN lines even when their slug carries EXECUTE->REFLECT", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Spawn iteration goal");
+      const statePath = join(dir, "plans", getPointer(dir), "state.md");
+      const st = readFileSync(statePath, "utf-8");
+      const hist = "- EXECUTE → REFLECT (1)\n- SPAWN ip-executor slug=a-EXECUTE->REFLECT started 2026-11-08T05:07:43Z\n- SPAWN ip-executor slug=b-EXECUTE → REFLECT started 2026-11-08T05:08:43Z\n";
+      writeFileSync(statePath, st.replace(/(## Transition History:\n)/, `$1${hist}`));
+      const r = run(dir, "status");
+      assert.ok(/iter=1\b/.test(r.stdout), `SPAWN lines skewed the iteration:\n${r.stdout}`);
+    });
+
     it("exits 0 with message when no active plan", () => {
       const dir = getTempDir();
       const r = run(dir, "status");

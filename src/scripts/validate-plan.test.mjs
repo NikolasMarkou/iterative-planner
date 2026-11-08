@@ -4546,6 +4546,28 @@ ${verdict}
       `a SPAWN line carries no arrow and must never be read as a state transition, got:\n${r.stdout}`);
   });
 
+  it("(i2b) SPAWN lines whose slug carries an arrow or EXECUTE->REFLECT leave iteration, cap and transition findings unchanged", () => {
+    const base = [
+      "- INIT → EXPLORE (a)", "- EXPLORE → PLAN (b)", "- PLAN → EXECUTE (c)",
+      "- EXECUTE → REFLECT (1)", "- EXECUTE → REFLECT (2)", "- EXECUTE → REFLECT (3)",
+      "- EXECUTE → REFLECT (4)", "- EXECUTE → REFLECT (5)",
+    ];
+    const spawns = [
+      "- SPAWN ip-executor slug=fix-EXECUTE->REFLECT-loop started 2026-11-08T05:07:43Z",
+      "- SPAWN ip-executor slug=redo-EXECUTE → REFLECT started 2026-11-08T05:08:43Z",
+      "- SPAWN ip-executor slug=x -> REFLECT started 2026-11-08T05:09:43Z",
+    ];
+    const pick = (out) => out.split("\n").filter((l) => /\[(iteration|transition|convergence|leash)/.test(l)).join("\n");
+    const results = [base, [...base, ...spawns]].map((hist) => {
+      const cwd = getTempDir();
+      writePlan(cwd, { state: "EXECUTE", iteration: 0, transitionHistoryExtra: hist.join("\n") });
+      return { full: pick(run(cwd).stdout), pre: runPreStep(cwd).stdout.trim() };
+    });
+    assert.equal(results[1].full, results[0].full, "SPAWN lines changed validator iteration/transition findings");
+    assert.equal(results[1].pre, results[0].pre, "SPAWN lines changed the --pre-step gate");
+    assert.ok(/derived=5/.test(results[1].full) || !/derived=/.test(results[1].full), `derived count skewed:\n${results[1].full}`);
+  });
+
   const confidenceLines = (out) => out.split("\n").filter((l) => l.includes("exploration-confidence") || l.includes("[transition"));
   const spawn = "- SPAWN ip-plan-writer slug=plan started 2026-05-15T11:30:01Z";
 

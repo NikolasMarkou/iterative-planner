@@ -1804,7 +1804,8 @@ function countExecuteReflectStripped(state) {
   const stripped = stripHtmlComments(state);
   const m = /^## Transition History:/m.exec(stripped);
   if (!m) return 0;
-  const block = stripped.slice(m.index).replace(/[–—‐]/g, "-");
+  // "- SPAWN ..." log lines carry a free-text slug; drop them whole so they never count.
+  const block = stripped.slice(m.index).replace(/[–—‐]/g, "-").split("\n").filter((l) => !/^-\s+SPAWN /.test(l)).join("\n");
   const re = /EXECUTE\s*(?:→|->)\s*REFLECT/g;
   let count = 0;
   while (re.exec(block) !== null) count++;

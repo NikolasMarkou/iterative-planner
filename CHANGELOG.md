@@ -16,7 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 
 - **Lint and test lists.** `Makefile` and `build.ps1` include `session-title.mjs` and its test in both lists. `build.ps1` was verified by reading only; no PowerShell ran here.
-- `TEST_COUNT` and the README badges: 1080 to 1104 passing.
+- `TEST_COUNT` and the README badges: 1080 to 1109 passing.
 
 ### Notes
 
