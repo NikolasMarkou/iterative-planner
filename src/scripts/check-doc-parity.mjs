@@ -20,6 +20,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isMain } from "./shared.mjs";
 
 // The floor (anti-vacuity), mirroring EXPECTED_SLUGS in
 // check-template-parity.mjs. A renamed "File Ownership" heading, a
@@ -131,13 +132,7 @@ export function comparison(skillText, readmeText) {
   return { missing, extra, ownerMismatches };
 }
 
-const isEntryPoint = (() => {
-  try {
-    return process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
-  } catch {
-    return false;
-  }
-})();
+const isEntryPoint = isMain(import.meta.url);
 
 if (isEntryPoint) {
   // repoRoot override: opt-in env var read HERE only (inside isEntryPoint), so tests can

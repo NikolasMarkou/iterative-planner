@@ -1135,3 +1135,52 @@ test("isMain: fixture script runs main directly and through a symlink", () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// --- every CLI still runs when reached through a symlink --------------------
+
+const SCRIPTS_DIR = import.meta.dirname;
+const CLI_TABLE = [
+  ["validate-plan.mjs", ["--help"]],
+  ["bootstrap.mjs", ["banner"]],
+  ["emit-state.mjs", ["--state", "plan"]],
+  ["emit-template.mjs", ["--name", "plan"]],
+  ["check-agent-wiring.mjs", []],
+  ["check-changelog-parity.mjs", []],
+  ["check-doc-parity.mjs", []],
+  ["check-readme-parity.mjs", []],
+  ["check-register.mjs", []],
+  ["check-template-parity.mjs", []],
+  ["scar-scan.mjs", ["--self-check"]],
+  ["dashboard.mjs", ["--help"]],
+  // check-test-count.mjs is covered by the source-grep test below only:
+  // running it re-runs the whole suite.
+];
+
+test("symlinked scripts dir: every CLI prints output and exits like the direct path", () => {
+  const dir = mkdtempSync(resolve(tmpdir(), "symlink-cli-"));
+  try {
+    const linkDir = resolve(dir, "scripts-link");
+    symlinkSync(SCRIPTS_DIR, linkDir);
+    for (const [name, args] of CLI_TABLE) {
+      const run = (base) => spawnSync(process.execPath, [resolve(base, name), ...args], { encoding: "utf8", cwd: dir });
+      const direct = run(SCRIPTS_DIR);
+      const viaLink = run(linkDir);
+      assert.notEqual(viaLink.stdout.trim(), "", `${name}: empty stdout through symlink (stderr: ${viaLink.stderr})`);
+      assert.equal(viaLink.status, direct.status, `${name}: exit code differs through symlink`);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("source grep: no script but shared.mjs (and session-title.mjs) compares process.argv[1] with import.meta.url", () => {
+  const offenders = [];
+  for (const f of readdirSync(SCRIPTS_DIR)) {
+    if (!f.endsWith(".mjs") || f.endsWith(".test.mjs")) continue;
+    if (f === "shared.mjs" || f === "session-title.mjs") continue;
+    const src = readFileSync(resolve(SCRIPTS_DIR, f), "utf8");
+    if (/fileURLToPath\(import\.meta\.url\)\s*===\s*(?:path\.)?(?:resolve\()?process\.argv\[1\]/.test(src) ||
+        /process\.argv\[1\]\)?\s*===\s*fileURLToPath\(import\.meta\.url\)/.test(src)) offenders.push(f);
+  }
+  assert.deepEqual(offenders, [], "use isMain(import.meta.url) from shared.mjs");
+});

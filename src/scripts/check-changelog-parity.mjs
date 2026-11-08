@@ -18,6 +18,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isMain } from "./shared.mjs";
 
 /**
  * Check that the FIRST `## [X.Y.Z]` entry in CHANGELOG.md matches the
@@ -37,13 +38,7 @@ export function checkChangelogVersion(changelogText, version) {
   };
 }
 
-const isEntryPoint = (() => {
-  try {
-    return process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
-  } catch {
-    return false;
-  }
-})();
+const isEntryPoint = isMain(import.meta.url);
 
 if (isEntryPoint) {
   // repoRoot override: opt-in env var read HERE only (inside isEntryPoint), so tests can

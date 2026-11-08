@@ -11,7 +11,6 @@
 
 import { readFileSync, existsSync, readdirSync } from "fs";
 import { join, extname, relative, basename } from "path";
-import { fileURLToPath } from "url";
 import {
   extractField,
   splitChangelogFields,
@@ -27,6 +26,7 @@ import {
   PLAN_SECTION_PATTERN,
   DECISION_ID_NUM_PATTERN,
   COUNTED_BUDGET_RE,
+  isMain,
 } from "./shared.mjs";
 // Changelog field shapes are schema-driven (see checkChangelogFormat / D-001).
 import { CHANGELOG_SPEC, entryFromFields, validateElement } from "./schema.mjs";
@@ -2613,13 +2613,7 @@ function runPreStepGate(planDir) {
 // the arg-parsing + process.exit firing at module load). Standard Node.js ESM dual-mode pattern,
 // mirrors bootstrap.mjs:1831-1841. Do NOT move the process.exit calls or validate() back to
 // module scope — that re-breaks import-safety.
-const isEntryPoint = (() => {
-  try {
-    return process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
-  } catch {
-    return false;
-  }
-})();
+const isEntryPoint = isMain(import.meta.url);
 
 if (isEntryPoint) {
   const args = process.argv.slice(2);

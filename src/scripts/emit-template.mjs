@@ -30,7 +30,7 @@
 // router works regardless of CWD and inside the installed skill bundle.
 
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { isMain } from "./shared.mjs";
 
 export const VALID_TEMPLATES = ["state","plan","decisions","findings","progress","verification","checkpoints","findings-consolidated","decisions-consolidated","lessons","system","index","lessons-snapshot","changelog","summary","presentation-contracts","lessons-synthesis"];
 
@@ -93,13 +93,7 @@ function runCli(argv) {
 
 // Standard Node.js ESM dual-mode guard (mirrors emit-state.mjs): importable in tests
 // without triggering CLI dispatch / process.exit.
-const isEntryPoint = (() => {
-  try {
-    return process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
-  } catch {
-    return false;
-  }
-})();
+const isEntryPoint = isMain(import.meta.url);
 
 if (isEntryPoint) {
   runCli(process.argv.slice(2));

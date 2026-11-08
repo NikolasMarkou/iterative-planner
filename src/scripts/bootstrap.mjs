@@ -38,6 +38,7 @@ import {
   planDateFromId,
   DECISION_ID_NUM_PATTERN,
   stripHtmlComments,
+  isMain,
 } from "./shared.mjs";
 // DECISION plan_2026-07-14_79ee0f59/D-002 — the changelog is markdown and an append is ONE LINE
 // via writeFileSync. Do NOT re-encode it or route writes through a document library: v2.33.0 tried
@@ -2427,13 +2428,7 @@ function runCli() {
 // as a library (for maybeCompressDecisions / maybeCompressChangelog) without triggering the
 // CLI dispatch that called printUsage() + process.exit(0). Standard Node.js ESM dual-mode
 // pattern: compare fileURLToPath(import.meta.url) to process.argv[1]. CLI behavior preserved.
-const isEntryPoint = (() => {
-  try {
-    return process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
-  } catch {
-    return false;
-  }
-})();
+const isEntryPoint = isMain(import.meta.url);
 
 if (isEntryPoint) {
   runCli();

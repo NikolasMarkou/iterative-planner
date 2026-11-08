@@ -18,7 +18,7 @@
 // installed skill bundle. Emission is byte-faithful (verbatim file content, no trim).
 
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { isMain } from "./shared.mjs";
 
 export const VALID_STATES = ["explore", "plan", "execute", "reflect", "pivot"];
 
@@ -71,13 +71,7 @@ function runCli(argv) {
 
 // Standard Node.js ESM dual-mode guard (mirrors bootstrap.mjs): importable in tests
 // without triggering CLI dispatch / process.exit.
-const isEntryPoint = (() => {
-  try {
-    return process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
-  } catch {
-    return false;
-  }
-})();
+const isEntryPoint = isMain(import.meta.url);
 
 if (isEntryPoint) {
   runCli(process.argv.slice(2));

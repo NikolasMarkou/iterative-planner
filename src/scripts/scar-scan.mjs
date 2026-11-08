@@ -126,6 +126,7 @@ import {
   COUNTED_BUDGET_RE,
   DECISION_ID_NUM_PATTERN,
   splitChangelogFields,
+  isMain,
 } from "./shared.mjs";
 import { STEP_RE } from "./schema.mjs";
 
@@ -1100,13 +1101,7 @@ export function formatReport(report) {
 // CLI
 // ---------------------------------------------------------------------------
 
-const isEntryPoint = (() => {
-  try {
-    return process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
-  } catch {
-    return false;
-  }
-})();
+const isEntryPoint = isMain(import.meta.url);
 
 if (isEntryPoint) {
   const args = process.argv.slice(2);

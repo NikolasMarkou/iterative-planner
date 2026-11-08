@@ -45,6 +45,7 @@
 import { readFileSync, writeFileSync, existsSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isMain } from "./shared.mjs";
 
 // DECISION plan-2026-09-01T100120-4f591469/D-012 — command grammar (`node`, option run, script
 // arg), not token adjacency: a flag between `node` and the path used to evade this rule entirely.
@@ -277,13 +278,7 @@ export function serializeEdges(edges) {
   return unique.length === 0 ? "" : unique.join("\n") + "\n";
 }
 
-const isEntryPoint = (() => {
-  try {
-    return process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
-  } catch {
-    return false;
-  }
-})();
+const isEntryPoint = isMain(import.meta.url);
 
 if (isEntryPoint) {
   // repoRoot override: opt-in env var read HERE only (inside isEntryPoint), so tests can

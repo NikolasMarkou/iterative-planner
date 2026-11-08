@@ -60,13 +60,13 @@ import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import { execFileSync, spawn } from "node:child_process";
-import { fileURLToPath } from "node:url";
 import {
   ANY_PLAN_ID_RE,
   DECISION_ID_NUM_PATTERN,
   planDateFromId,
   splitChangelogFields,
   stripHtmlComments,
+  isMain,
 } from "./shared.mjs";
 
 // ---------- small helpers ----------
@@ -2185,13 +2185,7 @@ function openInBrowser(file) {
   try { spawn(cmd, args, { detached: true, stdio: "ignore" }).on("error", () => {}).unref(); } catch { /* the path is printed either way */ }
 }
 
-const isEntryPoint = (() => {
-  try {
-    return process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
-  } catch {
-    return false;
-  }
-})();
+const isEntryPoint = isMain(import.meta.url);
 
 if (isEntryPoint) {
   const o = parseArgs(process.argv.slice(2));

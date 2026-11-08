@@ -53,7 +53,7 @@
 import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { DECISION_ID_NUM_PATTERN } from "./shared.mjs";
+import { DECISION_ID_NUM_PATTERN, isMain } from "./shared.mjs";
 
 // Anti-vacuity floor: the real scanned-doc count today (3 fixed docs +
 // src/agents/*.md + src/references/*.md) — 20 files: CLAUDE.md, README.md,
@@ -334,13 +334,7 @@ export function compareToBaseline(measurements, baseline) {
   return { drift, floor };
 }
 
-const isEntryPoint = (() => {
-  try {
-    return process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
-  } catch {
-    return false;
-  }
-})();
+const isEntryPoint = isMain(import.meta.url);
 
 if (isEntryPoint) {
   // repoRoot override: opt-in env var read HERE only (inside isEntryPoint), so tests can

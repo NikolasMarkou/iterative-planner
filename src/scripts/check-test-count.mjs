@@ -29,6 +29,7 @@ import { spawnSync } from "node:child_process";
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isMain } from "./shared.mjs";
 
 // NOTE: recursion guard. This script runs the whole suite; the suite must never run
 // this script's suite-running path, or `make test` forks indefinitely. The CLI sets
@@ -154,13 +155,7 @@ export function testFiles(repoRoot) {
     .map((f) => join("src", "scripts", f));
 }
 
-const isEntryPoint = (() => {
-  try {
-    return process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
-  } catch {
-    return false;
-  }
-})();
+const isEntryPoint = isMain(import.meta.url);
 
 if (isEntryPoint) {
   if (process.env[CHILD_ENV_FLAG] === "1") {

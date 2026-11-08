@@ -20,6 +20,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isMain } from "./shared.mjs";
 
 // A badge is a WHOLE shields.io image in one of two forms: markdown `![alt](https://img.shields.io/badge/<label>…)`
 // or HTML `<img … src="https://img.shields.io/badge/<label>…" …>`. In the HTML form `[^>]*` cannot
@@ -86,13 +87,7 @@ export function checkTestCount(readmeText, testCount) {
   };
 }
 
-const isEntryPoint = (() => {
-  try {
-    return process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
-  } catch {
-    return false;
-  }
-})();
+const isEntryPoint = isMain(import.meta.url);
 
 if (isEntryPoint) {
   // repoRoot override: opt-in env var read HERE only (inside isEntryPoint), so tests can

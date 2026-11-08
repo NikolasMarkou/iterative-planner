@@ -54,6 +54,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isMain } from "./shared.mjs";
 import { PLAN_TEMPLATES } from "./bootstrap.mjs";
 // DECISION plan-2026-07-14T141152-113d5b92/D-009 — import the slicer itself (resolveTemplate) and
 // check its real output for all 17 slugs, rather than approximating where it ends with a doc
@@ -254,13 +255,7 @@ export function report(issues) {
   return issues.map((i) => `  ${i.file}:${i.line} [${i.rule}] ${i.message}`).join("\n");
 }
 
-const isEntryPoint = (() => {
-  try {
-    return process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
-  } catch {
-    return false;
-  }
-})();
+const isEntryPoint = isMain(import.meta.url);
 
 if (isEntryPoint) {
   // repoRoot override: opt-in env var read HERE only (inside isEntryPoint), so tests can

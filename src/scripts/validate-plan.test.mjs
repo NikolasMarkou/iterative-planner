@@ -8,7 +8,7 @@
 
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, writeFileSync, appendFileSync, rmSync, readdirSync, readFileSync } from "fs";
+import { mkdirSync, writeFileSync, appendFileSync, rmSync, readdirSync, readFileSync, symlinkSync } from "fs";
 import { join, resolve } from "path";
 import { spawnSync } from "child_process";
 import { tmpdir } from "os";
@@ -653,6 +653,22 @@ describe("validate-plan.mjs --pre-step gate", () => {
     assert.equal(r.exitCode, 2, `expected exit 2, got ${r.exitCode}\nstdout:\n${r.stdout}`);
     assert.ok(r.stdout.trim().startsWith("GATE:FAIL [leash-cap]"), `expected GATE:FAIL [leash-cap] prefix, got:\n${r.stdout}`);
     assert.ok(/attempts=2/.test(r.stdout), `expected attempts=2 in output, got:\n${r.stdout}`);
+  });
+
+  it("(b2) FAIL [leash-cap] through a symlinked scripts dir → still exit 2 (isMain realpath)", () => {
+    const cwd = getTempDir();
+    writePlan(cwd, {
+      state: "EXECUTE",
+      fixAttemptsBody: [
+        "- Step 2, attempt 1: tried X — failed",
+        "- Step 2, attempt 2: tried Y — failed",
+      ].join("\n"),
+    });
+    const linkRoot = getTempDir();
+    symlinkSync(import.meta.dirname, join(linkRoot, "scripts-link"));
+    const r = spawnSync(process.execPath, [join(linkRoot, "scripts-link", "validate-plan.mjs"), "--pre-step"], { cwd, encoding: "utf8" });
+    assert.equal(r.status, 2, `expected exit 2, got ${r.status}\nstdout:\n${r.stdout}\nstderr:\n${r.stderr}`);
+    assert.ok(r.stdout.includes("GATE:FAIL [leash-cap]"), `got:\n${r.stdout}`);
   });
 
   it("(c) FAIL [leash-cap] — legacy format: 2 `- Attempt N` lines → exit 2 (backward compat)", () => {
