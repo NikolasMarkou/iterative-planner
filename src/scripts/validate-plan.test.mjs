@@ -4546,6 +4546,28 @@ ${verdict}
       `a SPAWN line carries no arrow and must never be read as a state transition, got:\n${r.stdout}`);
   });
 
+  const confidenceLines = (out) => out.split("\n").filter((l) => l.includes("exploration-confidence") || l.includes("[transition"));
+  const spawn = "- SPAWN ip-plan-writer slug=plan started 2026-05-15T11:30:01Z";
+
+  it("(i3) a SPAWN line AFTER the confidence sub-line yields no exploration-confidence or transition finding", () => {
+    const cwd = getTempDir();
+    writePlan(cwd, { state: "EXECUTE", iteration: 1, transitionHistoryExtra: spawn });
+    const r = run(cwd);
+    assert.equal(confidenceLines(r.stdout).length, 0, `got:\n${r.stdout}`);
+  });
+
+  it("(i4) a SPAWN line BETWEEN the transition and its confidence sub-line is ignored by the confidence check", () => {
+    const cwd = getTempDir();
+    const { planDir } = writePlan(cwd, { state: "EXECUTE", iteration: 1 });
+    const f = join(planDir, "state.md");
+    const t = readFileSync(f, "utf8");
+    const marker = "- EXPLORE → PLAN (gathered enough context, 2026-05-15T11:30:00Z)\n";
+    assert.ok(t.includes(marker));
+    writeFileSync(f, t.replace(marker, marker + spawn + "\n"));
+    const r = run(cwd);
+    assert.equal(confidenceLines(r.stdout).length, 0, `got:\n${r.stdout}`);
+  });
+
   for (const state of ["EXECUTE", "PLAN", "EXPLORE"]) {
     it(`(j) ${state} state -> gate silent regardless of record presence/absence`, () => {
       // absent case

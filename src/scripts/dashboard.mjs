@@ -246,9 +246,10 @@ export function parseState(text) {
   const g = (re) => (text.match(re) || [])[1]?.trim() || "";
   const hist = [];
   const block = (text.split(/^## Transition History:\s*$/m)[1] || "").split("<!--")[0];
+  let owner = null; // sub-lines belong to the last real entry, never to a SPAWN line between
   for (const line of block.split("\n")) {
-    if (/^- /.test(line)) hist.push({ text: line.slice(2), sub: [] });
-    else if (/^\s+- /.test(line) && hist.length) hist.at(-1).sub.push(line.trim().slice(2));
+    if (/^- /.test(line)) { const e = { text: line.slice(2), sub: [] }; hist.push(e); if (!/^SPAWN /.test(e.text)) owner = e; }
+    else if (/^\s+- /.test(line) && owner) owner.sub.push(line.trim().slice(2));
   }
   const visits = Object.fromEntries(PHASES.map((p) => [p, 0]));
   for (const h of hist) { const m = h.text.match(/→\s*(EXPLORE|PLAN|EXECUTE|REFLECT|PIVOT|CLOSE)\b/); if (m) visits[m[1]]++; }

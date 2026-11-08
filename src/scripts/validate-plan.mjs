@@ -2141,7 +2141,9 @@ function checkExplorationConfidence(planDir, issues) {
   // priority over, since only the LAST match counts) a real EXPLORE → PLAN transition,
   // producing a spurious WARN and masking the genuine confidence sub-line check (reviewer
   // pass-2 CONCERN #1, plan-2026-09-11T141919-e5db2894). See stripHygieneSkipLines.
-  const lines = stripHygieneSkipLines(historyBlock).split("\n");
+  // SPAWN start-time lines are dropped too: one placed between a transition and its
+  // `confidence:` sub-line would otherwise be read as the "next line" and fire a false WARN.
+  const lines = stripHygieneSkipLines(historyBlock).split("\n").filter((l) => !/^- SPAWN /.test(l));
 
   // Index of the LAST real `EXPLORE → PLAN` transition line, or -1.
   let last = -1;

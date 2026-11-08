@@ -215,6 +215,12 @@ test("parseState: phase, iteration, phase visits, and the last transition's time
   assert.deepEqual(s.hist[1].sub, ["confidence: deep"]);
 });
 
+test("parseState: a SPAWN line between a transition and its confidence sub-line does not steal the sub-line", () => {
+  const s = parseState("# Current State: PLAN\n## Transition History:\n- EXPLORE → PLAN (x)\n- SPAWN ip-plan-writer slug=plan started 2026-01-01T00:00:00Z\n  - confidence: deep\n");
+  assert.deepEqual(s.hist[0].sub, ["confidence: deep"]);
+  assert.deepEqual(s.hist[1].sub, []);
+});
+
 test("parseDecisions: the commented schema example is ignored, a repeated id keeps its last entry, 4-digit ids parse", () => {
   const d = parseDecisions("<!--\n## D-099 | PLAN | YYYY-MM-DD\n**Decision**: example\n-->\n## D-001 | PLAN | 2026-01-01\n**Decision**: first\n## D-001 | PLAN | 2026-01-01\n**Decision**: second\n**Trade-off**: a at the cost of b\n## D-1000 | EXECUTE | 2026-01-02\n**Context**: ctx\n**Decision**: big\n");
   assert.deepEqual(d.map((x) => x.id), ["D-1000", "D-001"]);
