@@ -266,3 +266,74 @@ test("a user title shaped like ours but not for this project is not overwritten"
     assert.equal(r.stdout, "");
   });
 });
+
+// Spawns with a pipe the test never closes; resolves {status, stdout, ms} or kills the child after 6 s.
+function runUnclosed(payload) {
+  return new Promise((resolve) => {
+    const child = spawn("node", [SCRIPT], { stdio: ["pipe", "pipe", "pipe"] });
+    const t0 = Date.now();
+    let stdout = "";
+    let settled = false;
+    const kill = setTimeout(() => {
+      if (!settled) child.kill("SIGKILL");
+    }, 6000);
+    child.stdout.on("data", (d) => (stdout += d));
+    child.stdin.on("error", () => {});
+    child.on("close", (status) => {
+      settled = true;
+      clearTimeout(kill);
+      resolve({ status, stdout, ms: Date.now() - t0 });
+    });
+    child.stdin.write(payload);
+  });
+}
+
+test("stdin that never closes: complete JSON still prints the title, partial JSON prints nothing, both exit by themselves", async () => {
+  const root = project({});
+  try {
+    const full = JSON.stringify({ hook_event_name: "UserPromptSubmit", cwd: root });
+    const a = await runUnclosed(full);
+    assert.equal(a.status, 0);
+    assert.ok(a.ms < 4000, `exit took ${a.ms}ms`);
+    assert.match(titleOf(a), / · EXECUTE · Ship the thing$/);
+    const b = await runUnclosed(full.slice(0, full.length - 5));
+    assert.equal(b.status, 0);
+    assert.ok(b.ms < 4000, `exit took ${b.ms}ms`);
+    assert.equal(b.stdout, "");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("stdin above the 1 MB cap exits 0 quickly and prints nothing", async () => {
+  const root = project({});
+  try {
+    const big = JSON.stringify({ hook_event_name: "UserPromptSubmit", cwd: root, prompt: "p".repeat(1.2 * 1024 * 1024) });
+    const r = await new Promise((resolve) => {
+      const child = spawn("node", [SCRIPT], { stdio: ["pipe", "pipe", "pipe"] });
+      const t0 = Date.now();
+      let stdout = "";
+      const kill = setTimeout(() => child.kill("SIGKILL"), 6000);
+      child.stdout.on("data", (d) => (stdout += d));
+      child.stdin.on("error", () => {});
+      child.on("close", (status) => {
+        clearTimeout(kill);
+        resolve({ status, stdout, ms: Date.now() - t0 });
+      });
+      child.stdin.end(big);
+    });
+    assert.equal(r.status, 0);
+    assert.equal(r.stdout, "");
+    assert.ok(r.ms < 4000, `exit took ${r.ms}ms`);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("zero-width and invisible format characters are stripped from the title", () => {
+  withProject({ goal: "a\u200bb\u200cc\u200dd\u2060e\ufeff\u00adf" }, (root) => {
+    const title = titleOf(run({ hook_event_name: "SessionStart", cwd: root }));
+    assert.match(title, / · abcdef$/);
+    assert.ok(!/[\u200b-\u200d\u2060\ufeff\u00ad]/.test(title));
+  });
+});

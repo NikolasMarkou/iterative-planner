@@ -23,17 +23,22 @@ const SEP = " · ";
 const STATES = "EXPLORE|PLAN|EXECUTE|REFLECT|PIVOT|CLOSE|UNKNOWN";
 const OWN_REST_RE = new RegExp(`^(${STATES}) \\u00b7 `);
 const UNSAFE_RE = /[\u0000-\u001f\u007f-\u009f\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
+const INVISIBLE_RE = /[\u00ad\u200b-\u200d\u2060\ufeff]/g;
 const MAX_STDIN = 1024 * 1024;
 const STDIN_TIMEOUT_MS = 2000;
 const MAX_GOAL = 50;
 const START_SOURCES = new Set(["startup", "resume", "fork"]);
 
-/** Strip control, C1 and bidi/format chars and collapse whitespace, so a title is one plain line. */
+/** Remove zero-width/soft-hyphen chars, blank out control, C1 and bidi chars, and collapse whitespace, so a title is one plain line. */
 function sanitize(text) {
-  return String(text).replace(UNSAFE_RE, " ").replace(/\s+/g, " ").trim();
+  return String(text).replace(INVISIBLE_RE, "").replace(UNSAFE_RE, " ").replace(/\s+/g, " ").trim();
 }
 
-/** Read all of stdin as text (<= 1 MB, <= 2 s). Resolves "" on error or timeout; never rejects. */
+/**
+ * Read stdin as text (<= 1 MB, <= 2 s). Resolves what was received so far on timeout (the caller parses it;
+ * incomplete JSON fails to parse and prints nothing), "" on error or over-cap. Never rejects. Always releases
+ * stdin, so the process can exit even when the parent never closes the pipe.
+ */
 function readStdin() {
   return new Promise((done) => {
     const chunks = [];
@@ -43,9 +48,11 @@ function readStdin() {
       if (finished) return;
       finished = true;
       clearTimeout(timer);
+      process.stdin.removeAllListeners("data");
+      process.stdin.destroy();
       done(text);
     };
-    const timer = setTimeout(() => finish(""), STDIN_TIMEOUT_MS);
+    const timer = setTimeout(() => finish(Buffer.concat(chunks).toString("utf8")), STDIN_TIMEOUT_MS);
     process.stdin.on("data", (c) => {
       size += c.length;
       if (size > MAX_STDIN) return finish("");
