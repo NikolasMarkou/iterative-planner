@@ -78,7 +78,7 @@ stateDiagram-v2
 | REFLECT → CLOSE | All criteria verified PASS in `verification.md`, no regressions, no simplification blockers. **User confirms.** |
 | REFLECT → PIVOT | Failure or better approach found. |
 | REFLECT → EXPLORE | Need more context. |
-| REFLECT → EXECUTE | Completion-fix remediation surfaced during REFLECT: small fixes to finish the SAME iteration's work (not a new approach → not PIVOT; not more context → not EXPLORE). Same iteration only — `iter` does not increment. Not a general re-loop. A fix that repairs plan step M is numbered as a sub-step of it, `iter-N/step-M.K` (K counts 1, 2, … over successive fixes to that same step), so the changelog `step` field always names a numbered step. The declared counter stays flat across these round trips, but the enforced iteration cap does not (see Iteration Limits, below). |
+| REFLECT → EXECUTE | Completion-fix remediation surfaced during REFLECT: small fixes to finish the SAME iteration's work (not a new approach → not PIVOT; not more context → not EXPLORE). Same iteration only — `iter` does not increment. Not a general re-loop. A fix that repairs plan step M is numbered as a sub-step of it, `iter-N/step-M.K` (K counts 1, 2, … over successive fixes to that same step), so the changelog `step` field always names a numbered step. Neither the declared nor the enforced iteration changes across these round trips; the separate round cap counts them (see Iteration Limits, below). |
 | PIVOT → PLAN | New approach formulated. Decision logged. |
 
 > **Bootstrap shortcuts**: `bootstrap.mjs close` allows closing from any state (EXPLORE→CLOSE, PLAN→CLOSE, EXECUTE→CLOSE, PIVOT→CLOSE). These are administrative exits — the protocol CLOSE steps (summary.md, decision audit, LESSONS.md update) should be completed by the agent before running `close`. These four edges — plus two more bootstrap-generated ones, `UNKNOWN→CLOSE` (fallback close from a corrupt/unreadable state.md) and `CLOSE→CLOSE` (idempotent re-close) — are deliberately absent from the Mermaid diagram above and from the Transitions table; the diagram and table show only the primary protocol flow. `VALID_TRANSITIONS` in `validate-plan.mjs` is the authoritative list of every transition the validator accepts — read it, not the diagram, for the complete transition set.
@@ -351,16 +351,9 @@ are earned, not free.
 `iter` counter: increments on PLAN → EXECUTE. `iter=0` = EXPLORE-only (pre-plan).
 - `iter = 5`: mandatory decomposition analysis in `decisions.md` (2-3 independent sub-goals + deps). See `references/planning-rigor.md`.
 - `iter ≥ 6`: hard STOP. Present decomposition to user. Break into smaller tasks.
-- **Derived vs declared**: the enforced cap does not trust the declared `## Iteration:`
-  field alone. `checkIterationLimits` (`validate-plan.mjs`) computes
-  `iter = max(declared, derived)`, where `derived` counts every literal
-  `EXECUTE → REFLECT` line in `state.md`'s Transition History — including completion-fix
-  and leash-override round trips, which leave the declared field unchanged (see
-  Transitions table, REFLECT → EXECUTE row). This is deliberately safety-conservative
-  (over-counting is the safe direction for a hard cap), but it means several
-  same-iteration retries can consume iteration-cap headroom the declared field never
-  shows, and `[iteration-cap]` may HARD-fail at `--pre-step` while `## Iteration:` still
-  reads low.
+- **What counts**: the enforced iteration is the larger of the declared `## Iteration:` and the PLAN → EXECUTE arrivals in `state.md`'s Transition History, so only re-plans (including after PIVOT) raise it. Completion-fix round trips (REFLECT → EXECUTE) do not.
+- **Round cap**: a separate hard stop, the round cap, fires at 18 `EXECUTE → REFLECT` arrivals (6 iterations of 3 rounds). It keeps a loop that never re-plans from running forever.
+- **Exit when a stop fires** (iteration cap, round cap or leash cap): there is no override past the cap, and `--pre-step` fails again on every call. Present the decomposition to the user and offer a partial CLOSE: finish the CLOSE steps, run `bootstrap.mjs close`, mark `summary.md` as partial and list the unfinished steps, then run `bootstrap.mjs new` for each sub-goal. For the leash cap the user may instead choose a pivot and `bootstrap.mjs reset-attempts`.
 
 ## Recovery from Context Loss
 

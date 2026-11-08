@@ -304,7 +304,7 @@ stateDiagram-v2
 
 </details>
 
-**The runaway brake.** Iterations increment on each PLAN → EXECUTE transition. At **iteration 5** the protocol forces a decomposition analysis — carve the goal into 2-3 independent sub-goals that could each be their own plan. At **iteration 6+** it hard-stops. This is the deliberate cure for the "just one more iteration" spiral that quietly destroys plans.
+**The runaway brake.** Iterations increment on each PLAN → EXECUTE transition. At **iteration 5** the protocol forces a decomposition analysis — carve the goal into 2-3 independent sub-goals that could each be their own plan. At **iteration 6+** it hard-stops. A separate cap stops a plan after 18 rounds of execution and review, so a loop that never re-plans cannot run forever. Either stop ends in a partial close, then a new plan per sub-goal. This is the deliberate cure for the "just one more iteration" spiral that quietly destroys plans.
 
 ---
 
@@ -576,7 +576,7 @@ No. Bootstrap adds `plans/` to `.gitignore` by default. Remove it if you want de
 Run `bootstrap.mjs new --force "new goal"`. This closes the active plan (merging its findings) and creates a fresh one. All previous plan directories are preserved.
 
 **What happens at iteration 5?**
-The protocol forces a decomposition analysis: identify 2-3 independent sub-goals that could each be a separate plan. At iteration 6+, execution stops entirely.
+The protocol forces a decomposition analysis: identify 2-3 independent sub-goals that could each be a separate plan. At iteration 6+, or after 18 rounds of execution and review, execution stops entirely and the way forward is a partial close plus new plans.
 
 **Can I run the agents in parallel?**
 Explorers always parallelize. Verifiers can parallelize across independent checks. Executors never parallelize — exactly one runs at a time, because plan steps are sequential. The orchestrator sequences anything that touches the same plan file.
