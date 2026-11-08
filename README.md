@@ -514,6 +514,22 @@ The log format belongs to Claude Code and is not a published interface. If it is
 
 </details>
 
+## Session title hint
+
+Optional. A small hook script, `src/scripts/session-title.mjs`, sets the Claude Code session title to `<project> · <STATE> · <goal>` (for example `my-app · EXECUTE · Migrate the auth layer`), so a list of sessions shows which plan each one is on. The state comes from the active plan's `state.md` and the goal from its `plan.md`, cut to 50 characters. It runs on two hook events, `SessionStart` (startup, resume and fork) and `UserPromptSubmit`, and it only reads: it writes no file, starts no process and uses no network. If anything goes wrong, or there is no active plan, it prints nothing.
+
+It is opt-in. Nothing installs it and nothing edits your `settings.json`. To enable it, print the snippet and paste it into the `hooks` section of `~/.claude/settings.json`, merging with any hooks you already have:
+
+```bash
+node ~/.claude/skills/iterative-planner/scripts/session-title.mjs --print-settings
+```
+
+If you rename the session yourself with `/rename`, the hook leaves your name alone: it only replaces a title that is empty or already has its own `<project> · <STATE> · <goal>` shape.
+
+Limits: whether Claude Code puts the current `session_title` into the `UserPromptSubmit` input is unverified, so the rename check may not see your name there. An AI-generated title may also appear in `session_title` and keep the hint from being set. And the hint only appears after you paste the snippet.
+
+When the orchestrator starts a sub agent, it prints one line with that agent's UTC start time and records the same line in `state.md`.
+
 ---
 
 ## Git Integration
@@ -712,6 +728,8 @@ iterative-planner/
     │   ├── emit-template.test.mjs  # emit-template test suite (node:test)
     │   ├── dashboard.mjs           # read-only HTML view of plans/ for people, live with --watch; optional token usage from Claude Code's logs
     │   ├── dashboard.test.mjs      # dashboard test suite (node:test)
+    │   ├── session-title.mjs       # optional hook helper: prints a session title for the active plan; opt-in, read-only
+    │   ├── session-title.test.mjs  # session-title test suite (node:test)
     │   ├── shared.mjs              # shared helpers (field extraction, changelog field split, compression markers, id grammars)
     │   ├── shared.test.mjs         # shared test suite (node:test)
     │   └── modules/                # verbatim per-state rule bodies (EXPLORE/PLAN/EXECUTE/REFLECT/PIVOT), emitted on demand
