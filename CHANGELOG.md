@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [2.68.0] - 2026-11-07
 
-**One command opens the plan dashboard from inside Claude Code, and the build is green again.** An audit found a red `make validate`, nine tests that failed only on an older git, a stale Executor model cell, a missing pointer in the PIVOT module, and install-folder litter that `sync-skill` never noticed. All are fixed here. The protocol itself is unchanged: no agent runs the dashboard and `SKILL.md` still does not mention it.
+**One command opens the plan dashboard from inside Claude Code, and the build is green again.** An audit found a red `make validate`, nine tests that failed only on an older git, an Executor model cell out of step with its agent file, a missing pointer in the PIVOT module, and install-folder litter that `sync-skill` never noticed. All are fixed here. The protocol itself is unchanged: no agent runs the dashboard and `SKILL.md` still does not mention it.
 
 ### Added
 
@@ -20,7 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **`sync-skill` prunes install litter.** It removes four stale paths left by the pre-restructure layout from the installed skill folder (`src/`, `CLAUDE.md`, `Makefile`, `build.ps1`), in both channels, guarded against an empty `$HOME`. This runs only for a plain install; a git-checkout install is left alone (see Added).
 - **README badge gate accepts HTML.** `check-readme-parity.mjs` accepts the version and test-count badges as a whole markdown image or a whole HTML `<img src="https://img.shields.io/badge/…">`. The HTML form needs whitespace before `src=` and a matching closing quote. It still never matches a bare substring. The register baseline was regenerated after the README changes.
-- **Executor model.** The Agent Definitions table in `SKILL.md` and README now says `sonnet` for the Executor, matching `ip-executor.md`.
+- **Executor model.** The Executor is back to `inherit`, reverting the `sonnet` pin from commit 9890b2d. `ip-executor.md`, the `SKILL.md` Agent Definitions table and the README agent table all say `inherit`, and the new Model-column test keeps the three in step.
 - **PIVOT module.** `state-pivot.md` cites `references/root-cause-analysis.md` at the log-pivot bullet.
 
 ### Fixed
