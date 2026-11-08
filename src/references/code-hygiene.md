@@ -28,8 +28,10 @@ Successful steps already committed. Applies only to failed step.
 1. Revert uncommitted immediately:
    ```
    git checkout -- <uncommitted files from manifest>
-   git clean -fd  # remove untracked files from failed step
+   git clean -nd -- <paths this step created, from the manifest>   # preview first
+   git clean -fd -- <the same paths>   # remove untracked files from failed step
    ```
+   Never run `git clean` without a pathspec: it also removes the bootstrap-written `.gitignore`, `plans/ANCHORS.md` and unrelated untracked files.
 2. Update change manifest.
 3. Log reverted files in `decisions.md`.
 4. Append a `REVERT(file)` line to `{plan-dir}/changelog.md` for each reverted file (one line per file). Reason: `revert: <what failed>`. Append-only — never delete the original lines that recorded the failed edits.

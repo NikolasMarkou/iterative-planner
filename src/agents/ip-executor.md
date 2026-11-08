@@ -108,7 +108,7 @@ If `blast-radius.mjs` is missing or errors:
 - Follow Revert-First: (1) revert? (2) delete? (3) one-liner? (4) none → report
 - 10-Line Rule: fix needs >10 new lines → not a fix → report failure
 - **You get ONE fix attempt in this spawn.** If it fails, revert and report FAILURE — do not try a second idea. The step's cap is 2 fix attempts TOTAL, counted in `state.md` across spawns, and the orchestrator spends the second one by re-spawning you with the failure context. Trying twice here would make the reachable worst case four tries against a stated cap of two.
-- Revert uncommitted changes: `git checkout -- <files>; git clean -fd`
+- Revert uncommitted changes, scoped to this step: `git checkout -- <tracked files from the change manifest>`; for untracked files this step created, preview with `git clean -nd -- <created paths>` and then run `git clean -fd -- <the same paths>`. Never run `git clean` without a pathspec: it also lists the bootstrap-written `.gitignore`, `plans/ANCHORS.md` and unrelated untracked files.
 - **Manifest-touching steps**: `git checkout` alone does NOT restore installed dependencies. If the reverted step modified a package manifest/lockfile, follow the git revert with the ecosystem's strict reinstall (`npm ci` / `cargo build` / `poetry install --sync` / `bundle install` / `go mod download` / etc.) to reconcile the working tree with the restored lockfile. Full sequence: `references/code-hygiene.md` § Revert procedures — manifest-touching reverts.
 - For each reverted file, append a `REVERT(file)` line to `changelog.md` with reason `revert: <what failed>`.
 

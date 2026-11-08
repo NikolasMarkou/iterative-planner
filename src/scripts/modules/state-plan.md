@@ -18,5 +18,6 @@
 - Read then write `state.md` + `progress.md`.
 - List **every file** to modify/create. Can't list them → go back to EXPLORE.
 - Only recommended approach in plan. Alternatives → `decisions.md`.
+- On approval, set `## Iteration:` in `state.md` to the previous value plus 1 (the orchestrator, or the single-threaded agent, writes it) in the same edit that logs PLAN → EXECUTE.
 - Wait for explicit user approval. Before requesting approval, emit **PC-PLAN** (Plan Presentation contract — see `references/file-formats.md` "Presentation Contracts"): Goal verbatim + a 2-4 sentence summary + the full Steps list verbatim + the `plan.md` path (the rest of the plan is read from the file, not pasted into chat) + the approval prompt. Never truncate the Steps. Same contract on re-presentation after revisions.
 

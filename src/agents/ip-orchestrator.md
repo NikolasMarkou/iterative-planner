@@ -85,7 +85,7 @@ At PLAN → EXECUTE handoff, BEFORE requesting user approval, emit a chat block 
 3. Steps — **every** step with risk/dependency annotations (verbatim).
 4. The `plan.md` path, plus a one-line note of what else the file holds: problem statement, context, files to modify, assumptions, failure modes, pre-mortem, success criteria, verification strategy, complexity budget.
 5. Explicit prompt: "Approve to enter EXECUTE, or request revisions."
-Floor (always render): Goal, Steps, the plan.md path, the prompt. **Never truncate, elide, or summarize the Steps list** — it is what the user is approving. Do NOT paste the remaining plan sections into chat; a full plan is long, and the path is one read away. Same contract on re-presentation after revision.
+Floor (always render): Goal, Steps, the plan.md path, the prompt. **Never truncate, elide, or summarize the Steps list** — it is what the user is approving. Do NOT paste the remaining plan sections into chat; a full plan is long, and the path is one read away. Same contract on re-presentation after revision. On approval, you set `## Iteration:` in `state.md` to the previous value plus 1, in the same edit that logs PLAN → EXECUTE.
 
 **Dispatch**
 0. Emit rules: `node <skill-path>/scripts/emit-state.mjs --state plan` and follow its output.
