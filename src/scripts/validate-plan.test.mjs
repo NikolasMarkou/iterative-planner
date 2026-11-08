@@ -16,7 +16,7 @@ import { randomBytes } from "crypto";
 
 const VALIDATOR = resolve(import.meta.dirname, "validate-plan.mjs");
 // Import-safe: validate-plan.mjs's CLI dispatch is guarded by isEntryPoint.
-import { collectKnownDecisionIdsByPlan, ANCHOR_SOURCE_EXTS, HTML_STYLE_EXTS, deriveIterationFromHistory, deriveConvergenceIteration } from "./validate-plan.mjs";
+import { collectKnownDecisionIdsByPlan, ANCHOR_SOURCE_EXTS, HTML_STYLE_EXTS, deriveIterationFromHistory, deriveRoundsFromHistory, deriveConvergenceIteration } from "./validate-plan.mjs";
 import { BLOCK_COMMENT_EXTS } from "./shared.mjs";
 import { ANCHOR_SOURCE_EXTS as BOOTSTRAP_ANCHOR_SOURCE_EXTS } from "./bootstrap.mjs";
 // Import-safe: bootstrap.mjs's CLI dispatch is guarded by isEntryPoint. The
@@ -706,6 +706,64 @@ describe("validate-plan.mjs --pre-step gate", () => {
     assert.ok(/hard-cap=6/.test(r.stdout), `expected hard-cap=6 in output, got:\n${r.stdout}`);
   });
 
+  // plan-2026-11-08T075330-b464ad63 D-002 — iteration = PLAN → EXECUTE arrivals; the work
+  // count is a separate `round-cap` at 18 EXECUTE → REFLECT arrivals.
+  const roundPairs = (n) => Array.from({ length: n }, (_, i) => `- EXECUTE → REFLECT (round ${i + 1})\n- REFLECT → EXECUTE (completion fix ${i + 1})`).join("\n");
+
+  it("(e2) D-002: 6 EXECUTE → REFLECT / REFLECT → EXECUTE pairs with declared Iteration 1 now PASS", () => {
+    const cwd = getTempDir();
+    writePlan(cwd, { state: "EXECUTE", iteration: 1, transitionHistoryExtra: roundPairs(6) });
+    const r = runPreStep(cwd);
+    assert.equal(r.exitCode, 0, `completion-fix rounds are not iterations, got ${r.exitCode}\n${r.stdout}`);
+    assert.equal(r.stdout.trim(), "GATE:PASS");
+  });
+
+  it("(e3) D-002: 6 PLAN → EXECUTE arrivals with declared 0 fail [iteration-cap] naming the new source", () => {
+    const cwd = getTempDir();
+    const arrivals = Array.from({ length: 5 }, (_, i) => `- PLAN → EXECUTE (re-plan ${i + 2})`).join("\n");
+    writePlan(cwd, { state: "EXECUTE", iteration: 0, transitionHistoryExtra: arrivals });
+    const r = runPreStep(cwd);
+    assert.equal(r.exitCode, 2);
+    assert.ok(r.stdout.startsWith("GATE:FAIL [iteration-cap]"), r.stdout);
+    assert.ok(/derived=6 from PLAN → EXECUTE transition count/.test(r.stdout), r.stdout);
+  });
+
+  it("(e4) D-002: 18 EXECUTE → REFLECT rounds fail [round-cap]; 17 pass", () => {
+    const cwd = getTempDir();
+    const rounds = (n) => Array.from({ length: n }, (_, i) => `- EXECUTE → REFLECT (round ${i + 1})`).join("\n");
+    writePlan(cwd, { state: "EXECUTE", iteration: 1, transitionHistoryExtra: rounds(17) });
+    assert.equal(runPreStep(cwd).exitCode, 0, "17 rounds must pass");
+    writePlan(cwd, { state: "EXECUTE", iteration: 1, transitionHistoryExtra: rounds(18) });
+    const r = runPreStep(cwd);
+    assert.equal(r.exitCode, 2);
+    assert.equal(r.stdout.trim(), "GATE:FAIL [round-cap] rounds=18 hard-cap=18");
+  });
+
+  it("(e5) D-002: the full validator ERRORs [round-cap] at 18 rounds and is silent at 17", () => {
+    const cwd = getTempDir();
+    const rounds = (n) => Array.from({ length: n }, (_, i) => `- EXECUTE → REFLECT (round ${i + 1})`).join("\n");
+    writePlan(cwd, { state: "EXECUTE", iteration: 1, transitionHistoryExtra: rounds(17) });
+    assert.ok(!/\[round-cap\]/.test(run(cwd).stdout));
+    writePlan(cwd, { state: "EXECUTE", iteration: 1, transitionHistoryExtra: rounds(18) });
+    assert.ok(/ERROR \[round-cap\]/.test(run(cwd).stdout));
+  });
+
+  it("(e6) D-002: HYGIENE SKIP text naming PLAN -> EXECUTE or EXECUTE -> REFLECT inflates neither count", async () => {
+    const { deriveIterationFromHistory, deriveRoundsFromHistory } = await import(VALIDATOR);
+    const state = [
+      "# Current State: EXECUTE",
+      "## Iteration: 1",
+      "## Transition History:",
+      "- INIT → EXPLORE (go)",
+      "- PLAN → EXECUTE (approved)",
+      "- EXECUTE → REFLECT (done)",
+      "- HYGIENE SKIP (iter 1): reason says PLAN -> EXECUTE and EXECUTE -> REFLECT again",
+      "",
+    ].join("\n");
+    assert.equal(deriveIterationFromHistory(state), 1);
+    assert.equal(deriveRoundsFromHistory(state), 1);
+  });
+
   it("(f) FAIL [no-plan] — no .current_plan pointer + no positional arg → exit 2", () => {
     const cwd = getTempDir(); // empty temp dir, no plans/ subtree
     const r = runPreStep(cwd);
@@ -942,21 +1000,19 @@ describe("validate-plan.mjs --pre-step gate", () => {
     assert.equal(malformed.length, 0, `pipe in reason must not produce changelog-malformed WARN, got:\n${r.stdout}`);
   });
 
-  // OBS-005 / D-005 — iteration cap must fire from Transition History EXECUTE→REFLECT
-  // count, even when the agent-written `## Iteration:` field is stale or zero.
-  it("(p) OBS-005: state.md with 7 EXECUTE→REFLECT transitions + declared Iteration 0 → ERROR [iteration] hard cap", () => {
+  // OBS-005 / D-005 (rewritten for plan-2026-11-08T075330-b464ad63 D-002) — iteration cap fires from
+  // the Transition History PLAN→EXECUTE count, even when the agent-written `## Iteration:` field is stale or zero.
+  it("(p) OBS-005: state.md with 6 extra PLAN→EXECUTE arrivals (+1 default) + declared Iteration 0 → ERROR [iteration] hard cap", () => {
     const cwd = getTempDir();
     const transitionHistory = [
       "- INIT → EXPLORE (a)",
       "- EXPLORE → PLAN (b)",
-      "- PLAN → EXECUTE (c)",
-      "- EXECUTE → REFLECT (1)",
-      "- EXECUTE → REFLECT (2)",
-      "- EXECUTE → REFLECT (3)",
-      "- EXECUTE → REFLECT (4)",
-      "- EXECUTE → REFLECT (5)",
-      "- EXECUTE → REFLECT (6)",
-      "- EXECUTE → REFLECT (7)",
+      "- PLAN → EXECUTE (re-plan 1)",
+      "- PLAN → EXECUTE (re-plan 2)",
+      "- PLAN → EXECUTE (re-plan 3)",
+      "- PLAN → EXECUTE (re-plan 4)",
+      "- PLAN → EXECUTE (re-plan 5)",
+      "- PLAN → EXECUTE (re-plan 6)",
     ].join("\n");
     writePlan(cwd, { state: "EXECUTE", iteration: 0, transitionHistoryExtra: transitionHistory });
     const r = run(cwd);
@@ -1079,21 +1135,20 @@ describe("validate-plan.mjs --pre-step gate", () => {
   // The VERDICT is unchanged (the cap still ERRORs, which is what this test exists to pin);
   // only the derived number moves. Real plans are unaffected: bootstrap's template example
   // is `EXPLORE → PLAN`, never `EXECUTE → REFLECT` (assumption B4, re-verified at step 5).
-  it("(x) #8/D-009: guidance comment w/ an example EXECUTE → REFLECT + 7 real ones → hard cap ERRORs, derived=8 (raw count: over-count, never under-count)", () => {
+  it("(x) #8/D-009: guidance comment w/ an example EXECUTE → REFLECT + 6 real PLAN → EXECUTE ones → hard cap ERRORs, derived=8 (raw count: over-count, never under-count)", () => {
     const cwd = getTempDir();
     const transitionHistory = [
       "<!-- When logging EXPLORE → PLAN, add Exploration Confidence on the line below, e.g.:",
       "- EXPLORE → PLAN (gathered enough context, YYYY-MM-DDTHH:MM:SSZ)",
       "  - confidence: scope=deep|partial|shallow, solutions=adequate|thin, risks=clear|unclear",
-      "- EXECUTE → REFLECT (example inside the comment — D-009: raw counting DOES count it)",
+      "- PLAN → EXECUTE (example inside the comment — D-009: raw counting DOES count it)",
       "See references/planning-rigor.md for definitions. -->",
-      "- EXECUTE → REFLECT (1)",
-      "- EXECUTE → REFLECT (2)",
-      "- EXECUTE → REFLECT (3)",
-      "- EXECUTE → REFLECT (4)",
-      "- EXECUTE → REFLECT (5)",
-      "- EXECUTE → REFLECT (6)",
-      "- EXECUTE → REFLECT (7)",
+      "- PLAN → EXECUTE (re-plan 1)",
+      "- PLAN → EXECUTE (re-plan 2)",
+      "- PLAN → EXECUTE (re-plan 3)",
+      "- PLAN → EXECUTE (re-plan 4)",
+      "- PLAN → EXECUTE (re-plan 5)",
+      "- PLAN → EXECUTE (re-plan 6)",
     ].join("\n");
     writePlan(cwd, { state: "EXECUTE", iteration: 0, transitionHistoryExtra: transitionHistory });
     const r = run(cwd);
@@ -1143,7 +1198,7 @@ describe("validate-plan.mjs --pre-step gate", () => {
 
   /** state.md exactly as the reviewer's repro: stray opener above, template trailer below. */
   function strayOpenerState({ iteration = 0, records = 4 } = {}) {
-    const recs = Array.from({ length: records }, (_, i) => `- EXECUTE → REFLECT (iter ${i + 1})`);
+    const recs = Array.from({ length: records }, (_, i) => `- PLAN → EXECUTE (iter ${i + 1})`);
     return [
       "# Current State: EXECUTE",
       `## Iteration: ${iteration}`,
@@ -1159,7 +1214,6 @@ describe("validate-plan.mjs --pre-step gate", () => {
       "- INIT → EXPLORE (task started)",
       "- EXPLORE → PLAN (gathered enough context, 2026-05-15T11:30:00Z)",
       "  - confidence: scope=deep, solutions=adequate, risks=clear",
-      "- PLAN → EXECUTE (user approved, 2026-05-15T11:45:00Z)",
       ...recs,
       // bootstrap.mjs:1383-1386 — every state.md ends with this. It supplies the `-->`.
       "<!-- When logging EXPLORE → PLAN, add Exploration Confidence on the line below, e.g.:",
@@ -1170,7 +1224,7 @@ describe("validate-plan.mjs --pre-step gate", () => {
     ].join("\n");
   }
 
-  it("(aa) D-009: stray `<!--` opener + 4 real EXECUTE → REFLECT records → derived === 4 (pre-fix: 0)", async () => {
+  it("(aa) D-009: stray `<!--` opener + 4 real PLAN → EXECUTE records → derived === 4 (pre-fix: 0)", async () => {
     const { deriveIterationFromHistory } = await import(VALIDATOR);
     assert.equal(deriveIterationFromHistory(strayOpenerState({ records: 4 })), 4,
       "the review's exact fixture: the cap must count all 4 real records, not the 0 the stripped block yields");
@@ -1178,7 +1232,7 @@ describe("validate-plan.mjs --pre-step gate", () => {
 
   it("(ab) D-009: the cap NEVER under-counts, in any comment shape (opener before/between/after; balanced; backticked; none)", async () => {
     const { deriveIterationFromHistory } = await import(VALIDATOR);
-    const rec = (n) => Array.from({ length: n }, (_, i) => `- EXECUTE → REFLECT (${i + 1})`);
+    const rec = (n) => Array.from({ length: n }, (_, i) => `- PLAN → EXECUTE (${i + 1})`);
     const head = [
       "# Current State: EXECUTE",
       "## Iteration: 0",
@@ -1191,7 +1245,7 @@ describe("validate-plan.mjs --pre-step gate", () => {
       "stray opener BEFORE the records": [...head, "<!-- note: stray", ...rec(3), trailer],
       "stray opener BETWEEN the records": [...head, ...rec(1), "<!-- note: stray", ...rec(2), trailer],
       "stray opener AFTER the records (the only shape D-003 ever tested)": [...head, ...rec(3), "<!-- note: stray"],
-      "balanced comment holding an example transition": [...head, ...rec(3), "<!-- e.g. - EXECUTE → REFLECT (example) -->"],
+      "balanced comment holding an example transition": [...head, ...rec(3), "<!-- e.g. - PLAN → EXECUTE (example) -->"],
       "backticked delimiter in prose": [...head, "- NOTE: a stray `<!--` in prose is not a comment", ...rec(3), trailer],
       "stray opener above the HEADING itself": ["# Current State: EXECUTE", "## Iteration: 0", "<!-- note: stray", ...head.slice(2), ...rec(3), trailer],
     };
@@ -1484,15 +1538,14 @@ legacy section
   // let either the --pre-step HARD gate or the full validator's checkCheckpoints
   // WARN be silently bypassed. Both must read max(declared, derived), exactly
   // like checkIterationLimits already does.
-  it("(k) iteration-trust: declared Iteration 1 + 6 real EXECUTE → REFLECT records → GATE:FAIL [iteration-cap], not GATE:PASS", () => {
+  it("(k) iteration-trust: declared Iteration 1 + 5 more PLAN → EXECUTE records (6 with the default) → GATE:FAIL [iteration-cap], not GATE:PASS", () => {
     const cwd = getTempDir();
     const transitionHistory = [
-      "- EXECUTE → REFLECT (1)",
-      "- EXECUTE → REFLECT (2)",
-      "- EXECUTE → REFLECT (3)",
-      "- EXECUTE → REFLECT (4)",
-      "- EXECUTE → REFLECT (5)",
-      "- EXECUTE → REFLECT (6)",
+      "- PLAN → EXECUTE (1)",
+      "- PLAN → EXECUTE (2)",
+      "- PLAN → EXECUTE (3)",
+      "- PLAN → EXECUTE (4)",
+      "- PLAN → EXECUTE (5)",
     ].join("\n");
     writePlan(cwd, { state: "EXECUTE", iteration: 1, transitionHistoryExtra: transitionHistory });
     const r = runPreStep(cwd);
@@ -1504,12 +1557,11 @@ legacy section
   it("(l) iteration-trust: same fixture, full validator, no checkpoints/ dir → WARN [checkpoints] despite low declared iteration", () => {
     const cwd = getTempDir();
     const transitionHistory = [
-      "- EXECUTE → REFLECT (1)",
-      "- EXECUTE → REFLECT (2)",
-      "- EXECUTE → REFLECT (3)",
-      "- EXECUTE → REFLECT (4)",
-      "- EXECUTE → REFLECT (5)",
-      "- EXECUTE → REFLECT (6)",
+      "- PLAN → EXECUTE (1)",
+      "- PLAN → EXECUTE (2)",
+      "- PLAN → EXECUTE (3)",
+      "- PLAN → EXECUTE (4)",
+      "- PLAN → EXECUTE (5)",
     ].join("\n");
     const { planDir } = writePlan(cwd, { state: "EXECUTE", iteration: 1, transitionHistoryExtra: transitionHistory });
     // writePlan always creates checkpoints/ for the other fixtures' sake; this
@@ -1603,7 +1655,7 @@ legacy section
   // convergence check silent must leave the SAFETY cap counting exactly as it did before:
   // the cap asks "how much work has happened" and answers 6. Weakening it is the one
   // direction D-009 forbids.
-  it("(o) convergence split: the iteration HARD CAP is unchanged on the same history", () => {
+  it("(o) convergence split: the ROUND count still sees every record on the same history, the iteration stays 1", () => {
     const cwd = getTempDir();
     const transitionHistory = [
       "- EXECUTE → REFLECT (all steps complete)",
@@ -1619,8 +1671,12 @@ legacy section
     // none, so this number is exactly the fixture's own arrow count — the point being that
     // the cap still counts every one of them, including the two that belong to
     // completion-fix loops and therefore do NOT raise the real iteration.
-    assert.equal(deriveIterationFromHistory(state), 4,
-      "the hard cap's raw EXECUTE → REFLECT count must be untouched by D-034");
+    // D-002 (plan-2026-11-08T075330-b464ad63): the iteration no longer counts these; the
+    // work count lives on as the round count that feeds round-cap.
+    assert.equal(deriveRoundsFromHistory(state), 4,
+      "the round count must still see every EXECUTE → REFLECT record (D-034's backstop)");
+    assert.equal(deriveIterationFromHistory(state), 1,
+      "completion-fix round trips must not raise the derived iteration (D-002)");
     assert.equal(deriveConvergenceIteration(state), 1,
       "the advisory convergence derivation must read 1 on the same history (no re-plan recorded)");
   });
@@ -2811,13 +2867,13 @@ describe("transitionHistoryBlock: heading matched at line start (D-010)", () => 
       `Change Manifest prose must not be scanned as transition records. Got: ${r.stdout}`);
   });
 
-  it("the iteration hard cap still counts real EXECUTE → REFLECT records (cannot under-count to 0)", () => {
+  it("the iteration hard cap still counts real PLAN → EXECUTE records (cannot under-count to 0)", () => {
     const cwd = getTempDir();
     const { planDir } = writePlan(cwd, { iteration: 1 });
     // 6 real records + a Change Manifest that quotes the heading in prose. Pre-fix the
     // block started at the Change Manifest and the derived count came out wrong; the
     // hard-cap ERROR must fire regardless of the (stale) `## Iteration: 1` declaration.
-    const records = Array.from({ length: 6 }, (_, i) => `- EXECUTE → REFLECT (iteration ${i + 1})`).join("\n");
+    const records = Array.from({ length: 5 }, (_, i) => `- PLAN → EXECUTE (iteration ${i + 2})`).join("\n");
     writeFileSync(join(planDir, "state.md"), `# Current State: EXECUTE
 ## Iteration: 1
 ## Current Plan Step: 1 of 5

@@ -239,7 +239,7 @@ const SPAWN_LINE_RE = /^-\s+SPAWN /;
 
 // DECISION plan-2026-09-11T141919-e5db2894/D-003 — structural fix for reviewer pass-2
 // CONCERN #1: the original fix (EXECUTE step-1.1) patched checkStateTransitions and
-// countExecuteReflect individually and left a comment CLAIMING that reader list was
+// countTransition individually and left a comment CLAIMING that reader list was
 // exhaustive; it was not — checkExplorationConfidence and countRePlans also scan Transition
 // History text with arrow-sensitive regexes and were equally vulnerable to a HYGIENE SKIP
 // reason containing an arrow pair (e.g. "...the EXPLORE -> PLAN rewrite..." spuriously
@@ -527,31 +527,43 @@ function checkLeashCount(planDir, issues) {
 // NOTE: derive iteration from Transition
 // History (OBS-005). Pre-fix: `## Iteration: N` is agent-written, so an agent
 // (or sloppy fork) that forgets to bump it bypasses the 5/6 caps indefinitely.
-// Cross-check: each EXECUTE → REFLECT arrow in Transition History closes one
-// iteration. Final value = max(declared, derived) — both signals govern.
+// DECISION plan-2026-11-08T075330-b464ad63/D-002 — TWO derived counters, two caps:
+// the ITERATION is the count of `PLAN → EXECUTE` arrivals (every new iteration, PIVOT
+// included, passes through it; a completion-fix REFLECT → EXECUTE does not), while the
+// ROUND count is `EXECUTE → REFLECT` arrivals and feeds a separate `round-cap` (18). Do NOT
+// count `EXECUTE → REFLECT` as the iteration again: completion-fix round trips then
+// tripped "iteration 6" at about iteration 3, contradicting SKILL.md. Do NOT drop the round
+// cap either: an endless REFLECT <-> EXECUTE loop would then never reach any cap (D-034).
 //
-/** Count `EXECUTE → REFLECT` arrows in a Transition-History block (null → 0). */
-function countExecuteReflect(block) {
+/**
+ * Count `<from> → <to>` arrows in a Transition-History block (null → 0).
+ * Params: block (string|null) from transitionHistoryBlock; from/to (uppercase state names,
+ * regex-safe). Returns: integer. Never throws.
+ */
+function countTransition(block, from, to) {
   if (block === null) return 0;
-  // Use normalizePhase semantics (en/em dash → hyphen). Count distinct
-  // EXECUTE → REFLECT transitions.
+  // Use normalizePhase semantics (en/em dash → hyphen). Count distinct transitions.
   // Exclude HYGIENE SKIP lines wholesale BEFORE the pair scan — their free-text reason is
-  // unconstrained and may itself contain the literal pair "EXECUTE → REFLECT", which would
-  // otherwise self-inflate the derived iteration count (reviewer CRITICAL #2,
+  // unconstrained and may itself contain the literal pair, which would otherwise
+  // self-inflate the derived count (reviewer CRITICAL #2,
   // plan-2026-09-11T141919-e5db2894). See stripHygieneSkipLines.
   const filtered = stripHygieneSkipLines(block).replace(/[–—‐]/g, "-");
-  const re = /EXECUTE\s*(?:→|->)\s*REFLECT/g;
+  const re = new RegExp(`${from}\\s*(?:→|->)\\s*${to}`, "g");
   let count = 0;
   while (re.exec(filtered) !== null) count++;
   return count;
 }
 
+/** Hard round cap: `EXECUTE → REFLECT` arrivals (6 iterations x 3 rounds). */
+const ROUND_CAP = 18;
+
 // DECISION plan-2026-09-01T100120-4f591469/D-034 — the ADVISORY iteration derivation,
-// deliberately separate from the hard cap's countExecuteReflect: this asks "has the plan
+// deliberately separate from the hard cap's countTransition: this asks "has the plan
 // been re-planned?", not "how much work happened?". Do not unify them — feeding this count
 // to the hard cap would let an endless non-replanning loop escape it (an under-count in a
-// safety mechanism); feeding countExecuteReflect here wrongly flags a same-iteration
-// completion-fix loop as a new iteration.
+// safety mechanism); feeding the round count here wrongly flags a same-iteration
+// completion-fix loop as a new iteration. (The hard cap's own meaning is D-002 above:
+// iteration = PLAN → EXECUTE arrivals plus a separate round-cap.)
 // Counts arrivals at PLAN that begin a new iteration: only `REFLECT → PIVOT → PLAN` and
 // `REFLECT → EXPLORE → PLAN` (SKILL.md § Autonomy Leash "Known reset gap"). Every other
 // arrival at PLAN (`EXPLORE → PLAN`, `PLAN → PLAN`, `PLAN → EXPLORE → PLAN`) is routine
@@ -601,8 +613,17 @@ export function deriveConvergenceIteration(state) {
 // The module's CLI dispatch is already guarded by `isEntryPoint`, so importing is safe.
 export function deriveIterationFromHistory(state) {
   return Math.max(
-    countExecuteReflect(transitionHistoryBlock(state, { raw: true })),
-    countExecuteReflect(transitionHistoryBlock(state)),
+    countTransition(transitionHistoryBlock(state, { raw: true }), "PLAN", "EXECUTE"),
+    countTransition(transitionHistoryBlock(state), "PLAN", "EXECUTE"),
+  );
+}
+
+// Same raw-and-stripped max (D-009) over `EXECUTE → REFLECT`; feeds `round-cap`. Exported
+// for testability ONLY, like deriveIterationFromHistory.
+export function deriveRoundsFromHistory(state) {
+  return Math.max(
+    countTransition(transitionHistoryBlock(state, { raw: true }), "EXECUTE", "REFLECT"),
+    countTransition(transitionHistoryBlock(state), "EXECUTE", "REFLECT"),
   );
 }
 
@@ -628,14 +649,16 @@ function checkStateCommentAnomaly(planDir, issues) {
   // stray opener does when it pairs with bootstrap's trailing template comment — it swallows
   // real records — and it is also what a genuine comment holding an example transition does.
   // Either way the raw and stripped readings disagree, and the cap took the raw one.
-  const raw = countExecuteReflect(transitionHistoryBlock(state, { raw: true }));
-  const stripped = countExecuteReflect(transitionHistoryBlock(state));
-  if (raw !== stripped) {
-    issues.push({
-      severity: "WARN",
-      check: "state-comment-anomaly",
-      message: `state.md Transition History: ${raw} \`EXECUTE → REFLECT\` record(s) in the raw text but ${stripped} after HTML comments are stripped — ${raw - stripped} transition-shaped line(s) sit INSIDE a comment region. The iteration cap counts the raw ${raw} on purpose (it must never under-count — D-009), so this is why it may read higher than you expect.`,
-    });
+  for (const [from, to] of [["PLAN", "EXECUTE"], ["EXECUTE", "REFLECT"]]) {
+    const raw = countTransition(transitionHistoryBlock(state, { raw: true }), from, to);
+    const stripped = countTransition(transitionHistoryBlock(state), from, to);
+    if (raw !== stripped) {
+      issues.push({
+        severity: "WARN",
+        check: "state-comment-anomaly",
+        message: `state.md Transition History: ${raw} \`${from} → ${to}\` record(s) in the raw text but ${stripped} after HTML comments are stripped — ${raw - stripped} transition-shaped line(s) sit INSIDE a comment region. The iteration and round caps count the raw ${raw} on purpose (they must never under-count — D-009), so this is why they may read higher than you expect.`,
+      });
+    }
   }
 }
 
@@ -653,9 +676,13 @@ function checkIterationLimits(planDir, issues) {
   // When derived > declared, mention the source so the agent knows to fix
   // the discrepancy (and the validator's reasoning isn't opaque).
   const source = derived > declared
-    ? ` (declared=${declared}, derived=${derived} from EXECUTE → REFLECT transition count)`
+    ? ` (declared=${declared}, derived=${derived} from PLAN → EXECUTE transition count)`
     : "";
 
+  const rounds = deriveRoundsFromHistory(state);
+  if (rounds >= ROUND_CAP) {
+    issues.push({ severity: "ERROR", check: "round-cap", message: `${rounds} EXECUTE → REFLECT rounds reach the hard limit (${ROUND_CAP}): stop, present a decomposition, offer partial CLOSE` });
+  }
   if (iter >= 6) {
     issues.push({ severity: "ERROR", check: "iteration", message: `Iteration ${iter}${source} exceeds hard limit (6+): must decompose into smaller tasks` });
   } else if (iter === 5) {
@@ -2087,7 +2114,7 @@ function checkHygieneSweepGate(planDir, issues) {
   // regex by construction. See decisions.md D-001/D-003.
   // DECISION plan-2026-09-11T141919-e5db2894/D-003: "arrow-free" held only for the line's
   // FIXED PREFIX, not its free-text reason — a reason itself containing "->"/"→" still
-  // reached checkStateTransitions/countExecuteReflect until HYGIENE_SKIP_LINE_RE (above)
+  // reached checkStateTransitions/countTransition until HYGIENE_SKIP_LINE_RE (above)
   // started excluding the WHOLE line from both readers, closing that gap (reviewer CRITICAL
   // #1/#2). This regex below still only builds the ITERATION-SPECIFIC existence match; it
   // does not itself need to change to fix that gap.
@@ -2594,9 +2621,17 @@ function runPreStepGate(planDir) {
   const iter = Math.max(Number.isFinite(declared) ? declared : 0, derived);
   if (Number.isFinite(iter) && iter >= 6) {
     const source = derived > declared
-      ? ` (declared=${declared}, derived=${derived} from EXECUTE → REFLECT transition count)`
+      ? ` (declared=${declared}, derived=${derived} from PLAN → EXECUTE transition count)`
       : "";
     console.log(`GATE:FAIL [iteration-cap] iteration=${iter}${source} hard-cap=6`);
+    process.exit(2);
+  }
+
+  // DECISION plan-2026-11-08T075330-b464ad63/D-002 — the second hard cap: work done, not
+  // re-plans. Keeps D-034's endless-loop backstop now that the iteration no longer counts it.
+  const rounds = deriveRoundsFromHistory(state);
+  if (rounds >= ROUND_CAP) {
+    console.log(`GATE:FAIL [round-cap] rounds=${rounds} hard-cap=${ROUND_CAP}`);
     process.exit(2);
   }
 
@@ -2634,6 +2669,7 @@ If no plan directory is specified, validates the active plan.
     2. Current State = EXECUTE           → GATE:FAIL [wrong-state]
     3. Fix Attempts >= 2                 → GATE:FAIL [leash-cap]
     4. Iteration >= 6                    → GATE:FAIL [iteration-cap]
+    5. Rounds >= 18                      → GATE:FAIL [round-cap]
   Output: single line on stdout — GATE:PASS or GATE:FAIL [slug] [...details].
 
 Checks:
@@ -2674,7 +2710,7 @@ Exit codes:
   0 = pass (no errors, warnings are OK; or GATE:PASS in --pre-step mode)
   1 = fail (errors found in full validator)
   2 = GATE:FAIL — reserved EXCLUSIVELY for --pre-step HARD FAIL
-      (leash-cap, wrong-state, iteration-cap, no-plan). Orchestrators MUST
+      (leash-cap, wrong-state, iteration-cap, round-cap, no-plan). Orchestrators MUST
       halt the EXECUTE spawn pipeline on exit 2.`);
     process.exit(0);
   }
