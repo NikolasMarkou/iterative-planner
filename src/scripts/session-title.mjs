@@ -12,17 +12,49 @@
 //   flag    `--print-settings` prints the hooks JSON snippet (command = this script's own path), no stdin read.
 //   exit    always 0.
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
+import { isatty } from "node:tty";
 import { fileURLToPath } from "node:url";
 import { ANY_PLAN_ID_RE, extractField } from "./shared.mjs";
 
 const EVENTS = ["SessionStart", "UserPromptSubmit"];
 const SEP = " · ";
 const STATES = "EXPLORE|PLAN|EXECUTE|REFLECT|PIVOT|CLOSE|UNKNOWN";
-const OWN_TITLE_RE = new RegExp(`^.+ \\u00b7 (${STATES}) \\u00b7 `);
+const OWN_REST_RE = new RegExp(`^(${STATES}) \\u00b7 `);
+const UNSAFE_RE = /[\u0000-\u001f\u007f-\u009f\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
+const MAX_STDIN = 1024 * 1024;
+const STDIN_TIMEOUT_MS = 2000;
 const MAX_GOAL = 50;
 const START_SOURCES = new Set(["startup", "resume", "fork"]);
+
+/** Strip control, C1 and bidi/format chars and collapse whitespace, so a title is one plain line. */
+function sanitize(text) {
+  return String(text).replace(UNSAFE_RE, " ").replace(/\s+/g, " ").trim();
+}
+
+/** Read all of stdin as text (<= 1 MB, <= 2 s). Resolves "" on error or timeout; never rejects. */
+function readStdin() {
+  return new Promise((done) => {
+    const chunks = [];
+    let size = 0;
+    let finished = false;
+    const finish = (text) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      done(text);
+    };
+    const timer = setTimeout(() => finish(""), STDIN_TIMEOUT_MS);
+    process.stdin.on("data", (c) => {
+      size += c.length;
+      if (size > MAX_STDIN) return finish("");
+      chunks.push(c);
+    });
+    process.stdin.on("end", () => finish(Buffer.concat(chunks).toString("utf8")));
+    process.stdin.on("error", () => finish(""));
+  });
+}
 
 function readSafe(path) {
   try {
@@ -51,10 +83,16 @@ function cleanGoal(plan) {
   const m = plan && plan.match(/^## Goal[^\S\n]*\n([\s\S]*?)(?=^## |(?![\s\S]))/m);
   const lines = (m ? m[1] : "").split("\n");
   for (const raw of lines) {
-    const line = raw.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim();
-    if (line) return line.length > MAX_GOAL ? line.slice(0, MAX_GOAL - 1).trimEnd() + "…" : line;
+    const line = sanitize(raw);
+    if (!line) continue;
+    const chars = Array.from(line);
+    return chars.length > MAX_GOAL ? chars.slice(0, MAX_GOAL - 1).join("").trimEnd() + "…" : line;
   }
   return "?";
+}
+
+function projectName(root) {
+  return sanitize(basename(root)) || "?";
 }
 
 /** Pure: the title for a project root + plan id, or null. */
@@ -62,7 +100,7 @@ export function computeTitle(root, id) {
   const planDir = join(root, "plans", id);
   const state = extractField(readSafe(join(planDir, "state.md")), /^# Current State:\s*([A-Za-z]+)/m);
   const stateName = state && new RegExp(`^(${STATES})$`).test(state.toUpperCase()) ? state.toUpperCase() : "UNKNOWN";
-  return [basename(root), stateName, cleanGoal(readSafe(join(planDir, "plan.md")))].join(SEP);
+  return [projectName(root), stateName, cleanGoal(readSafe(join(planDir, "plan.md")))].join(SEP);
 }
 
 /** Pure: the stdout line for a parsed hook payload, or null for "print nothing". */
@@ -75,7 +113,11 @@ export function hookOutput(input) {
   if (!found) return null;
   const title = computeTitle(found.root, found.id);
   const current = typeof input.session_title === "string" ? input.session_title : "";
-  if (current && (!OWN_TITLE_RE.test(current) || current === title)) return null;
+  if (current) {
+    const prefix = projectName(found.root) + SEP;
+    const own = current.startsWith(prefix) && OWN_REST_RE.test(current.slice(prefix.length));
+    if (!own || current === title) return null;
+  }
   return JSON.stringify({ hookSpecificOutput: { hookEventName: event, sessionTitle: title } });
 }
 
@@ -86,17 +128,22 @@ function printSettings() {
   console.log(JSON.stringify({ hooks }, null, 2));
 }
 
-function main() {
+async function main() {
   if (process.argv.includes("--print-settings")) return printSettings();
-  if (process.stdin.isTTY) return;
-  const out = hookOutput(JSON.parse(readFileSync(0, "utf8")));
+  if (isatty(0)) return;
+  const out = hookOutput(JSON.parse(await readStdin()));
   if (out) console.log(out);
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+function isEntryPoint() {
   try {
-    main();
+    return Boolean(process.argv[1]) && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
   } catch {
-    // Silent by contract: a hook helper must never break the user's prompt.
+    return false;
   }
+}
+
+if (isEntryPoint()) {
+  // Silent by contract: a hook helper must never break the user's prompt.
+  main().catch(() => {});
 }

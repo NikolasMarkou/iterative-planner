@@ -4,8 +4,8 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -178,5 +178,91 @@ test("source imports no write, spawn or network API", () => {
   for (const bad of ["child_process", "node:http", "node:https", "node:net", "fetch(", "writeFile", "appendFile", "mkdirSync", "rmSync", "unlink", "renameSync", "createWriteStream"]) {
     assert.ok(!src.includes(bad), bad);
   }
-  assert.ok(!/from "node:fs"/.test(src) || /import \{ existsSync, readFileSync \} from "node:fs"/.test(src));
+  assert.ok(!/from "node:fs"/.test(src) || /import \{ existsSync, readFileSync, realpathSync \} from "node:fs"/.test(src));
+});
+
+function runStreamed(chunks, delayMs) {
+  return new Promise((resolve) => {
+    const child = spawn("node", [SCRIPT], { stdio: ["pipe", "pipe", "pipe"] });
+    let stdout = "";
+    child.stdout.on("data", (d) => (stdout += d));
+    child.on("close", (status) => resolve({ status, stdout }));
+    let i = 0;
+    const next = () => {
+      if (i >= chunks.length) return child.stdin.end();
+      child.stdin.write(chunks[i++], () => setTimeout(next, delayMs));
+    };
+    setTimeout(next, delayMs);
+  });
+}
+
+test("stdin written late, in two chunks, or larger than 64KB still prints the title", async () => {
+  const root = project({});
+  try {
+    const base = { hook_event_name: "UserPromptSubmit", cwd: root };
+    const small = JSON.stringify(base);
+    const big = JSON.stringify({ ...base, prompt: "p".repeat(200 * 1024) });
+    const cases = {
+      late: () => runStreamed([small], 200),
+      chunked: () => runStreamed([small.slice(0, 10), small.slice(10)], 50),
+      large: () => runStreamed([big], 0),
+    };
+    for (const [name, go] of Object.entries(cases)) {
+      for (let n = 0; n < 5; n++) {
+        const r = await go();
+        assert.equal(r.status, 0, name);
+        assert.match(titleOf(r), / · EXECUTE · Ship the thing$/, `${name} #${n}`);
+      }
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("invoked through a symlink, hook mode and --print-settings still work", () => {
+  const root = project({});
+  const linkDir = realpathSync(mkdtempSync(join(tmpdir(), "st-link-")));
+  try {
+    const link = join(linkDir, "linked.mjs");
+    symlinkSync(SCRIPT, link);
+    const hook = spawnSync("node", [link], { input: JSON.stringify({ hook_event_name: "SessionStart", cwd: root }), encoding: "utf8" });
+    assert.match(titleOf(hook), / · EXECUTE · /);
+    const ps = spawnSync("node", [link, "--print-settings"], { encoding: "utf8" });
+    assert.deepEqual(Object.keys(JSON.parse(ps.stdout).hooks).sort(), ["SessionStart", "UserPromptSubmit"]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(linkDir, { recursive: true, force: true });
+  }
+});
+
+test("title is sanitized: control, C1 and bidi chars in goal and project name; emoji never split", () => {
+  withProject({ goal: "bad\u009b[31m\u202eevil goal" }, (root) => {
+    const title = titleOf(run({ hook_event_name: "SessionStart", cwd: root }));
+    assert.ok(!/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069\u200e\u200f]/.test(title), JSON.stringify(title));
+    assert.match(title, / · bad \[31m evil goal$/);
+  });
+  withProject({ goal: "😀".repeat(80) }, (root) => {
+    const goal = titleOf(run({ hook_event_name: "SessionStart", cwd: root })).split(" · ")[2];
+    assert.ok(Array.from(goal).length <= 50);
+    assert.ok(!/[\ud800-\udfff]/.test(goal.replace(/[\ud800-\udbff][\udc00-\udfff]/g, "")));
+  });
+  const parent = realpathSync(mkdtempSync(join(tmpdir(), "st-")));
+  const root = join(parent, "my\nproj\u001b[2J");
+  try {
+    mkdirSync(join(root, "plans", PLAN_ID), { recursive: true });
+    writeFileSync(join(root, "plans", ".current_plan"), PLAN_ID);
+    writeFileSync(join(root, "plans", PLAN_ID, "plan.md"), "## Goal\nG\n");
+    const title = titleOf(run({ hook_event_name: "SessionStart", cwd: root }));
+    assert.ok(!/[\u0000-\u001f]/.test(title), JSON.stringify(title));
+    assert.match(title, /^my proj \[2J · UNKNOWN · G$/);
+  } finally {
+    rmSync(parent, { recursive: true, force: true });
+  }
+});
+
+test("a user title shaped like ours but not for this project is not overwritten", () => {
+  withProject({}, (root) => {
+    const r = run({ hook_event_name: "UserPromptSubmit", cwd: root, session_title: "Tax · PLAN · return 2026" });
+    assert.equal(r.stdout, "");
+  });
 });
