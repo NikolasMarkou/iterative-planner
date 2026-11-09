@@ -35,6 +35,7 @@ Use this structure:
 ## Key Findings
 - Finding with file path and line number (e.g., `src/auth.rb:23`), or the web-source citation form for externally-sourced items (see `references/file-formats.md` § findings.md)
 - Code path traces (e.g., `SessionStore#find` → `redis_store.rb:get`)
+- For software work: the language, runtime and installed dependencies with versions, read from the manifest or lockfile
 
 ## Constraints
 - [HARD] Non-negotiable constraints (e.g., "API v2 required by contract")
@@ -43,7 +44,7 @@ Use this structure:
 
 ## Code Patterns
 (Relevant patterns, conventions, anti-patterns observed)
-- `[REUSE] path:line — what it already does` for every existing asset the goal could extend instead of rebuild, including standard library functions, installed dependencies and native platform features. Duplication the plan would otherwise create is itself a finding.
+- `[REUSE] path:line — what it already does` for every existing asset the goal could extend instead of rebuild, including standard library functions, installed dependencies and native platform features; where there is no `path:line`, name the package or module instead. Duplication the plan would otherwise create is itself a finding.
 
 ## Risks & Unknowns
 (What you couldn't determine, what needs further investigation)

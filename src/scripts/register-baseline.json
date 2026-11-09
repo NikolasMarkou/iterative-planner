@@ -32,7 +32,7 @@
     "markers": 46
   },
   "src/agents/ip-plan-writer.md": {
-    "ceiling": 5.25,
+    "ceiling": 5.18,
     "markers": 5
   },
   "src/agents/ip-reviewer.md": {
@@ -68,7 +68,7 @@
     "markers": 11
   },
   "src/references/file-formats.md": {
-    "ceiling": 6.72,
+    "ceiling": 6.71,
     "markers": 82
   },
   "src/references/planning-rigor.md": {

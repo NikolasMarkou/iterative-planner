@@ -86,9 +86,9 @@ approaches v1 (in-place migration) and v2 (dual-write) were abandoned.
 
 ## Files To Modify
 - `app/middleware/auth.rb` (modify: wire TokenService)
-- `lib/session/token_service.rb` (new)
+- `lib/session/token_service.rb` (new: no existing helper, standard library call or installed package does this)
 - `config/initializers/session.rb` (modify: add token config)
-- `test/integration/token_auth_test.rb` (new)
+- `test/integration/token_auth_test.rb` (new: no existing test covers token auth)
 
 ## Steps
 1. [x] Create TokenService abstraction [RISK: low] [deps: none]
