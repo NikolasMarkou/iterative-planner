@@ -4,6 +4,23 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.71.0] - 2026-11-09
+
+**Two plain-language rules: a code shown to the user comes with its meaning, and new code is written only after checking that nothing already does the job.** Both are advisory prose; no script, template or validator changed.
+
+### Added
+
+- **Codes in messages to the user carry their meaning.** A new section, `references/file-formats.md` § Codes in Messages to the User, says that every code in a message to the user (a decision number, step id, checkpoint id, a label for a criterion, finding or risk, a gate name in square brackets, a verdict word) carries its plain meaning the first time it appears in that message. Text the presentation contracts require word for word stays unchanged: a short list of what each code means goes directly beneath it, inside the same contract item, so no contract's items, count or fidelity line changed. Meanings are looked up in the file that defines the code, never guessed; a code that no file defines is reported as undefined. SKILL.md Register Discipline ("Define on first use" now covers messages to the user, not only plans) and ip-orchestrator.md (the Presentation Contracts intro and a new Critical Rules line) point to it.
+- **Codes are explained where they are written.** ip-verifier.md, ip-reviewer.md, ip-boyscout.md and ip-executor.md now ask that each line they hand over for relay say what any code or id in it stands for, so the list beneath a relayed payload is usually short or empty. The plan template notes in `file-formats.md` gain a line asking plan writers to write success criteria, assumptions and risks in words, with plain list numbers instead of an invented id scheme.
+- **Five questions before writing new code.** A new section, `references/complexity-control.md` § Before Writing New Code, asks in order: does this need to exist; is it already in the codebase; does the standard library do it; does an installed dependency do it; does a native platform feature do it. Stop at the first yes and use the existing thing. Questions 3 to 5 apply to software work only. Adding a new dependency is not question 4 but a Build vs Buy decision (`references/python-software.md` § Decision frameworks). A "new" line in Files To Modify says which question failed. Simplification Check 1 ("Could I delete code instead?") now also covers new code that redoes something that already existed, so REFLECT reaches the check without a seventh Simplification Check.
+- **Pointers to the check.** SKILL.md Complexity Control (the DRY line), `state-plan.md`, `state-execute.md`, ip-plan-writer.md (which now also acts on each explorer `[REUSE]` item: use it, or say in decisions.md why not), ip-executor.md item 7 (its grep, duplication and interface-contract clauses stay) and a new ip-reviewer.md checklist item 11 (new code that redoes something existing is a WARNING naming the existing thing). The explorer's `[REUSE]` tag now also covers standard library functions, installed dependencies and native platform features.
+
+### Notes
+
+- **Advisory only.** Both rules are prose. Chat text is not on disk, and whether the standard library already does something is a judgment call, so nothing checks either rule mechanically; the reviewer checklist item is the only check. A run that ignores them behaves as before.
+- **Nothing structural moved.** No file was added; no script, plan template, `PLAN_TEMPLATES` entry, SKELETON region or validator changed; no `### PC-` contract block, `build-combined` rewrite-map sentence or `state-reflect.md` line changed; the Simplification Checks count stays 6. Both new sections are in the single-file build, so single-threaded runs see them. The register baseline was regenerated without `--raise` and its ceilings only went down (the coined terms "reuse-before-write" in SKILL.md and "reuse-before-build" in ip-explorer.md were replaced with plain words). `TEST_COUNT` stays 1191.
+- No new full-corpus walk over `plans/`, so no cost note.
+
 ## [2.70.0] - 2026-11-08
 
 **An audit of the whole repository was fixed: the six high-severity findings, then the medium and low batches.** One behaviour change needs attention: the iteration cap now counts re-plans, not review rounds.
