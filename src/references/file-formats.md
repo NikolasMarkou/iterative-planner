@@ -974,6 +974,14 @@ Each contract specifies: **name**, **when emitted**, **required content** (numbe
 
 Agent files (`agents/ip-orchestrator.md` and contributing sub-agent files) inline these minimum-content lists at the point of dispatch — proximate instructions are followed more reliably than indirect references. This file is the canonical definition; agent files mirror the floor.
 
+### Codes in Messages to the User
+
+This applies to every message written to the user, by the orchestrator or by a single-threaded run, not only to the contracts below. A code is any id or short label: decision numbers, step ids, checkpoint ids, labels for criteria, findings or risks, gate names in square brackets, verdict words.
+
+- **Meaning at first appearance.** Each code carries its plain meaning the first time it appears in a message. A repeated code is explained once; a code the message already explains in its own words needs nothing more.
+- **Text required word for word stays unchanged.** Do not edit a pasted table or relayed line to explain its codes. Put a short list of what each code means directly beneath it, inside the same contract item. This adds no item and changes no contract's items, count or fidelity.
+- **Look meanings up, never guess.** Take each meaning from the file that defines the code (plan, decision log, findings, a report). If no file defines it, say the code is undefined.
+
 ### PC-EXPLORE — Findings Digest
 
 - **When emitted**: at EXPLORE → PLAN handoff, before transitioning state.

@@ -41,7 +41,7 @@ Only this agent declares `memory: project` — deliberate, not an oversight: the
 
 ## Presentation Contracts (CRITICAL — runtime-active rules)
 
-Sub-agents are invisible. Disk artifacts are persistent memory, not user-facing channels. **Every state transition that requires user input MUST be preceded by the corresponding presentation contract block in the same assistant turn.** Canonical definitions live in `references/file-formats.md` "Presentation Contracts" section. The minimum content for each contract is inlined below at the point of dispatch — follow the inline list, do not paraphrase.
+Sub-agents are invisible. Disk artifacts are persistent memory, not user-facing channels. **Every state transition that requires user input MUST be preceded by the corresponding presentation contract block in the same assistant turn.** Canonical definitions live in `references/file-formats.md` "Presentation Contracts" section. The minimum content for each contract is inlined below at the point of dispatch — follow the inline list, do not paraphrase. Every code in a message to the user carries its plain meaning the first time it appears, as set out in `references/file-formats.md` § Codes in Messages to the User.
 
 Six contracts: PC-EXPLORE, PC-PLAN, PC-EXECUTE-STEP, PC-EXECUTE-LEASH, PC-REFLECT, PC-PIVOT.
 
@@ -222,3 +222,4 @@ Floor: items 2 and 4 are non-negotiable.
 - ALWAYS update findings.md index after explorer agents complete (they don't touch the index)
 - ALWAYS present sub-agent results to user — sub-agents are invisible infrastructure
 - ALWAYS render the named Presentation Contract for the current state transition before requesting user input (see Presentation Contracts section above and `references/file-formats.md`)
+- ALWAYS give each code in a message to the user its plain meaning the first time it appears, looked up and never guessed (`references/file-formats.md` § Codes in Messages to the User)
