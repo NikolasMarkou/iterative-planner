@@ -510,6 +510,37 @@ test("build channels: build-combined declares the same rewrite key/value pairs",
   assert.deepEqual(ps, mk, "the two build-combined rewrite maps have drifted");
 });
 
+test("build-combined (Makefile, actually run): no `node <skill-path>/scripts/emit-` line survives", () => {
+  const out = mkdtempSync(join(tmpdir(), "bc-"));
+  try {
+    const r = spawnSync("make", ["build-combined", `BUILD_DIR=${out}`], { cwd: repoRoot, encoding: "utf8" });
+    assert.equal(r.status, 0, `make build-combined failed: ${r.stderr}`);
+    const text = readFileSync(join(out, "iterative-planner-combined.md"), "utf8");
+    const left = text.split("\n").filter((l) => l.includes("node <skill-path>/scripts/emit-"));
+    assert.deepEqual(left, [], "an emit-* pointer survived the Makefile rewrite");
+  } finally {
+    rmSync(out, { recursive: true, force: true });
+  }
+});
+
+test("build-combined (build.ps1, simulated): applying its rewrite map to the source prose leaves no emit-* line", () => {
+  // PowerShell cannot run here, so apply build.ps1's own hashtable, in order, to the same
+  // files the combined build concatenates and require the same acceptance as the Makefile.
+  const unps = (s) => s.replace(/''/g, "'");
+  const pairs = [...psFunction(buildPs1Src, "Invoke-BuildCombined").matchAll(/^ +'((?:[^']|'')*)' = '((?:[^']|'')*)'\s*$/gm)]
+    .map((m) => [unps(m[1]), unps(m[2])]);
+  assert.ok(pairs.length >= 29, `anti-vacuity: parsed only ${pairs.length} pairs from build.ps1`);
+  const files = [join(repoRoot, "src", "SKILL.md")];
+  for (const dir of ["references", join("scripts", "modules")]) {
+    const d = join(repoRoot, "src", dir);
+    for (const f of readdirSync(d).sort()) if (f.endsWith(".md")) files.push(join(d, f));
+  }
+  let text = files.map((f) => readFileSync(f, "utf8")).join("\n");
+  for (const [k, v] of pairs) text = text.split(k).join(v);
+  const left = text.split("\n").filter((l) => l.includes("node <skill-path>/scripts/emit-"));
+  assert.deepEqual(left, [], "an emit-* pointer would survive build.ps1's rewrite map");
+});
+
 // DECISION plan-2026-09-01T100120-4f591469/D-029
 // Do NOT "finish the job" by rewriting the ~22 surviving `node <skill-path>/scripts/...`
 // pointers in the combined file. They name real commands of the full package and have no
@@ -593,7 +624,7 @@ test("build channels: sync-skill guards (empty HOME, symlinked install) run BEFO
 });
 
 test("build channels: in-place sed goes through SED_I (GNU vs BSD), never a bare sed -i", () => {
-  assert.match(makefileSrc, /^SED_I := \$\(shell sed --version/m, "Makefile lost its SED_I detection");
+  assert.match(makefileSrc, /^SED_I := \$\(shell t=\$\$\(mktemp\)/m, "Makefile lost its SED_I detection");
   const bare = makefileSrc.split("\n").filter((l) => /^\t/.test(l) && /\bsed -i\b/.test(l));
   assert.deepEqual(bare, [], "Makefile recipe uses a bare sed -i (breaks on BSD/macOS)");
 });

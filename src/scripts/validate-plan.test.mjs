@@ -743,9 +743,35 @@ describe("validate-plan.mjs --pre-step gate", () => {
     const cwd = getTempDir();
     const rounds = (n) => Array.from({ length: n }, (_, i) => `- EXECUTE → REFLECT (round ${i + 1})`).join("\n");
     writePlan(cwd, { state: "EXECUTE", iteration: 1, transitionHistoryExtra: rounds(17) });
-    assert.ok(!/\[round-cap\]/.test(run(cwd).stdout));
+    assert.ok(!/ERROR \[round-cap\]/.test(run(cwd).stdout));
     writePlan(cwd, { state: "EXECUTE", iteration: 1, transitionHistoryExtra: rounds(18) });
     assert.ok(/ERROR \[round-cap\]/.test(run(cwd).stdout));
+  });
+
+  it("(e5b) round-cap WARN from 15 rounds, ERROR only at 18", () => {
+    const cwd = getTempDir();
+    const rounds = (n) => Array.from({ length: n }, (_, i) => `- EXECUTE → REFLECT (round ${i + 1})`).join("\n");
+    writePlan(cwd, { state: "EXECUTE", iteration: 1, transitionHistoryExtra: rounds(14) });
+    assert.ok(!/\[round-cap\]/.test(run(cwd).stdout), "14 rounds: silent");
+    writePlan(cwd, { state: "EXECUTE", iteration: 1, transitionHistoryExtra: rounds(15) });
+    const out = run(cwd).stdout;
+    assert.ok(/WARN\s+\[round-cap\]/.test(out) && !/ERROR \[round-cap\]/.test(out), out);
+    assert.equal(runPreStep(cwd).exitCode, 0, "the pre-step gate does not block on the warning");
+  });
+
+  it("(e5c) W4: a transition pair inside a reason line counts for neither cap", () => {
+    const cwd = getTempDir();
+    writePlan(cwd, {
+      state: "EXECUTE",
+      iteration: 1,
+      transitionHistoryExtra: [
+        "- REFLECT → EXECUTE (redo PLAN → EXECUTE wording; EXECUTE → REFLECT noted)",
+        "- EXECUTE → REFLECT (round 2, PLAN -> EXECUTE mentioned)",
+      ].join("\n"),
+    });
+    const r = runPreStep(cwd);
+    assert.equal(r.exitCode, 0, r.stdout);
+    assert.equal(r.stdout.trim(), "GATE:PASS");
   });
 
   it("(e6) D-002: HYGIENE SKIP text naming PLAN -> EXECUTE or EXECUTE -> REFLECT inflates neither count", async () => {

@@ -170,6 +170,16 @@ describe("check-test-count — evaluate", () => {
     assert.match(r.stderr.join("\n"), /3 failing test\(s\)/);
   });
 
+  it("non-zero node --test exit fails even when TEST_COUNT matches and `# fail 0`", () => {
+    for (const childStatus of [1, null]) {
+      const r = evaluate({ tapText: TAP_GREEN, testCountRaw: "4", childStatus });
+      assert.strictEqual(r.exitCode, 1, `childStatus=${childStatus}`);
+      assert.match(r.stderr.join("\n"), /exited with status/);
+      assert.deepStrictEqual(r.stdout, [], "no PASS line on a red run");
+    }
+    assert.strictEqual(evaluate({ tapText: TAP_GREEN, testCountRaw: "4", childStatus: 0 }).exitCode, 0);
+  });
+
   it("malformed TAP: exit 1, clear message, surfaces the child exit status", () => {
     const r = evaluate({
       tapText: TAP_MALFORMED,

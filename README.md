@@ -6,7 +6,7 @@
     <img alt="Skill Version" src="https://img.shields.io/badge/Skill-v2.70.0-green.svg">
   </a>
   <a href="src/scripts/bootstrap.test.mjs">
-    <img alt="Tests" src="https://img.shields.io/badge/tests-1177%20passing-brightgreen.svg">
+    <img alt="Tests" src="https://img.shields.io/badge/tests-1188%20passing-brightgreen.svg">
   </a>
   <a href="https://www.electiconsulting.com">
     <img alt="Sponsored by Electi Consulting" src="https://img.shields.io/badge/Sponsored%20by-Electi%20Consulting-8B1C34">
@@ -80,7 +80,7 @@ Reach for it when the task is big enough that "what did I already try?" is a que
 
 ## Get Started in 60 Seconds
 
-**Requires**: Node.js 18+ (for the bootstrap and validator scripts). No npm install, no runtime dependencies — the scripts are plain ESM on Node builtins.
+**Requires**: Node.js 18+ (for the bootstrap and validator scripts). No npm install, no runtime dependencies — the scripts are plain ESM on Node builtins. Running the test suite (contributors) needs Node.js 20.11+, because the test files use `import.meta.dirname`; CI runs Node 20 and 22.
 
 ### Option 1 — Zip package (recommended)
 
@@ -385,6 +385,7 @@ The command you will reach for most is **`resume`**: at the start of a new conve
 ```bash
 node <skill-path>/scripts/bootstrap.mjs new "goal"           # create new plan
 node <skill-path>/scripts/bootstrap.mjs new --force "goal"   # close active plan, create new one
+node <skill-path>/scripts/bootstrap.mjs new -- "-goal"       # "--" ends options: for a goal that starts with "-"
 node <skill-path>/scripts/bootstrap.mjs resume               # output current plan state for re-entry
 node <skill-path>/scripts/bootstrap.mjs status               # one-line state summary
 node <skill-path>/scripts/bootstrap.mjs close                # close active plan (merges + preserves)

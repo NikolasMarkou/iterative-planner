@@ -17,7 +17,7 @@
 // Writes plans/.current_plan with the directory name for discovery.
 // Requires Node.js 18+ (guaranteed by Claude Code).
 
-import { mkdirSync, writeFileSync, readFileSync, readdirSync, renameSync, unlinkSync, existsSync, rmSync, copyFileSync, linkSync, statSync } from "fs";
+import { mkdirSync, writeFileSync, readFileSync, readdirSync, renameSync, unlinkSync, existsSync, rmSync, copyFileSync, linkSync, statSync, openSync, writeSync, closeSync } from "fs";
 import { join, extname } from "path";
 import { randomBytes, createHash } from "crypto";
 import { homedir } from "os";
@@ -155,8 +155,9 @@ function editDistance(a, b) {
 // lock for a stale one. Stale reclaim renames the stale file aside (only one reclaimer wins the
 // rename) and re-checks what it moved before discarding it. A lock whose content is empty or
 // unparseable is treated as "being written / foreign": locked unless it is older than 10 s.
-// Do NOT go back to openSync("wx") + a later write of the pid (an empty window a reader mistakes
-// for stale) or to unlink-then-create reclaim (two reclaimers each delete the other's fresh lock).
+// Do NOT make openSync("wx") + a later write of the pid the PRIMARY path (an empty window a reader
+// mistakes for stale; it is kept only as the fallback when the filesystem has no hard links), and
+// do NOT use unlink-then-create reclaim (two reclaimers each delete the other's fresh lock).
 function readLockPid() {
   const raw = readFileSync(lockFile, "utf-8").trim();
   const pid = parseInt(raw, 10);
@@ -169,18 +170,50 @@ function lockHeld(msg) {
   return e;
 }
 
-function publishLock() {
-  const tmp = `${lockFile}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
-  writeFileSync(tmp, String(process.pid));
+// Filesystems without hard links (exFAT/FAT, some SMB/CIFS and FUSE mounts) make linkSync throw
+// one of these; the lock then falls back to a plain exclusive create. That path has a short window
+// where the file exists but is still empty, which the 10 s "being written" grace in acquireLock
+// already tolerates. EEXIST is NOT in this set: it means the lock is held.
+const NO_HARDLINK_CODES = new Set(["EPERM", "ENOTSUP", "ENOSYS", "EXDEV"]);
+
+// Creates `target` with `content`; throws EEXIST when it exists. Contract: returns undefined.
+function createLockFile(target, content) {
+  const tmp = `${target}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
   try {
-    linkSync(tmp, lockFile); // atomic create-with-content; throws EEXIST when held
+    writeFileSync(tmp, content);
+    try {
+      linkSync(tmp, target); // atomic create-with-content
+      return;
+    } catch (err) {
+      if (!NO_HARDLINK_CODES.has(err.code)) throw err;
+    }
+    const fd = openSync(target, "wx"); // throws EEXIST when held
+    try { writeSync(fd, content); } finally { closeSync(fd); }
   } finally {
     try { unlinkSync(tmp); } catch { /* temp already gone */ }
   }
 }
 
+function publishLock() {
+  createLockFile(lockFile, String(process.pid));
+}
+
+// Removes temp/aside files a killed process left behind (older than 10 s, so a live one is safe).
+function sweepLockLitter() {
+  let names = [];
+  try { names = readdirSync(plansDir); } catch { return; }
+  for (const n of names) {
+    if (!n.startsWith(".lock.") || !(n.endsWith(".tmp") || n.includes(".stale."))) continue;
+    try {
+      const f = join(plansDir, n);
+      if (Date.now() - statSync(f).mtimeMs > 10000) unlinkSync(f);
+    } catch { /* raced with its owner */ }
+  }
+}
+
 function acquireLock() {
   mkdirSync(plansDir, { recursive: true });
+  sweepLockLitter();
   try {
     publishLock();
     return true;
@@ -205,10 +238,11 @@ function acquireLock() {
   try {
     renameSync(lockFile, aside);
     let movedPid = null;
-    try { movedPid = parseInt(readFileSync(aside, "utf-8").trim(), 10) || null; } catch {}
+    let movedRaw = "";
+    try { movedRaw = readFileSync(aside, "utf-8"); movedPid = parseInt(movedRaw.trim(), 10) || null; } catch {}
     if (movedPid !== priorPid) {
       // We moved someone else's fresh lock: put it back and stand down.
-      try { linkSync(aside, lockFile); } catch { /* a newer lock exists; fine */ }
+      try { createLockFile(lockFile, movedRaw); } catch { /* a newer lock exists; fine */ }
       try { unlinkSync(aside); } catch {}
       throw lockHeld("Lock contention reclaiming stale lock. Retry shortly.");
     }
@@ -227,7 +261,12 @@ function acquireLock() {
 }
 
 function releaseLock() {
-  try { unlinkSync(lockFile); } catch { /* lock may already be gone */ }
+  // Release only a lock that names this process: after a stale-reclaim race the file may be
+  // another invocation's, and deleting it would let a third one in.
+  try {
+    if (readLockPid() !== process.pid) return;
+    unlinkSync(lockFile);
+  } catch { /* lock may already be gone */ }
 }
 
 // ---------------------------------------------------------------------------
@@ -1860,11 +1899,11 @@ function cmdNewInner(goal, force) {
 // with no in-path [state-comment-anomaly] explanation (that WARN is validate-plan.mjs-only).
 //
 // Why this is a small, deliberate DUPLICATE of validate-plan.mjs logic rather than an
-// import: bootstrap.test.mjs's "INSTALLED layout"/"VERSION absent"/"VERSION garbage"
-// fixtures (`makeInstalledPkg`) copy ONLY bootstrap.mjs + shared.mjs into an isolated dir
-// to exercise `new` in a minimal install — importing validate-plan.mjs at module load
-// time broke `new` there with ERR_MODULE_NOT_FOUND even though only resume/status need
-// the value. See decisions.md for the corresponding entry recording this trade-off.
+// import: importing validate-plan.mjs at module load time broke `new` in a minimal install
+// (ERR_MODULE_NOT_FOUND) even though only resume/status need the value. The minimal-install
+// fixtures (`makeInstalledPkg` in bootstrap.test.mjs) copy bootstrap.mjs, shared.mjs and
+// schema.mjs, the three files bootstrap imports; installs copy scripts/ by glob in both build
+// channels, so schema.mjs always travels with it. See decisions.md D-013 for that dependency.
 function countPlanExecuteStripped(state) {
   if (!state) return 0;
   const stripped = stripHtmlComments(state);
@@ -1872,7 +1911,9 @@ function countPlanExecuteStripped(state) {
   if (!m) return 0;
   // "- SPAWN ..." log lines carry a free-text slug; drop them whole so they never count.
   const block = stripped.slice(m.index).replace(/[–—‐]/g, "-").split("\n").filter((l) => !/^-\s+(?:SPAWN |HYGIENE SKIP \(iter \d+\):)/.test(l)).join("\n");
-  const re = /PLAN\s*(?:→|->)\s*EXECUTE/g;
+  // Only a transition at the START of a bullet counts: a reason such as "(redo PLAN → EXECUTE wording)"
+  // must not raise the count (see countTransition in validate-plan.mjs).
+  const re = /^[ \t]*-[ \t]+PLAN[ \t]*(?:→|->)[ \t]*EXECUTE\b/gm;
   let count = 0;
   while (re.exec(block) !== null) count++;
   return count;
@@ -2375,6 +2416,7 @@ function printUsage() {
 Commands:
   new "goal"              Create a new plan directory
   new --force "goal"      Close active plan and create a new one
+  new -- "-goal text"     "--" ends options: use it for a goal that starts with "-"
   resume                  Output current plan state for re-entry
   status                  One-line state summary
   close                   Close active plan (preserves directory)
@@ -2396,8 +2438,8 @@ Backward-compatible:
 // that test files (and future library consumers) can `import` the module —
 // e.g. to call `maybeCompressDecisions` — without triggering the no-args
 // usage path which calls `process.exit(0)` and kills the host process.
-// `import.meta.url` is a `file://` URL; `process.argv[1]` is a filesystem
-// path. Compare via fileURLToPath. Guard introduced in v2.18.0/step-2.
+// The comparison is shared.mjs `isMain`, which resolves symlinks on both sides, so the
+// CLI also runs when reached through a symlinked scripts/ directory.
 
 import { fileURLToPath } from "url";
 
@@ -2413,8 +2455,10 @@ function runCli() {
   const cmd = args[0];
 
   if (!subcommands.has(cmd)) {
-    if (cmd.startsWith("-")) {
-      console.error(`ERROR: Unknown flag "${cmd}". Use "help" for usage.`);
+    // A lone argv element holding whitespace is one quoted goal phrase, even when it starts
+    // with "-" (`bootstrap.mjs "-v broken flag"`); a flag never contains whitespace.
+    if (cmd.startsWith("-") && !(args.length === 1 && /\s/.test(cmd))) {
+      console.error(`ERROR: Unknown flag "${cmd}". Use "help" for usage, or \`new -- "<goal>"\` for a goal that starts with "-".`);
       process.exit(1);
     }
     // v2.60.0 — a SINGLE bare token is never a goal. It is rejected whether or not it
@@ -2455,7 +2499,7 @@ function runCli() {
     // swallowed into the goal. `--` is the explicit escape: `new -- "-weird goal"`.
     if (goalArgs[0] === "--") {
       goalArgs = goalArgs.slice(1);
-    } else if (goalArgs[0] !== undefined && goalArgs[0].startsWith("-")) {
+    } else if (goalArgs[0] !== undefined && goalArgs[0].startsWith("-") && !(goalArgs.length === 1 && /\s/.test(goalArgs[0]))) {
       console.error(`ERROR: Unknown flag "${goalArgs[0]}" after "new". Only --force is accepted; use "--" before a goal that starts with "-".`);
       process.exit(1);
     }
@@ -2486,7 +2530,7 @@ function runCli() {
 // NOTE: isEntryPoint guard makes bootstrap.mjs importable
 // as a library (for maybeCompressDecisions / maybeCompressChangelog) without triggering the
 // CLI dispatch that called printUsage() + process.exit(0). Standard Node.js ESM dual-mode
-// pattern: compare fileURLToPath(import.meta.url) to process.argv[1]. CLI behavior preserved.
+// pattern, via shared.mjs `isMain` (realpath on both sides). CLI behavior preserved.
 const isEntryPoint = isMain(import.meta.url);
 
 if (isEntryPoint) {

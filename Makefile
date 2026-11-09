@@ -11,9 +11,11 @@ SKILL_INSTALL_DIR := $(HOME)/.claude/skills/$(SKILL_NAME)
 AGENTS_INSTALL_DIR := $(HOME)/.claude/agents
 COMMANDS_INSTALL_DIR := $(HOME)/.claude/commands
 
-# In-place sed differs by implementation: GNU takes `sed -i`, BSD/macOS needs `sed -i ''` (a bare
-# `-i` there eats the script as the backup suffix). `sed --version` succeeds only on GNU sed.
-SED_I := $(shell sed --version >/dev/null 2>&1 && echo "sed -i" || echo "sed -i ''")
+# In-place sed differs by implementation: GNU and BusyBox take a bare `sed -i`, BSD/macOS needs
+# `sed -i ''` (a bare `-i` there eats the script as the backup suffix). Probe by behaviour, not
+# by `--version` (BusyBox has none): try the bare form on a scratch file, and fall back to the BSD
+# form only when it does not rewrite the file. stdin is /dev/null so BSD cannot wait on it.
+SED_I := $(shell t=$$(mktemp) && printf a > $$t && if sed -i 's/a/b/' $$t </dev/null >/dev/null 2>&1 && [ "$$(cat $$t)" = b ]; then echo "sed -i"; else echo "sed -i ''"; fi; rm -f $$t)
 
 # Frontmatter / diagram scoping for the validate greps. A bare `grep "^name:" file` matches anywhere
 # in the file, so a body line starting with `name:` satisfied it. FM_AWK prints only the lines
@@ -154,6 +156,7 @@ build-combined:
 	@$(SED_I) 's|(or run `node <skill-path>/scripts/emit-template\.mjs --name changelog` to get just this template — file-formats\.md is the canonical fallback)|(the changelog template is inlined there)|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	@$(SED_I) 's| — or run `node <skill-path>/scripts/emit-template\.mjs --name plan` to get just this template (file-formats\.md is the canonical fallback)| (the plan template is inlined there)|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	@$(SED_I) 's| — or run `node <skill-path>/scripts/emit-template\.mjs --name verification` to get just this template (file-formats\.md is the canonical fallback)| (the verification template is inlined there)|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
+	@$(SED_I) 's|Full text: `node <skill-path>/scripts/emit-template\.mjs --name presentation-contracts`\.|Full text: the Presentation Contracts section of the file-formats reference, inlined above.|g' $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	$(SED_I) "s/__SKILL_VERSION__/$(VERSION)/g" $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	$(SED_I) "s/__SKILL_DATE__/$$(date -u +%Y-%m-%d)/g" $(BUILD_DIR)/$(SKILL_NAME)-combined.md
 	$(SED_I) "s/__SKILL_COMMIT__/$$(git rev-parse --short HEAD)/g" $(BUILD_DIR)/$(SKILL_NAME)-combined.md

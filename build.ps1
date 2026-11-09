@@ -181,6 +181,7 @@ function Invoke-BuildCombined {
         '(or run `node <skill-path>/scripts/emit-template.mjs --name changelog` to get just this template — file-formats.md is the canonical fallback)' = '(the changelog template is inlined there)'
         ' — or run `node <skill-path>/scripts/emit-template.mjs --name plan` to get just this template (file-formats.md is the canonical fallback)' = ' (the plan template is inlined there)'
         ' — or run `node <skill-path>/scripts/emit-template.mjs --name verification` to get just this template (file-formats.md is the canonical fallback)' = ' (the verification template is inlined there)'
+        'Full text: `node <skill-path>/scripts/emit-template.mjs --name presentation-contracts`.' = 'Full text: the Presentation Contracts section of the file-formats reference, inlined above.'
     }
     foreach ($key in $pointerMap.Keys) {
         $content = $content.Replace($key, $pointerMap[$key])

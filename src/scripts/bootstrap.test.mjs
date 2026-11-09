@@ -5,7 +5,7 @@
 
 import { describe, it, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, readFileSync, writeFileSync, existsSync, rmSync, readdirSync, unlinkSync, renameSync, copyFileSync } from "fs";
+import { mkdirSync, readFileSync, writeFileSync, existsSync, rmSync, readdirSync, unlinkSync, renameSync, copyFileSync, utimesSync } from "fs";
 import { join, resolve } from "path";
 import { execFileSync, spawnSync } from "child_process";
 import { tmpdir } from "os";
@@ -1387,6 +1387,22 @@ describe("bootstrap.mjs", () => {
       );
       assert.ok(run(dir, "status").stdout.includes("iter=1"), "status should stay at iteration 1");
       assert.ok(run(dir, "resume").stdout.includes("Iteration:  1"), "resume should stay at iteration 1");
+    });
+
+    it("status/resume ignore a PLAN → EXECUTE pair that sits inside a reason, not at the start of a bullet", () => {
+      const dir = getTempDir();
+      run(dir, "new", "Reason pair iteration test");
+      const planDir = getPointer(dir);
+      const hist = [
+        "- PLAN → EXECUTE (approved)",
+        "- REFLECT → EXECUTE (redo PLAN → EXECUTE wording)",
+        "- EXECUTE → REFLECT (the PLAN -> EXECUTE note again)",
+      ].join("\n");
+      writeFileSync(
+        join(dir, "plans", planDir, "state.md"),
+        `# Current State: REFLECT\n## Iteration: 1\n## Current Plan Step: N/A\n## Last Transition: EXECUTE → REFLECT\n## Transition History:\n${hist}\n`
+      );
+      assert.ok(run(dir, "status").stdout.includes("iter=1"), "reason text must not raise the iteration");
     });
 
     it("status/resume show 0 for a fresh plan with no real transitions (no false positive)", () => {
@@ -3731,6 +3747,67 @@ describe("bootstrap.mjs", () => {
       }
     });
 
+
+    // plan-2026-11-08T075330-b464ad63/D-007 fallback: the lock must not need hard links.
+    // ESM named imports of "fs" are live bindings, so a --import preload that replaces
+    // fs.linkSync and calls syncBuiltinESMExports() makes bootstrap see a link-less filesystem.
+    function preload(dir, body) {
+      const f = join(dir, "preload.mjs");
+      writeFileSync(f, `import fs from "node:fs";\nimport { syncBuiltinESMExports } from "node:module";\n${body}\nsyncBuiltinESMExports();\n`);
+      return f;
+    }
+    const spawnNew = (dir, pre, goal) =>
+      spawnSync("node", ["--import", pre, BOOTSTRAP, "new", goal], { cwd: dir, encoding: "utf-8" });
+
+    it("falls back to an exclusive create when linkSync fails with EPERM; no temp file is left", () => {
+      const dir = getTempDir();
+      const pre = preload(dir, `fs.linkSync = () => { const e = new Error("no hard links"); e.code = "EPERM"; throw e; };`);
+      const r = spawnNew(dir, pre, "no hardlink goal");
+      assert.equal(r.status, 0, r.stderr);
+      const left = readdirSync(join(dir, "plans")).filter((n) => n.startsWith(".lock"));
+      assert.deepEqual(left, [], "lock and temp files must all be gone");
+    });
+
+    it("the fallback still refuses a live lock held by another process", () => {
+      const dir = getTempDir();
+      mkdirSync(join(dir, "plans"), { recursive: true });
+      writeFileSync(join(dir, "plans", ".lock"), String(process.pid)); // this test process is alive
+      const pre = preload(dir, `fs.linkSync = () => { const e = new Error("x"); e.code = "ENOTSUP"; throw e; };`);
+      const r = spawnNew(dir, pre, "contended");
+      assert.equal(r.status, 1);
+      assert.match(r.stderr, /in progress/i);
+      assert.equal(readFileSync(join(dir, "plans", ".lock"), "utf-8"), String(process.pid));
+      assert.deepEqual(readdirSync(join(dir, "plans")).filter((n) => n.endsWith(".tmp")), []);
+    });
+
+    it("sweeps old lock temp/aside files, keeps fresh ones", () => {
+      const dir = getTempDir();
+      mkdirSync(join(dir, "plans"), { recursive: true });
+      const oldTmp = join(dir, "plans", ".lock.111.aa.tmp");
+      const oldAside = join(dir, "plans", ".lock.stale.111.bb");
+      const fresh = join(dir, "plans", ".lock.222.cc.tmp");
+      for (const f of [oldTmp, oldAside, fresh]) writeFileSync(f, "1");
+      const past = new Date(Date.now() - 60000);
+      utimesSync(oldTmp, past, past);
+      utimesSync(oldAside, past, past);
+      const r = run(dir, "new", "sweep goal");
+      assert.ok(!existsSync(oldTmp) && !existsSync(oldAside), "old litter removed");
+      assert.ok(existsSync(fresh), "a fresh temp file may belong to a live process and stays");
+      assert.ok(r !== undefined);
+    });
+
+    it("release leaves a lock that names another pid", () => {
+      const dir = getTempDir();
+      const pre = preload(dir, `const w = fs.writeFileSync;
+fs.writeFileSync = function (p, ...a) {
+  const out = w.call(this, p, ...a);
+  if (String(p).endsWith(".current_plan.tmp")) w.call(this, String(p).replace(/\.current_plan\.tmp$/, ".lock"), "999999999");
+  return out;
+};`);
+      const r = spawnNew(dir, pre, "foreign lock goal");
+      assert.equal(r.status, 0, r.stderr);
+      assert.equal(readFileSync(join(dir, "plans", ".lock"), "utf-8"), "999999999", "foreign lock must survive our release");
+    });
   });
 
   // plan_2026-05-30_eb9b4fee/D-003 — concurrent `bootstrap.mjs close` race.
@@ -5457,6 +5534,21 @@ describe("scripts-core MED/LOW fixes (step 9)", () => {
     assert.match(readPlanFile(dir, plan, "plan.md"), /\n-weird goal\n/);
     const r2 = runFull(dir, "new", "--force", "second goal");
     assert.equal(r2.exitCode, 0, r2.stderr);
+  });
+
+  it("a single quoted goal that starts with \"-\" and holds whitespace is a goal, bare or after `new`; help names the `--` escape", () => {
+    for (const argv of [["-v broken flag"], ["new", "-weird goal"]]) {
+      const dir = getTempDir();
+      const r = runFull(dir, ...argv);
+      assert.equal(r.exitCode, 0, `${argv.join(" ")}: ${r.stderr}`);
+      assert.equal(planDirs(dir).length, 1);
+    }
+    const dir = getTempDir();
+    const bare = runFull(dir, "-v");
+    assert.equal(bare.exitCode, 1);
+    assert.match(bare.stderr, /new -- /);
+    assert.match(runFull(dir, "help").stdout, /new -- "-goal text"/);
+    assert.match(readFileSync(resolve(import.meta.dirname, "..", "..", "README.md"), "utf-8"), /bootstrap\.mjs new -- "-goal"/, "README bootstrap section names the escape");
   });
 
   it("#6 a lock file holding a dead pid is reclaimed and the lock is released afterwards", () => {

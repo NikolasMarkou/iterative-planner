@@ -561,7 +561,9 @@ function countTransition(block, from, to) {
   // self-inflate the derived count (reviewer CRITICAL #2,
   // plan-2026-09-11T141919-e5db2894). See stripHygieneSkipLines.
   const filtered = stripHygieneSkipLines(block).replace(/[–—‐]/g, "-");
-  const re = new RegExp(`${from}\\s*(?:→|->)\\s*${to}`, "g");
+  // Only a transition at the START of a bullet counts: a reason such as "(redo PLAN → EXECUTE
+  // wording)" must not raise the hard cap (plan-2026-11-08T075330-b464ad63 review W4).
+  const re = new RegExp(`^[ \\t]*-[ \\t]+${from}[ \\t]*(?:→|->)[ \\t]*${to}\\b`, "gm");
   let count = 0;
   while (re.exec(filtered) !== null) count++;
   return count;
@@ -569,6 +571,8 @@ function countTransition(block, from, to) {
 
 /** Hard round cap: `EXECUTE → REFLECT` arrivals (6 iterations x 3 rounds). */
 const ROUND_CAP = 18;
+/** Early warning: hygiene remediation and completion-fix rounds all draw on the same 18. */
+const ROUND_WARN = 15;
 
 // DECISION plan-2026-09-01T100120-4f591469/D-034 — the ADVISORY iteration derivation,
 // deliberately separate from the hard cap's countTransition: this asks "has the plan
@@ -695,6 +699,9 @@ function checkIterationLimits(planDir, issues) {
   const rounds = deriveRoundsFromHistory(state);
   if (rounds >= ROUND_CAP) {
     issues.push({ severity: "ERROR", check: "round-cap", message: `${rounds} EXECUTE → REFLECT rounds reach the hard limit (${ROUND_CAP}): stop, present a decomposition, offer partial CLOSE` });
+  }
+  else if (rounds >= ROUND_WARN) {
+    issues.push({ severity: "WARN", check: "round-cap", message: `${rounds} of ${ROUND_CAP} EXECUTE → REFLECT rounds used: hygiene remediation and completion-fix rounds count toward the cap; plan the close or decompose before it fires` });
   }
   if (iter >= 6) {
     issues.push({ severity: "ERROR", check: "iteration", message: `Iteration ${iter}${source} exceeds hard limit (6+): must decompose into smaller tasks` });
@@ -2677,7 +2684,7 @@ function runPreStepGate(planDir) {
 // NOTE: CLI dispatch guarded behind isEntryPoint so the
 // module is import-safe (a test helper or future tooling can `import` validate-plan.mjs without
 // the arg-parsing + process.exit firing at module load). Standard Node.js ESM dual-mode pattern,
-// mirrors bootstrap.mjs:1831-1841. Do NOT move the process.exit calls or validate() back to
+// mirrors the guard at the bottom of bootstrap.mjs. Do NOT move the process.exit calls or validate() back to
 // module scope — that re-breaks import-safety.
 const isEntryPoint = isMain(import.meta.url);
 

@@ -147,6 +147,15 @@ export function evaluate({ tapText = "", testCountRaw = null, childStatus = 0 } 
     failed = true;
   }
 
+  // A non-zero (or signal-killed, null) exit with matching counts is still not a green run:
+  // a late unhandled rejection or a test file that sets process.exitCode lands here.
+  if (childStatus !== 0) {
+    stderr.push(
+      `check-test-count: FAIL — node --test exited with status ${childStatus} although the summary parsed (${summary.pass} pass, ${summary.fail} fail). A non-zero exit is a red suite whatever the counts say.`,
+    );
+    failed = true;
+  }
+
   const expected = parseTestCount(testCountRaw);
   if (!expected.ok) {
     stderr.push(

@@ -352,7 +352,7 @@ are earned, not free.
 - `iter = 5`: mandatory decomposition analysis in `decisions.md` (2-3 independent sub-goals + deps). See `references/planning-rigor.md`.
 - `iter ≥ 6`: hard STOP. Present decomposition to user. Break into smaller tasks.
 - **What counts**: the enforced iteration is the larger of the declared `## Iteration:` and the PLAN → EXECUTE arrivals in `state.md`'s Transition History, so only re-plans (including after PIVOT) raise it. Completion-fix round trips (REFLECT → EXECUTE) do not.
-- **Round cap**: a separate hard stop, the round cap, fires at 18 `EXECUTE → REFLECT` arrivals (6 iterations of 3 rounds). It keeps a loop that never re-plans from running forever.
+- **Round cap**: a separate hard stop, the round cap, fires at 18 `EXECUTE → REFLECT` arrivals (6 iterations of 3 rounds). It keeps a loop that never re-plans from running forever. Hygiene remediation and completion-fix rounds draw on the same 18; a warning appears from round 15.
 - **Exit when a stop fires** (iteration cap, round cap or leash cap): there is no override past the cap, and `--pre-step` fails again on every call. Present the decomposition to the user and offer a partial CLOSE: finish the CLOSE steps, run `bootstrap.mjs close`, mark `summary.md` as partial and list the unfinished steps, then run `bootstrap.mjs new` for each sub-goal. For the leash cap the user may instead choose a pivot and `bootstrap.mjs reset-attempts`.
 
 ## Recovery from Context Loss
