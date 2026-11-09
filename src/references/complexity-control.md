@@ -34,9 +34,9 @@ Any limit hit → STOP → REFLECT. Ask: "Root cause or symptom?"
 
 ## Before Writing New Code
 
-Before planning or writing any new file, function, abstraction or dependency, ask these five questions in this order. Stop at the first yes and use the existing thing.
+Before planning or writing any new file, function, abstraction or dependency, ask these five questions in this order. Stop at the first yes: skip it (question 1) or use the existing thing (questions 2 to 5).
 
-1. Does this need to exist? If not, skip it.
+1. Can this be skipped with the goal still met? If yes, skip it.
 2. Is it already in the codebase? Use it.
 3. Does the language's standard library do it? Use it.
 4. Does a dependency that is already installed do it? Use it.
