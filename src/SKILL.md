@@ -331,9 +331,10 @@ positive-feedback loop that, left undamped, accretes jargon until plans stop bei
 a human (or a fresh model). The counter-force is a setpoint, not a jargon ban: coined terms
 are earned, not free.
 
-- **Define on first use.** A coined term or `[bracket-slug]` must be defined in plain words
-  where it first appears in a plan or in a message to the user (or point to where it is
-  defined). An undefined coinage is a defect, not shorthand. For messages, see
+- **Define on first use.** A coined term, `[bracket-slug]`, id or code (a decision, step or
+  checkpoint number, a label for a criterion or finding, a verdict word) must be defined in
+  plain words where it first appears in a plan or in a message to the user (or point to where
+  it is defined). An undefined coinage is a defect, not shorthand. For messages, see
   `references/file-formats.md` § Codes in Messages to the User.
 - **Plainest exact word wins.** Prefer the plainest wording that stays precise. Jargon earns
   its place only by naming a real mechanism more exactly than plain words can — density for
