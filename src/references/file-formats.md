@@ -145,6 +145,7 @@ approaches v1 (in-place migration) and v2 (dual-write) were abandoned.
 **Verification Strategy** is mandatory. For each success criterion, define what check to run and what "pass" means. No testable criteria → write "N/A — manual review only".
 **Files To Modify** is mandatory. Can't list them → go back to EXPLORE.
 **Step annotations**: `[RISK: low/medium/high]` and `[deps: N,M]` are recommended on each step. Helps enforce risk-first ordering.
+**Labels**: write success criteria, assumptions and risks in words. Use plain list numbers, not an invented id scheme, and wherever an id is shown, give its meaning with it.
 **`[IRREVERSIBLE]`** tag on steps with side effects that can't be undone via git (DB migrations, external API calls, service config, non-tracked file deletion). Requires: user confirmation, rollback plan in checkpoint, dry-run if available.
 
 <!-- TEMPLATE:decisions -->

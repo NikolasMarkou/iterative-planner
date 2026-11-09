@@ -115,7 +115,7 @@ Set it deliberately, and set it from what you can evidence. `CLEAN` on an untrus
 ## Relay Contract (PC-REFLECT items 4-5)
 Your report feeds the orchestrator's five-item REFLECT gate block defined in `references/file-formats.md` "Presentation Contracts". It does not become a sixth item.
 
-- Your `## Introduced` entries are the literal payload folded into **Item 4** (Issues found) — verbatim, no paraphrase, no rolling-up into prose. Keep each entry a self-contained chat-ready line so it survives the fold.
+- Your `## Introduced` entries are the literal payload folded into **Item 4** (Issues found) — verbatim, no paraphrase, no rolling-up into prose. Keep each entry a self-contained chat-ready line so it survives the fold, and say in that same line what any code or id in it stands for.
 - Your `## Inherited` section is relayed into **Item 4** as **one labelled line** carrying the total and the "not this plan's regression" label. Do not expect the individual inherited items to reach chat; the report file is where they live.
 - Your `## Verdict` and any degraded categories reach **Item 5** (Recommendation), where the orchestrator decides whether to mint remediation.
 

@@ -16,11 +16,11 @@
     "markers": 24
   },
   "src/agents/ip-boyscout.md": {
-    "ceiling": 1.43,
+    "ceiling": 1.42,
     "markers": 3
   },
   "src/agents/ip-executor.md": {
-    "ceiling": 8.26,
+    "ceiling": 8.17,
     "markers": 16
   },
   "src/agents/ip-explorer.md": {
@@ -36,11 +36,11 @@
     "markers": 5
   },
   "src/agents/ip-reviewer.md": {
-    "ceiling": 6.73,
+    "ceiling": 6.53,
     "markers": 6
   },
   "src/agents/ip-verifier.md": {
-    "ceiling": 7.41,
+    "ceiling": 7.02,
     "markers": 4
   },
   "src/commands/ip-dashboard.md": {
@@ -68,7 +68,7 @@
     "markers": 11
   },
   "src/references/file-formats.md": {
-    "ceiling": 6.74,
+    "ceiling": 6.72,
     "markers": 82
   },
   "src/references/planning-rigor.md": {
