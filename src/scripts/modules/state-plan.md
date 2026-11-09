@@ -17,6 +17,7 @@
 - Read then write `verification.md` with initial template (criteria table populated from success criteria, methods from verification strategy, results pending). See `references/file-formats.md` for the template — or run `node <skill-path>/scripts/emit-template.mjs --name verification` to get just this template (file-formats.md is the canonical fallback).
 - Read then write `state.md` + `progress.md`.
 - List **every file** to modify/create. Can't list them → go back to EXPLORE.
+- Before listing any new file, function, abstraction or dependency, apply the five questions in `references/complexity-control.md` § Before Writing New Code.
 - Only recommended approach in plan. Alternatives → `decisions.md`.
 - On approval, set `## Iteration:` in `state.md` to the previous value plus 1 (the orchestrator, or the single-threaded agent, writes it) in the same edit that logs PLAN → EXECUTE.
 - Wait for explicit user approval. Before requesting approval, emit **PC-PLAN** (Plan Presentation contract — see `references/file-formats.md` "Presentation Contracts"): Goal verbatim + a 2-4 sentence summary + the full Steps list verbatim + the `plan.md` path (the rest of the plan is read from the file, not pasted into chat) + the approval prompt. Never truncate the Steps. Same contract on re-presentation after revisions.

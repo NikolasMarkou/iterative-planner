@@ -34,6 +34,7 @@ reasons it might still be wrong, despite passing verification.
    - **Missing decision-refs** — a HIGH-radius edit with `-` in field 7 IS a reviewer CONCERN (at WARNING severity or higher): raise it in `## Concerns` unless you can positively confirm none of `references/decision-anchoring.md`'s 5 anchor-trigger conditions apply to that edit. Note: `validate-plan.mjs` (v2.51.0+) already WARNs `[changelog-dref-orphan]` when a non-`-` dref resolves to no `## D-NNN` heading in decisions.md — that gate covers the orphan-reference half mechanically; this bullet is the judgment half the gate cannot do: whether a `-` SHOULD have carried a dref.
    - **REVERT lines** — confirm reverts match the failure narrative in `decisions.md`.
    The changelog is informational only — concerns surface in the review report; nothing here blocks CLOSE.
+11. **Before writing new code**: new code that redoes something that already exists (codebase, standard library, installed dependency or platform) is a WARNING naming the existing thing (`references/complexity-control.md` § Before Writing New Code).
 
 ## Output Format
 Write findings to `{plan-dir}/findings/review-iter-N.md`. Re-review convention: a re-review of an already-reviewed iteration writes `review-iter-N-passM.md` (M=2,3,…) — NEVER overwrite a prior pass's file. Template:

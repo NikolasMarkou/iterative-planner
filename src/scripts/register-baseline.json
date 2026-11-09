@@ -8,8 +8,8 @@
     "markers": 44
   },
   "src/SKILL.md": {
-    "ceiling": 5.46,
-    "markers": 39
+    "ceiling": 5.31,
+    "markers": 38
   },
   "src/agents/ip-archivist.md": {
     "ceiling": 11.33,
@@ -20,23 +20,23 @@
     "markers": 3
   },
   "src/agents/ip-executor.md": {
-    "ceiling": 8.17,
+    "ceiling": 8.13,
     "markers": 16
   },
   "src/agents/ip-explorer.md": {
-    "ceiling": 1.41,
-    "markers": 1
+    "ceiling": 0,
+    "markers": 0
   },
   "src/agents/ip-orchestrator.md": {
     "ceiling": 9.11,
     "markers": 46
   },
   "src/agents/ip-plan-writer.md": {
-    "ceiling": 5.45,
+    "ceiling": 5.25,
     "markers": 5
   },
   "src/agents/ip-reviewer.md": {
-    "ceiling": 6.53,
+    "ceiling": 6.3,
     "markers": 6
   },
   "src/agents/ip-verifier.md": {
@@ -84,7 +84,7 @@
     "markers": 2
   },
   "src/scripts/modules/state-execute.md": {
-    "ceiling": 2.64,
+    "ceiling": 2.58,
     "markers": 3
   },
   "src/scripts/modules/state-explore.md": {
@@ -96,7 +96,7 @@
     "markers": 4
   },
   "src/scripts/modules/state-plan.md": {
-    "ceiling": 1.42,
+    "ceiling": 1.38,
     "markers": 1
   },
   "src/scripts/modules/state-reflect.md": {
