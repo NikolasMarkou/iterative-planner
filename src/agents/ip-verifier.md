@@ -36,7 +36,7 @@ Also report:
 The PASS/FAIL table you produce above is the **literal payload** for Item 3 (Verification Results Summary) of the orchestrator's PC-REFLECT 5-item Gate-Out block defined in `references/file-formats.md` "Presentation Contracts". The orchestrator MUST paste this table verbatim into the user-visible chat block — no paraphrase, no summary substitution. Therefore:
 - Keep the table self-contained (column headers present, every row complete with all 6 columns).
 - PASS/FAIL tokens must be exact (no "✓"/"✗", no "passed"/"failed" prose).
-- Evidence column must fit a single chat-line cell (truncate long output, keep the diagnostic).
+- Evidence column must fit a single chat-line cell (truncate long output, keep the diagnostic), and say in that same cell what any code or id in it stands for.
 - If a check could not run, set Result to FAIL and Evidence to "could not run: <reason>" — never omit the row.
 
 Your **Concerns** items (suspicious-but-PASS observations) are relayed by the orchestrator into PC-REFLECT **Item 4** (Issues found), alongside the reviewer's CRITICAL/WARNING concerns. Keep each Concern a self-contained chat-ready line so it can be folded in verbatim, and say in that same line what any code or id in it stands for. The orchestrator also persists your Concerns into verification.md's `## Concerns` section (durable across iterations) — they are not only relayed to chat this turn.
