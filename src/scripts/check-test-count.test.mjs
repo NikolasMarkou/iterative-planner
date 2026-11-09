@@ -79,6 +79,24 @@ ok 3 - second file
 # duration_ms 16180.5
 `;
 
+// Node 24 default (spec) reporter on a pipe: summary lines are `ℹ key N`, failures are `✖`.
+const SPEC_GREEN = `✔ parses a fresh plan dir (0.7ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 125.675833
+`;
+
+const SPEC_WITH_FAILURES = `✖ budget check fires (1.2ms)
+ℹ tests 10
+ℹ pass 7
+ℹ fail 3
+`;
+
 const TAP_MALFORMED = `TypeError: Cannot read properties of undefined (reading 'x')
     at file:///repo/src/scripts/thing.mjs:12:5
 `;
@@ -106,6 +124,20 @@ describe("check-test-count — parseTapSummary", () => {
     assert.strictEqual(r.pass, 333);
     assert.strictEqual(r.fail, 0);
     assert.strictEqual(r.tests, 333);
+  });
+
+  it("spec reporter (Node 24 default): extracts pass/fail/tests", () => {
+    const r = parseTapSummary(SPEC_GREEN);
+    assert.strictEqual(r.ok, true);
+    assert.strictEqual(r.pass, 4);
+    assert.strictEqual(r.fail, 0);
+    assert.strictEqual(r.tests, 4);
+    const f = parseTapSummary(SPEC_WITH_FAILURES);
+    assert.strictEqual(f.fail, 3);
+  });
+
+  it("spec reporter: failureExcerpt picks up ✖ lines", () => {
+    assert.match(failureExcerpt(SPEC_WITH_FAILURES), /✖ budget check fires/);
   });
 
   it("malformed output (crash, no summary): ok:false with a message, no throw", () => {

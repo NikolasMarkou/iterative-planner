@@ -6,7 +6,7 @@
     <img alt="Skill Version" src="https://img.shields.io/badge/Skill-v2.70.0-green.svg">
   </a>
   <a href="src/scripts/bootstrap.test.mjs">
-    <img alt="Tests" src="https://img.shields.io/badge/tests-1189%20passing-brightgreen.svg">
+    <img alt="Tests" src="https://img.shields.io/badge/tests-1191%20passing-brightgreen.svg">
   </a>
   <a href="https://www.electiconsulting.com">
     <img alt="Sponsored by Electi Consulting" src="https://img.shields.io/badge/Sponsored%20by-Electi%20Consulting-8B1C34">

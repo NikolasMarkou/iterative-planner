@@ -19,9 +19,10 @@
 // failing tests (failureExcerpt) because the captured TAP is otherwise invisible. A hung test is
 // killed after SUITE_TIMEOUT_MS instead of hanging the build forever.
 //
-// TAP source: `node --test` writes TAP when stdout is not a TTY (a spawned pipe never
-// is), so no `--test-reporter` flag is passed — that flag does not exist on early
-// Node 18.x and passing it would break the documented Node 18+ floor.
+// Reporter source: `node --test` writes TAP on a pipe up to Node 22, but Node 24 defaults to the
+// spec reporter even on a pipe (`ℹ pass N` instead of `# pass N`). No `--test-reporter` flag is
+// passed — it does not exist on early Node 18.x and would break the documented Node 18+ floor — so
+// the parser accepts BOTH summary shapes instead.
 //
 // Exit codes: 0 = TEST_COUNT matches the live pass count and the suite is green.
 //             1 = mismatch, any failing test, unparseable TAP, or missing TEST_COUNT.
@@ -42,7 +43,7 @@ import { isMain } from "./shared.mjs";
 const CHILD_ENV_FLAG = "IP_CHECK_TEST_COUNT_CHILD";
 
 /**
- * Parse `node --test` TAP summary lines out of captured output.
+ * Parse `node --test` summary lines (TAP `# pass N` or spec `ℹ pass N`) out of captured output.
  * Last occurrence of each key wins, so interleaved/nested summaries are tolerated.
  * @param {string} tapText - Captured stdout (+stderr) of a `node --test` run.
  * @returns {{ok: boolean, pass: number|null, fail: number|null, tests: number|null, error?: string}}
@@ -50,7 +51,7 @@ const CHILD_ENV_FLAG = "IP_CHECK_TEST_COUNT_CHILD";
 export function parseTapSummary(tapText) {
   const text = String(tapText ?? "");
   const lastCount = (key) => {
-    const re = new RegExp(String.raw`^# ${key} (\d+)\s*$`, "gm");
+    const re = new RegExp(String.raw`^(?:# |ℹ )${key} (\d+)\s*$`, "gm");
     let m;
     let last = null;
     while ((m = re.exec(text)) !== null) last = parseInt(m[1], 10);
@@ -101,7 +102,7 @@ export function parseTestCount(raw) {
 export const SUITE_TIMEOUT_MS = 20 * 60 * 1000;
 
 /**
- * Excerpt of a failing run for the console: every `not ok` line with the 14 lines after it, capped at
+ * Excerpt of a failing run for the console: every `not ok` (TAP) or `✖` (spec) line with the 14 lines after it, capped at
  * 300 lines; when there is no `not ok` (a crash before any summary) the last 40 lines instead.
  * Contract: string in, string out ("" for empty input); never throws.
  * @param {string} tapText
@@ -111,7 +112,7 @@ export function failureExcerpt(tapText) {
   const lines = String(tapText ?? "").split("\n");
   const keep = new Set();
   lines.forEach((l, i) => {
-    if (/^\s*not ok\b/.test(l)) for (let j = i; j <= Math.min(i + 14, lines.length - 1); j++) keep.add(j);
+    if (/^\s*(?:not ok\b|✖)/.test(l)) for (let j = i; j <= Math.min(i + 14, lines.length - 1); j++) keep.add(j);
   });
   const picked = keep.size > 0
     ? [...keep].sort((a, b) => a - b).slice(0, 300).map((i) => lines[i])

@@ -21,6 +21,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Scoped revert recipe.** The `git clean` revert recipe is limited to the manifest paths, so it cannot delete unrelated untracked files.
 - **Iteration ownership.** The protocol states who writes `## Iteration:`.
 
+### Fixed (CI)
+
+- **`make test` failed on Node 24.** `check-test-count.mjs` read only TAP summary lines (`# pass N`), but Node 24 prints the spec reporter (`ℹ pass N`) even on a pipe, so the gate reported "could not parse a TAP summary" with a green suite. It now accepts both shapes, and `failureExcerpt` also picks up `✖` lines. No `--test-reporter` flag is passed, so the Node 18+ floor holds.
+
 ### Fixed (medium and low)
 
 - **Scripts.** `bootstrap new` flag parsing (`new -- "-goal"` is the escape for a goal that starts with `-`, listed in `help` and the README; a single quoted goal such as `"-v broken flag"` still works); the plans lock is published atomically (temp file plus `linkSync`, empty lock under 10 s treated as live, stale reclaim by rename), falls back to an exclusive create when the filesystem has no hard links (EPERM, ENOTSUP, ENOSYS, EXDEV: exFAT, some SMB and FUSE mounts), releases only a lock that names its own pid, and sweeps temp files a killed process left (older than 10 s); `blockCommentSpans` takes the extension so a Rust lifetime `'` no longer hides a real anchor; `blast-radius` reports `radius:UNKNOWN(timeout)` or `UNKNOWN(grep-failed)` instead of a guessed tier, with path-frame and test-credit fixes; `validate-plan` memoizes source-file scans; anchor tables are shared; the compressor has a spec gate.
