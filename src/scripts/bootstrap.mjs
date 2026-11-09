@@ -17,7 +17,7 @@
 // Writes plans/.current_plan with the directory name for discovery.
 // Requires Node.js 18+ (guaranteed by Claude Code).
 
-import { mkdirSync, writeFileSync, readFileSync, readdirSync, renameSync, unlinkSync, existsSync, rmSync, copyFileSync, linkSync, statSync, openSync, writeSync, closeSync } from "fs";
+import { mkdirSync, writeFileSync, readFileSync, readdirSync, renameSync, unlinkSync, existsSync, rmSync, copyFileSync, linkSync, utimesSync, statSync, openSync, writeSync, closeSync } from "fs";
 import { join, extname } from "path";
 import { randomBytes, createHash } from "crypto";
 import { homedir } from "os";
@@ -151,8 +151,10 @@ function editDistance(a, b) {
 
 // DECISION plan-2026-11-08T075330-b464ad63/D-007 — lock protocol (findings #6): the lock file is created WITH its content in one atomic step —
 // the pid is written to a private temp file, then `linkSync` publishes it under the lock name
-// (EEXIST if held). A reader can therefore never see an empty lock file and mistake a live
-// lock for a stale one. Stale reclaim renames the stale file aside (only one reclaimer wins the
+// (EEXIST if held). On filesystems with hard links a reader can therefore never see an empty lock
+// file and mistake a live lock for a stale one; where linkSync is unavailable the fallback
+// exclusive create DOES have an empty window, covered only by the 10 s "being written" grace below
+// (D-015 updates D-007). Stale reclaim renames the stale file aside (only one reclaimer wins the
 // rename) and re-checks what it moved before discarding it. A lock whose content is empty or
 // unparseable is treated as "being written / foreign": locked unless it is older than 10 s.
 // Do NOT make openSync("wx") + a later write of the pid the PRIMARY path (an empty window a reader
@@ -199,6 +201,8 @@ function publishLock() {
 }
 
 // Removes temp/aside files a killed process left behind (older than 10 s, so a live one is safe).
+// Asides are safe because the reclaimer re-stamps them at rename time (renameSync alone keeps the
+// old lock's mtime, which would make a fresh aside look old; D-015).
 function sweepLockLitter() {
   let names = [];
   try { names = readdirSync(plansDir); } catch { return; }
@@ -237,12 +241,13 @@ function acquireLock() {
   const aside = `${lockFile}.stale.${process.pid}.${randomBytes(4).toString("hex")}`;
   try {
     renameSync(lockFile, aside);
+    try { const now = new Date(); utimesSync(aside, now, now); } catch { /* best effort */ }
     let movedPid = null;
     let movedRaw = "";
     try { movedRaw = readFileSync(aside, "utf-8"); movedPid = parseInt(movedRaw.trim(), 10) || null; } catch {}
     if (movedPid !== priorPid) {
-      // We moved someone else's fresh lock: put it back and stand down.
-      try { createLockFile(lockFile, movedRaw); } catch { /* a newer lock exists; fine */ }
+      // We moved someone else's fresh lock: put it back (never an empty one) and stand down.
+      try { if (movedRaw.trim() !== "") createLockFile(lockFile, movedRaw); } catch { /* a newer lock exists; fine */ }
       try { unlinkSync(aside); } catch {}
       throw lockHeld("Lock contention reclaiming stale lock. Retry shortly.");
     }

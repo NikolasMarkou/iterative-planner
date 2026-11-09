@@ -510,7 +510,8 @@ test("build channels: build-combined declares the same rewrite key/value pairs",
   assert.deepEqual(ps, mk, "the two build-combined rewrite maps have drifted");
 });
 
-test("build-combined (Makefile, actually run): no `node <skill-path>/scripts/emit-` line survives", () => {
+test("build-combined (Makefile, actually run): no `node <skill-path>/scripts/emit-` line survives",
+  { skip: process.platform === "win32" ? "needs make; the build.ps1 map test below covers that channel" : false }, () => {
   const out = mkdtempSync(join(tmpdir(), "bc-"));
   try {
     const r = spawnSync("make", ["build-combined", `BUILD_DIR=${out}`], { cwd: repoRoot, encoding: "utf8" });

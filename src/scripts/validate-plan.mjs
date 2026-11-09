@@ -324,7 +324,9 @@ function checkStateTransitions(planDir, issues) {
   // stripHygieneSkipLines (reviewer CRITICAL #1).
   // The block runs to EOF; bound it at the next `## ` heading so a later appended section with an
   // `- A -> B` bullet is not read as a transition. (The hard-cap counters deliberately keep the
-  // unbounded block: they must not be able to under-count.)
+  // unbounded block, so a trailing section cannot hide a transition from them. Both read only
+  // `- ` bullets, the form the state.md template and the orchestrator write; other bullet styles
+  // are out of contract and counted by neither.)
   const bounded = historyBlock.split(/\n(?=## )/)[0];
   const lines = stripHygieneSkipLines(bounded).split("\n").filter((l) => l.startsWith("- "));
 

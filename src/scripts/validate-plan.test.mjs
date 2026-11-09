@@ -774,6 +774,20 @@ describe("validate-plan.mjs --pre-step gate", () => {
     assert.equal(r.stdout.trim(), "GATE:PASS");
   });
 
+  it("(e5d) W4: reason-line pairs cannot reach either hard cap (fails against the unanchored 07c288c counter)", async () => {
+    const { deriveIterationFromHistory, deriveRoundsFromHistory } = await import(VALIDATOR);
+    const reasons = Array.from({ length: 8 }, (_, i) =>
+      `- REFLECT → EXECUTE (round ${i + 1}: redo PLAN → EXECUTE wording, EXECUTE → REFLECT noted)`).join("\n");
+    const state = ["# Current State: EXECUTE", "## Iteration: 1", "## Transition History:",
+      "- INIT → EXPLORE (go)", "- PLAN → EXECUTE (approved)", reasons, ""].join("\n");
+    assert.equal(deriveIterationFromHistory(state), 1);
+    assert.equal(deriveRoundsFromHistory(state), 0);
+    const cwd = getTempDir();
+    writePlan(cwd, { state: "EXECUTE", iteration: 1, transitionHistoryExtra: reasons });
+    const r = runPreStep(cwd);
+    assert.equal(r.exitCode, 0, `reason-line pairs tripped a cap: ${r.stdout}`);
+  });
+
   it("(e6) D-002: HYGIENE SKIP text naming PLAN -> EXECUTE or EXECUTE -> REFLECT inflates neither count", async () => {
     const { deriveIterationFromHistory, deriveRoundsFromHistory } = await import(VALIDATOR);
     const state = [

@@ -6,7 +6,7 @@
     <img alt="Skill Version" src="https://img.shields.io/badge/Skill-v2.70.0-green.svg">
   </a>
   <a href="src/scripts/bootstrap.test.mjs">
-    <img alt="Tests" src="https://img.shields.io/badge/tests-1188%20passing-brightgreen.svg">
+    <img alt="Tests" src="https://img.shields.io/badge/tests-1189%20passing-brightgreen.svg">
   </a>
   <a href="https://www.electiconsulting.com">
     <img alt="Sponsored by Electi Consulting" src="https://img.shields.io/badge/Sponsored%20by-Electi%20Consulting-8B1C34">
@@ -80,7 +80,7 @@ Reach for it when the task is big enough that "what did I already try?" is a que
 
 ## Get Started in 60 Seconds
 
-**Requires**: Node.js 18+ (for the bootstrap and validator scripts). No npm install, no runtime dependencies — the scripts are plain ESM on Node builtins. Running the test suite (contributors) needs Node.js 20.11+, because the test files use `import.meta.dirname`; CI runs Node 20 and 22.
+**Requires**: Node.js 18+ (for the bootstrap and validator scripts). No npm install, no runtime dependencies — the scripts are plain ESM on Node builtins. Running the test suite (contributors) needs Node.js 20.11+, because the test files use `import.meta.dirname`; CI runs Node 20, 22 and 24. The scripts avoid newer syntax and are meant to run on 18, but nothing below 20 is tested.
 
 ### Option 1 — Zip package (recommended)
 
@@ -577,7 +577,7 @@ No, except `plans/ANCHORS.md`. Bootstrap adds `plans/*` to `.gitignore` with a `
 Run `bootstrap.mjs new --force "new goal"`. This closes the active plan (merging its findings) and creates a fresh one. All previous plan directories are preserved.
 
 **What happens at iteration 5?**
-The protocol forces a decomposition analysis: identify 2-3 independent sub-goals that could each be a separate plan. At iteration 6+, or after 18 rounds of execution and review, execution stops entirely and the way forward is a partial close plus new plans.
+The protocol forces a decomposition analysis: identify 2-3 independent sub-goals that could each be a separate plan. At iteration 6+, or after 18 rounds of execution and review (a warning appears from round 15, and hygiene and fix rounds count too), execution stops entirely and the way forward is a partial close plus new plans.
 
 **Can I run the agents in parallel?**
 Explorers always parallelize. Verifiers can parallelize across independent checks. Executors never parallelize — exactly one runs at a time, because plan steps are sequential. The orchestrator sequences anything that touches the same plan file.

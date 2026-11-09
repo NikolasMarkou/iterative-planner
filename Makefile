@@ -168,7 +168,7 @@ package: validate build
 	@echo "Packaging skill as zip..."
 	mkdir -p $(DIST_DIR)
 	rm -f $(DIST_DIR)/$(SKILL_NAME)-v$(VERSION).zip
-	cd $(BUILD_DIR) && zip -r ../$(DIST_DIR)/$(SKILL_NAME)-v$(VERSION).zip $(SKILL_NAME)
+	cd $(BUILD_DIR) && zip -r $(abspath $(DIST_DIR))/$(SKILL_NAME)-v$(VERSION).zip $(SKILL_NAME)
 	@echo "Package created: $(DIST_DIR)/$(SKILL_NAME)-v$(VERSION).zip"
 
 # Package combined single-file version
@@ -184,7 +184,7 @@ package-tar: validate build
 	@echo "Packaging skill as tarball..."
 	mkdir -p $(DIST_DIR)
 	rm -f $(DIST_DIR)/$(SKILL_NAME)-v$(VERSION).tar.gz
-	cd $(BUILD_DIR) && tar -czvf ../$(DIST_DIR)/$(SKILL_NAME)-v$(VERSION).tar.gz $(SKILL_NAME)
+	cd $(BUILD_DIR) && tar -czvf $(abspath $(DIST_DIR))/$(SKILL_NAME)-v$(VERSION).tar.gz $(SKILL_NAME)
 	@echo "Package created: $(DIST_DIR)/$(SKILL_NAME)-v$(VERSION).tar.gz"
 
 # Validate skill structure
