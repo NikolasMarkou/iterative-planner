@@ -32,6 +32,24 @@ Any limit hit → STOP → REFLECT. Ask: "Root cause or symptom?"
 
 **Earned-abstraction rule (use before reuse).** An abstraction (class/module/interface/shared param/flag) is *earned* only when ≥2 concrete call sites need it. Simplicity before generality: build the concrete thing first, extract once a second concrete call site appears — not in anticipation. A single-use abstraction is speculative generality — it spends the abstraction budget with no payoff → inline it. (YAGNI.)
 
+## Before Writing New Code
+
+Before planning or writing any new file, function, abstraction or dependency, ask these five questions in this order. Stop at the first yes and use the existing thing.
+
+1. Does this need to exist? If not, skip it.
+2. Is it already in the codebase? Use it.
+3. Does the language's standard library do it? Use it.
+4. Does a dependency that is already installed do it? Use it.
+5. Does a native platform feature do it (OS, shell, git, browser, database, framework built-in)? Use it.
+
+Only after five no answers, write new code.
+
+- Questions 3 to 5 apply to software work only; questions 1 and 2 apply to every plan.
+- Adding a new dependency is not question 4. It is a Build vs Buy decision: `references/python-software.md` § Decision frameworks.
+- When: in PLAN, for every new entry in Files To Modify and every new abstraction in Steps; in EXECUTE, before adding a function, constant, parser, rule or dependency; in REFLECT, through Simplification Check 1.
+- A "new" line in Files To Modify says which question failed, for example `(new: no existing helper, standard library call or installed package does this)`.
+- Advisory: reviewers spot-check it; no script gates it.
+
 ## Revert-First Policy (EXECUTE failure)
 
 1. STOP. No new code.
@@ -58,7 +76,7 @@ Re-read `decisions.md`. Answer in `decisions.md` using this format:
 **Blocker found**: [yes/no — if yes, must address before CLOSE]
 ```
 
-1. **Could I delete code instead?** Best fix = removing what broke.
+1. **Could I delete code instead?** Best fix = removing what broke. This also covers new code that redoes something that already existed (in the codebase, the standard library, an installed dependency or the platform): delete it and use the existing thing, per § Before Writing New Code.
 2. **Symptom or root cause?** Band-aids compound.
 3. **Essential or accidental complexity?** Essential complexity is inherent in the problem — it can be partitioned but not eliminated. Accidental complexity is self-inflicted through poor choices, wrong tools, or accumulated shortcuts. If accidental → simplify or remove. If essential → partition it, don't fight it.
 4. **Would a junior dev understand?** Needs a paragraph to explain → too complex.
