@@ -89,28 +89,27 @@ If any check reveals a blocker → document in `decisions.md` → must address b
 
 A review of everything the plan wrote, read as one whole, after the work looks close to done and verification has passed. No single step can see duplication that spans two steps; this pass can.
 
-- **When and who.** Software plans only, meaning "software-engineering tasks (any language, incl. Python)". A non-software plan does not get this pass; the rest of the hygiene sweep still runs on it.
-  - The pass is part of that sweep: ip-boyscout does it, or the orchestrator itself when the run has no sub-agents.
-  - The sweep reports and never edits.
-- **Scope.** The files `changelog.md` names, read together as one diff. The report says which files it compared, so a partial read is visible.
+- **When and who.** Decide from the files the plan changed. Source code in any language makes it a software plan. A plan that changes only documentation, configuration or data is not one, and does not get this pass; the rest of the hygiene sweep still runs on it.
+  - ip-boyscout does the pass, or the orchestrator itself when the run has no sub-agents. The sweep reports and never edits.
+- **Scope.** The files `changelog.md` names, read together as one diff, plus every file that `git diff --name-only` lists from the commit recorded under `## Git State` in the plan's first checkpoint (the lowest-numbered file in `checkpoints/`) to HEAD and that `changelog.md` does not name. Such a file is reported with `attributed to: none`. The report names the files compared on its `Files compared:` line.
 - **What to look for, by pointer.**
-  - New code the goal does not need, or that redoes something that already exists: § Before Writing New Code, questions 1 to 5, asked over the whole diff.
+  - New code the goal does not need, or that redoes something that already exists: questions 1 to 5 of § Before Writing New Code, asked over the whole diff.
   - Copy-paste and swallowed errors: § Forbidden Fix Patterns.
   - A single-use abstraction: the earned-abstraction rule above.
-  - Leftovers and dead helpers: `references/code-hygiene.md` § Forbidden Leftovers.
-  - Shared code with no contract: `references/code-hygiene.md` § Interface Contracts for Shared Assets.
-  - For software plans also the checklist in `references/python-software.md` § C.12 Anti-pattern checklist.
+  - The checklist in `references/python-software.md` § C.12 Anti-pattern checklist.
   - The one addition here is duplication between two steps' new code. Quote both `file:line` locations as the evidence.
-- **Leave alone.** Code under a decision anchor, code whose changelog line carries a decision reference, and duplication that `decisions.md` records (an entry that mentions duplication or lockstep). Leave alone means do not report it as a finding, not even as a note.
-- **Over-consolidation guard.** Merge only when both copies change for the same reason. Two look-alikes that change for different reasons stay apart. A finding names the smaller version and shows that the net line count goes down. "Could be cleaner" is not a finding.
-- **Attribution.** Each finding names one anchor file: the file its fix edits first, and a file that some `changelog.md` line names.
-  - For duplication across steps, the anchor file is the file from the later changelog line (the line that added the second copy). The remediation says which copy survives.
-  - The entry's attributed-to value is the step on that changelog line. If no changelog line names a file, write `attributed to: none`.
-- **Fixing.** Findings are `[judgment]` entries under `## Introduced`. The user approves them at the REFLECT gate; each approved one becomes a completion fix step in EXECUTE, and REFLECT then verifies again.
-  - A consolidation fix is a planned step, not a repair of a failed step, so the 10-Line Rule and the fix attempt limits (Revert-First Policy) do not bind it.
-  - Its own bounds: net lines are zero or negative, behavior does not change, and the criteria already in `verification.md` are the test. If a fix breaks one of them, revert the fix and report it; do not patch it forward.
-  - A fix that adds a helper spends one of the two new-abstraction slots in the Complexity Budget, so check the headroom first.
-  - These fixes share the two hygiene remediation rounds per iteration; there is no separate count.
+- **Leave alone, and say so.** Leave alone means the item is not reported as a finding, but it is listed on one `Left alone:` line of the hygiene report, each item as `file:line` plus the decision id, so a reader can see what was set aside. Two kinds only, and nothing else near them is exempt:
+  - Code inside a block that a `# DECISION` comment governs (the whole file when the comment sits at the top of the file).
+  - Duplication that an entry in `decisions.md` records as deliberate, where the entry names the same files or code as the would-be finding. An entry that merely mentions duplication or lockstep does not qualify.
+- **Over-consolidation guard.** Merge only when both copies change for the same reason; look-alikes that change for different reasons stay apart. A finding names the version to keep and shows that the net line count goes down. "Could be cleaner" is not a finding.
+- **Reporting and attribution.** Each finding is a `[judgment] Consolidation:` entry under `## Introduced`; the entry text starts with exactly those words, so the orchestrator can tell it from other judgment entries. It names one home file, which must be a file that some `changelog.md` line names.
+  - For duplication across steps, the home file is the file whose latest `changelog.md` line has the higher step number, comparing step numbers as numbers (2.1 is higher than 2).
+  - The attributed-to value is the step on the home file's latest `changelog.md` line, as in ip-boyscout Step 6. If no line names the file, write `attributed to: none`.
+- **Fixing.** The user approves findings at the REFLECT gate. Each approved finding becomes one completion fix step touching only the files that finding names; a fix that would need more files is reported as a matter for a new plan, and no step is minted for it.
+  - A consolidation fix is a planned step, not a repair of a failed step, so the 10-Line Rule does not apply to it. The Autonomy Leash applies as usual.
+  - Bounds: the fix adds no net lines, behavior does not change, and before committing the executor runs the commands of the plan's verification criteria that the fix could affect. If one fails, the executor reverts the fix in the same spawn and reports it, never patching forward.
+  - A fix that adds a helper spends one of the two new-abstraction slots in the Complexity Budget. With no room left, the finding stays in the report and no fix step is minted for it.
+  - These fixes share the two hygiene remediation rounds per iteration.
 
 ## 3-Strike Rule
 
