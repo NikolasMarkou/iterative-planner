@@ -28,7 +28,7 @@
     "markers": 0
   },
   "src/agents/ip-orchestrator.md": {
-    "ceiling": 9.06,
+    "ceiling": 8.97,
     "markers": 46
   },
   "src/agents/ip-plan-writer.md": {
@@ -100,7 +100,7 @@
     "markers": 1
   },
   "src/scripts/modules/state-reflect.md": {
-    "ceiling": 3.22,
+    "ceiling": 3.19,
     "markers": 7
   }
 }
