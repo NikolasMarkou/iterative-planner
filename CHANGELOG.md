@@ -4,6 +4,24 @@ All notable changes to the Iterative Planner project will be documented in this 
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.72.0] - 2026-11-10
+
+**The pre-close hygiene sweep now also reads everything a software plan wrote as one whole, to catch duplication and needless code that no single step could see.** Advisory prose only; no script, validator, bootstrap template or test changed. The files that changed are `references/complexity-control.md`, `agents/ip-boyscout.md`, `agents/ip-orchestrator.md`, `scripts/modules/state-reflect.md`, `SKILL.md`, `README.md`, `VERSION`, this file and the register baseline.
+
+### Added
+
+- **A Consolidation Pass.** A new section, `references/complexity-control.md` § Consolidation Pass (REFLECT), describes a review of the files `changelog.md` names, read together as one diff after verification has passed. It looks for new code the goal does not need or that redoes something existing (the five questions in § Before Writing New Code, asked over the whole diff), copy-paste and swallowed errors, single-use abstractions, leftovers, shared code with no contract, and duplication between two steps' new code, quoting both `file:line` locations. It leaves alone, and does not report, code under a decision anchor, code whose changelog line carries a decision reference, and duplication that `decisions.md` records. An over-consolidation guard says to merge only when both copies change for the same reason, and a finding must name the smaller version and show the net line count going down. Each finding names one anchor file (for duplication across steps, the file from the later changelog line) and says which copy survives. Fix rules: a consolidation fix is a planned step, not a repair of a failed step, so the 10-Line Rule does not bind it; net lines are zero or negative; behavior does not change; the criteria already in `verification.md` are the test; if a fix breaks one, revert it and report it. These fixes share the two hygiene remediation rounds per iteration.
+- **ip-boyscout runs it on software-engineering plans.** Findings stay `[judgment]` entries under `## Introduced`, and the report gains a `Files compared:` line so a partial read is visible. Non-software plans get the rest of the sweep unchanged.
+- **Pointers.** `state-reflect.md` item 24 (in a run with no sub-agents the orchestrator does the review itself), `ip-orchestrator.md` step 3.5, the SKILL.md REFLECT summary and principles paragraph, and the README ip-boyscout row point to the new section.
+
+### Notes
+
+- **Advisory only.** Nothing checks the pass mechanically and no test was added (as in 2.71.0); only the pointer gate notices if the section heading is renamed. The pass is report-only, so every fix needs the user's approval at the REFLECT gate. `TEST_COUNT` stays 1191 and the README tests badge is unchanged.
+- **Nothing structural moved.** No new agent, state, verdict value, report heading, script or validator change. The register baseline was regenerated without `--raise`.
+- **Inherited, not fixed here.** The new pointer to `complexity-control.md` reads "section below" in the wrong direction in the single-file build, like the 2.71.0 pointers (see that entry).
+- An earlier plan whose goal was an executor read-first of DRY and YAGNI was closed unexecuted; its work is not part of this release.
+- No new full-corpus walk over `plans/`, so no cost note.
+
 ## [2.71.0] - 2026-11-09
 
 **Two plain-language rules: a code shown to the user comes with its meaning, and new code is written only after checking that nothing already does the job.** Both are advisory prose; no script, validator or bootstrap template changed.

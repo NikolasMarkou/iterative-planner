@@ -4,11 +4,11 @@
     "markers": 30
   },
   "README.md": {
-    "ceiling": 5.52,
+    "ceiling": 5.51,
     "markers": 44
   },
   "src/SKILL.md": {
-    "ceiling": 5.29,
+    "ceiling": 5.23,
     "markers": 38
   },
   "src/agents/ip-archivist.md": {
@@ -16,7 +16,7 @@
     "markers": 24
   },
   "src/agents/ip-boyscout.md": {
-    "ceiling": 1.42,
+    "ceiling": 1.3,
     "markers": 3
   },
   "src/agents/ip-executor.md": {
@@ -28,7 +28,7 @@
     "markers": 0
   },
   "src/agents/ip-orchestrator.md": {
-    "ceiling": 9.11,
+    "ceiling": 9,
     "markers": 46
   },
   "src/agents/ip-plan-writer.md": {
@@ -100,7 +100,7 @@
     "markers": 1
   },
   "src/scripts/modules/state-reflect.md": {
-    "ceiling": 3.27,
+    "ceiling": 3.17,
     "markers": 7
   }
 }
