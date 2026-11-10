@@ -23,7 +23,7 @@ Two words are used throughout with fixed meanings:
 - **Inherited** — residue that predates this plan. You report it and you never fix it.
 - **Introduced** — residue in a file this plan's own `changelog.md` says this plan touched. These are the only items anyone may act on off the back of your report.
 
-On software-engineering plans (any language), the sweep also includes a consolidation review: you read everything the plan wrote as one whole and look for duplication between steps and for code the goal does not need. Other plans get the rest of the sweep without this review.
+On software-engineering plans the sweep also includes a consolidation review of everything the plan wrote, described in Step 4.
 
 ## You Never Edit The Codebase
 Your only write is your own report file. You have no `Edit` tool and you must not reach around that with `Bash`.
@@ -59,7 +59,7 @@ The scanner covers five mechanical categories. Read `references/code-hygiene.md`
 - An **incomplete revert** — a failed approach was backed out, but something it needed survives: a helper with no remaining caller, a config entry, a fixture, a test for code that is gone.
 - **Shared assets with no interface contract** (`references/code-hygiene.md` § Interface Contracts for Shared Assets) — a function or module this plan gave a second caller, with no statement of parameters, return shape, and failure mode at its definition.
 - **The plan's diff left worse than it was found**, in any file `changelog.md` names and not only in a shared module — a helper that grew a parameter only one caller passes, an error path that now swallows what it used to report, a name that no longer describes what the thing does.
-- **Consolidation review**, software-engineering plans only. Read `references/complexity-control.md` § Consolidation Pass (REFLECT) and apply it to the plan's whole diff; that section also says what to leave alone. The review's findings are `[judgment]` entries under `## Introduced`, each with evidence, remediation and attributed-to like any other. Attribute each finding by that section's rule: one anchor file that a changelog line names (for duplication across steps, the file from the later changelog line).
+- **Consolidation review**, software-engineering plans only (decided as that section says). Read `references/complexity-control.md` § Consolidation Pass (REFLECT) and apply it to the plan's whole diff. Report what it finds as that section says; each finding is a `[judgment] Consolidation:` entry.
 - Anything on the list in `references/code-hygiene.md` § Forbidden Leftovers that the sweep's own rules are documented as not catching. The scanner's file header names its blind spots plainly; read them and cover what you can by eye.
 
 Label every finding so a reader can tell a grep hit from an opinion: `[scanner]` for anything that came out of the JSON, `[judgment]` for anything you concluded yourself. A judgment finding is held to the same standard as a scanner one — it needs concrete evidence with a file and line, a proposed remediation, and an attributed step.
@@ -79,13 +79,14 @@ Write to `{plan-dir}/findings/hygiene-iter-N.md`, where N is the current iterati
 
 The three headings `## Inherited`, `## Introduced` and `## Verdict` are required. A missing one is reported as a warning by `node <skill-path>/scripts/validate-plan.mjs`, because the orchestrator's routing reads all three.
 
-Directly under the `Scanner:` line, add a `Files compared:` line naming every file the consolidation review read, so a partial read is visible. On a plan that is not a software-engineering plan, write `Files compared: none, not a software plan`.
+Directly under the `Scanner:` line, add two lines. `Files compared:` names every file the consolidation review read, so a partial read is visible. `Left alone:` lists each item the review set aside, as `file:line` plus the decision id, or reads `Left alone: none` when nothing was set aside. On a plan that is not a software-engineering plan, write `Files compared: none, not a software plan` and `Left alone: none, not a software plan`.
 
 ```
 # Hygiene Sweep — Iteration N
 
 Scanner: exit 0. Categories: 5 ran, 0 degraded.
 Files compared: src/lib/parse.mjs, src/lib/read.mjs, src/lib/write.mjs
+Left alone: none
 
 ## Inherited
 Total: 40 (illustrative numbers — not a live count; see `plans/SYSTEM.md` for the
