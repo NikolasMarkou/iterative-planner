@@ -428,7 +428,7 @@ When the skill activates with the definitions present, the conversation assumes 
 | **ip-executor** | Implements one plan step at a time (EXECUTE) | Read, Edit, Write, Bash, Grep, Glob | inherit |
 | **ip-verifier** | Runs verification checks, returns results for the Orchestrator to merge into `verification.md` (REFLECT) | Read, Bash, Grep, Glob | sonnet |
 | **ip-reviewer** | Adversarial review, iteration ≥ 2 by default; earlier by orchestrator choice, e.g. an iteration-1 attack-before-release pass (REFLECT) | Read, Write, Grep, Glob, Bash | opus |
-| **ip-boyscout** | Read-only hygiene sweep once the work looks close-ready, separating residue this plan introduced from residue already there (REFLECT) | Read, Write, Bash, Grep, Glob | sonnet |
+| **ip-boyscout** | Read-only hygiene sweep once the work looks close-ready, separating residue this plan introduced from residue already there, plus a consolidation review of the plan's code on software plans (REFLECT) | Read, Write, Bash, Grep, Glob | sonnet |
 | **ip-archivist** | CLOSE housekeeping: `summary.md`, anchor audit, LESSONS, SYSTEM | Read, Write, Edit, Grep, Glob, Bash | sonnet |
 
 **Dispatch by state**: EXPLORE — 1-3 explorers in parallel, one per topic. PLAN — one plan-writer. EXECUTE — one executor per step, sequential (exactly one executor at a time — plan steps are sequential, so executor file conflicts cannot arise). REFLECT — verifier(s) for checks, reviewer (iteration 2+ by default, or earlier by orchestrator choice — e.g. an iteration-1 attack-before-release pass) for adversarial review, and a boyscout for the hygiene sweep once the work looks close-ready. CLOSE — archivist for the housekeeping.

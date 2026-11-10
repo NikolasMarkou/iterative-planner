@@ -262,7 +262,7 @@ Implement one step at a time: run the Pre-Step Checklist, create the iteration-1
 → Operative rules: `node <skill-path>/scripts/emit-state.mjs --state execute` (module: `scripts/modules/state-execute.md`).
 
 ### REFLECT
-Run the 3-phase gate: Gate-In (7 mandatory reads), Evaluate (cross-validate, diff review, run verification + regression + scope-drift + simplification checks + `validate-plan.mjs`), then Gate-Out (write `verification.md`/`decisions.md`/`progress.md`/`state.md`), and present the 5-item PC-REFLECT contract before routing to CLOSE / PIVOT / EXPLORE / EXECUTE.
+Run the 3-phase gate: Gate-In (7 mandatory reads), Evaluate (cross-validate, diff review, run verification + regression + scope-drift + simplification checks + `validate-plan.mjs`), then Gate-Out (write `verification.md`/`decisions.md`/`progress.md`/`state.md`), and present the 5-item PC-REFLECT contract before routing to CLOSE / PIVOT / EXPLORE / EXECUTE. Once the work looks close to done, the read-only hygiene sweep (ip-boyscout) runs, and on software-engineering plans it also reviews the plan's whole diff for duplication and unneeded code, as described in `references/complexity-control.md` § Consolidation Pass (REFLECT); the review only reports, and any fix goes through EXECUTE as a completion-fix step.
 → Operative rules: `node <skill-path>/scripts/emit-state.mjs --state reflect` (module: `scripts/modules/state-reflect.md`).
 
 ### PIVOT
@@ -273,7 +273,7 @@ Re-route after failure: read `decisions.md`/`findings.md`/`changelog.md`/`plans/
 
 Default response to failure = simplify, not add. See `references/complexity-control.md`.
 
-These guards operationalize three principles already wired into the protocol — name them when applying: **KISS** (Simplification Checks #3 essential/accidental + #4 junior-dev test, `references/complexity-control.md`), **YAGNI** (Complexity Budget + earned-abstraction rule + question 1 of the five asked before writing new code, `references/complexity-control.md` § Before Writing New Code), **DRY** (questions 2 to 5 of that section — EXECUTE Pre-Step Checklist + `references/code-hygiene.md` § Interface Contracts for Shared Assets).
+These guards operationalize three principles already wired into the protocol — name them when applying: **KISS** (Simplification Checks #3 essential/accidental + #4 junior-dev test, `references/complexity-control.md`), **YAGNI** (Complexity Budget + earned-abstraction rule + question 1 of the five asked before writing new code, `references/complexity-control.md` § Before Writing New Code), **DRY** (questions 2 to 5 of that section — EXECUTE Pre-Step Checklist + `references/code-hygiene.md` § Interface Contracts for Shared Assets). At REFLECT the same principles are applied to the plan's whole diff by `references/complexity-control.md` § Consolidation Pass (REFLECT).
 
 **Revert-First** — when something breaks: (1) STOP (2) revert? (3) delete? (4) one-liner? (5) none → REFLECT.
 **10-Line Rule** — fix needs >10 new lines → it's not a fix → REFLECT.
