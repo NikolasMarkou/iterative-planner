@@ -48,7 +48,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isMain, tagLines } from "./shared.mjs";
 
-// DECISION plan-2026-09-01T100120-4f591469/D-012 — command grammar (`node`, option run, script
+// Command grammar (`node`, option run, script
 // arg), not token adjacency: a flag between `node` and the path used to evade this rule entirely.
 // Do not widen the option run past a leading `-`, or `node` in ordinary prose swallows later paths.
 const SCRIPT_ARG_RE = /\bnode(?:\s+-[^\s`'"]*)*\s+['"]?([^\s`'"]*scripts\/[A-Za-z0-9_.-]+\.mjs)/g;
@@ -141,7 +141,7 @@ export function scanScriptPaths(relPath, text, edges, scriptExists) {
   return issues;
 }
 
-// DECISION plan-2026-09-01T100120-4f591469/D-013 — `src/references/x.md` and `references/x.md`
+// `src/references/x.md` and `references/x.md`
 // name the same file; rules (b) and (c) must agree via this one normalizer. Do not reintroduce a
 // `startsWith("references/")` guard in either — that let the `src/` spelling skip validation.
 /** Canonical repo-relative spelling of a cited doc path. */
@@ -269,7 +269,7 @@ export function report(issues) {
   return issues.map((i) => `  ${i.file}:${i.line} [${i.rule}] ${i.message}`);
 }
 
-// DECISION plan-2026-07-16T085306-8bd12f33/D-004 — edges are ONLY verified-OK matches from the
+// Edges are ONLY verified-OK matches from the
 // same loops that feed `issues`; no parallel collector pass, no localeCompare sort (breaks
 // cross-platform byte-identity).
 /** Serialize edges to deterministic JSONL: dedupe, sort, fixed key order. */
@@ -379,7 +379,7 @@ if (isEntryPoint) {
     try {
       writeFileSync(edgesPath, out);
     } catch (err) {
-      // DECISION plan-2026-07-21T111733-38d0cd87/D-001 — fail LOUD, do not mkdirSync the parent:
+      // Fail LOUD, do not mkdirSync the parent:
       // a typo'd --emit-edges path must exit 1 with err.code reported verbatim, never silently create dirs.
       console.error(`check-agent-wiring: FAIL [emit-edges-write-failed] ${edgesPath} (${err.code})`);
       process.exit(1);

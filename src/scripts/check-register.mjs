@@ -13,11 +13,11 @@
 // THE RULE, in one line: a file fails only when BOTH its density AND its raw
 // marker count rise above the committed pair.
 //
-// DECISION plan-2026-09-01T100120-4f591469/D-027 — the conjunction is the whole point: density
+// The conjunction is the whole point: density
 // alone rises when plain prose is DELETED, punishing the exact simplification this repo wants.
 // Do not simplify back to density-only.
 //
-// DECISION plan-2026-09-01T100120-4f591469/D-021 — entries are EXACT measured values, not
+// Entries are EXACT measured values, not
 // allowances. Do not restore per-file headroom; that is what made this a loose ceiling instead
 // of a ratchet for 24 releases. A pin test asserts every committed entry equals its file's live measurement.
 //
@@ -91,7 +91,7 @@ export function jargonMarkers(text) {
     "g",
   );
   const coded = (t.match(codedRe) || []).length;
-  // DECISION plan-2026-07-23T191907-b8d237ed/D-001 — strip bracket-tag spans BEFORE the compound
+  // Strip bracket-tag spans BEFORE the compound
   // regex (replace with a space, not "", to keep token boundaries), so a tag's inner slug isn't
   // double-counted by both. Do not add a range-dedupe helper for this one overlap.
   const noBrackets = t.replace(bracketRe, " ");
@@ -223,12 +223,12 @@ export function normalizeBaselineEntry(value) {
  * NOT a rise (there is no ceiling to raise: a brand-new doc, or a regenerate
  * from an empty baseline, must not need a flag). A ceiling that falls or holds
  * is never reported, whatever the marker count does — deletion immunity is the
- * hard invariant here (D-027), so this function is deliberately one-sided.
+ * hard invariant here, so this function is deliberately one-sided.
  * A file whose raw marker count FELL is also never reported, even when its
  * density rose: removing jargon is the direction the ratchet exists to reward,
- * and calling it a "raise" is what made an author deleting prose declare one
- * (D-037). Markers that merely HOLD while density rises ARE reported — that is
- * both the pure prose deletion and D-035's equal swap, and no per-file
+ * and calling it a "raise" is what made an author deleting prose declare one.
+ * Markers that merely HOLD while density rises ARE reported — that is
+ * both the pure prose deletion and the equal swap, and no per-file
  * aggregate can tell those two apart.
  * Never throws; a missing/odd `baseline` yields `[]`.
  *
@@ -242,11 +242,11 @@ export function ceilingRises(measurements, baseline) {
     const entry = normalizeBaselineEntry(baseline?.[file]);
     if (!entry) continue;
     // Density above the committed ceiling AND the raw marker count not FALLEN.
-    // The second half is D-037: a density rise driven purely by deleted prose
+    // The second half: a density rise driven purely by deleted prose
     // is not a raise of anything, and demanding `--raise` for it relocated the
     // W7 deletion penalty from the gate onto `--regenerate` instead of removing
     // it. Do NOT tighten this to `toMarkers > fromMarkers`: markers HOLD in
-    // D-035's equal-swap shape, which is the laundering path this guard exists
+    // the equal-swap shape, which is the laundering path this guard exists
     // to close.
     if (m.density > entry.ceiling && m.markers >= entry.markers) {
       rises.push({
@@ -283,7 +283,7 @@ export function normalizeRaiseArg(value) {
  *   drift — a scanned file whose density exceeds its ceiling AND whose raw
  *           marker count exceeds its committed count. Both, never one: a pure
  *           text deletion raises density while the count holds, and that is
- *           simplification, not drift (D-027).
+ *           simplification, not drift.
  *   floor — anti-vacuity failures: a baseline key with no measurement
  *           ("missing"); a scanned file below MIN_WORDS ("near-empty: W words");
  *           a scanned file with no committed entry; a malformed entry; fewer
@@ -350,16 +350,16 @@ if (isEntryPoint) {
   const measurements = measureAll(repoRoot);
   const baselinePath = join(repoRoot, "src/scripts/register-baseline.json");
 
-  // DECISION plan-2026-09-01T100120-4f591469/D-028 — --regenerate refuses to write from a scan
+  // --regenerate refuses to write from a scan
   // below EXPECTED_MIN_FILES, so a gutted scan can't launder a fresh baseline past the floor it
   // just failed. Do not drop that guard for convenience.
-  // DECISION plan-2026-09-01T100120-4f591469/D-035 — --regenerate lowers or holds a ceiling
+  // --regenerate lowers or holds a ceiling
   // freely but refuses to raise one not named with --raise: the conjunction gate can't see an
   // equal tag-swap (add jargon, delete enough plain prose to hold the count), and an unguarded
   // regenerate would launder that swap through the pin test's own repair path.
-  // DECISION plan-2026-09-01T100120-4f591469/D-037 — this guard covers only the --regenerate
+  // This guard covers only the --regenerate
   // code path, not the baseline file: hand-editing register-baseline.json to the live number
-  // still reaches green. Only the D-028 pin test (every ceiling must equal live measurement) catches that.
+  // still reaches green. Only the pin test (every ceiling must equal live measurement) catches that.
   const argv = process.argv.slice(2);
   const wantsRegenerate = argv.includes("--regenerate");
   const raiseNames = new Set();
