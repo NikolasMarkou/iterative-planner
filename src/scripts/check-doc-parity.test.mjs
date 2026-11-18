@@ -387,7 +387,6 @@ test("real CLI FAIL: missing AND extra simultaneously -> exit 1 + both messages"
 });
 
 // ---------------------------------------------------------------------------
-// DECISION plan-2026-09-01T100120-4f591469/D-018
 // Build-channel lockstep (Makefile <-> build.ps1)
 //
 // Do NOT move these into a new build-parity.test.mjs or a new check-build-lockstep.mjs
@@ -399,7 +398,7 @@ test("real CLI FAIL: missing AND extra simultaneously -> exit 1 + both messages"
 // no gate owned the invariant before. It went unowned and it drifted: every gate in
 // build.ps1 was wrapped in `if (Test-Path "src/scripts/check-*.mjs")`, so deleting a
 // gate script printed "Validation passed!" on Windows while the Makefile channel died.
-// A lockstep invariant no gate enforces is how that drift happened. See decisions.md D-018.
+// A lockstep invariant no gate enforces is how that drift happened.
 //
 // PowerShell is not available in this environment, so build.ps1's RUNTIME behaviour
 // cannot be executed here. These are static assertions over its source text — which is
@@ -542,14 +541,12 @@ test("build-combined (build.ps1, simulated): applying its rewrite map to the sou
   assert.deepEqual(left, [], "an emit-* pointer would survive build.ps1's rewrite map");
 });
 
-// DECISION plan-2026-09-01T100120-4f591469/D-029
 // Do NOT "finish the job" by rewriting the ~22 surviving `node <skill-path>/scripts/...`
 // pointers in the combined file. They name real commands of the full package and have no
 // inlined substitute (unlike `emit-*`, whose output IS inlined), so rewriting them deletes
 // the reader's only record that the command exists. The honesty is published ONCE, in the
 // trailing Note, and this test is what keeps that Note identical in both build channels.
 // Do NOT move the Note above SKILL.md either: its YAML frontmatter must stay first.
-// See decisions.md D-029.
 test("build channels: build-combined emits the SAME trailing Note text", () => {
   // W6/D-029: the combined file discloses ONCE that no script pointer in it is runnable,
   // instead of rewriting ~22 pointers. A disclosure that exists in only one channel is
