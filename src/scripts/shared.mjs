@@ -194,8 +194,8 @@ export function blankCompressedSummaryBlock(content) {
  *
  * WHAT IS DELIBERATELY *NOT* MASKED: raw HTML blocks. A `<div>`-wrapped example
  * containing a `<!-- DECISION … -->` is still read as a live comment. That hole is
- * why the CLAUDE.md placeholder-id policy REMAINS LOAD-BEARING — see the
- * note above. Do not claim otherwise in a comment; claim it in a test.
+ * why the CLAUDE.md placeholder-id policy REMAINS LOAD-BEARING (see the section
+ * comment above). Do not claim otherwise in a comment; claim it in a test.
  *
  * THE FAILURE DIRECTION IS CHOSEN, NOT ACCIDENTAL.
  * Under-masking is loud: a doc example is reported as a real anchor (and, for
@@ -406,7 +406,8 @@ export function stripHtmlComments(content) {
  * last `-->` it could pair, so any opener remaining after that is, by definition, the one
  * with no closer.
  *
- * This is the diagnostic half of the no-safety-claim rule on the blanking helper above. It cannot make the iteration cap safe — the cap
+ * This is the diagnostic half of a rule: the blanking helper above is NOT a safety
+ * mechanism and no caller may treat it as one. It cannot make the iteration cap safe — the cap
  * protects itself by counting raw (see validate-plan.mjs `deriveIterationFromHistory`) —
  * because marker-balance counting is exactly what a stray opener DEFEATS: pairing finds it
  * perfectly "balanced" against bootstrap's template trailer. What it CAN do is EXPLAIN an
@@ -495,7 +496,7 @@ const BLOCK_STRING_DELIMS = new Set(['"', "'"]);
 // DECISION plan-2026-11-08T075330-b464ad63/D-008 — extension-aware quotes, not a lexer. Extensions where a bare `'` is usually NOT a string delimiter (Rust lifetimes, C++14 digit
 // separators, Scala symbols). Pass the extension as `blockCommentSpans`'s 2nd argument; both
 // consumers (validate-plan findAnchorsInFile, bootstrap retire) do. Extension-aware quote
-// handling, not a lexer (the lexer deletion above stands). Do NOT extend this to regex literals: that is the lexer
+// handling, not a lexer (the lexer deletion and the extension allowlist above both stand). Do NOT extend this to regex literals: that is the lexer
 // that was deleted after three strikes.
 export const CHAR_LITERAL_ONLY_EXTS = new Set([".rs", ".c", ".h", ".cpp", ".hpp", ".cc", ".scala"]);
 
