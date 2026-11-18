@@ -35,7 +35,7 @@
 //                      PLAN_TEMPLATES; it does not classify prose. Five predecessors each checked a
 //                      PROXY for the served region (skeleton half, phrase set, first/last boundary,
 //                      anchored-line grammar), and each diverged from the UNANCHORED slicer on the
-//                      first reviewer attempt; D-009 eliminated the proxy — the check now CALLS the
+//                      first reviewer attempt; the proxy is gone — the check now CALLS the
 //                      slicer, so the thing checked IS the thing served.
 //   (i) served-resolve — every one of the 17 VALID_TEMPLATES slugs must resolve. A slug whose
 //                      marker was removed/renamed/redirected so resolveTemplate returns !ok is a
@@ -56,7 +56,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isMain } from "./shared.mjs";
 import { PLAN_TEMPLATES } from "./bootstrap.mjs";
-// DECISION plan-2026-07-14T141152-113d5b92/D-009 — import the slicer itself (resolveTemplate) and
+// Import the slicer itself (resolveTemplate) and
 // check its real output for all 17 slugs, rather than approximating where it ends with a doc
 // boundary. Five prior proxy-boundary guards diverged from the slicer and broke; there is no boundary left to import.
 import { resolveTemplate, VALID_TEMPLATES, TEMPLATE_MARKER } from "./emit-template.mjs";
@@ -165,7 +165,7 @@ export function checkParity(templates, docText, srcText = "", expectedSlugs = EX
     const h = header(templates[slug]);
     for (let i = 0; i + 1 < h.length; i++) if (!pairs.has(pair(h, i))) pairs.set(pair(h, i), slug);
   }
-  // DECISION plan-2026-07-14T141152-113d5b92/D-009 — scan resolveTemplate's real output per slug
+  // Scan resolveTemplate's real output per slug
   // (servedScope defaults to all 17, fail-closed), never a doc-region/boundary proxy. A slug that
   // fails to resolve is a loud FAIL naming it, never a silent `continue`.
   let servedChecked = 0;

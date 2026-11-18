@@ -41,7 +41,7 @@ function badgeRe(label) {
 /** Value captured by whichever badge form matched ("" when none did). */
 const badgeValue = (m) => (m ? (m[1] ?? m[3]) : "");
 
-// DECISION plan-2026-09-01T100120-4f591469/D-014 — anchored to the BADGE, not a bare version
+// Anchored to the BADGE, not a bare version
 // substring: the old regex passed as long as any line carried the string, badge or not.
 // Do not loosen this back to a substring match.
 const VERSION_BADGE_RE = badgeRe("Skill-v(\\d+\\.\\d+\\.\\d+)-");
@@ -67,7 +67,7 @@ export function checkVersionBadge(readmeText, version) {
   };
 }
 
-// DECISION plan-2026-09-01T100120-4f591469/D-016 — sibling of VERSION_BADGE_RE, same reason:
+// Sibling of VERSION_BADGE_RE, same reason:
 // anchored to the badge, not a bare substring.
 const TEST_BADGE_RE = badgeRe("tests-(\\d+)%20passing-");
 

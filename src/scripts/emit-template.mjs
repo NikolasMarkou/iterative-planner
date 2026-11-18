@@ -34,7 +34,7 @@ import { isMain } from "./shared.mjs";
 
 export const VALID_TEMPLATES = ["state","plan","decisions","findings","progress","verification","checkpoints","findings-consolidated","decisions-consolidated","lessons","system","index","lessons-snapshot","changelog","summary","presentation-contracts","lessons-synthesis"];
 
-// DECISION plan-2026-07-14T141152-113d5b92/D-008 — single owner of the marker literal;
+// Single owner of the marker literal;
 // do NOT re-declare "<!-- TEMPLATE:" anywhere else, including the checker, which imports
 // this constant instead.
 export const TEMPLATE_MARKER = "<!-- TEMPLATE:";

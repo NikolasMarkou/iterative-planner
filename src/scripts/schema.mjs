@@ -2,7 +2,7 @@
 // schema.mjs — the declarative definition of the changelog's field shapes. Node.js 18+ (ESM).
 // Zero dependencies. Library only: no CLI, no side effects on import.
 //
-// DECISION plan_2026-07-14_79ee0f59/D-001 — this spec is the SINGLE SOURCE OF TRUTH for the
+// This spec is the SINGLE SOURCE OF TRUTH for the
 // changelog's field shapes, replacing six regexes once duplicated inline in validate-plan.mjs.
 // The changelog itself stays plain markdown (an XML re-encoding was reverted in v2.35.0 — it
 // turned an O(1) append into an O(file) rewrite and lost entries under concurrency).

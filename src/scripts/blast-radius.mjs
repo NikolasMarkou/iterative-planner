@@ -224,7 +224,7 @@ function reverseDeps() {
   // .git — without them, a basename mentioned in prose inside plans/*/changelog.md
   // (or a vendored copy under node_modules/) inflates the deps count for the
   // fallback path only, making the two paths disagree on the same file.
-  // DECISION plan-2026-07-21T092933-3295714d/D-002 — pathspecs are root-framed (rootRel,
+  // Pathspecs are root-framed (rootRel,
   // not repoRel) and `:(top)` is REQUIRED: without it a subdir invocation misses importers
   // outside its own subtree. Do not drop `:(top)` or swap diff pathspecs elsewhere to rootRel.
   const gitGrep = execArgs("git", ["grep", "-E", "-l", "--untracked", "--no-color", pat,
@@ -268,7 +268,7 @@ function reverseDeps() {
 
 function sharedPath() {
   // Root-relative frame: `lib/x.js` scored from inside lib/ (repoRel "x.js")
-  // must still flag as shared. See D-002 anchor at the root derivation below.
+  // must still flag as shared. See the root derivation below.
   const norm = rootRel.replace(/\\/g, "/").toLowerCase();
   const match = /(^|\/)(lib|core|shared|common|utils|types)\//.test(norm);
   return { score: match ? 2 : 0, match };
@@ -341,7 +341,7 @@ function testDelta() {
   const nameRe = base.length < 3
     ? new RegExp(escaped + ext.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
     : new RegExp(`(^|[^A-Za-z0-9_])${escaped}([^A-Za-z0-9_]|$)`);
-  // Root frame (D-002, extended step 8): `f` values come from `git diff
+  // Root frame: `f` values come from `git diff
   // --name-only` / untrackedPaths(), both ROOT-relative from any cwd — so the
   // self-skip compares rootRel and the read joins root, never cwd. Pre-fix a
   // subdir invocation joined cwd with a root-relative f, readFileSync threw,
@@ -367,7 +367,7 @@ function testDelta() {
 
 function iterationHistory() {
   try {
-    // Root frame (D-002): plans/ lives at the repo root, and manifests record
+    // Root frame: plans/ lives at the repo root, and manifests record
     // root-relative paths — a subdir invocation must still find both.
     const ptr = readFileSync(join(root, "plans", ".current_plan"), "utf-8").trim();
     if (!ptr) return { score: 0, prior: false };
@@ -410,7 +410,7 @@ function emitUnknown(reason) {
 
 if (!isGitRepo()) emitUnknown("no-git");
 
-// DECISION plan-2026-07-21T092933-3295714d/D-002 — root-frame derivation: derive the repo
+// Root-frame derivation: derive the repo
 // root ONCE here (fallback to cwd on rev-parse failure), consumed by sharedPath(),
 // reverseDeps(), testDelta(), iterationHistory(). Do not move git pathspec args to rootRel —
 // git resolves those against cwd, and output is pinned root-relative by existing tests.
