@@ -25,7 +25,7 @@
 //   D  the Forbidden Leftovers code sweep from code-hygiene.md
 //   E  Complexity Budget claims in plan.md reconciled against the real diff
 //
-// THE PARTITION IS THE POINT. A raw count of 64 anchor errors reads as a
+// THE PARTITION IS THE POINT. A raw count of anchor errors from an old backlog reads as a
 // permanent false regression: readers learn to ignore the section and a
 // genuinely new orphan hides inside it forever. Every finding is classified
 // INHERITED (predates this plan — reported with a suggested standalone command,
@@ -158,7 +158,7 @@ export const CATEGORIES = [
 
 // DECISION plan-2026-09-09T082122-64c4de78/D-005 — the anti-vacuity floor for a scanner
 // whose FINDINGS legitimately go to zero. There is deliberately NO floor on the number of
-// findings: a constant pinned at this repo's current 64 orphan anchors would be a ratchet
+// findings: a constant pinned at a repo's current orphan count would be a ratchet
 // pointing the wrong way, forbidding the correct end state (zero) from ever being reached.
 // The two guarded failure shapes are instead (1) a category silently dropped from the sweep
 // — this floor, pinned EQUAL to CATEGORIES.length by a `pin:` test, matching the exact-floor
@@ -1053,7 +1053,7 @@ const describe = (i) =>
  * Contract: (report) -> string[] of lines. The INTRODUCED list is NEVER
  * truncated (it is the actionable half). The INHERITED list is capped per
  * category at INHERITED_PRINT_LIMIT with an explicit "and N more" line, so a
- * 64-item backlog does not bury the part a reader must act on; `--json` always
+ * large backlog does not bury the part a reader must act on; `--json` always
  * carries every item.
  */
 export function formatReport(report) {

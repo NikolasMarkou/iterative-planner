@@ -9,7 +9,7 @@
 // present in BOTH docs, the column-2 owner-cell text matches exactly after
 // whitespace normalization ONLY (trim + collapse internal whitespace runs —
 // no other normalization, no fuzzy matching). The readers column (col 3) is
-// deliberately out of scope (see plan-2026-07-21-38d0cd87 decisions.md D-001).
+// deliberately out of scope.
 // Anti-vacuity: either side parsing fewer than EXPECTED_MIN_KEYS keys is a
 // loud `FAIL [doc-parity-floor]`, never a vacuous PASS.
 //
