@@ -170,7 +170,7 @@ export function blankCompressedSummaryBlock(content) {
 // ---------------------------------------------------------------------------
 // HTML comment regions in Markdown — the SINGLE definition of "where the comments are".
 //
-// DECISION plan_2026-07-14_79ee0f59/D-010 — every markdown scanner MUST locate comments
+// Every markdown scanner MUST locate comments
 // through `htmlCommentSpans()` below; do NOT write another `/<!--[\s\S]*?-->/` regex at a
 // call site (a bare regex is blind to a backticked `` `<!--` `` in prose, which opens a
 // phantom span and silently swallows real content — reproduced 3 times). The mask must stay
@@ -194,10 +194,10 @@ export function blankCompressedSummaryBlock(content) {
  *
  * WHAT IS DELIBERATELY *NOT* MASKED: raw HTML blocks. A `<div>`-wrapped example
  * containing a `<!-- DECISION … -->` is still read as a live comment. That hole is
- * why the CLAUDE.md placeholder-id policy REMAINS LOAD-BEARING — see the D-010/D-012
+ * why the CLAUDE.md placeholder-id policy REMAINS LOAD-BEARING — see the
  * note above. Do not claim otherwise in a comment; claim it in a test.
  *
- * THE FAILURE DIRECTION IS CHOSEN, NOT ACCIDENTAL (Pre-Mortem #2, D-012).
+ * THE FAILURE DIRECTION IS CHOSEN, NOT ACCIDENTAL.
  * Under-masking is loud: a doc example is reported as a real anchor (and, for
  * `bootstrap.mjs retire`, edited). Over-masking is SILENT and strictly worse: a REAL
  * comment's `<!--`/`-->` disappear from the mask, so bootstrap's schema-example
@@ -335,7 +335,7 @@ function maskInlineCodeSpans(line) {
  *
  * Semantics (deliberate):
  *  - Comment delimiters inside a code span or fenced block are PROSE: they can
- *    neither open nor close a region (D-010).
+ *    neither open nor close a region.
  *  - HTML comments do NOT nest: the first `-->` closes, so a `<!--` inside a comment
  *    body is ordinary text.
  *  - An UNTERMINATED `<!--` yields NO span — the region is left alone rather than
@@ -358,7 +358,7 @@ export function htmlCommentSpans(content) {
   return spans;
 }
 
-// DECISION plan_2026-07-14_79ee0f59/D-009 — this helper is NOT a safety mechanism and no
+// This helper is NOT a safety mechanism and no
 // caller may treat it as one: a stray `<!--` can pair with a later real `-->` (e.g.
 // bootstrap's state.md trailer) and blank genuine content in between, so relying on it to
 // fail SAFE was false and cost the iteration hard cap an under-count. That cap now counts
@@ -406,7 +406,7 @@ export function stripHtmlComments(content) {
  * last `-->` it could pair, so any opener remaining after that is, by definition, the one
  * with no closer.
  *
- * This is the diagnostic half of D-009. It cannot make the iteration cap safe — the cap
+ * This is the diagnostic half of the no-safety-claim rule on the blanking helper above. It cannot make the iteration cap safe — the cap
  * protects itself by counting raw (see validate-plan.mjs `deriveIterationFromHistory`) —
  * because marker-balance counting is exactly what a stray opener DEFEATS: pairing finds it
  * perfectly "balanced" against bootstrap's template trailer. What it CAN do is EXPLAIN an
@@ -425,7 +425,7 @@ export function unterminatedCommentOpener(content) {
 // The single definition of "where the block comments are" for every non-markdown
 // scanner in this repo.
 //
-// DECISION plan-2026-09-01T100120-4f591469/D-007 — `blockCommentSpans` returns BYTE
+// `blockCommentSpans` returns BYTE
 // OFFSETS into the ORIGINAL `content` (like `htmlCommentSpans`), never line indices, and
 // must never be paired with output from `stripHtmlComments` (which deletes bytes, not
 // line-count-preserving-only). Slice RAW content with these offsets.
@@ -435,7 +435,7 @@ export function unterminatedCommentOpener(content) {
 // closer (`*/` written as prose inside a real comment) — invisible to both the validator
 // and `bootstrap.mjs retire`. Under-mask when unsure: an unterminated `/*` yields no span.
 //
-// DECISION plan-2026-09-01T100120-4f591469/D-025 [SUPERSEDED by D-032] — a regex-literal
+// A regex-literal
 // lexer was tried here to stop `/[*/]/` from ending a span early. It fixed that but ate
 // JSX comment openers (`{/* ... */}`) instead, the third defect from this component — the
 // 3-strike rule fired and the lexer was DELETED, not patched a 4th time. Do not reintroduce
@@ -445,7 +445,7 @@ export function unterminatedCommentOpener(content) {
 // aren't scanned here (harmless in C-family; hash-family files are excluded by
 // BLOCK_COMMENT_EXTS below instead). Regex literals aren't lexed, so `/* */` bytes inside
 // one over-masks (double-reports) rather than losing anything. Template literals aren't
-// skipped either (D-033) — same over-report trade, chosen over the silent multi-file
+// skipped either — same over-report trade, chosen over the silent multi-file
 // masking an unbalanced backtick skip caused previously.
 // A regex literal ending in `*/` (`/a*/`) is read as a closer: the span swallows the code up to
 // it (over-report; pinned by a test in shared.test.mjs, step 9 of plan-b464ad63, D-007 there).
@@ -453,7 +453,7 @@ export function unterminatedCommentOpener(content) {
 // Rust lifetimes / C++ digit separators are handled by CHAR_LITERAL_ONLY_EXTS below.
 // ---------------------------------------------------------------------------
 
-// DECISION plan-2026-09-01T100120-4f591469/D-032 — the block-comment scan is gated by
+// The block-comment scan is gated by
 // this ALLOWLIST only. Do NOT restore the old complement gate or rewrite as a denylist:
 // running the C-style block scan on hash/SQL-family extensions (13 of them have no `/* */`
 // at all) let two shell globs open a phantom span across a real anchor and desync the
@@ -484,7 +484,7 @@ export const ANCHOR_SKIP_DIRS = new Set([
 ]);
 export const ANCHOR_WALK_MAX_DEPTH = 12;
 
-// DECISION plan-2026-09-01T100120-4f591469/D-033 — the BACKTICK is deliberately ABSENT
+// The BACKTICK is deliberately ABSENT
 // from this set; do not add it back. Skipping template literals previously let an odd
 // backtick count inside a regex literal run to the next backtick anywhere in the file and
 // silently swallow real comment spans — the one failure direction this scanner must not
@@ -495,8 +495,8 @@ const BLOCK_STRING_DELIMS = new Set(['"', "'"]);
 // DECISION plan-2026-11-08T075330-b464ad63/D-008 — extension-aware quotes, not a lexer. Extensions where a bare `'` is usually NOT a string delimiter (Rust lifetimes, C++14 digit
 // separators, Scala symbols). Pass the extension as `blockCommentSpans`'s 2nd argument; both
 // consumers (validate-plan findAnchorsInFile, bootstrap retire) do. Extension-aware quote
-// handling, not a lexer (D-025/D-032 stand). Do NOT extend this to regex literals: that is the lexer
-// those decisions deleted after three strikes.
+// handling, not a lexer (the lexer deletion above stands). Do NOT extend this to regex literals: that is the lexer
+// that was deleted after three strikes.
 export const CHAR_LITERAL_ONLY_EXTS = new Set([".rs", ".c", ".h", ".cpp", ".hpp", ".cc", ".scala"]);
 
 // Skip a quoted string starting at `i`. Returns the offset one past its closing quote,
@@ -600,7 +600,7 @@ export function blockCommentSpans(content, ext = "") {
 // ---------------------------------------------------------------------------
 // Identifier grammars: plan-id and decision-id.
 //
-// DECISION plan_2026-07-14_79ee0f59/D-005 — the ONLY definitions of the two id grammars
+// The ONLY definitions of the two id grammars
 // in the codebase; do not re-declare a `PLAN_ID_RE` elsewhere (they diverged once when
 // duplicated) or loosen the hex tail "for forward compatibility" (a permissive checker
 // can't catch a typo'd anchor). Change it HERE only, both consumers move together.
@@ -614,7 +614,7 @@ export function blockCommentSpans(content, ext = "") {
 
 /**
  * Plan-id WRITE grammar: `plan-YYYY-MM-DDTHHMMSS-XXXXXXXX` (UTC, colon-free — colons
- * are illegal on Win32/NTFS, see D-001), where the tail is exactly 8 lowercase-hex
+ * are illegal on Win32/NTFS), where the tail is exactly 8 lowercase-hex
  * chars — precisely what bootstrap.mjs's `randomBytes(4).toString("hex")` emits.
  * Exported as a *string* pattern because scanners embed it inside larger
  * `new RegExp(...)` compositions; `PLAN_ID_RE` is the anchored form.
@@ -636,7 +636,7 @@ export const LEGACY_PLAN_ID_RE = new RegExp(`^${LEGACY_PLAN_ID_PATTERN}$`);
  * Plan-id READ union — the grammar every validating/scanning path uses.
  * NON-CAPTURING by construction: it is interpolated into regexes whose consumers read
  * capture groups by index. Adding a capture group here is a silent, repo-wide corruption
- * (see the D-005 block above and the group-index test in shared.test.mjs).
+ * (see the grammar note above and the group-index test in shared.test.mjs).
  */
 export const ANY_PLAN_ID_PATTERN = `(?:${PLAN_ID_PATTERN}|${LEGACY_PLAN_ID_PATTERN})`;
 export const ANY_PLAN_ID_RE = new RegExp(`^${ANY_PLAN_ID_PATTERN}$`);
@@ -680,11 +680,10 @@ export function planDateFromId(id) {
  * in every decision-id regex (decisions.md headers, the 4 anchor comment styles, the
  * consolidated DECISIONS.md scan, the changelog decision-ref field, retire's stamper).
  *
- * DECISION plan_2026-07-14_79ee0f59/D-005 — the trailing `(?!\d)` is LOAD-BEARING; do not
+ * The trailing `(?!\d)` is LOAD-BEARING; do not
  * simplify to a bare `\d{3,}`. Without it a greedy digit run can backtrack to a shorter
  * prefix (observed: `bootstrap.mjs retire` re-stamped an already-stamped `D-1000 [STALE]`
  * into the corrupt `D-100 [STALE]0 [STALE]`, an irreversible source mutation). Zero-width,
  * so capture groups still yield just the digits.
- * See decisions.md D-005.
  */
 export const DECISION_ID_NUM_PATTERN = "\\d{3,}(?!\\d)";
