@@ -548,7 +548,7 @@ test("build-combined (build.ps1, simulated): applying its rewrite map to the sou
 // trailing Note, and this test is what keeps that Note identical in both build channels.
 // Do NOT move the Note above SKILL.md either: its YAML frontmatter must stay first.
 test("build channels: build-combined emits the SAME trailing Note text", () => {
-  // W6/D-029: the combined file discloses ONCE that no script pointer in it is runnable,
+  // The combined file discloses ONCE that no script pointer in it is runnable,
   // instead of rewriting ~22 pointers. A disclosure that exists in only one channel is
   // worse than none — the Windows reader silently gets the old, narrower claim. The two
   // channels build the same lines by different escaping (Make: shell `\\``; PowerShell: "``"),
@@ -596,7 +596,7 @@ test("build channels: sync-skill prunes the same four litter paths and enforces 
   const expected = ["SKILL.md", "README.md", "LICENSE", "CHANGELOG.md", "VERSION", "scripts", "references", "agents", "commands", ".claude"];
   assert.deepEqual(sorted(mkAllow), sorted(expected), "install allowlist changed");
   assert.ok(!mkAllow.includes(".git") && !mkAllow.includes(".gitignore"), "allowlist must not name .git/.gitignore");
-  // Clone-install mode (D-009): a .git in the install skips BOTH the prune and the allowlist, in both channels.
+  // Clone-install mode: a .git in the install skips BOTH the prune and the allowlist, in both channels.
   assert.match(mkSync, /if \[ -e "\$\(SKILL_INSTALL_DIR\)\/\.git" \]; then echo "WARNING:[^\n]*else rm -rf /, "Makefile prune lost its .git clone guard");
   assert.match(mkSync, /if \[ ! -e "\$\(SKILL_INSTALL_DIR\)\/\.git" \]; then bad=0;/, "Makefile allowlist lost its .git clone guard");
   assert.match(psSync, /\$isClone = Test-Path -LiteralPath \(Join-Path \$skillInstallDir "\.git"\)/, "build.ps1 lost its clone detection");
