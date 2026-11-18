@@ -72,7 +72,7 @@ const ANCHOR_REFS_REQUIRED_SINCE = "2026-05-07T09:00:00Z";
 // and the legacy one (`plan_YYYY-MM-DD_XXXXXXXX`). Do NOT narrow these to PLAN_ID_*
 // (the write grammar): legacy plan dirs and the anchors qualified by legacy ids would
 // stop matching *silently* — not as orphan ERRORs, but as no match at all.
-// See shared.mjs / decisions.md D-005 + D-003.
+// See shared.mjs for the grammar definitions.
 
 // Read the INIT timestamp from state.md. Looks for any line matching
 // `INIT (→|->) EXPLORE (TS)` where TS parses as an ISO date — checks the
@@ -276,14 +276,14 @@ function stripHygieneSkipLines(text) {
     .join("\n");
 }
 
-// DECISION plan_2026-07-14_79ee0f59/D-003 — state.md's Transition History is read
+// The Transition History in state.md is read
 // comment-blind: bootstrap's own template embeds an example transition inside an HTML
 // comment, and a raw scan ingests it as a real record. Route every reader through this
 // function; do not re-introduce a raw indexOf/slice scan.
-// DECISION plan_2026-07-14_79ee0f59/D-010 — the heading is matched LINE-ANCHORED
+// The heading is matched LINE-ANCHORED
 // (`/^## Transition History:/m`), never `indexOf`: a bare substring search also matches
 // the heading's own name quoted in prose elsewhere in the file.
-// DECISION plan_2026-07-14_79ee0f59/D-009 — the `raw` option exists for exactly ONE
+// The `raw` option exists for exactly ONE
 // caller, deriveIterationFromHistory (the iteration hard cap), which must read RAW text
 // so a stray `<!--` above the heading can't blank it and silently under-count. Every
 // other (advisory) caller keeps reading the stripped block.
@@ -313,7 +313,7 @@ function checkStateTransitions(planDir, issues) {
     issues.push({ severity: "ERROR", check: "state", message: "Cannot parse current state from state.md" });
   }
 
-  // Parse transition history (comment-blind — see transitionHistoryBlock / D-003).
+  // Parse transition history (comment-blind — see transitionHistoryBlock).
   const historyBlock = transitionHistoryBlock(state);
   if (historyBlock === null) {
     issues.push({ severity: "WARN", check: "state", message: "No transition history found in state.md" });
@@ -439,7 +439,7 @@ function checkCrossFileConsistency(planDir, issues) {
   // Check convergence metrics in verification.md for iteration 2+ REFLECT
   if (["REFLECT", "CLOSE"].includes(currentState.toUpperCase())) {
     const verification = readFile(join(planDir, "verification.md"));
-    // DECISION plan-2026-09-01T100120-4f591469/D-034 — asks "has this plan been re-planned?",
+    // Asks "has this plan been re-planned?",
     // via re-plan count (countRePlans below), not `EXECUTE → REFLECT` count — the latter
     // wrongly counts a same-iteration completion-fix loop as a new iteration. Do not swap in
     // deriveIterationFromHistory here.
@@ -499,7 +499,7 @@ function checkChangeManifest(planDir, issues) {
 // EXECUTE/REFLECT — outside those states the section is stale from a previous
 // step. WARN at 3, ERROR at 4+. Resets on step / PIVOT / user direction
 // (tracked by the agent rewriting the section).
-// DECISION plan-2026-09-01T100120-4f591469/D-026: ONE shared constant for the fix-attempt
+// ONE shared constant for the fix-attempt
 // line shape (checkLeashCount + runPreStepGate) — two copies previously matched `Step \d+`
 // only, so `- Step 9.1, attempt 1:` (completion-fix numbering) bypassed the leash entirely.
 // Step-number fragment is deliberately looser than schema.mjs's STEP_RE: a safety cap must
@@ -548,7 +548,7 @@ function checkLeashCount(planDir, issues) {
 // ROUND count is `EXECUTE → REFLECT` arrivals and feeds a separate `round-cap` (18). Do NOT
 // count `EXECUTE → REFLECT` as the iteration again: completion-fix round trips then
 // tripped "iteration 6" at about iteration 3, contradicting SKILL.md. Do NOT drop the round
-// cap either: an endless REFLECT <-> EXECUTE loop would then never reach any cap (D-034).
+// cap either: an endless REFLECT <-> EXECUTE loop would then never reach any cap.
 //
 /**
  * Count `<from> → <to>` arrows in a Transition-History block (null → 0).
@@ -576,7 +576,7 @@ const ROUND_CAP = 18;
 /** Early warning: hygiene remediation and completion-fix rounds all draw on the same 18. */
 const ROUND_WARN = 15;
 
-// DECISION plan-2026-09-01T100120-4f591469/D-034 — the ADVISORY iteration derivation,
+// The ADVISORY iteration derivation,
 // deliberately separate from the hard cap's countTransition: this asks "has the plan
 // been re-planned?", not "how much work happened?". Do not unify them — feeding this count
 // to the hard cap would let an endless non-replanning loop escape it (an under-count in a
@@ -620,7 +620,7 @@ export function deriveConvergenceIteration(state) {
   return 1 + countRePlans(transitionHistoryBlock(state));
 }
 
-// DECISION plan_2026-07-14_79ee0f59/D-009 — this counter drives the iteration hard cap
+// This counter drives the iteration hard cap
 // (a SAFETY mechanism), so it reads `max(raw, stripped)`, never stripped-only: a stray
 // `<!--` above the heading pairs with bootstrap's own trailing `-->` and can blank real
 // records, making the cap derive 0 and fail OPEN. Raw counting makes under-counting
@@ -637,7 +637,7 @@ export function deriveIterationFromHistory(state) {
   );
 }
 
-// Same raw-and-stripped max (D-009) over `EXECUTE → REFLECT`; feeds `round-cap`. Exported
+// Same raw-and-stripped max over `EXECUTE → REFLECT`; feeds `round-cap`. Exported
 // for testability ONLY, like deriveIterationFromHistory.
 export function deriveRoundsFromHistory(state) {
   return Math.max(
@@ -646,7 +646,7 @@ export function deriveRoundsFromHistory(state) {
   );
 }
 
-// DECISION plan_2026-07-14_79ee0f59/D-009 — the DIAGNOSTIC half of the fail-closed cap:
+// The DIAGNOSTIC half of the fail-closed cap:
 // explains an over-count from a stray unterminated `<!--`. WARN only, never promoted to
 // ERROR or to the --pre-step HARD-fail slugs — a stray marker is an authoring accident,
 // not a protocol violation, and the cap already handles the safety consequence.
@@ -839,7 +839,7 @@ function checkConsolidatedFiles(issues) {
 //
 // COST: O(rows in plans/INDEX.md) existsSync calls + at most 2 file reads total (FINDINGS.md,
 // DECISIONS.md, read once outside the loop). NO directory enumeration. The O(all-plan-dirs)
-// walk prohibited by plan-2026-07-16T164852-47577439/D-001 is NOT reintroduced, and this is
+// walk, ruled out earlier, is NOT reintroduced, and this is
 // not a derived index — INDEX.md is written at CLOSE by its owner and read as-is.
 function checkIndexResolution(issues) {
   const index = readFile(join(plansDir, "INDEX.md"));
@@ -1031,7 +1031,7 @@ function checkLessonsCap(issues) {
 // plans/INDEX.md's last data row — INDEX is append-only, one row per close,
 // so the last plan-id row IS the most recent close).
 //
-// DECISION plan-2026-07-16T164852-47577439/D-001 — severity is WARN/INFO only, triggered by
+// Severity is WARN/INFO only, triggered by
 // the COUNT invariant alone; no fuzzy content matching. An equal-count content swap is a
 // recorded limitation left to human judgment. Never promote to ERROR — [I:5] curation must
 // not block CLOSE.
@@ -1141,7 +1141,7 @@ function parseDecisionsEntries(content) {
   // entries. Then blank the remaining HTML comment regions so the example schema
   // in bootstrap.mjs (wrapped in <!-- ... -->) does not register as a real D-001.
   //
-  // DECISION plan_2026-07-14_79ee0f59/D-010 — both scrubs are LINE-COUNT PRESERVING and
+  // Both scrubs are LINE-COUNT PRESERVING and
   // code-span aware. Do not restore a raw `.replace(/<!--[\s\S]*?-->/g, "")`: it shifted
   // reported line numbers and, worse, let a backticked `<!--` in real prose open a phantom
   // span that silently swallowed later entries (failed OPEN). Use shared.mjs's
