@@ -44,7 +44,7 @@ import {
   ANCHOR_WALK_MAX_DEPTH,
 } from "./shared.mjs";
 import { entryFromFields } from "./schema.mjs";
-// DECISION plan_2026-07-14_79ee0f59/D-002 — the changelog is markdown and an append is ONE LINE
+// The changelog is markdown and an append is ONE LINE
 // via writeFileSync. Do NOT re-encode it or route writes through a document library: v2.33.0 tried
 // that, silently dropped concurrent entries, and was reverted. Field shapes live only in schema.mjs.
 // Re-exported so bootstrap.test.mjs can probe it via the bootstrap entrypoint.
@@ -57,7 +57,7 @@ const lockFile = join(plansDir, ".lock");
 
 const SKILL_VERSION_RE = /^\d+\.\d+\.\d+$/;
 
-// DECISION plan_2026-07-14_317362c4/D-004 — probe installed layout (`../VERSION`) before dev
+// Probe installed layout (`../VERSION`) before dev
 // layout (`../../VERSION`); the dev-only fixed path resolves to a different skill's territory when
 // installed. Never let a filesystem error escape — degrade to "unknown", never throw.
 function resolveSkillVersion() {
@@ -309,7 +309,7 @@ function ensureGitignore() {
   } catch {
     // No .gitignore yet — will create
   }
-  // DECISION plan-2026-08-04T092155-0063b038/D-009 — legacy-line match is EXACT (post-trim)
+  // Legacy-line match is EXACT (post-trim)
   // against a closed list of spellings, never substring/regex: this edits every consuming
   // project's .gitignore, and a loose match would silently corrupt an unrelated user rule.
   const lines = content.split("\n");
@@ -319,7 +319,7 @@ function ensureGitignore() {
     migrated = true;
     return GITIGNORE_PLANS_PATTERNS[0];
   });
-  // DECISION plan-2026-09-01T100120-4f591469/D-006 — the glob and negation are an ORDERED pair,
+  // The glob and negation are an ORDERED pair,
   // not a set: git takes the LAST matching pattern, so a naive "append whichever is missing"
   // once put the glob below an existing negation and silently un-ignored the manifest.
   // Invariant enforced by the placement below: lastIndexOf(negation) > lastIndexOf(glob).
@@ -405,7 +405,7 @@ function readPlanFile(planDirName, filename) {
 // Keys are emit-template.mjs's slugs. Raw strings (not functions) on purpose: only raw strings
 // are byte-diffable against a doc region, which is what lets a parity gate exist at all.
 //
-// DECISION plan-2026-07-14T141152-113d5b92/D-001 — these literals stay HERE, not read at runtime
+// These literals stay HERE, not read at runtime
 // from file-formats.md: bootstrap's zero-file-dependency property is load-bearing (its failure
 // mode is "no plan can ever be created again"). check-template-parity.mjs byte-pins this against
 // the doc's `<!-- SKELETON:<slug> -->` region in both directions, so a template edit is two edits.
@@ -740,11 +740,11 @@ function prependToConsolidated(filePath, planDirName, newSection) {
   renameSync(filePath + ".tmp", filePath);
 }
 
-// DECISION plan-2026-09-01T100120-4f591469/D-005 — cut point is found in COMMENT-STRIPPED text
+// Cut point is found in COMMENT-STRIPPED text
 // (the template's schema-example `## D-001` sits inside an HTML comment; a raw-text search merged
 // it as a phantom entry), but the returned text is the ORIGINAL lines, matched by LINE INDEX not
 // byte offset (stripHtmlComments preserves line count, not byte offsets).
-// DECISION plan-2026-09-01T100120-4f591469/D-024 — preamble content is CONTENT, not boilerplate to
+// Preamble content is CONTENT, not boilerplate to
 // drop: the mandated Domain-Caveat Consult Note sits between the schema comment and the first real
 // entry. Two properties must hold together: no phantom `## D-001`/dangling `-->` reaches the
 // archive, AND every preamble line outside a comment survives byte-for-byte. `HEADER_BOILERPLATE_LINE`
@@ -1809,7 +1809,7 @@ function cmdNewInner(goal, force) {
 
   const now = new Date();
   const timestamp = now.toISOString().replace(/\.\d{3}Z$/, "Z");
-  // DECISION plan_2026-07-14_317362c4/D-001 — UTC stamp, deliberately colon-free (`:` is illegal
+  // UTC stamp, deliberately colon-free (`:` is illegal
   // in a Win32/NTFS filename). Fixed-width HHMMSS keeps lexical order equal to chronological order.
   const stampStr = now.toISOString().slice(0, 19).replace(/:/g, ""); // YYYY-MM-DDTHHMMSS
   const hexStr = randomBytes(4).toString("hex");
@@ -2265,7 +2265,7 @@ function cmdRetire(planId) {
   // the validator cannot see) is left untouched — stamping exactly the validator's
   // widened HTML set. For every other extension the regex runs over the whole file.
   //
-  // DECISION plan_2026-07-14_79ee0f59/D-005 — digit grammar MUST come from shared.mjs
+  // The digit grammar MUST come from shared.mjs
   // (`\d{3,}(?!\d)`), never a local literal: it must stay identical to the validator's scanner
   // (or an under-stamp jams REFLECT→CLOSE), and this is the one consumer with no terminator
   // after the id, so the trailing `(?!\d)` is what stops a greedy match corrupting the file.
@@ -2298,7 +2298,7 @@ function cmdRetire(planId) {
           // `.md`: scope anchorRe to each CLOSED `<!-- … -->` span. Prose, doc examples,
           // and unclosed comments are outside every span and are left untouched.
           //
-          // DECISION plan_2026-07-14_79ee0f59/D-010 — spans come from shared.mjs's
+          // Spans come from shared.mjs's
           // `htmlCommentSpans`, the SAME primitive the validator's `.md` scan uses. This is a
           // WRITE path over source files, so a divergence here is a wrong EDIT, not a wrong
           // report — do not reintroduce a local comment regex here.
@@ -2322,17 +2322,17 @@ function cmdRetire(planId) {
           // shared.mjs's `blockCommentSpans`, the SAME primitive validate-plan.mjs's block
           // scan consumes) or immediately after a `#` / `//` / `--` line marker.
           //
-          // DECISION plan-2026-09-01T100120-4f591469/D-007 — this stamper and
+          // This stamper and
           // findAnchorsInFile share ONE span computation. Do not run anchorRe over the whole
           // file (stamps string literals/prose the validator never reported — a wrong EDIT,
           // an irreversible one) and do not narrow to spans alone (line anchors live outside
           // every block span; retire must stay a strict SUPERSET of what the validator sees).
           // The block-span arm runs ONLY on shared.mjs's `BLOCK_COMMENT_EXTS` — the same
-          // allowlist findAnchorsInFile's block scan is gated on (D-032). In a
+          // allowlist findAnchorsInFile's block scan is gated on. In a
           // hash-family file (`.sh`, `.py`, `.yml`, …) `/*` is not a comment opener, so a
           // span there is always phantom; gating it here keeps the two tools' notion of
           // "comment context" identical rather than merely similar. The LINE-MARKER arm
-          // below stays un-gated (D-007): retire must remain a SUPERSET.
+          // below stays un-gated: retire must remain a SUPERSET.
           const spans = BLOCK_COMMENT_EXTS.has(extname(e.name)) ? blockCommentSpans(txt, extname(e.name)) : [];
           const inSpan = (idx) => spans.some((sp) => idx >= sp.start && idx < sp.end);
           // The line prefix a validator-visible anchor must end with — the same
@@ -2495,7 +2495,7 @@ function runCli() {
     // Backward compat: multi-word args are treated as a goal for `new`.
     cmdNew(args.join(" "), false);
   } else if (cmd === "new") {
-    // DECISION plan_2026-07-14_79ee0f59/D-004 — `--force` is POSITIONAL (only immediately
+    // `--force` is POSITIONAL (only immediately
     // after `new`). A tolerant `args.includes("--force")` scan made goal TEXT destructive:
     // `new "add a --force flag"` silently force-closed the active plan.
     const force = args[1] === "--force";
