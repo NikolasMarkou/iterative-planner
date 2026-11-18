@@ -12,7 +12,7 @@
 //
 // Creates plans/plan-YYYY-MM-DDTHHMMSS-XXXXXXXX/ (UTC timestamp + 8-char hex seed) in cwd.
 // Dirs created before v2.36.0 use the legacy plan_YYYY-MM-DD_XXXXXXXX shape; they are still
-// read by every command, but are never minted again (shared.mjs D-005 / D-003: one write
+// read by every command, but are never minted again (see shared.mjs: one write
 // grammar, one read union).
 // Writes plans/.current_plan with the directory name for discovery.
 // Requires Node.js 18+ (guaranteed by Claude Code).
@@ -74,8 +74,8 @@ function resolveSkillVersion() {
 
 // Attribution banner shown on the human-facing CLI "load-up" moments (`new`, `resume`).
 // Pure string return (no console.log) so it stays unit-testable and side-effect-free, and
-// so the credit renders only where the caller logs it — never on an `import()` of this module
-// (D-001). Shared by cmdNewInner + cmdResume (≥2 call sites, earned abstraction — D-002).
+// so the credit renders only where the caller logs it — never on an `import()` of this module.
+// Shared by cmdNewInner + cmdResume (≥2 call sites, earned abstraction).
 // Two leading spaces match the sibling `  Pointer:`/`  Goal:` banner indentation.
 // Second line is a dashboard discoverability hint: text only. The script path is built with
 // fileURLToPath and probed with existsSync; dashboard.mjs is never imported, spawned or run
@@ -154,7 +154,7 @@ function editDistance(a, b) {
 // (EEXIST if held). On filesystems with hard links a reader can therefore never see an empty lock
 // file and mistake a live lock for a stale one; where linkSync is unavailable the fallback
 // exclusive create DOES have an empty window, covered only by the 10 s "being written" grace below
-// (D-015 updates D-007). Stale reclaim renames the stale file aside (only one reclaimer wins the
+// (a later refinement of this protocol). Stale reclaim renames the stale file aside (only one reclaimer wins the
 // rename) and re-checks what it moved before discarding it. A lock whose content is empty or
 // unparseable is treated as "being written / foreign": locked unless it is older than 10 s.
 // Do NOT make openSync("wx") + a later write of the pid the PRIMARY path (an empty window a reader
@@ -202,7 +202,7 @@ function publishLock() {
 
 // Removes temp/aside files a killed process left behind (older than 10 s, so a live one is safe).
 // Asides are safe because the reclaimer re-stamps them at rename time (renameSync alone keeps the
-// old lock's mtime, which would make a fresh aside look old; D-015).
+// old lock's mtime, which would make a fresh aside look old).
 function sweepLockLitter() {
   let names = [];
   try { names = readdirSync(plansDir); } catch { return; }
@@ -364,7 +364,7 @@ function ensureGitignore() {
 //
 // ANY_PLAN_ID_RE (the READ union: new format | legacy format) is imported from
 // shared.mjs — the single definition, shared with validate-plan.mjs. Do not re-declare
-// it here (see shared.mjs D-005/D-003). The pointer is *validated* with the union, not
+// it here (see shared.mjs). The pointer is *validated* with the union, not
 // the write grammar: a legacy plan dir created before v2.36.0 must stay resolvable by
 // status/resume/close, or the tool cannot read the plans it wrote yesterday.
 
@@ -1035,7 +1035,7 @@ function parseDecisionsFile(content) {
   // Locate *Plan: …* preamble (required). Mirror validate-plan.mjs
   // parseDecisionsEntries: only the first 10 NON-BLANK lines count, so this
   // compressor and the validator agree on whether a preamble is present.
-  // (plan_2026-05-30_eb9b4fee/M8 — previously this scanned the whole file, so
+  // (previously this scanned the whole file, so
   // a preamble on non-blank line 11+ compressed here but ERRORed in the
   // validator.)
   let nonBlankSeen = 0;
@@ -1728,7 +1728,7 @@ function cmdNew(goal, force) {
 
   mkdirSync(plansDir, { recursive: true });
 
-  // D-004 — acquire exclusive lock before ANY pointer/dir mutation. Releases
+  // Acquire exclusive lock before ANY pointer/dir mutation. Releases
   // in finally below. Stale lock (dead PID) is reclaimed transparently.
   try {
     acquireLock();
@@ -1763,7 +1763,7 @@ function cmdNew(goal, force) {
 }
 
 function cmdNewInner(goal, force) {
-  // Track whether THIS invocation wrote the pointer file (D-004). The catch
+  // Track whether THIS invocation wrote the pointer file. The catch
   // handler at the bottom must only unlink the pointer it itself committed —
   // otherwise a partial-failure path can nuke another invocation's pointer
   // (only possible if lock acquisition is bypassed, but defensive).
@@ -1788,7 +1788,7 @@ function cmdNewInner(goal, force) {
 
   const existing = readPointer();
   if (existing && !force) {
-    // D-004 — throw structured error so cmdNew wrapper's finally releases the lock.
+    // Throw structured error so cmdNew wrapper's finally releases the lock.
     const msg =
       `ERROR: Active plan directory already exists: plans/${existing}\n` +
       `  To resume:      node ${process.argv[1]} resume\n` +
@@ -1801,7 +1801,7 @@ function cmdNewInner(goal, force) {
   }
   if (existing && force) {
     // We already hold the lock (acquired in cmdNew) — tell cmdClose not to
-    // re-acquire it (would EEXIST against our own lock). D-003.
+    // re-acquire it (would EEXIST against our own lock).
     cmdClose({ silent: true, _holdsLock: true });
   }
   // Save old pointer name for recovery if --force was used and new plan creation fails
@@ -1828,7 +1828,7 @@ function cmdNewInner(goal, force) {
   const planDir = join(plansDir, planDirName);
 
   // Stamp the skill version that minted this plan into state.md + decisions.md. Resolution
-  // never throws; a missing/garbage VERSION file degrades to "unknown" (D-004).
+  // never throws; a missing/garbage VERSION file degrades to "unknown".
   const skillVersion = resolveSkillVersion();
 
   // Check if consolidated files exist for cross-plan context seeding
@@ -1865,12 +1865,12 @@ function cmdNewInner(goal, force) {
     if (previousPlan) {
       console.error(`WARNING: previous plan plans/${previousPlan} was already closed by --force; no pointer was restored. Run \`new\` again to start the new plan.`);
     } else if (wePersistedPointer) {
-      // D-004 — only unlink pointer we ourselves wrote. Pre-fix this branch
+      // Only unlink pointer we ourselves wrote. Pre-fix this branch
       // ran unconditionally and could nuke another invocation's pointer under
       // race conditions (now prevented by the lock, kept as defense-in-depth).
       try { if (existsSync(pointerFile)) unlinkSync(pointerFile); } catch (e) { console.error("WARNING: Failed to clean up pointer file."); }
     }
-    // D-004 — throw structured error so cmdNew wrapper's finally releases the lock.
+    // Throw structured error so cmdNew wrapper's finally releases the lock.
     const wrapped = new Error(`ERROR: Failed to create plan directory: ${err.message}`);
     wrapped.code = "ECREATE";
     throw wrapped;
@@ -1896,7 +1896,7 @@ function cmdNewInner(goal, force) {
 // a completion-fix REFLECT → EXECUTE round trip does not raise it) in the (comment-stripped)
 // Transition History block. SPAWN and HYGIENE SKIP lines are dropped whole, as in validate-plan.mjs.
 // Deliberately mirrors only the STRIPPED half of validate-plan.mjs's deriveIterationFromHistory
-// / transitionHistoryBlock (see that file's D-009 commentary) — NOT the RAW half that
+// / transitionHistoryBlock (which takes the maximum of its raw and stripped counts) — NOT the RAW half that
 // makes the safety-critical iteration hard-cap incapable of under-counting. This helper
 // backs a *display* surface (resume/status), not a HARD gate, so the friendlier
 // stripped-only reading (never inflated by a stray `<!--`) is the right default here;
@@ -1908,7 +1908,7 @@ function cmdNewInner(goal, force) {
 // (ERR_MODULE_NOT_FOUND) even though only resume/status need the value. The minimal-install
 // fixtures (`makeInstalledPkg` in bootstrap.test.mjs) copy bootstrap.mjs, shared.mjs and
 // schema.mjs, the three files bootstrap imports; installs copy scripts/ by glob in both build
-// channels, so schema.mjs always travels with it. See decisions.md D-013 for that dependency.
+// channels, so schema.mjs always travels with it.
 function countPlanExecuteStripped(state) {
   if (!state) return 0;
   const stripped = stripHtmlComments(state);
@@ -1925,7 +1925,7 @@ function countPlanExecuteStripped(state) {
 }
 
 // displayIteration(state) — reconciled iteration number for the `resume`/`status` CLI
-// surfaces (W1 fix, plan-2026-07-31T203947-de0ded98 completion-fix).
+// surfaces.
 // Params: state (string) — the already-read state.md contents.
 // Returns: string — max(declared, derived) as a string, or "?" if state.md has no
 //   parseable `## Iteration:` field AND no derivable PLAN -> EXECUTE history.
