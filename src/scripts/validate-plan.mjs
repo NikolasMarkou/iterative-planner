@@ -1339,15 +1339,15 @@ function checkVerificationVerdict(planDir, issues) {
   // five required labels (or a separator-joined compound of them). Everything
   // else in the section — lead-ins, commentary, deferred-work notes — is not.
   //
-  // DECISION plan-2026-08-04T092155-0063b038/D-011 — SUPERSEDED by D-013, kept as the
+  // An earlier rule keyed on indentation is replaced by the one below and kept as the
   // thing NOT to do: a "keyword bullet at minimum indent" rule made indentation
   // load-bearing and shipped six CLOSE-blocking false positives on correctly-indented
   // Verdicts. Do not restore it and do not reach for indent again.
   //
-  // DECISION plan-2026-08-04T092155-0063b038/D-013 — the discriminator is LABEL
+  // The discriminator is LABEL
   // TIGHTNESS, never position: a bullet is a field only when its label essentially IS
   // the required label. Both absolute and relative indent rules have shipped a
-  // CLOSE-blocking false positive (see D-011); unanchored keyword substrings are the
+  // CLOSE-blocking false positive (see the indent rule above); unanchored keyword substrings are the
   // original defect ("Recommendation-related follow-up" matched "Recommendation").
   const FIELD_LABEL_PATTERNS = [
     /^criteria\s+pass(?:ed|es|ing)?(?:\s+count)?$/,
@@ -1541,7 +1541,7 @@ function walkSourceFiles(root, files = [], depth = 0) {
 
 // Loose plan-id prefix: ANY run of non-space, non-slash characters sitting where a
 // plan-id belongs. Used ONLY by the bad-prefix scan below — never to resolve an anchor.
-// It is not a plan-id grammar (D-005's "one grammar" rule is untouched); it is the
+// It is not a plan-id grammar (the "one grammar" rule is untouched); it is the
 // complement used to see the anchors the real grammar cannot see.
 const LOOSE_ANCHOR_PREFIX_PATTERN = "[^\\s\\/]+";
 
@@ -1641,7 +1641,7 @@ function scanAnchorsInFile(file, projectRoot, prefixPattern) {
   }
 
   // Block comment scan (multi-line) — runs ONLY on `BLOCK_COMMENT_EXTS`, the shared.mjs
-  // allowlist of extensions whose grammar actually has `/* */` (D-032).
+  // allowlist of extensions whose grammar actually has `/* */`.
   // Loop over EVERY anchor in the block; previously only the first was found.
   // NOTE: this scan has no comment-marker prefix on its inner regex, so it must NOT run
   // on files where those delimiters are ordinary text. In HTML-style files that is prose
@@ -1651,7 +1651,7 @@ function scanAnchorsInFile(file, projectRoot, prefixPattern) {
   // where the grammar applies instead of guessing where it does not; gate on the
   // extension, never by path (that hides real anchors in a whole directory).
   //
-  // DECISION plan-2026-09-01T100120-4f591469/D-007 — spans come from shared.mjs's
+  // Spans come from shared.mjs's
   // `blockCommentSpans`, never a local raw-text regex (code-string-blind, and shipped both
   // double-reporting and silent anchor loss). Byte offsets into `text`, never paired with
   // stripped text. `bootstrap.mjs retire` consumes the same primitive — change one, change both.
@@ -1680,7 +1680,7 @@ function scanAnchorsInFile(file, projectRoot, prefixPattern) {
   // stamps exactly what the validator scans" contract holds on malformed input.
   // A `#`- or `//`-style example inside a fenced code block is prose, not an anchor.
   //
-  // DECISION plan_2026-07-14_79ee0f59/D-010 — comment spans come from shared.mjs's
+  // Comment spans come from shared.mjs's
   // `htmlCommentSpans`, never a local raw regex (code-span-blind: a backticked `<!--` in
   // prose opened a phantom span). `bootstrap.mjs retire` consumes the same primitive, which
   // is what makes "the validator sees exactly what retire stamps" true by construction.
@@ -1701,7 +1701,7 @@ function scanAnchorsInFile(file, projectRoot, prefixPattern) {
   return out;
 }
 
-// DECISION plan_2026-07-14_317362c4/D-005 — anchors with an illegal plan-id prefix are
+// Anchors with an illegal plan-id prefix are
 // found by a second, loose pass and reported as WARN, never ERROR (a cosmetic typo must
 // not block CLOSE). Do not widen the plan-id grammar to make a mis-derived prefix resolve
 // — that would silently attribute the anchor to a plan directory that doesn't exist.
@@ -1715,14 +1715,13 @@ function findBadPrefixAnchorsInFile(file, projectRoot) {
 // section-aware: each `## <plan-id>` heading begins a section; `### D-NNN`
 // entries within belong to that plan.
 //
-// DECISION plan-2026-07-16T164852-47577439/D-001 — per-plan decisions.md reads are scoped
+// Per-plan decisions.md reads are scoped
 // to `referencedPlanIds` (plan-ids actually named by anchors in source), never a readdirSync
 // walk of every plans/ directory (O(all-plan-dirs), unbounded). Also never a generated index
 // derived from the per-plan files — that's a staleness surface. Read set: {active ∪
 // referenced plans} + consolidated plans/DECISIONS.md + committed plans/ANCHORS.md.
 // `baseDir` exists solely so tests can point at a fixture tree — the module-level
 // `plansDir` binds to cwd at import time. Exported for the decoy-dirs unit test.
-// See plan-2026-07-16T164852-47577439/decisions.md D-001.
 export function collectKnownDecisionIdsByPlan(planDir, activePlanName, referencedPlanIds, baseDir = plansDir) {
   const map = new Map();
   // Sidecar: which SOURCE (tier) supplied ids for each plan. Attached to the returned Map
@@ -1785,7 +1784,7 @@ export function collectKnownDecisionIdsByPlan(planDir, activePlanName, reference
   // independent of how many plan directories exist. Never runs on the --pre-step
   // path, which bypasses the full validator entirely.
   //
-  // DECISION plan-2026-08-04T092155-0063b038/D-010 — never generate these lines by scanning
+  // Never generate these lines by scanning
   // `# DECISION` anchors out of source (an anchor would become its own proof of validity,
   // silently retiring typo detection). Written only from the closing plan's own decisions.md.
   // Line regex stays anchored at line start with the pipe delimiter immediate — never widen
@@ -1805,7 +1804,7 @@ export function collectKnownDecisionIdsByPlan(planDir, activePlanName, reference
   return map;
 }
 
-// DECISION plan-2026-09-01T100120-4f591469/D-008 — an orphan message names ONLY the
+// An orphan message names ONLY the
 // sources actually read (via the Map's `tiersByPlan` sidecar), not a fixed list — the old
 // text pointed at a decisions.md that was never opened when resolution came from
 // plans/ANCHORS.md alone.
@@ -1962,7 +1961,7 @@ function checkVerificationEvidence(planDir, issues) {
     if (cells.length > 0 && cells[0] === "") cells.shift();
     if (cells.length > 0 && cells[cells.length - 1] === "") cells.pop();
     if (cells.length < 6) continue; // schema: # | Criterion | Method | Cmd | Result | Evidence
-    // DECISION plan-2026-09-01T100120-4f591469/D-011 — discriminate on the CRITERION cell
+    // Discriminate on the CRITERION cell
     // (reusing PLACEHOLDER_PATTERNS), never the Evidence cell: an empty/PENDING Evidence
     // cell beside a REAL criterion is exactly what this check exists to WARN on at REFLECT.
     const criterion = cells[1] || "";
@@ -2013,7 +2012,7 @@ function checkFindingsTopicSections(planDir, issues) {
     { name: "Code Patterns", re: /^##\s+Code Patterns\b/m },
     { name: "Risks", re: /^##\s+Risks\b/m },
   ];
-  // DECISION plan-2026-09-01T100120-4f591469/D-010 — `findings/` holds THREE artifact schemas:
+  // `findings/` holds THREE artifact schemas:
   // explorer topic files (Summary/Key Findings/Constraints/Code Patterns/Risks), reviewer
   // output (`review-iter-N[-passM].md`, Concerns/Blind Spots/Verdict per ip-reviewer.md), and
   // hygiene-sweep output (`hygiene-iter-N[-passM].md`, Inherited/Introduced/Verdict per
@@ -2350,7 +2349,7 @@ function checkAnchorRefsValidity(planDir, planDirName, issues, projectRoot) {
 // deliberately not copied here — this comment used to spell the op field `OP(+N,-M)`, a
 // shape the spec rejects and which cannot express CREATE(+N), DELETE(-N) or RENAME(old→new).
 //
-// DECISION plan_2026-07-14_79ee0f59/D-001 — the six changelog field regexes live exactly
+// The six changelog field regexes live exactly
 // once, as typed fields in schema.mjs's CHANGELOG_SPEC (split by splitChangelogFields,
 // checked by validateElement). Do not reintroduce a field regex here — two hand-kept copies
 // is the defect the schema removes. [changelog-malformed] stays WARN, never ERROR: the
@@ -2413,7 +2412,7 @@ function checkChangelogFormat(planDir, issues) {
 // ---------------------------------------------------------------------------
 // v2.51.0 — changelog dref join integrity (WARN-only)
 // ---------------------------------------------------------------------------
-// DECISION plan-2026-07-16T085306-8bd12f33/D-001 — join integrity is a separate flat
+// Join integrity is a separate flat
 // check (string-set membership against parseDecisionsEntries' idStr set), called only from
 // validate(). It does not re-validate dref shape (that's CHANGELOG_SPEC's job — a
 // shape-invalid dref may draw both WARNs, by design) and stays out of --pre-step and out
@@ -2516,7 +2515,7 @@ function checkChangelogCommentAnomaly(planDir, issues) {
 }
 
 // ---------------------------------------------------------------------------
-// DECISION plan-2026-09-01T100120-4f591469/D-009 — deliberately NO Presentation Contract
+// Deliberately NO Presentation Contract
 // check here. `checkPresentationContractLog` (v2.17.0) WARNed unless PC-PLAN/PC-REFLECT/
 // PC-PIVOT appeared in a plan file, but a Presentation Contract is chat-only by definition
 // and no protocol file instructs writing one to disk — so a correctly-run plan WARNed. Do
@@ -2526,7 +2525,7 @@ function checkChangelogCommentAnomaly(planDir, issues) {
 // module — was rejected: an agent that logs the contract name proves only that it
 // logged the name, so the signal would be self-fulfilling ceremony on every plan.
 // Deleting an unenforceable check is this repo's own precedent ([byte-claim],
-// v2.39.0, deleted rather than extended). See decisions.md D-009.
+// v2.39.0, deleted rather than extended).
 // ---------------------------------------------------------------------------
 
 function validate(planDirName) {
@@ -2552,7 +2551,7 @@ function validate(planDirName) {
   checkChangeManifest(planDir, issues);
   checkLeashCount(planDir, issues);
   checkIterationLimits(planDir, issues);
-  checkStateCommentAnomaly(planDir, issues); // v2.34.0 — D-009 diagnostic (WARN-only)
+  checkStateCommentAnomaly(planDir, issues); // v2.34.0 — diagnostic (WARN-only)
   checkProgressStructure(planDir, issues);
   checkCheckpoints(planDir, issues);
   checkComplexityBudget(planDir, issues);
@@ -2668,7 +2667,7 @@ function runPreStepGate(planDir) {
   }
 
   // DECISION plan-2026-11-08T075330-b464ad63/D-002 — the second hard cap: work done, not
-  // re-plans. Keeps D-034's endless-loop backstop now that the iteration no longer counts it.
+  // re-plans. Keeps the endless-loop backstop now that the iteration no longer counts it.
   const rounds = deriveRoundsFromHistory(state);
   if (rounds >= ROUND_CAP) {
     console.log(`GATE:FAIL [round-cap] rounds=${rounds} hard-cap=${ROUND_CAP}`);
