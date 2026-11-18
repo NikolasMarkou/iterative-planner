@@ -31,7 +31,7 @@ import {
   ANCHOR_SKIP_DIRS,
   ANCHOR_WALK_MAX_DEPTH,
 } from "./shared.mjs";
-// Changelog field shapes are schema-driven (see checkChangelogFormat / D-001).
+// Changelog field shapes are schema-driven (see checkChangelogFormat).
 import { CHANGELOG_SPEC, entryFromFields, validateElement } from "./schema.mjs";
 
 const cwd = process.cwd();
@@ -839,7 +839,7 @@ function checkConsolidatedFiles(issues) {
 //
 // COST: O(rows in plans/INDEX.md) existsSync calls + at most 2 file reads total (FINDINGS.md,
 // DECISIONS.md, read once outside the loop). NO directory enumeration. The O(all-plan-dirs)
-// walk, ruled out earlier, is NOT reintroduced, and this is
+// walk, ruled out at collectKnownDecisionIdsByPlan below, is NOT reintroduced, and this is
 // not a derived index — INDEX.md is written at CLOSE by its owner and read as-is.
 function checkIndexResolution(issues) {
   const index = readFile(join(plansDir, "INDEX.md"));
@@ -1271,7 +1271,7 @@ function checkVerificationVerdict(planDir, issues) {
 
   // Every scan below runs against a bullet's parsed LABEL — never against the
   // whole section and never against free bullet text. Three distinct false
-  // positives all reduce to that one rule (D-009):
+  // positives all reduce to that one rule:
   //   1. Narrative above the bullets ("no regressions were introduced, and
   //      scope drift was avoided") matched "regressions" before "criteria
   //      passed" and tripped the order check. Do NOT scan `verdict` directly.
@@ -1290,7 +1290,7 @@ function checkVerificationVerdict(planDir, issues) {
   // A fenced code block inside the Verdict holds an EXAMPLE, not Verdict
   // fields. Scanning it treated `- Criteria passed: PENDING` inside a fence as
   // a real bullet and produced a CLOSE-blocking ERROR on a fully-filled
-  // Verdict (D-012). Both ``` and ~~~ fences are recognized; a fence of the
+  // Verdict. Both ``` and ~~~ fences are recognized; a fence of the
   // other character inside an open fence is content, not a delimiter.
   //
   // UNTERMINATED fence: deliberately marks NOTHING. Swallowing the rest of the
@@ -1541,8 +1541,8 @@ function walkSourceFiles(root, files = [], depth = 0) {
 
 // Loose plan-id prefix: ANY run of non-space, non-slash characters sitting where a
 // plan-id belongs. Used ONLY by the bad-prefix scan below — never to resolve an anchor.
-// It is not a plan-id grammar (the "one grammar" rule is untouched); it is the
-// complement used to see the anchors the real grammar cannot see.
+// The plan-id grammar is defined once, in shared.mjs; this pattern is not a second one. It is
+// the complement used to see the anchors the real grammar cannot see.
 const LOOSE_ANCHOR_PREFIX_PATTERN = "[^\\s\\/]+";
 
 // The anchor regex family, built ONCE from a single body template so the strict form
@@ -2183,7 +2183,7 @@ function checkHygieneSweepGate(planDir, issues) {
 
 // 3.2c — state.md transition missing Exploration Confidence on EXPLORE → PLAN.
 //
-// Two corrections (D-003, defect #8):
+// Two corrections:
 //  1. Comment-blind — via transitionHistoryBlock(). The pre-fix raw scan matched the
 //     literal `EXPLORE → PLAN` on the OPENING line of bootstrap's guidance comment and
 //     then read the EXAMPLE transition beneath it as the "next non-empty line", which
@@ -2370,8 +2370,8 @@ function checkChangelogFormat(planDir, issues) {
   // or closer does not fully occupy its own line, the shape a stray,
   // unbackticked `<!--` (or an unbalanced closer) inside a reason field
   // produces (review-iter-1.md CRITICAL #1; review-iter-1-pass2.md CRITICAL #1
-  // closed the opener-only gap). See decisions.md D-011 (restates D-009, which
-  // restates D-001).
+  // closed the opener-only gap). The durable record of this choice is the
+  // 39838f7a/D-011 line in plans/ANCHORS.md.
   const lines = stripHtmlComments(content).split("\n");
   let lineNo = 0;
   for (const raw of lines) {
@@ -2426,8 +2426,8 @@ function checkChangelogDrefIntegrity(planDir, issues) {
   const known = new Set(parseDecisionsEntries(decisionsContent).entries.map((e) => e.idStr));
 
   // DECISION plan-2026-09-11T171519-39838f7a/D-011 — same fix as
-  // checkChangelogFormat, applied in lockstep (see decisions.md D-011, which
-  // restates D-009, which restates D-001).
+  // checkChangelogFormat, applied in lockstep (the 39838f7a/D-011 line in
+  // plans/ANCHORS.md records the choice).
   const lines = stripHtmlComments(content).split("\n");
   let lineNo = 0;
   for (const raw of lines) {
